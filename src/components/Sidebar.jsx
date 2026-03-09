@@ -4,7 +4,7 @@ import {
   Folder, FileText, Activity, Settings, User,
   CornerDownRight, FileQuestion, Plus,
   ChevronRight, ChevronDown,
-  ChevronsRight, ChevronsLeft // YENİ: >> ve << okları için eklendi
+  ChevronsRight, ChevronsLeft
 } from 'lucide-react';
 
 import FullLogoImage from '../assets/logo-acik.png';
@@ -38,11 +38,16 @@ const itemVariants = {
   exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
 };
 
-const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed }) => {
+// ==========================================
+// YENİ: onOpenFile TreeNode'a eklendi! (Dosya Açma Sinyali)
+// ==========================================
+const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed, setIsCollapsed, setOpenFolders, onOpenFile, tabs }) => {
   const isOpen = !!openFolders[node.id];
   const isAktif = activeFile === node.id;
+  const isOpenedInTab = tabs?.some(t => t.id === node.id);
   const paddingLeft = level * 16;
 
+  // 1. EĞER BU BİR KLASÖR İSE:
   if (node.type === 'folder') {
     if (isCollapsed && level > 0) return null;
 
@@ -51,7 +56,12 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
         <div
           onClick={(e) => {
             e.stopPropagation();
-            if (!isCollapsed) toggleFolder(node.id);
+            if (isCollapsed) {
+              setIsCollapsed(false);
+              setOpenFolders(prev => ({ ...prev, [node.id]: true }));
+            } else {
+              toggleFolder(node.id);
+            }
           }}
           className={`flex items-center gap-1.5 text-sm cursor-pointer hover:text-white transition-colors py-1.5 ${isCollapsed ? 'justify-center mb-4' : 'w-full'}`}
           style={{ paddingLeft: !isCollapsed ? `${paddingLeft}px` : '0px' }}
@@ -69,7 +79,19 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
               <div className="absolute top-0 bottom-0 w-px bg-slate-800" style={{ left: `${paddingLeft + 15}px` }}></div>
               {node.children.map(child => (
                 <motion.div key={child.id} variants={itemVariants}>
-                  <TreeNode node={child} level={level + 1} openFolders={openFolders} toggleFolder={toggleFolder} activeFile={activeFile} setActiveFile={setActiveFile} isCollapsed={isCollapsed} />
+                  <TreeNode
+                    node={child}
+                    level={level + 1}
+                    openFolders={openFolders}
+                    toggleFolder={toggleFolder}
+                    activeFile={activeFile}
+                    setActiveFile={setActiveFile}
+                    isCollapsed={isCollapsed}
+                    setIsCollapsed={setIsCollapsed}
+                    setOpenFolders={setOpenFolders}
+                    onOpenFile={onOpenFile} // onOpenFile'ı alt dosyalara aktar
+                    tabs={tabs}
+                  />
                 </motion.div>
               ))}
             </motion.div>
@@ -79,26 +101,56 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
     );
   }
 
+  // 2. EĞER BU BİR DOSYA İSE:
   if (isCollapsed) return null;
+
+  let bgColor = 'border border-transparent ml-1';
+  let textColor = 'text-slate-400 hover:text-slate-200';
+
+  if (isOpenedInTab) {
+    textColor = 'text-red-400 font-medium';
+    if (isAktif) bgColor = 'bg-red-900/20 border border-red-800/40 ml-1';
+  } else if (isAktif) {
+    textColor = 'text-teal-400';
+    bgColor = 'bg-teal-900/20 border border-teal-800/40 ml-1';
+  }
 
   return (
     <div
+      // TEK TIKLAMA: Sadece sol panelde aktif (mavi/yeşil) yapar
       onClick={(e) => {
         e.stopPropagation();
         setActiveFile(node.id);
       }}
-      className={`flex items-center gap-2 text-xs rounded p-1.5 cursor-pointer whitespace-nowrap transition-all relative z-10 ${isAktif ? 'text-teal-400 bg-teal-900/20 border border-teal-800/40 ml-1' : 'text-slate-400 hover:text-slate-200 border border-transparent ml-1'
-        }`}
+      // ÇİFT TIKLAMA: App.jsx'e "Bu dosyayı orta alanda (Sekme olarak) aç!" der
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (onOpenFile) {
+          onOpenFile({
+            id: node.id,
+            title: node.name,
+            type: node.extension || 'file',
+            url: node.url // İleride dosyayı göstermek için buraya URL ekleyebilirsin
+          });
+        }
+      }}
+      className={`flex items-center gap-2 text-xs rounded p-1.5 cursor-pointer whitespace-nowrap transition-all relative z-10 ${bgColor} ${textColor}`}
       style={{ paddingLeft: `${paddingLeft + 14}px` }}
+      title="Açmak için çift tıklayın"
     >
       <CornerDownRight size={14} className={isAktif ? "text-teal-600 shrink-0" : "text-slate-600 shrink-0"} />
       {getFileIcon(node.extension)}
-      <span className="truncate max-w-[150px] select-none" title={node.name}>{node.name}</span>
+      <span className="truncate max-w-[150px] select-none">{node.name}</span>
     </div>
   );
 };
 
-const Sidebar = () => {
+
+// ==========================================
+// ANA SİDEBAR BİLEŞENİ
+// onOpenFile parametresini App.jsx'ten alıyor
+// ==========================================
+const Sidebar = ({ onOpenFile, tabs = [] }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [treeData, setTreeData] = useState([]);
   const [openFolders, setOpenFolders] = useState({});
@@ -118,7 +170,6 @@ const Sidebar = () => {
 
       parts.forEach((part, index) => {
         const isFile = index === parts.length - 1;
-        const isRootLevel = (currentLevel === root);
 
         let existingNode = currentLevel.find(item => item.name === part && item.type === (isFile ? 'file' : 'folder'));
 
@@ -128,13 +179,12 @@ const Sidebar = () => {
             name: part,
             type: isFile ? 'file' : 'folder',
             extension: isFile ? part.split('.').pop().toLowerCase() : null,
-            children: []
+            children: [],
+            // İleride dosyayı Workspace'te açmak için:
+            // Dosyanın URL'sini (veya blob verisini) burada saklıyoruz
+            url: isFile ? URL.createObjectURL(file) : null
           };
           currentLevel.push(existingNode);
-
-          if (!isFile && isRootLevel) {
-            yeniAcikKlasorler[existingNode.id] = true;
-          }
         }
         currentLevel = existingNode.children;
       });
@@ -153,30 +203,22 @@ const Sidebar = () => {
     });
   };
 
-  // ==========================================
-  // BOŞLUK TIKLAMA (SMART CLICK) KONTROLÜ
-  // ==========================================
   const handleSidebarClick = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // Scrollbar (yaklaşık 14px) alanına tıklanırsa menüyü Kapatma/Açma!
-    // Sadece gerçekten "boşluğa" tıklandığında çalışır.
     if (e.clientX < rect.right - 14) {
       setIsCollapsed(prev => !prev);
     }
   };
 
   return (
-    // ANA PANEL: Artık içinde yan yana iki parça var (Sol İçerik + Sağ İnce Bar)
     <aside className={`relative ${isCollapsed ? 'w-20' : 'w-72'} transition-all duration-300 ease-in-out bg-[#0b1120] text-slate-300 flex h-screen border-r border-slate-800 font-sans shrink-0 z-20 cursor-default`}>
 
       <input type="file" webkitdirectory="true" directory="true" multiple className="hidden" ref={dosyaInputRef} onChange={handleKlasorSecimi} />
 
-      {/* --- PARÇA 1: SOL İÇERİK (Logo, Dosyalar, Ayarlar) --- */}
       <div
         className="flex-1 flex flex-col h-full overflow-hidden"
-        onClick={handleSidebarClick} // Boşluk tıklama dedektörü burada
+        onClick={handleSidebarClick}
       >
-        {/* ÜST KISIM: LOGO */}
         <div className={`flex flex-col items-start h-16 border-b border-slate-800 transition-all duration-300 ${isCollapsed ? 'px-3 pt-3' : 'px-4 pt-3'}`}>
           <div className="flex justify-between w-full items-start">
             <div
@@ -198,8 +240,7 @@ const Sidebar = () => {
           </div>
         </div>
 
-        {/* ORTA KISIM: AĞAÇ YAPISI VE SCROLLBAR */}
-        <div className="flex-1 overflow-y-auto p-4 overflow-x-hidden [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-600">
+        <div className="flex-1 overflow-y-auto pl-4 py-4 pr-5 overflow-x-hidden [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-600">
 
           {!isCollapsed && (
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 tracking-widest mb-6 whitespace-nowrap">
@@ -226,12 +267,24 @@ const Sidebar = () => {
 
           <div className="flex flex-col space-y-1 w-full items-start">
             {treeData.map((node) => (
-              <TreeNode key={node.id} node={node} level={0} openFolders={openFolders} toggleFolder={toggleFolder} activeFile={activeFile} setActiveFile={setActiveFile} isCollapsed={isCollapsed} />
+              <TreeNode
+                key={node.id}
+                node={node}
+                level={0}
+                openFolders={openFolders}
+                toggleFolder={toggleFolder}
+                activeFile={activeFile}
+                setActiveFile={setActiveFile}
+                isCollapsed={isCollapsed}
+                setIsCollapsed={setIsCollapsed}
+                setOpenFolders={setOpenFolders}
+                onOpenFile={onOpenFile} // App.jsx'ten gelen gücü buraya veriyoruz
+                tabs={tabs}
+              />
             ))}
           </div>
         </div>
 
-        {/* ALT KISIM: AYARLAR VE PROFİL */}
         <div className={`p-4 border-t border-slate-800 flex items-center ${isCollapsed ? 'flex-col gap-6' : 'justify-between'}`}>
           <Settings size={isCollapsed ? 22 : 18} onClick={(e) => e.stopPropagation()} className="cursor-pointer hover:text-white transition-colors" />
           <div onClick={(e) => e.stopPropagation()} className={`rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-teal-500 transition-all ${isCollapsed ? 'w-10 h-10' : 'w-8 h-8'}`}>
@@ -240,20 +293,14 @@ const Sidebar = () => {
         </div>
       </div>
 
-      {/* ==========================================
-          --- PARÇA 2: SAĞDAKİ İNCE GİZLİ SÜTUN (THE EDGE BAR) ---
-          Normalde şeffaf, hover olunca hafif aydınlanır ve ( >> ) oklarını gösterir.
-          ========================================== */}
       <div
         onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
         className="w-4 shrink-0 bg-transparent hover:bg-slate-800/50 flex flex-col items-center justify-center transition-colors duration-300 cursor-pointer group z-50 border-l border-transparent hover:border-slate-700/50"
         title={isCollapsed ? "Menüyü Genişlet" : "Menüyü Daralt"}
       >
         {isCollapsed ? (
-          // ( >> ) okları: Dar iken menüyü açmayı temsil eder
           <ChevronsRight size={14} className="opacity-0 group-hover:opacity-100 text-slate-400 group-hover:text-teal-400 transition-all duration-300" />
         ) : (
-          // ( << ) okları: Geniş iken menüyü daraltmayı temsil eder
           <ChevronsLeft size={14} className="opacity-0 group-hover:opacity-100 text-slate-400 group-hover:text-teal-400 transition-all duration-300" />
         )}
       </div>

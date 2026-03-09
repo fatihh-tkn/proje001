@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "bpmn-js": "^18.13.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "framer-motion": "^12.35.1",
