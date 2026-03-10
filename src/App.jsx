@@ -9,23 +9,30 @@ function App() {
   // SEKME (TAB) YÖNETİM MOTORU (YENİ)
   // ==========================================
   const [tabs, setTabs] = useState([]); // Açık olan tüm dosyaları tutar
-  const [activeTabId, setActiveTabId] = useState(null); // Şu an ekranda hangi dosya var? (null ise devasa logo görünür)
+  const [activeTabId, setActiveTabId] = useState(null); // Şu an ekranda hangi dosya var?
+  const [maximizedTabId, setMaximizedTabId] = useState(null); // Tam ekran açık olan sekme
 
   // Yeni Dosya Açma Fonksiyonu (Bunu ChatInput'a göndereceğiz)
   const handleOpenFile = (file) => {
-    // file objesi örneği: { id: 'pdf-1', title: 'Rapor.pdf', type: 'pdf', url: '...' }
-
-    // Eğer dosya zaten açıksa sadece o sekmeye geç
     const existingTab = tabs.find(t => t.id === file.id);
+
     if (!existingTab) {
       setTabs([...tabs, file]); // Açık değilse yeni sekme olarak ekle
     }
     setActiveTabId(file.id); // Ekrana bu dosyayı yansıt
+
+    // Eğer bir pencere kullanıcı tarafından ZATEN tam ekran yapılmışsa,
+    // yeni açılan dosyayı da o tam ekranın (overlay) içine al.
+    // İlk sekme açıldığında Grid sistemi zaten tek eleman olduğu için %100 kaplayacak
+    // ve sürüklemeye (drag'n drop) engel olmayacak.
+    if (maximizedTabId) {
+      setMaximizedTabId(file.id);
+    }
   };
 
-  // Sekme Kapatma Fonksiyonu (Bunu Header'a göndereceğiz)
+  // Sekme Kapatma Fonksiyonu
   const handleCloseTab = (id, e) => {
-    e.stopPropagation(); // Çarpıya basınca sekmenin içine tıklanmış sayılmasını engeller
+    if (e && e.stopPropagation) e.stopPropagation(); // Event varsa durdur, yoksa hata verme
 
     const newTabs = tabs.filter(t => t.id !== id);
     setTabs(newTabs);
@@ -34,11 +41,21 @@ function App() {
     if (activeTabId === id) {
       setActiveTabId(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null);
     }
+    // Kapatılan sekme tam ekrandaysa, tam ekranı da kapat
+    if (maximizedTabId === id) {
+      setMaximizedTabId(null);
+    }
+  };
+
+  // Tam Ekran Toggle Fonksiyonu
+  const handleMaximizeTab = (id) => {
+    setMaximizedTabId(prev => prev === id ? null : id);
+    setActiveTabId(id);
   };
 
   return (
     // TÜM EKRAN: 3 Sütunlu Mimari
-    <div className="flex h-screen w-full bg-[#060a13] overflow-hidden font-sans text-slate-300">
+    <div className="flex h-screen w-full bg-white overflow-hidden font-sans text-slate-800">
 
       {/* 1. SÜTUN: SOL MENÜ */}
       <Sidebar onOpenFile={handleOpenFile} tabs={tabs} />
@@ -55,18 +72,24 @@ function App() {
           <Header
             tabs={tabs}
             activeTabId={activeTabId}
-            onTabClick={setActiveTabId}
+            onTabClick={(id) => {
+              setActiveTabId(id);
+              // Tam ekran açıksa, tıklanan sekmeyi tam ekrana al
+              if (maximizedTabId) setMaximizedTabId(id);
+            }}
             onCloseTab={handleCloseTab}
+            onMaximizeTab={handleMaximizeTab}
           />
 
           {/* Workspace artık kontrol butonlarının yetkilerine sahip! */}
           <Workspace
             activeTabId={activeTabId}
             tabs={tabs}
+            maximizedTabId={maximizedTabId}
             onMinimize={() => setActiveTabId(null)}
-            onCloseTab={(id) => handleCloseTab(id, { stopPropagation: () => { } })}
+            onCloseTab={(id) => handleCloseTab(id)}
             onFocusTab={(id) => setActiveTabId(id)}
-          />
+            onMaximizeTab={handleMaximizeTab}
           />
 
         </div>

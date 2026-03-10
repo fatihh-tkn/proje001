@@ -1,3 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+backend/temp/
+
 # Logs
 logs
 *.log
