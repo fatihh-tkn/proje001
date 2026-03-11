@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Folder, FileText, Activity, Settings, User,
@@ -119,6 +119,52 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
 
   return (
     <div
+      draggable={true}
+      onDragStart={(e) => {
+        // 1) Sürüklenen veriyi (Payload) yükle
+        e.dataTransfer.setData('application/json', JSON.stringify({
+          id: node.id,
+          title: node.name,
+          type: node.extension || 'file',
+          url: node.url
+        }));
+
+        // 2) Kendi özel Sürükleme Hayaletimizi ('Drag Ghost') Oluşturuyoruz
+        // DOM'da geçici bir kopya öğe (klon) yarat
+        const dragGhost = document.createElement('div');
+        dragGhost.className = 'flex items-center gap-2 text-xs rounded p-2 bg-slate-800 text-white font-medium shadow-lg border border-slate-700/50';
+        dragGhost.style.position = 'absolute';
+        dragGhost.style.top = '-1000px'; // Ekranda görünmemesi için dışarı at
+
+        // İçeriği (Yazı ve ikon HTML olarak eklenebilir, ancak daha güvenilir olması için metin ekliyoruz)
+        // Ya da doğrudan tıklanan elemanın bir kopyasını klonlayabiliriz:
+        const clone = e.currentTarget.cloneNode(true);
+        clone.style.backgroundColor = '#1e293b'; // slate-800
+        clone.style.color = '#ffffff';
+        clone.style.border = '1px solid #334155';
+        clone.style.borderRadius = '6px';
+        clone.style.padding = '8px 12px';
+        clone.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.5)';
+        clone.style.opacity = '1';
+        clone.style.width = 'max-content';
+
+        // Eğer klon kullanırsak, paddingLeft vs gibi inline stilleri temizlemeliyiz
+        clone.style.paddingLeft = '8px';
+
+        document.body.appendChild(clone);
+
+        // Klonu imlecin altına yerleştir (DataTransfer.setDragImage)
+        // 10, 10 -> imlecin kutu içindeki X, Y offset noktasıdır
+        e.dataTransfer.setDragImage(clone, 20, 20);
+
+        // setDragImage çağrıldıktan hemen sonra klonu DOM'dan temizleyebiliriz
+        // (Tarayıcı hafızasına almıştır)
+        setTimeout(() => {
+          if (document.body.contains(clone)) {
+            document.body.removeChild(clone);
+          }
+        }, 0);
+      }}
       // TEK TIKLAMA: Sadece sol panelde aktif (mavi/yeşil) yapar
       onClick={(e) => {
         e.stopPropagation();
@@ -158,43 +204,74 @@ const Sidebar = ({ onOpenFile, tabs = [] }) => {
   const [openFolders, setOpenFolders] = useState({});
   const [activeFile, setActiveFile] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const dosyaInputRef = useRef(null);
+  const [currentBasePath, setCurrentBasePath] = useState(localStorage.getItem('savedBasePath') || '');
+  const [additionalFiles, setAdditionalFiles] = useState([]);
 
-  const handleKlasorSecimi = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  // Sidebar boyutu değiştiğinde ayarlar açıksa kapat (genişten kısaya veya kısadan genişe geçerken)
+  useEffect(() => {
+    if (settingsOpen) {
+      setSettingsOpen(false);
+    }
+  }, [isCollapsed]);
 
-    const root = [...treeData];
-    const yeniAcikKlasorler = { ...openFolders };
-
-    files.forEach(file => {
-      const parts = file.webkitRelativePath.split('/');
-      let currentLevel = root;
-
-      parts.forEach((part, index) => {
-        const isFile = index === parts.length - 1;
-
-        let existingNode = currentLevel.find(item => item.name === part && item.type === (isFile ? 'file' : 'folder'));
-
-        if (!existingNode) {
-          existingNode = {
-            id: `node-${part}-${Math.random().toString(36).substr(2, 9)}`,
-            name: part,
-            type: isFile ? 'file' : 'folder',
-            extension: isFile ? part.split('.').pop().toLowerCase() : null,
-            children: [],
-            // İleride dosyayı Workspace'te açmak için:
-            // Dosyanın URL'sini (veya blob verisini) burada saklıyoruz
-            url: isFile ? URL.createObjectURL(file) : null
-          };
-          currentLevel.push(existingNode);
+  // Backend'den (Vite eklentisinden) klasör yapısını çeken fonksiyon
+  const fetchTree = async (path) => {
+    if (!path) return;
+    try {
+      const res = await fetch(`/api/files/tree?path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.nodes) {
+          setTreeData(data.nodes);
         }
-        currentLevel = existingNode.children;
-      });
+      }
+    } catch (err) {
+      console.error("Local dosya yolu okunurken hata:", err);
+    }
+  };
+
+  // Base path değiştiğinde veya belli aralıklarla kontrol etmek için (senkron)
+  useEffect(() => {
+    if (currentBasePath) {
+      fetchTree(currentBasePath);
+      // Her 5 saniyede bir dosyalarla sekron/güncel tut
+      const interval = setInterval(() => {
+        fetchTree(currentBasePath);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [currentBasePath]);
+
+  const handleSetBasePath = (path) => {
+    setCurrentBasePath(path);
+    localStorage.setItem('savedBasePath', path);
+    setAdditionalFiles([]); // Yeni kök klasör geldiğinde, manuel dosyaları sıfırla
+    // Yeni yol ayarlandığında hemen getir
+    fetchTree(path);
+  };
+
+  const handleAddFiles = (filePaths) => {
+    const newFiles = filePaths.map(path => {
+      // Create valid tree nodes
+      const nameMatch = path.match(/[^\/\\]+$/);
+      const name = nameMatch ? nameMatch[0] : 'Bilinmeyen Dosya';
+      const extMatch = name.match(/\.([^.]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : '';
+
+      return {
+        id: path, // ensure unique ID
+        name,
+        type: 'file',
+        extension: ext,
+        url: `/api/files/download?path=${encodeURIComponent(path)}`,
+      };
     });
 
-    setTreeData(root);
-    setOpenFolders(yeniAcikKlasorler);
+    setAdditionalFiles(prev => {
+      const prevIds = new Set(prev.map(f => f.id));
+      const filtered = newFiles.filter(f => !prevIds.has(f.id));
+      return [...prev, ...filtered];
+    });
   };
 
   const toggleFolder = (folderId) => {
@@ -215,8 +292,6 @@ const Sidebar = ({ onOpenFile, tabs = [] }) => {
 
   return (
     <aside className={`relative ${isCollapsed ? 'w-20' : 'w-72'} transition-all duration-300 ease-in-out bg-[#1c1c1e] text-slate-300 flex h-screen border-r border-[#2d2d2d] font-sans shrink-0 z-20 cursor-default`}>
-
-      <input type="file" webkitdirectory="true" directory="true" multiple className="hidden" ref={dosyaInputRef} onChange={handleKlasorSecimi} />
 
       <div
         className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
@@ -248,28 +323,21 @@ const Sidebar = ({ onOpenFile, tabs = [] }) => {
           {!isCollapsed && (
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 tracking-widest mb-6 whitespace-nowrap">
               <span>DOSYALAR</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); dosyaInputRef.current.click(); }}
-                className="text-slate-400 hover:text-red-400 bg-slate-800/50 hover:bg-slate-800 p-1 rounded transition-colors cursor-pointer"
-                title="Klasör Ekle"
-              >
-                <Plus size={14} />
-              </button>
             </div>
           )}
 
-          {treeData.length === 0 && !isCollapsed && (
+          {(treeData.length === 0 && additionalFiles.length === 0) && !isCollapsed && (
             <div
-              onClick={(e) => { e.stopPropagation(); dosyaInputRef.current.click(); }}
+              onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
               className="text-center text-xs text-slate-500 mt-10 border border-dashed border-slate-700 p-4 rounded-xl cursor-pointer hover:border-red-500 hover:text-red-400 transition-colors"
             >
               <Folder size={24} className="mx-auto mb-2" />
-              <p>Bilgisayarınızdan klasör seçmek için <strong>buraya</strong> tıklayın.</p>
+              <p>Bilgisayarınızdan klasör seçmek için <strong>ayarlardan (çark) dosya yolunu</strong> belirleyin.</p>
             </div>
           )}
 
           <div className="flex flex-col space-y-1 w-full items-start">
-            {treeData.map((node) => (
+            {[...additionalFiles, ...treeData].map((node) => (
               <TreeNode
                 key={node.id}
                 node={node}
@@ -293,7 +361,9 @@ const Sidebar = ({ onOpenFile, tabs = [] }) => {
             isOpen={settingsOpen}
             onClose={() => setSettingsOpen(false)}
             onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
-            onSetBasePath={(path) => console.log('Dosya yolu:', path)}
+            onSetBasePath={handleSetBasePath}
+            onAddFiles={handleAddFiles}
+            currentBasePath={currentBasePath}
             isCollapsed={isCollapsed}
           />
           <Settings data-settings-trigger size={isCollapsed ? 22 : 18} onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }} className={`cursor-pointer hover:text-white transition-colors ${settingsOpen ? 'text-white' : ''}`} />

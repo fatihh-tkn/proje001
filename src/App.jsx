@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Workspace from './components/Workspace';
+import Workspace from './components/workspace/Workspace';
 import ChatInput from './components/ChatInput';
 
 function App() {
@@ -47,6 +47,13 @@ function App() {
     }
   };
 
+  // Tüm Sekmeleri Kapatma Fonksiyonu
+  const handleCloseAllTabs = () => {
+    setTabs([]);
+    setActiveTabId(null);
+    setMaximizedTabId(null);
+  };
+
   // Tam Ekran Toggle Fonksiyonu
   const handleMaximizeTab = (id) => {
     setMaximizedTabId(prev => prev === id ? null : id);
@@ -78,6 +85,7 @@ function App() {
               if (maximizedTabId) setMaximizedTabId(id);
             }}
             onCloseTab={handleCloseTab}
+            onCloseAllTabs={handleCloseAllTabs}
             onMaximizeTab={handleMaximizeTab}
           />
 
@@ -90,6 +98,7 @@ function App() {
             onCloseTab={(id) => handleCloseTab(id)}
             onFocusTab={(id) => setActiveTabId(id)}
             onMaximizeTab={handleMaximizeTab}
+            onOpenFile={handleOpenFile}
           />
 
         </div>
