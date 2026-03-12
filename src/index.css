@@ -224,3 +224,8 @@
 .mac-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(148, 163, 184, 0.8);
 }
+
+/* BPMN.io logo kaldırma */
+.bjs-powered-by {
+  display: none !important;
+}

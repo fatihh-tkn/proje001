@@ -1,32 +1,34 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import List, Optional
 import os
 import urllib.parse
+
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
+
 from services.file_parser import file_parser
 
 router = APIRouter()
 
+
 @router.post("/parse")
 async def parse_file(file: UploadFile = File(...)):
     """
-    Kullanıcıdan bir dosya alır (Excel) 
+    Kullanıcıdan bir dosya alır (Excel)
     ve içini okuyup JSON tipinde yanıt döner.
     """
-    
+
+    if file.filename is None:
+        raise HTTPException(status_code=400, detail="Dosya adı bulunamadı.")
+
     file_name = file.filename.lower()
     content_bytes = await file.read()
-    
+
     if file_name.endswith(".xlsx") or file_name.endswith(".xls"):
         result = file_parser.parse_excel(content_bytes)
         return result
-        
+
     else:
-        raise HTTPException(
-            status_code=400, 
-            detail="Sadece .xlsx ve .xls desteklenmektedir."
-        )
+        raise HTTPException(status_code=400, detail="Sadece .xlsx ve .xls desteklenmektedir.")
+
 
 @router.get("/tree")
 async def get_file_tree(path: str):
@@ -41,7 +43,7 @@ async def get_file_tree(path: str):
             name = os.path.basename(current_path.rstrip("/\\"))
             if not name:
                 name = current_path
-                
+
             if os.path.isdir(current_path):
                 raw_children = os.listdir(current_path)
                 children = []
@@ -53,7 +55,7 @@ async def get_file_tree(path: str):
                     "id": current_path,
                     "name": name,
                     "type": "folder",
-                    "children": children
+                    "children": children,
                 }
             else:
                 ext = name.split(".")[-1].lower() if "." in name else ""
@@ -63,7 +65,7 @@ async def get_file_tree(path: str):
                     "name": name,
                     "type": "file",
                     "extension": ext,
-                    "url": url
+                    "url": url,
                 }
         except Exception:
             return None
@@ -83,8 +85,8 @@ async def open_folder_dialog():
     Tkinter'ı izole bir subprocess içinde çalıştırır (ASGI donması engellenir).
     """
     import asyncio
-    import sys
     import subprocess
+    import sys
 
     def _pick_folder():
         script = (
@@ -102,7 +104,7 @@ async def open_folder_dialog():
             [sys.executable, "-c", script],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
         if result.returncode != 0:
             print("Dialog subprocess hata:", result.stderr)
@@ -125,8 +127,8 @@ async def open_file_dialog():
     Tkinter'ı izole bir subprocess içinde çalıştırır (ASGI donması engellenir).
     """
     import asyncio
-    import sys
     import subprocess
+    import sys
 
     def _pick_files():
         script = (
@@ -139,7 +141,8 @@ async def open_file_dialog():
             "root.focus_force()\n"
             "res = filedialog.askopenfilenames(\n"
             "    parent=root, title='Dosyalari Secin',\n"
-            "    filetypes=[('Desteklenen Dosyalar', '*.pdf *.bpmn *.xlsx *.xls *.txt *.docx'), ('Tum Dosyalar', '*.*')]\n"
+            "    filetypes=[('Desteklenen Dosyalar', '*.pdf *.bpmn *.xlsx *.xls *.txt *.docx'), "
+            "('Tum Dosyalar', '*.*')]\n"
             ")\n"
             "root.destroy()\n"
             "sys.stdout.write('||'.join(res) if res else '')\n"
@@ -148,7 +151,7 @@ async def open_file_dialog():
             [sys.executable, "-c", script],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
         if result.returncode != 0:
             print("File dialog subprocess hata:", result.stderr)
@@ -174,6 +177,11 @@ async def download_file(path: str):
     """
     if not path or not os.path.exists(path) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     name = os.path.basename(path)
-    return FileResponse(path=path, filename=name, media_type="application/octet-stream", content_disposition_type="inline")
+    return FileResponse(
+        path=path,
+        filename=name,
+        media_type="application/octet-stream",
+        content_disposition_type="inline",
+    )

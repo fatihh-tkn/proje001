@@ -6,4 +6,5 @@ class AIService:
         # Şimdilik basit bir echo (yankı) veya mock cevap dönüyoruz
         return f"Python Backend'den yanıt: '{user_message}' mesajınızı aldım!"
 
+
 ai_service = AIService()

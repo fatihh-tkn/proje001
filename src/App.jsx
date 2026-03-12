@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import Sidebar from './components/Sidebar';
+import Sidebar from './components/sidebar/Sidebar';
 import Header from './components/Header';
 import Workspace from './components/workspace/Workspace';
-import ChatInput from './components/ChatInput';
+import ChatInput from './components/chatbar/ChatBar';
 
 function App() {
   // ==========================================
@@ -11,6 +11,17 @@ function App() {
   const [tabs, setTabs] = useState([]); // Açık olan tüm dosyaları tutar
   const [activeTabId, setActiveTabId] = useState(null); // Şu an ekranda hangi dosya var?
   const [maximizedTabId, setMaximizedTabId] = useState(null); // Tam ekran açık olan sekme
+
+  // Kenar Çubukları State'leri
+  const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
+  const [isRightOpen, setIsRightOpen] = useState(true);
+
+  // Arka plana çift tıklama ile iki sidebar'ı da kapat/aç
+  const handleBackgroundDoubleClick = () => {
+    const isAnyOpen = !isLeftCollapsed || isRightOpen;
+    setIsLeftCollapsed(isAnyOpen);
+    setIsRightOpen(!isAnyOpen);
+  };
 
   // Yeni Dosya Açma Fonksiyonu (Bunu ChatInput'a göndereceğiz)
   const handleOpenFile = (file) => {
@@ -23,9 +34,8 @@ function App() {
 
     // Eğer bir pencere kullanıcı tarafından ZATEN tam ekran yapılmışsa,
     // yeni açılan dosyayı da o tam ekranın (overlay) içine al.
-    // İlk sekme açıldığında Grid sistemi zaten tek eleman olduğu için %100 kaplayacak
-    // ve sürüklemeye (drag'n drop) engel olmayacak.
-    if (maximizedTabId) {
+    // VEYA yeni açılan dosya forceMaximize: true ile geldiyse tam ekran aç.
+    if (maximizedTabId || file.forceMaximize) {
       setMaximizedTabId(file.id);
     }
   };
@@ -65,7 +75,12 @@ function App() {
     <div className="flex h-screen w-full bg-white overflow-hidden font-sans text-slate-800">
 
       {/* 1. SÜTUN: SOL MENÜ */}
-      <Sidebar onOpenFile={handleOpenFile} tabs={tabs} />
+      <Sidebar
+        onOpenFile={handleOpenFile}
+        tabs={tabs}
+        isCollapsed={isLeftCollapsed}
+        setIsCollapsed={setIsLeftCollapsed}
+      />
 
       {/* 2. SÜTUN: ORTA ANA ÇALIŞMA ALANI */}
       <main className="flex-1 flex flex-col h-full relative overflow-hidden z-10">
@@ -99,6 +114,7 @@ function App() {
             onFocusTab={(id) => setActiveTabId(id)}
             onMaximizeTab={handleMaximizeTab}
             onOpenFile={handleOpenFile}
+            onBackgroundDoubleClick={handleBackgroundDoubleClick}
           />
 
         </div>
@@ -107,7 +123,11 @@ function App() {
 
       {/* 3. SÜTUN: SAĞ YAPAY ZEKA ASİSTANI */}
       {/* ChatInput artık sisteme "Şu dosyayı aç!" diyebilecek */}
-      <ChatInput onOpenFile={handleOpenFile} />
+      <ChatInput
+        onOpenFile={handleOpenFile}
+        isSideOpen={isRightOpen}
+        setIsSideOpen={setIsRightOpen}
+      />
 
     </div>
   );

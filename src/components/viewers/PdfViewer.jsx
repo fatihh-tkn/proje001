@@ -7,7 +7,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const PdfViewerComponent = ({ url, title }) => {
     const containerRef = useRef(null);
+    const wrapperRef = useRef(null);
     const [loading, setLoading] = useState(true);
+    const [zoom, setZoom] = useState(1);
 
     useEffect(() => {
         if (!url || !containerRef.current) return;
@@ -65,15 +67,53 @@ const PdfViewerComponent = ({ url, title }) => {
         };
     }, [url]);
 
+    // Ctrl+Tekerlek veya Shift+Tekerlek veya sadece Tekerlek ile zoom
+    useEffect(() => {
+        const wrapper = wrapperRef.current;
+        if (!wrapper) return;
+
+        const handleWheel = (e) => {
+            // Kullanıcı tekerlek ile büyütme küçültme istedi. 
+            // Direkt tekerleği zoom olarak kullanmak için e.ctrlKey şartını kaldırabiliriz, 
+            // Ancak dokümanlarda kaydırma da önemlidir. İkisi bir arada çalışsın diye 
+            // e.preventDefault() ile sayfa kaymasını durdurup sadece zoom yapıyoruz
+            // NOT: Kaydırmayı engellememesi için Ctrl basılıyken zoom yapmayı zorunlu kılıyoruz.
+            if (e.ctrlKey) {
+                e.preventDefault();
+                setZoom(z => {
+                    const newZoom = z - e.deltaY * 0.003;
+                    return Math.min(Math.max(0.3, newZoom), 5); // 0.3x - 5x arası
+                });
+            }
+        };
+
+        wrapper.addEventListener('wheel', handleWheel, { passive: false });
+        return () => wrapper.removeEventListener('wheel', handleWheel);
+    }, []);
+
     return (
-        <div className="w-full h-full overflow-y-auto bg-slate-100 flex-1 relative hide-scrollbar">
+        <div ref={wrapperRef} className="w-full h-full overflow-auto bg-[var(--window-bg)] flex-1 relative custom-scrollbar flex flex-col items-center">
             {loading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-slate-400 bg-slate-100/80 z-20 backdrop-blur-sm">
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-[var(--sidebar-text-muted)] bg-[var(--window-bg)]/80 z-20 backdrop-blur-sm">
                     <div className="w-8 h-8 rounded-full border-4 border-slate-300 border-t-red-500 animate-spin mb-4" />
                     <span className="text-sm font-medium">PDF İşleniyor (Offline Canvas Render)...</span>
                 </div>
             )}
-            <div ref={containerRef} className="flex flex-col items-center relative z-10 w-full py-4 min-w-[max-content]" />
+
+            {/* 
+              Ortalama ve yakınlaştırma konteyneri. 
+              Genişlik/Yükseklik otomatik ayarlanır, transform ile ölçeklendirilir.
+            */}
+            <div
+                className="flex-1 min-w-min min-h-min p-8 flex items-center justify-center transition-transform duration-100 origin-top"
+                style={{ transform: `scale(${zoom})` }}
+            >
+                <div ref={containerRef} className="flex flex-col items-center justify-center relative z-10 min-w-max shadow-2xl bg-white rounded-lg overflow-hidden" />
+            </div>
+
+            <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-30 opacity-70 hover:opacity-100 transition-opacity">
+                Yakınlaştır: Ctrl + Tekerlek ({(zoom * 100).toFixed(0)}%)
+            </div>
         </div>
     );
 };

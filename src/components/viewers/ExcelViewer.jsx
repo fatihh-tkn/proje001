@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, AlertCircle, Table, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 const ExcelViewer = ({ url, title }) => {
@@ -9,6 +9,9 @@ const ExcelViewer = ({ url, title }) => {
     // Pagination Stateleri
     const [currentPage, setCurrentPage] = useState(1);
     const rowsPerPage = 100; // Sayfa başına gösterilecek satır sayısı
+
+    const wrapperRef = useRef(null);
+    const [zoom, setZoom] = useState(1);
 
     useEffect(() => {
         const fetchAndParseExcel = async () => {
@@ -69,6 +72,25 @@ const ExcelViewer = ({ url, title }) => {
         return { paginatedData: pData, totalPages: pages, totalRows: total, columns: cols };
     }, [data, currentPage, rowsPerPage]);
 
+    // Ctrl + Tekerlek ile yakınlaştırma mantığı
+    useEffect(() => {
+        const wrapper = wrapperRef.current;
+        if (!wrapper) return;
+
+        const handleWheel = (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                setZoom(z => {
+                    const newZoom = z - e.deltaY * 0.003;
+                    return Math.min(Math.max(0.3, newZoom), 5); // 0.3x - 5x arası
+                });
+            }
+        };
+
+        wrapper.addEventListener('wheel', handleWheel, { passive: false });
+        return () => wrapper.removeEventListener('wheel', handleWheel);
+    }, [loading, error, totalRows]);
+
 
     if (loading) {
         return (
@@ -127,36 +149,45 @@ const ExcelViewer = ({ url, title }) => {
             </div>
 
             {/* TABLO ALANI (KAYDIRILABİLİR) */}
-            <div className="flex-1 overflow-auto bg-white p-6 relative [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 [&::-webkit-scrollbar-thumb]:rounded-full">
-                <table className="w-full text-left border-collapse text-sm">
-                    <thead className="sticky top-[-24px] z-10 shadow-sm">
-                        <tr className="bg-slate-100">
-                            <th className="py-3 px-4 text-slate-400 font-semibold w-12 text-center border-b-2 border-slate-200">#</th>
-                            {columns.map((col, idx) => (
-                                <th key={idx} className="py-3 px-4 text-slate-700 font-semibold whitespace-nowrap border-b-2 border-slate-200">
-                                    {col}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {paginatedData.map((row, r_idx) => {
-                            const absoluteIndex = (currentPage - 1) * rowsPerPage + r_idx + 1;
-                            return (
-                                <tr key={r_idx} className="border-b border-slate-100/70 hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-2.5 px-4 text-slate-400 text-center text-xs font-medium border-r border-slate-100 bg-slate-50/30">
-                                        {absoluteIndex}
-                                    </td>
-                                    {columns.map((col, c_idx) => (
-                                        <td key={c_idx} className="py-2.5 px-4 text-slate-600 whitespace-nowrap group relative">
-                                            {row[col] !== null && row[col] !== undefined ? String(row[col]) : <span className="text-slate-300">-</span>}
+            <div ref={wrapperRef} className="flex-1 overflow-auto bg-[var(--window-bg)] p-6 relative [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 [&::-webkit-scrollbar-thumb]:rounded-full">
+                <div
+                    className="min-w-max mx-auto h-full text-center origin-top transition-transform duration-100"
+                    style={{ transform: `scale(${zoom})` }}
+                >
+                    <table className="w-full text-left border-collapse text-sm mx-auto bg-white shadow-sm ring-1 ring-slate-200">
+                        <thead className="sticky top-[-24px] z-10 shadow-sm">
+                            <tr className="bg-slate-100">
+                                <th className="py-3 px-4 text-slate-400 font-semibold w-12 text-center border-b-2 border-slate-200">#</th>
+                                {columns.map((col, idx) => (
+                                    <th key={idx} className="py-3 px-4 text-slate-700 font-semibold whitespace-nowrap border-b-2 border-slate-200">
+                                        {col}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedData.map((row, r_idx) => {
+                                const absoluteIndex = (currentPage - 1) * rowsPerPage + r_idx + 1;
+                                return (
+                                    <tr key={r_idx} className="border-b border-slate-100/70 hover:bg-slate-50/80 transition-colors">
+                                        <td className="py-2.5 px-4 text-slate-400 text-center text-xs font-medium border-r border-slate-100 bg-slate-50/30">
+                                            {absoluteIndex}
                                         </td>
-                                    ))}
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                        {columns.map((col, c_idx) => (
+                                            <td key={c_idx} className="py-2.5 px-4 text-slate-600 whitespace-nowrap group relative">
+                                                {row[col] !== null && row[col] !== undefined ? String(row[col]) : <span className="text-slate-300">-</span>}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="absolute bottom-16 right-6 bg-black/60 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-30 opacity-70 hover:opacity-100 transition-opacity pointer-events-none">
+                Yakınlaştır: Ctrl + Tekerlek ({(zoom * 100).toFixed(0)}%)
             </div>
 
             {/* ALT SAYFALAMA KONTROLLERİ */}

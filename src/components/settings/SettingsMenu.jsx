@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, FolderOpen, X, Check } from 'lucide-react';
+import { Palette, FolderOpen, X, Check, Database, Activity } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -11,7 +11,7 @@ const THEMES = [
     { id: 'rose', name: 'Pembe', colors: ['#1a0a14', '#2e1b24', '#f43f5e'] },
 ];
 
-const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed }) => {
+const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed, onOpenFile }) => {
     const [activeSection, setActiveSection] = useState(null);
     const [basePath, setBasePath] = useState(currentBasePath);
     const menuRef = useRef(null);
@@ -191,6 +191,43 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                                 </motion.div>
                             )}
                         </AnimatePresence>
+
+                        {/* VERİTABANI */}
+                        <div className="w-full h-px bg-white/[0.05] my-1" />
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'database-settings',
+                                        title: 'Veritabanı Yönetimi',
+                                        type: 'database',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                        >
+                            <Database size={14} className="text-slate-500 shrink-0" />
+                            <span>Veritabanı</span>
+                        </button>
+
+                        {/* API KULLANIMI */}
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'api-usage-settings',
+                                        title: 'API Kullanımı',
+                                        type: 'api-usage',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                        >
+                            <Activity size={14} className="text-slate-500 shrink-0" />
+                            <span>API Kullanımı</span>
+                        </button>
                     </div>
 
                     {/* Footer */}

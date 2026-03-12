@@ -9,7 +9,7 @@ import { SNAP_LAYOUTS, getGridLayout } from './layoutUtils';
 import { TileWindow } from './TileWindow';
 import { TrashDropZone } from './TrashDropZone';
 
-const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onCloseTab, onFocusTab, onMaximizeTab, onOpenFile }) => {
+const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onCloseTab, onFocusTab, onMaximizeTab, onOpenFile, onBackgroundDoubleClick }) => {
     const [minimizedTabs, setMinimizedTabs] = useState([]);
     const [localTabs, setLocalTabs] = useState([]);
     const [activeDragId, setActiveDragId] = useState(null);
@@ -229,6 +229,12 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
             <div
                 onDragOver={handleNativeDragOver}
                 onDrop={handleNativeDrop}
+                onDoubleClick={(e) => {
+                    // Yalnızca arka plana tıklandıysa menüleri küçült
+                    if (e.target === e.currentTarget && onBackgroundDoubleClick) {
+                        onBackgroundDoubleClick();
+                    }
+                }}
                 className="flex-1 flex items-center justify-center relative overflow-hidden select-none workspace-dev-logo-container transition-all duration-500"
             >
 
@@ -236,14 +242,14 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                     <img src={FullLogoImage} alt="Yılgenci Base Logo" className="w-full h-full object-contain opacity-5 grayscale workspace-base-logo transition-all duration-500" />
                 </div>
 
-                <div className="absolute inset-0 z-10 p-6 pointer-events-none">
+                <div className="absolute inset-0 z-10 p-1 pointer-events-none">
                     <SortableContext
                         items={visibleTabs.filter(t => !t.isEmpty).map(t => t.id)}
                         strategy={rectSwappingStrategy}
                     >
                         <motion.div
                             layout
-                            className={`relative w-full h-full grid gap-4 pointer-events-none ${gridLayoutClass}`}
+                            className={`relative w-full h-full grid gap-1 pointer-events-none ${gridLayoutClass}`}
                             transition={{ layout: { type: "tween", ease: "circOut", duration: 0.35 } }}
                         >
                             <AnimatePresence>
@@ -257,7 +263,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                         return (
                                             <div
                                                 key={tab.id}
-                                                className={`pointer-events-auto relative border-2 border-transparent hover:border-slate-400/50 hover:bg-slate-500/5 transition-all rounded-xl ${zoneClass}`}
+                                                className={`pointer-events-auto relative border-2 border-transparent hover:border-slate-400/50 hover:bg-slate-500/5 transition-all rounded-[4px] ${zoneClass}`}
                                                 onDragOver={(e) => {
                                                     if (e.dataTransfer.types.includes('application/json')) {
                                                         e.preventDefault();
@@ -320,11 +326,11 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                         return (
                             <motion.div
                                 key="maximized-overlay"
-                                initial={{ opacity: 0, scale: 0.88, filter: 'blur(12px)' }}
+                                initial={{ opacity: 0, scale: 0.85, filter: 'blur(10px)' }}
                                 animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                                exit={{ opacity: 0, scale: 0.92, filter: 'blur(8px)' }}
-                                transition={{ type: "tween", ease: "circOut", duration: 0.35 }}
-                                className="absolute inset-0 z-[60] p-4 pointer-events-auto"
+                                exit={{ opacity: 0, scale: 0.1, y: -window.innerHeight * 0.4, filter: 'blur(4px)' }}
+                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                className="absolute inset-0 z-[60] p-1 pointer-events-auto"
                             >
                                 <TileWindow
                                     tab={maxTab}
