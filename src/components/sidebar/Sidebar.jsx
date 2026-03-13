@@ -41,15 +41,10 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed }) => {
         }
     };
 
-    // Base path değiştiğinde veya belli aralıklarla kontrol etmek için (senkron)
+    // Base path değiştiğinde klasör yapısını getir
     useEffect(() => {
         if (currentBasePath) {
             fetchTree(currentBasePath);
-            // Her 5 saniyede bir dosyalarla sekron/güncel tut
-            const interval = setInterval(() => {
-                fetchTree(currentBasePath);
-            }, 5000);
-            return () => clearInterval(interval);
         }
     }, [currentBasePath]);
 

@@ -9,6 +9,14 @@ import {
 const BASE = '/api/db';
 const COLLECTION = 'documents';
 
+// ── 5 saniyelik timeout ile fetch ──
+const fetchWithTimeout = (url, options = {}, timeoutMs = 5000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+};
+
 const fmtDate = (iso) =>
     new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -51,6 +59,7 @@ const SkeletonRow = () => (
 
 /* ──────────────────────────────────────────────────── */
 const DatabaseViewer = () => {
+    const [backendReady, setBackendReady] = useState(null); // null=kontrol ediliyor, true=hazır, false=kapalı
     const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving
     const [dragOver, setDragOver] = useState(false);
     const [dragActive, setDragActive] = useState(false); // tüm ekran drag sinyali
@@ -75,11 +84,14 @@ const DatabaseViewer = () => {
     const fetchRecords = useCallback(async () => {
         setDbLoading(true);
         try {
-            await fetch(`${BASE}/collections/${COLLECTION}`).catch(() => { });
+            // Backend hazır mı? 5 saniye timeout
+            await fetchWithTimeout(`${BASE}/collections/${COLLECTION}`, {}, 5000);
+            setBackendReady(true);
             const stored = JSON.parse(localStorage.getItem('db_records') || '[]');
             setRecords(stored);
             setTotalVectors(stored.reduce((s, r) => s + (r.chunks || 0), 0));
         } catch {
+            setBackendReady(false);
             setRecords([]);
         } finally {
             setDbLoading(false);
@@ -310,6 +322,29 @@ const DatabaseViewer = () => {
     );
 
     /* ──────────────────────────── RENDER ──────────────────────────── */
+
+    // Backend henüz başlatılmadıysa bilgi ekranı göster
+    if (backendReady === false) {
+        return (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-white text-slate-500">
+                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <Activity size={36} className="text-amber-500 animate-pulse" />
+                </div>
+                <div className="text-center">
+                    <p className="text-base font-bold text-slate-700">Backend Başlatılıyor...</p>
+                    <p className="text-sm text-slate-400 mt-1">Python sunucusu (FastAPI) henüz hazır değil.</p>
+                    <p className="text-xs text-slate-400 mt-0.5 font-mono">localhost:8000 bekleniyor</p>
+                </div>
+                <button
+                    onClick={fetchRecords}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-semibold text-slate-600 transition-all"
+                >
+                    <RefreshCw size={14} /> Tekrar Dene
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className="w-full h-full flex flex-col bg-white text-slate-800 overflow-hidden font-sans">
 

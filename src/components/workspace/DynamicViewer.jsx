@@ -6,7 +6,7 @@ const PdfViewer = lazy(() => import('../viewers/PdfViewer'));
 const DocxViewer = lazy(() => import('../viewers/DocxViewer'));
 const ExcelViewer = lazy(() => import('../viewers/ExcelViewer'));
 const DatabaseViewer = lazy(() => import('../settings/DatabaseViewer'));
-const ApiUsageViewer = lazy(() => import('../settings/ApiUsageViewer'));
+const ApiUsageViewer = lazy(() => import('../settings/ai/ApiUsageViewer'));
 
 export const DynamicViewer = ({ tab }) => {
     return (

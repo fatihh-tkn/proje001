@@ -211,13 +211,13 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             <span>Veritabanı</span>
                         </button>
 
-                        {/* API KULLANIMI */}
+                        {/* YAPAY ZEKA */}
                         <button
                             onClick={() => {
                                 if (onOpenFile) {
                                     onOpenFile({
                                         id: 'api-usage-settings',
-                                        title: 'API Kullanımı',
+                                        title: 'Yapay Zeka',
                                         type: 'api-usage',
                                     });
                                 }
@@ -226,7 +226,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                         >
                             <Activity size={14} className="text-slate-500 shrink-0" />
-                            <span>API Kullanımı</span>
+                            <span>Yapay Zeka</span>
                         </button>
                     </div>
 

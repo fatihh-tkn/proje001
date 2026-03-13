@@ -1,7 +1,3 @@
-"""
-API Monitoring Routes
-LLM çağrılarını kaydeden ve istatistik sunan endpoint'ler.
-"""
 from fastapi import APIRouter, Query, Body, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
@@ -9,34 +5,81 @@ from datetime import datetime, timedelta
 import time
 import uuid
 
+from core.monitor_db import init_db, add_log_to_db, get_logs_from_db, clear_logs_from_db, get_all_logs_for_dashboard
+
+# Veritabanını başlat
+init_db()
+
 router = APIRouter()
 
-# In-memory log store
-memory_logs: list[dict] = []
+# ── Yapay Zeka Modelleri (Katalog) ───────────────────────────────────────────
 
-# Mock API Keys
-mock_api_keys: list[dict] = [
+AI_MODELS: list[dict] = [
     {
-        "id": "key-openai-1",
-        "name": "Production Key (OpenAI)",
-        "provider": "openai",
-        "preview": "sk-proj...8f9a",
+        "id": "gpt-4",
+        "name": "GPT-4",
+        "provider": "OpenAI",
+        "description": "En gelişmiş ve yetenekli genel amaçlı model.",
         "status": "active",
-        "usage": {"current": 12.50, "limit": 100.00},
-        "requests": 1500,
-        "lastUsed": "Yakın zamanda",
-        "created": "2024-01-01"
+        "avg_latency": "1.2s",
+        "cost_per_1k": "$0.03",
+        "max_tokens": "8,192",
+        "features": ["Gelişmiş Mantık", "Kod Yazma", "Görsel Analiz"]
     },
     {
-        "id": "key-gemini-1",
-        "name": "Dev Key (Gemini)",
-        "provider": "google",
-        "preview": "AIzaSy...5kqp",
+        "id": "gpt-3.5-turbo",
+        "name": "GPT-3.5 Turbo",
+        "provider": "OpenAI",
+        "description": "Hızlı ve ekonomik, çoğu temel görev için ideal.",
         "status": "active",
-        "usage": {"current": 2.10, "limit": 50.00},
-        "requests": 560,
-        "lastUsed": "Yakın zamanda",
-        "created": "2024-01-03"
+        "avg_latency": "400ms",
+        "cost_per_1k": "$0.0005",
+        "max_tokens": "16,385",
+        "features": ["Hız", "Düşük Maliyet", "Sohbet"]
+    },
+    {
+        "id": "claude-3-opus",
+        "name": "Claude 3 Opus",
+        "provider": "Anthropic",
+        "description": "Karmaşık analizler ve yaratıcı yazım için zirve performans.",
+        "status": "active",
+        "avg_latency": "2.5s",
+        "cost_per_1k": "$0.015",
+        "max_tokens": "200,000",
+        "features": ["Yaratıcılık", "Uzun Bağlam", "Hassasiyet"]
+    },
+    {
+        "id": "gemini-1.5-pro",
+        "name": "Gemini 1.5 Pro",
+        "provider": "Google",
+        "description": "1 milyon+ token bağlam penceresiyle çok modlu devrim.",
+        "status": "active",
+        "avg_latency": "1.8s",
+        "cost_per_1k": "$0.00125",
+        "max_tokens": "1,000,000+",
+        "features": ["Devasa Bağlam", "Video Analiz", "Google Ekosistemi"]
+    },
+    {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash",
+        "provider": "Google",
+        "description": "Ultra hızlı, düşük gecikmeli yeni nesil model.",
+        "status": "active",
+        "avg_latency": "250ms",
+        "cost_per_1k": "$0.0002",
+        "max_tokens": "1,000,000",
+        "features": ["Ultra Hız", "Real-time AI", "Ekonomik"]
+    },
+    {
+        "id": "gemma3:4b",
+        "name": "Gemma 3:4b",
+        "provider": "Google (Local)",
+        "description": "Açık kaynaklı, yerel cihazlarda çalışabilen hafif model.",
+        "status": "active",
+        "avg_latency": "local",
+        "cost_per_1k": "Free",
+        "max_tokens": "8,192",
+        "features": ["Gizlilik", "Yerel Çalışma", "Hafif Sıklet"]
     }
 ]
 
@@ -83,12 +126,11 @@ async def add_log(payload: dict):
         "error":            payload.get("error_code"),
         "request":          payload.get("request", ""),
         "response":         payload.get("response", ""),
+        "ip":               payload.get("ip", "127.0.0.1"),
+        "mac":              payload.get("mac", "00:00:00:00:00:00"),
     }
 
-    memory_logs.append(log_entry)
-    if len(memory_logs) > 5000:
-        memory_logs.pop(0)
-
+    add_log_to_db(log_entry)
     return {"ok": True, "id": log_entry["id"]}
 
 
@@ -96,7 +138,7 @@ async def add_log(payload: dict):
 
 @router.get("/dashboard")
 async def get_dashboard(project_id: Optional[str] = None):
-    logs = memory_logs if not project_id else [l for l in memory_logs if l.get("projectId") == project_id]
+    logs = get_all_logs_for_dashboard(project_id)
 
     total_reqs  = len(logs)
     total_cost  = sum(l.get("cost", 0) for l in logs)
@@ -105,7 +147,7 @@ async def get_dashboard(project_id: Optional[str] = None):
     avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
     date_slots = [(datetime.utcnow() - timedelta(days=i)).strftime("%d/%m") for i in range(13, -1, -1)]
-    daily_map  = {d: {"date": d, "requests": 0, "cost": 0.0, "latencySum": 0, "latencyCount": 0} for d in date_slots}
+    daily_map  = {d: {"date": d, "requests": 0, "cost": 0.0, "latencySum": 0, "latencyCount": 0, "models": {}} for d in date_slots}
 
     for log in logs:
         try:
@@ -118,6 +160,15 @@ async def get_dashboard(project_id: Optional[str] = None):
             if log.get("duration", 0) > 0:
                 daily_map[d]["latencySum"]   += log["duration"]
                 daily_map[d]["latencyCount"] += 1
+            
+            m = log.get("model", "unknown")
+            if m not in daily_map[d]["models"]:
+                daily_map[d]["models"][m] = {"success": 0, "error": 0}
+            
+            if log.get("status") == "success":
+                daily_map[d]["models"][m]["success"] += 1
+            else:
+                daily_map[d]["models"][m]["error"] += 1
 
     trend_data = [
         {
@@ -125,6 +176,7 @@ async def get_dashboard(project_id: Optional[str] = None):
             "requests":   v["requests"],
             "cost":       v["cost"],
             "avgLatency": (v["latencySum"] / v["latencyCount"]) if v["latencyCount"] else 0,
+            "models":     v["models"]
         }
         for v in daily_map.values()
     ]
@@ -180,7 +232,15 @@ async def get_dashboard(project_id: Optional[str] = None):
         "totalCost":     total_cost,
         "totalTokens":   total_tokens,
         "avgLatency":    avg_latency,
-        "requests":      [{"date": d["date"], "success": d["requests"], "error": 0} for d in trend_data],
+        "requests":      [
+            {
+                "date": d["date"],
+                "models": d["models"],
+                "success": sum(m.get("success", 0) for m in d["models"].values()),
+                "error":   sum(m.get("error",   0) for m in d["models"].values()),
+            }
+            for d in trend_data
+        ],
         "costs":         [{"date": d["date"], "amount": d["cost"]} for d in trend_data],
         "latencyTrend":  [{"date": d["date"], "value": d["avgLatency"]} for d in trend_data],
         "errors":        error_stats,
@@ -192,21 +252,22 @@ async def get_dashboard(project_id: Optional[str] = None):
 
 @router.get("/logs")
 async def get_logs(limit: int = Query(100, le=1000), project_id: Optional[str] = None):
-    logs = memory_logs if not project_id else [l for l in memory_logs if l.get("projectId") == project_id]
-    return {"logs": logs[-limit:][::-1], "total": len(logs)}
+    logs = get_logs_from_db(limit=limit, project_id=project_id)
+    return {"logs": logs, "total": len(logs)}
 
 @router.delete("/logs")
 async def clear_logs():
-    memory_logs.clear()
+    clear_logs_from_db()
     return {"ok": True, "message": "Tüm loglar temizlendi."}
 
 # ── Sessions Endpoint ────────────────────────────────────────────────────────
 
 @router.get("/sessions")
 async def get_sessions(limit: int = 50):
+    all_logs = get_all_logs_for_dashboard()
     sessions_map: Dict[str, Any] = {}
     
-    for log in memory_logs:
+    for log in all_logs:
         sid = log.get("sessionId", "unknown_session")
         if sid not in sessions_map:
             sessions_map[sid] = {
@@ -222,17 +283,18 @@ async def get_sessions(limit: int = 50):
                 "totalCost": 0.0,
                 "totalDuration": 0,
                 "messageCount": 0,
-                "status": "completed"
+                "status": "completed",
+                "ip": log.get("ip", "unknown"),
+                "mac": log.get("mac", "unknown")
             }
         
         sess = sessions_map[sid]
-        sess["endTime"] = log["timestamp"]  # update end time
+        sess["endTime"] = log["timestamp"]
         sess["totalTokens"] += log.get("totalTokens", 0)
         sess["totalCost"] += log.get("cost", 0.0)
         sess["totalDuration"] += log.get("duration", 0)
         sess["messageCount"] += 1
         
-        # Kullanıcı prompt'u mesajı (varsa)
         if log.get("request"):
             sess["messages"].append({
                 "id": log["id"] + "_user",
@@ -242,7 +304,6 @@ async def get_sessions(limit: int = 50):
                 "promptTokens": 0, "completionTokens": 0, "cost": 0, "duration": 0
             })
         
-        # Assistant yanıtı mesajı
         content = log.get("response", "")
         if not content and log.get("status") == "error":
             content = f"[ERROR] {log.get('error')}"
@@ -262,37 +323,103 @@ async def get_sessions(limit: int = 50):
     session_list.sort(key=lambda s: s["startTime"], reverse=True)
     return {"sessions": session_list[:limit]}
 
+@router.get("/computers")
+async def get_computers():
+    all_logs = get_all_logs_for_dashboard()
+    comp_map: Dict[str, Any] = {}
+    
+    # Predictable naming: Sort by first seen timestamp
+    unique_devices = []
+    seen = set()
+    for log in sorted(all_logs, key=lambda x: x["timestamp"]):
+        key = f"{log.get('mac')}_{log.get('ip')}"
+        if key not in seen:
+            unique_devices.append(key)
+            seen.add(key)
+            
+    device_names = {key: f"computer{str(i+1).zfill(3)}" for i, key in enumerate(unique_devices)}
+
+    for log in all_logs:
+        mac = log.get("mac", "00:00:00:00:00:00")
+        ip = log.get("ip", "127.0.0.1")
+        key = f"{mac}_{ip}"
+        cid = device_names.get(key, "computer999")
+        
+        if cid not in comp_map:
+            comp_map[cid] = {
+                "id": cid,
+                "ip": ip,
+                "mac": mac,
+                "lastActive": log["timestamp"],
+                "firstSeen": log["timestamp"],
+                "totalRequests": 0,
+                "totalCost": 0.0,
+                "totalTokens": 0,
+                "models": set(),
+                "logs": []
+            }
+        
+        c = comp_map[cid]
+        c["totalRequests"] += 1
+        c["totalCost"] += log.get("cost", 0.0)
+        c["totalTokens"] += log.get("totalTokens", 0)
+        c["models"].add(log.get("model"))
+        if log["timestamp"] > c["lastActive"]:
+            c["lastActive"] = log["timestamp"]
+        if log["timestamp"] < c["firstSeen"]:
+            c["firstSeen"] = log["timestamp"]
+            
+        c["logs"].append(log)
+
+    result = []
+    for cid, data in comp_map.items():
+        data["models"] = list(data["models"])
+        # Sort logs by timestamp
+        data["logs"].sort(key=lambda x: x["timestamp"], reverse=True)
+        result.append(data)
+        
+    result.sort(key=lambda x: x["id"])
+    return {"computers": result}
+
+# In-memory custom name store
+_computer_aliases: Dict[str, str] = {}
+
+@router.delete("/computers/{mac}/{ip}")
+async def delete_computer(mac: str, ip: str):
+    import sqlite3
+    from core.monitor_db import DB_PATH
+    _computer_aliases.pop(f"{mac}_{ip}", None)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM monitor_logs WHERE mac = ? AND ip = ?", (mac, ip))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return {"ok": True, "deleted": deleted}
+
+@router.patch("/computers/rename")
+async def rename_computer(body: dict):
+    mac = body.get("mac", "")
+    ip = body.get("ip", "")
+    name = body.get("name", "").strip()
+    if not name:
+        return {"ok": False, "error": "name is required"}
+    _computer_aliases[f"{mac}_{ip}"] = name
+    return {"ok": True}
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
-    global memory_logs
-    memory_logs = [log for log in memory_logs if log.get("sessionId") != session_id]
+    import sqlite3
+    from core.monitor_db import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM monitor_logs WHERE session_id = ?", (session_id,))
+    conn.commit()
+    conn.close()
     return {"ok": True}
 
-# ── API Keys Endpoint ────────────────────────────────────────────────────────
+# ── Modeller Endpoint ────────────────────────────────────────────────────────
 
-@router.get("/keys")
-async def get_keys():
-    return {"keys": mock_api_keys}
-
-@router.post("/keys")
-async def create_key(payload: dict = Body(...)):
-    new_key = {
-        "id": f"key-{int(time.time())}",
-        "name": payload.get("name", "New Key"),
-        "provider": payload.get("provider", "unknown"),
-        "preview": "sk-" + uuid.uuid4().hex[:8] + "...",
-        "status": "active",
-        "usage": {"current": 0, "limit": payload.get("limit", 100.0)},
-        "requests": 0,
-        "lastUsed": "Hiç",
-        "created": datetime.utcnow().strftime("%Y-%m-%d")
-    }
-    mock_api_keys.append(new_key)
-    return new_key
-
-@router.delete("/keys/{key_id}")
-async def delete_key(key_id: str):
-    global mock_api_keys
-    mock_api_keys = [k for k in mock_api_keys if k["id"] != key_id]
-    return {"ok": True}
-
+@router.get("/catalog")
+async def get_models():
+    return {"models": AI_MODELS}
