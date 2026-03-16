@@ -2,7 +2,7 @@ import os
 import shutil
 import uuid
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from services.processor import analyze_pdf_with_vision
 from services.memory import memory_engine
 
@@ -13,15 +13,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
-async def upload_and_analyze(file: UploadFile = File(...)):
+async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False)):
     try:
         # 1. Dosyayı geçici klasöre kaydet
         file_path = f"{UPLOAD_DIR}/{uuid.uuid4()}_{file.filename}"
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # 2. Görme motoruna dosyayı ver (OCR ve Koordinat taraması)
-        chunks = analyze_pdf_with_vision(file_path)
+        # 2. Görme motoruna dosyayı ver (OCR ve Koordinat taraması + API)
+        chunks = analyze_pdf_with_vision(file_path, use_vision=use_vision)
         
         # 3. Sonucu React'e (Karantina alanına) geri gönder
         return {

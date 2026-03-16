@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronsRight, ChevronsLeft } from 'lucide-react';
-import { sendMessageToAI } from '../../api/chatService';
+import { sendMessageToAI, sendMessageWithFile } from '../../api/chatService';
 
 import RecentChats from './RecentChats';
 import MessageList from './MessageList';
@@ -12,6 +12,10 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const [messages, setMessages] = useState([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
+
+    // Sürüklenen dosya state'i
+    const [droppedFile, setDroppedFile] = useState(null); // { name, type, url }
+    const [isDragOver, setIsDragOver] = useState(false);
 
     const [isChatScrolling, setIsChatScrolling] = useState(false);
     const [isTextareaScrolling, setIsTextareaScrolling] = useState(false);
@@ -25,19 +29,13 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         setMessages([]);
         setInputValue('');
         setIsExpanded(false);
+        setDroppedFile(null);
         setIsSideOpen(true);
-
-        setTimeout(() => {
-            if (textareaRef.current) {
-                textareaRef.current.focus();
-            }
-        }, 300);
+        setTimeout(() => { if (textareaRef.current) textareaRef.current.focus(); }, 300);
     };
 
     const handleEmptyClick = (e) => {
-        if (e.target.closest('button, textarea, .no-toggle')) {
-            return;
-        }
+        if (e.target.closest('button, textarea, .no-toggle')) return;
         setIsSideOpen((prev) => !prev);
     };
 
@@ -66,10 +64,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
 
     useEffect(() => {
         if (!textareaRef.current || !isSideOpen) return;
-
         const initialHeight = 51.2;
         const maxHeight = initialHeight * 3;
-
         if (isExpanded) {
             textareaRef.current.style.height = 'auto';
             const scrollHeight = textareaRef.current.scrollHeight;
@@ -79,17 +75,61 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         }
     }, [inputValue, isExpanded, isSideOpen]);
 
-    // FIXME: onOpenFile eksikti, App.jsx'ten ChatInput'a onOpenFile geçiliyordu ama 
-    // ChatInput içerisinde kullanılmıyordu. Eğer ilerde bağlanacaksa prop olarak eklenebilir.
+    // ── DRAG & DROP HANDLERS ─────────────────────────────────────────────────
+    const handleDragOver = (e) => {
+        // Sadece sidebar'dan gelen uygulama verisini kabul et
+        if (e.dataTransfer.types.includes('application/json')) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(true);
+            // Chat paneli kapalıysa otomatik aç
+            if (!isSideOpen) setIsSideOpen(true);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        // Çocuk elementlere geçişte tetiklenmesin
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+            setIsDragOver(false);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+
+        const raw = e.dataTransfer.getData('application/json');
+        if (!raw) return;
+
+        try {
+            const fileData = JSON.parse(raw);
+            // Sadece dosya node'larını kabul et (klasör değil)
+            if (fileData.type && fileData.type !== 'folder') {
+                setDroppedFile({
+                    name: fileData.title || fileData.name,
+                    type: fileData.type,
+                    url: fileData.url || '',
+                });
+                // input'a otomatik focus
+                setTimeout(() => { if (textareaRef.current) textareaRef.current.focus(); }, 150);
+            }
+        } catch (_) { }
+    };
+    // ────────────────────────────────────────────────────────────────────────
+
     const handleSendMessage = async () => {
         if (inputValue.trim() === '') return;
 
         const textPayload = inputValue;
+        const fileContext = droppedFile ? { ...droppedFile } : null;
+
         const userMsg = {
             id: Date.now(),
             text: textPayload,
             sender: 'user',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            fileContext, // mesajda hangi dosya soruldu
         };
 
         setMessages((prev) => [...prev, userMsg]);
@@ -97,19 +137,26 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         setIsExpanded(false);
         setIsTyping(true);
 
-        // Backend'e asenkron istek
-        const result = await sendMessageToAI(textPayload);
+        // Dosya varsa dosya-özelinde sorgu, yoksa genel
+        const result = fileContext
+            ? await sendMessageWithFile(textPayload, fileContext.name)
+            : await sendMessageToAI(textPayload);
 
         const aiMsg = {
             id: Date.now() + 1,
             text: result.reply,
             sender: 'ai',
-            isError: !result.success, // Başarılı değilse isError true olur
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            isError: !result.success,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            ragUsed: result.rag_used,
+            ragSources: result.rag_sources,
         };
 
         setMessages((prev) => [...prev, aiMsg]);
         setIsTyping(false);
+        // Dosyayı chip'ten kaldırma: kullanıcı bir sonraki mesajda tekrar sürmezse temizle
+        // (sohbet devam edebilsin diye burada kaldırıyoruz)
+        setDroppedFile(null);
     };
 
     const handleKeyDown = (e) => {
@@ -122,8 +169,25 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     return (
         <aside
             onClick={handleEmptyClick}
-            className={`h-screen bg-white border-l border-slate-200 flex shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.03)] overflow-hidden font-sans transition-all duration-500 ease-in-out cursor-default relative ${isSideOpen ? 'w-[27rem]' : 'w-20'}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`h-screen bg-white border-l flex shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.03)] overflow-hidden font-sans transition-all duration-500 ease-in-out cursor-default relative
+                ${isSideOpen ? 'w-[27rem]' : 'w-20'}
+                ${isDragOver ? 'border-red-400 bg-red-50/30' : 'border-slate-200'}
+            `}
         >
+            {/* Drop overlay göstergesi */}
+            {isDragOver && (
+                <div className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none">
+                    <div className="bg-white/90 border-2 border-dashed border-red-400 rounded-2xl px-8 py-6 flex flex-col items-center gap-2 shadow-xl">
+                        <span className="text-3xl">📎</span>
+                        <p className="text-sm font-semibold text-red-500">Dosyayı buraya bırak</p>
+                        <p className="text-xs text-slate-400">Bu dosya hakkında soru sorabilirsin</p>
+                    </div>
+                </div>
+            )}
+
             {/* 1. GÖRÜNMEZ TOGGLE BARI */}
             <div
                 className="absolute left-0 top-0 bottom-0 w-4 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group z-30 hover:bg-slate-100"
@@ -167,6 +231,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     handleTextareaScroll={handleTextareaScroll}
                     isTextareaScrolling={isTextareaScrolling}
                     textareaRef={textareaRef}
+                    droppedFile={droppedFile}
+                    onClearFile={() => setDroppedFile(null)}
                 />
             </div>
         </aside>

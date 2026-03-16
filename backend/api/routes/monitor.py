@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 import time
 import uuid
 
-from core.monitor_db import init_db, add_log_to_db, get_logs_from_db, clear_logs_from_db, get_all_logs_for_dashboard
+from core.monitor_db import (
+    init_db, add_log_to_db, get_logs_from_db, clear_logs_from_db,
+    get_all_logs_for_dashboard, get_user_models, add_user_model, delete_user_model
+)
 
 # Veritabanını başlat
 init_db()
@@ -16,70 +19,103 @@ router = APIRouter()
 
 AI_MODELS: list[dict] = [
     {
-        "id": "gpt-4",
-        "name": "GPT-4",
+        "id": "gpt-4o",
+        "name": "GPT-4o",
         "provider": "OpenAI",
-        "description": "En gelişmiş ve yetenekli genel amaçlı model.",
-        "status": "active",
-        "avg_latency": "1.2s",
-        "cost_per_1k": "$0.03",
-        "max_tokens": "8,192",
-        "features": ["Gelişmiş Mantık", "Kod Yazma", "Görsel Analiz"]
+        "provider_key": "openai",
+        "description": "OpenAI'ın en yetenekli çok modlu modeli — metin, görsel ve ses işleme kapasitesi ile.",
+        "avg_latency": "1.1s",
+        "cost_per_1k": "$0.005",
+        "max_tokens": "128,000",
+        "features": ["Çok Modlu", "Görsel Analiz", "128K Bağlam", "JSON Modu"]
+    },
+    {
+        "id": "gpt-4-turbo",
+        "name": "GPT-4 Turbo",
+        "provider": "OpenAI",
+        "provider_key": "openai",
+        "description": "Daha hızlı ve uygun maliyetli GPT-4 — 128K token bağlam ile büyük doküman analizi.",
+        "avg_latency": "900ms",
+        "cost_per_1k": "$0.01",
+        "max_tokens": "128,000",
+        "features": ["Gelişmiş Mantık", "Kod Yazma", "Uzun Bağlam"]
     },
     {
         "id": "gpt-3.5-turbo",
         "name": "GPT-3.5 Turbo",
         "provider": "OpenAI",
-        "description": "Hızlı ve ekonomik, çoğu temel görev için ideal.",
-        "status": "active",
+        "provider_key": "openai",
+        "description": "Hızlı ve ekonomik, çoğu temel görev için ideal. Üretim ortamlarında en çok tercih edilen model.",
         "avg_latency": "400ms",
         "cost_per_1k": "$0.0005",
         "max_tokens": "16,385",
-        "features": ["Hız", "Düşük Maliyet", "Sohbet"]
+        "features": ["Hız", "Düşük Maliyet", "Sohbet", "Fine-tune"]
+    },
+    {
+        "id": "claude-3-5-sonnet",
+        "name": "Claude 3.5 Sonnet",
+        "provider": "Anthropic",
+        "provider_key": "anthropic",
+        "description": "Anthropic'in en yeni ve en zeki modeli — kod yazma ve analiz görevlerinde üstün başarı.",
+        "avg_latency": "1.5s",
+        "cost_per_1k": "$0.003",
+        "max_tokens": "200,000",
+        "features": ["Artifacts", "Kod Yazma", "200K Bağlam", "Bilgisayar Kullanımı"]
     },
     {
         "id": "claude-3-opus",
         "name": "Claude 3 Opus",
         "provider": "Anthropic",
-        "description": "Karmaşık analizler ve yaratıcı yazım için zirve performans.",
-        "status": "active",
+        "provider_key": "anthropic",
+        "description": "Karmaşık analizler ve yaratıcı yazım için Anthropic'in güçlü büyük modeli.",
         "avg_latency": "2.5s",
         "cost_per_1k": "$0.015",
         "max_tokens": "200,000",
         "features": ["Yaratıcılık", "Uzun Bağlam", "Hassasiyet"]
     },
     {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash",
+        "provider": "Google",
+        "provider_key": "google",
+        "description": "Ultra hızlı, düşük gecikmeli Google'ın yeni nesil modeli. Real-time uygulamalar için ideal.",
+        "avg_latency": "250ms",
+        "cost_per_1k": "$0.0002",
+        "max_tokens": "1,000,000",
+        "features": ["Ultra Hız", "Real-time AI", "1M Bağlam", "Ekonomik"]
+    },
+    {
         "id": "gemini-1.5-pro",
         "name": "Gemini 1.5 Pro",
         "provider": "Google",
-        "description": "1 milyon+ token bağlam penceresiyle çok modlu devrim.",
-        "status": "active",
+        "provider_key": "google",
+        "description": "1 milyon+ token bağlam penceresiyle çok modlu devrim — video, ses ve metin analizi.",
         "avg_latency": "1.8s",
         "cost_per_1k": "$0.00125",
         "max_tokens": "1,000,000+",
         "features": ["Devasa Bağlam", "Video Analiz", "Google Ekosistemi"]
     },
     {
-        "id": "gemini-2.0-flash",
-        "name": "Gemini 2.0 Flash",
-        "provider": "Google",
-        "description": "Ultra hızlı, düşük gecikmeli yeni nesil model.",
-        "status": "active",
-        "avg_latency": "250ms",
-        "cost_per_1k": "$0.0002",
-        "max_tokens": "1,000,000",
-        "features": ["Ultra Hız", "Real-time AI", "Ekonomik"]
+        "id": "gemma3:4b",
+        "name": "Gemma 3 4B",
+        "provider": "Local (Ollama)",
+        "provider_key": "local",
+        "description": "Google'ın açık kaynaklı hafif modeli — tamamen yerel çalışır, gizlilik odaklı.",
+        "avg_latency": "~local",
+        "cost_per_1k": "Ücretsiz",
+        "max_tokens": "8,192",
+        "features": ["Gizlilik", "Yerel Çalışma", "Ücretsiz", "Offline"]
     },
     {
-        "id": "gemma3:4b",
-        "name": "Gemma 3:4b",
-        "provider": "Google (Local)",
-        "description": "Açık kaynaklı, yerel cihazlarda çalışabilen hafif model.",
-        "status": "active",
-        "avg_latency": "local",
-        "cost_per_1k": "Free",
+        "id": "gemma3:12b",
+        "name": "Gemma 3 12B",
+        "provider": "Local (Ollama)",
+        "provider_key": "local",
+        "description": "Gemma'nın büyük versiyonu — daha güçlü akıl yürütme, yine de tamamen yerel.",
+        "avg_latency": "~local",
+        "cost_per_1k": "Ücretsiz",
         "max_tokens": "8,192",
-        "features": ["Gizlilik", "Yerel Çalışma", "Hafif Sıklet"]
+        "features": ["Gizlilik", "Yerel Çalışma", "Gelişmiş Mantık", "Ücretsiz"]
     }
 ]
 
@@ -418,8 +454,82 @@ async def delete_session(session_id: str):
     conn.close()
     return {"ok": True}
 
-# ── Modeller Endpoint ────────────────────────────────────────────────────────
+# ── Modeller Endpoint ──────────────────────────────────────────────────────────
 
 @router.get("/catalog")
 async def get_models():
-    return {"models": AI_MODELS}
+    user_models = get_user_models()
+    return {"models": user_models}
+
+# ── Kullanıcı Modelleri Yönetimi ─────────────────────────────────────────────
+import httpx
+
+@router.post("/custom-models/verify")
+async def verify_custom_model(body: dict):
+    api_key = body.get("api_key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key gereklidir")
+        
+    available_models = []
+    provider = "Bilinmeyen"
+
+    # API türünü tahmin et ve desteklenen modelleri çek
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            if api_key.startswith("AIza"):
+                provider = "Google"
+                res = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
+                if res.status_code == 200:
+                    data = res.json()
+                    for m in data.get("models", []):
+                        if "generateContent" in m.get("supportedGenerationMethods", []):
+                            name = m.get("name", "").replace("models/", "")
+                            available_models.append(name)
+            elif api_key.startswith("sk-ant-"):
+                provider = "Anthropic"
+                # Anthropic does not have a formal list models endpoint in the same way, return defaults
+                available_models = ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"]
+            elif api_key.startswith("sk-") or api_key.startswith("gsk_"):
+                provider = "OpenAI/Groq"
+                url = "https://api.openai.com/v1/models" if api_key.startswith("sk-") else "https://api.groq.com/openai/v1/models"
+                res = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+                if res.status_code == 200:
+                    data = res.json()
+                    available_models = [m.get("id") for m in data.get("data", [])]
+        except Exception as e:
+            print("Model çekme hatası:", e)
+
+    return {
+        "ok": True, 
+        "provider": provider, 
+        "models": available_models if available_models else ["gemini-2.0-flash", "gpt-4o", "claude-3-5-sonnet", "custom-model"]
+    }
+
+@router.post("/custom-models")
+async def save_custom_model(body: dict):
+    api_key = body.get("api_key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key gereklidir")
+        
+    # Model ismini API Key'e göre otomatik belirle
+    name = body.get("name", "").strip()
+    if not name:
+        if api_key.startswith("AIza"):
+            name = "gemini-2.0-flash"
+        elif api_key.startswith("sk-ant-"):
+            name = "claude-3-5-sonnet"
+        elif api_key.startswith("sk-"):
+            name = "gpt-4o"
+        elif api_key.startswith("gsk_"):
+            name = "llama3-70b-8192" # Groq
+        else:
+            name = "custom-model"
+
+    model_id = f"model_{uuid.uuid4().hex[:8]}"
+    add_user_model(model_id, name, api_key)
+    return {"ok": True, "id": model_id, "name": name}
+
+@router.delete("/custom-models/{model_id}")
+async def remove_custom_model(model_id: str):
+    delete_user_model(model_id)
+    return {"ok": True}

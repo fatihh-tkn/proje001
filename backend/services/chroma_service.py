@@ -79,5 +79,40 @@ class ChromaService:
         collection = self.get_or_create_collection(name)
         return {"name": name, "count": collection.count()}
 
+    def get_documents_by_source(
+        self,
+        collection_name: str,
+        source_file: str,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """
+        Belirli bir kaynak dosyaya ait TÜM chunk'ları getirir.
+        metadata.source == source_file olan kayıtları filtreler ve
+        sayfa numarasına (page) göre sıralar.
+        """
+        collection = self.get_or_create_collection(collection_name)
+        # ChromaDB where filtresi
+        results = collection.get(
+            where={"source": source_file},
+            limit=limit,
+            include=["documents", "metadatas"],
+        )
+
+        docs     = results.get("documents") or []
+        metas    = results.get("metadatas") or []
+        ids      = results.get("ids") or []
+
+        combined = []
+        for doc, meta, cid in zip(docs, metas, ids):
+            combined.append({"id": cid, "text": doc, "metadata": meta or {}})
+
+        # Sayfa numarasına göre sırala (yoksa 0 kabul et)
+        combined.sort(key=lambda x: (
+            int(x["metadata"].get("page", 0)),
+            int(x["metadata"].get("chunk_index", 0)),
+        ))
+        return combined
+
 
 chroma_service = ChromaService()
+

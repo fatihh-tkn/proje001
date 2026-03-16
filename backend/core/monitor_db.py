@@ -37,6 +37,26 @@ def init_db():
     try:
         cursor.execute("ALTER TABLE monitor_logs ADD COLUMN mac TEXT")
     except: pass
+
+    # API Keys tablosu (Eskisi)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_keys (
+            provider TEXT PRIMARY KEY,
+            api_key TEXT NOT NULL,
+            label TEXT,
+            created_at TEXT
+        )
+    ''')
+
+    # Kullanıcı Modelleri Tablosu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_models (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            api_key TEXT NOT NULL,
+            created_at TEXT
+        )
+    ''')
     
     # Hızlı sorgulama için indeksler
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON monitor_logs(timestamp)")
@@ -44,6 +64,56 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+# ── User Models CRUD ──────────────────────────────────────────────────────────
+
+def get_user_models() -> list:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, api_key, created_at FROM user_models ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for row in rows:
+        key = row['api_key']
+        masked = key[:6] + '...' + key[-4:] if len(key) > 10 else '***'
+        result.append({
+            "id": row["id"],
+            "name": row["name"],
+            "api_key": row["api_key"], # Gerçek kullanım için masked de döndürebiliriz ama silerken id kullanacağız
+            "masked_key": masked,
+            "created_at": row["created_at"],
+            # Frontend'in bozulmaması için dummy fieldler
+            "provider": "Custom",
+            "has_key": True,
+            "status": "active",
+            "description": "Kullanıcı tarafından eklenen model.",
+            "avg_latency": "-",
+            "cost_per_1k": "-",
+            "max_tokens": "-",
+            "features": ["Özel Model"]
+        })
+    return result
+
+def add_user_model(model_id: str, name: str, api_key: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO user_models (id, name, api_key, created_at)
+        VALUES (?, ?, ?, ?)
+    ''', (model_id, name, api_key, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+
+def delete_user_model(model_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_models WHERE id = ?", (model_id,))
+    conn.commit()
+    conn.close()
+
 
 def add_log_to_db(log_entry):
     conn = sqlite3.connect(DB_PATH)

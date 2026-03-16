@@ -61,6 +61,7 @@ const SkeletonRow = () => (
 const DatabaseViewer = () => {
     const [backendReady, setBackendReady] = useState(null); // null=kontrol ediliyor, true=hazır, false=kapalı
     const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving
+    const [useVision, setUseVision] = useState(false);
     const [dragOver, setDragOver] = useState(false);
     const [dragActive, setDragActive] = useState(false); // tüm ekran drag sinyali
     const [stagedFile, setStagedFile] = useState(null);
@@ -119,26 +120,65 @@ const DatabaseViewer = () => {
         };
     }, []);
 
-    /* ── analiz animasyonu ── */
-    const startAnalysis = (file) => {
+    /* ── analiz animasyonu ve dosya yükleme ── */
+    const startAnalysis = async (file) => {
         setStagedFile(file);
         setPhase('analyzing');
-        setProgress(0);
+        setProgress(15);
         setChunks([]);
         setSkeletonChunks(Math.floor(Math.random() * 5) + 3);
-        let p = 0;
+
+        // Pseudo progress until real fetch completes
+        let p = 15;
         progressRef.current = setInterval(() => {
-            p += Math.random() * 13 + 4;
-            if (p >= 100) {
-                p = 100;
-                clearInterval(progressRef.current);
-                setSkeletonChunks(0);
-                setChunks(makeChunks(file));
-                setApprovedChunks(new Set());
-                setPhase('staged');
+            p += Math.random() * 10;
+            if (p > 90) p = 90;
+            setProgress(p);
+        }, 500);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('use_vision', useVision ? 'true' : 'false');
+
+        try {
+            const res = await fetch('/api/upload-and-analyze', {
+                method: 'POST',
+                body: formData,
+            });
+
+            clearInterval(progressRef.current);
+            setProgress(100);
+
+            if (!res.ok) throw new Error("Sunucu okuma hatası verdi.");
+
+            const data = await res.json();
+            setSkeletonChunks(0);
+
+            if (data.status === 'success' && data.chunks) {
+                // Backend'den gelen chunks verisini state'e ekle
+                // x,y verileri backend'deyken dict içindeki metadata.bbox
+                setChunks(data.chunks.map(c => ({
+                    id: c.id,
+                    text: c.text,
+                    page: c.metadata?.page || 1,
+                    // Bbox string parsing for frontend compatibility if needed
+                    x: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[0]).toFixed(1) : 0,
+                    y: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[1]).toFixed(1) : 0,
+                    metadata: c.metadata // Store the whole metadata
+                })));
+            } else {
+                setChunks([]);
             }
-            setProgress(Math.min(p, 100));
-        }, 150);
+            setApprovedChunks(new Set());
+            setPhase('staged');
+        } catch (e) {
+            console.error("Upload Error:", e);
+            clearInterval(progressRef.current);
+            setProgress(100);
+            setSkeletonChunks(0);
+            setChunks([{ id: 'error-1', text: `Hata: ${e.message}`, page: 1, x: 0, y: 0 }]);
+            setPhase('staged');
+        }
     };
 
     const handleDrop = (e) => {
@@ -167,7 +207,10 @@ const DatabaseViewer = () => {
                 body: JSON.stringify({
                     collection: COLLECTION,
                     documents: validChunks.map(c => c.text),
-                    metadatas: validChunks.map(c => ({ file: stagedFile.name, page: c.page, x: c.x, y: c.y })),
+                    metadatas: validChunks.map(c => ({
+                        ...c.metadata, // BBox ve image_path dahil her şeyi aktar
+                        file: stagedFile.name
+                    })),
                     ids: validChunks.map(c => c.id),
                 }),
             });
@@ -403,53 +446,72 @@ const DatabaseViewer = () => {
                     <div className="flex-1 p-4 flex items-center justify-center">
                         {/* ── idle: drop zone ── */}
                         {phase === 'idle' && (
-                            <label
-                                onDragEnter={() => setDragOver(true)}
-                                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                                onDragLeave={(e) => {
-                                    if (!dropRef.current?.contains(e.relatedTarget)) setDragOver(false);
-                                }}
-                                onDrop={handleDrop}
-                                ref={dropRef}
-                                className={`relative w-full h-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 overflow-hidden group select-none
-                                    ${dragOver || dragActive
-                                        ? 'border-[#A01B1B] bg-red-50 shadow-[0_0_0_4px_rgba(160,27,27,0.08),inset_0_0_20px_rgba(160,27,27,0.04)]'
-                                        : 'border-slate-300 hover:border-slate-400 bg-slate-50 hover:bg-white'
-                                    }`}
-                            >
-                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx" />
+                            <div className="w-full h-full flex flex-col gap-3">
+                                {/* Toggle Container */}
+                                <div className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 bg-purple-50 rounded-lg">
+                                            <Zap size={13} className="text-purple-600 animate-pulse" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] font-bold text-slate-700">Derin AI Görsel Okuma (B Yolu)</p>
+                                            <p className="text-[9px] text-slate-400">Gemini 1.5 Pro API ile okları ve grafikleri anlar</p>
+                                        </div>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" className="sr-only peer" checked={useVision} onChange={e => setUseVision(e.target.checked)} />
+                                        <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-600"></div>
+                                    </label>
+                                </div>
 
-                                {/* köşe aksentleri */}
-                                {['top-3 left-3', 'top-3 right-3', 'bottom-3 left-3', 'bottom-3 right-3'].map(pos => (
-                                    <span key={pos} className={`absolute ${pos} w-3.5 h-3.5 transition-all duration-200
+                                <label
+                                    onDragEnter={() => setDragOver(true)}
+                                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                                    onDragLeave={(e) => {
+                                        if (!dropRef.current?.contains(e.relatedTarget)) setDragOver(false);
+                                    }}
+                                    onDrop={handleDrop}
+                                    ref={dropRef}
+                                    className={`relative w-full h-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 overflow-hidden group select-none
+                                    ${dragOver || dragActive
+                                            ? 'border-[#A01B1B] bg-red-50 shadow-[0_0_0_4px_rgba(160,27,27,0.08),inset_0_0_20px_rgba(160,27,27,0.04)]'
+                                            : 'border-slate-300 hover:border-slate-400 bg-slate-50 hover:bg-white'
+                                        }`}
+                                >
+                                    <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx" />
+
+                                    {/* köşe aksentleri */}
+                                    {['top-3 left-3', 'top-3 right-3', 'bottom-3 left-3', 'bottom-3 right-3'].map(pos => (
+                                        <span key={pos} className={`absolute ${pos} w-3.5 h-3.5 transition-all duration-200
                                         ${pos.includes('top') && pos.includes('left') ? 'border-t-2 border-l-2 rounded-tl' : ''}
                                         ${pos.includes('top') && pos.includes('right') ? 'border-t-2 border-r-2 rounded-tr' : ''}
                                         ${pos.includes('bottom') && pos.includes('left') ? 'border-b-2 border-l-2 rounded-bl' : ''}
                                         ${pos.includes('bottom') && pos.includes('right') ? 'border-b-2 border-r-2 rounded-br' : ''}
                                         ${dragOver || dragActive ? 'border-[#A01B1B] scale-110' : 'border-slate-300 group-hover:border-slate-500'}
                                     `} />
-                                ))}
+                                    ))}
 
-                                {/* ikon */}
-                                <div className={`p-4 rounded-xl mb-4 transition-all duration-200
+                                    {/* ikon */}
+                                    <div className={`p-4 rounded-xl mb-4 transition-all duration-200
                                     ${dragOver || dragActive
-                                        ? 'bg-red-100 border border-red-200 scale-110'
-                                        : 'bg-white border border-slate-200 group-hover:border-slate-300 shadow-sm'
-                                    }`}
-                                >
-                                    <Upload size={28} className={`transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                                </div>
+                                            ? 'bg-red-100 border border-red-200 scale-110'
+                                            : 'bg-white border border-slate-200 group-hover:border-slate-300 shadow-sm'
+                                        }`}
+                                    >
+                                        <Upload size={28} className={`transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                                    </div>
 
-                                <p className={`text-sm font-semibold transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-600 group-hover:text-slate-800'}`}>
-                                    {dragOver || dragActive ? 'Dosyayı bırakın' : 'Dosya sürükleyin veya seçin'}
-                                </p>
-                                <p className="text-[11px] text-slate-400 mt-1.5">PDF, DOCX, TXT, BPMN, XLSX</p>
+                                    <p className={`text-sm font-semibold transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-600 group-hover:text-slate-800'}`}>
+                                        {dragOver || dragActive ? 'Dosyayı bırakın' : 'Dosya sürükleyin veya seçin'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 mt-1.5">PDF, DOCX, TXT, BPMN, XLSX</p>
 
-                                {/* pulse ring - drag active */}
-                                {(dragOver || dragActive) && (
-                                    <span className="absolute inset-0 rounded-xl border-2 border-[#A01B1B]/30 animate-ping pointer-events-none" />
-                                )}
-                            </label>
+                                    {/* pulse ring - drag active */}
+                                    {(dragOver || dragActive) && (
+                                        <span className="absolute inset-0 rounded-xl border-2 border-[#A01B1B]/30 animate-ping pointer-events-none" />
+                                    )}
+                                </label>
+                            </div>
                         )}
 
                         {/* ── analyzing: spinner + progress ── */}
