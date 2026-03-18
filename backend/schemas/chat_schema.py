@@ -8,6 +8,11 @@ class ChatMessage(BaseModel):
     file_name: str | None = None
     # ChromaDB koleksiyon adı (opsiyonel)
     collection_name: str | None = None
+    # Oturum ID'si (farklı sohbetleri ayırmak için)
+    session_id: str = "default_chat"
+    # Bilgisayar tanımlayıcıları
+    ip: str | None = None
+    mac: str | None = None
 
 
 class ChatResponse(BaseModel):

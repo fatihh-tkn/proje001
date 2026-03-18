@@ -2,6 +2,23 @@ import React from 'react';
 import { Plus, FileText, Database } from 'lucide-react';
 import AILogo from '../../assets/logo-kapali.png';
 
+// ── Canlı yazma imleci animasyonu ────────────────────────────────────────────
+const StreamingCursor = () => (
+    <span
+        className="inline-block w-[2px] h-[1em] bg-slate-400 ml-0.5 align-middle"
+        style={{ animation: 'blink 0.8s step-end infinite' }}
+    />
+);
+
+// global style — sadece bir kez enjekte edilir
+if (typeof document !== 'undefined' && !document.getElementById('blink-style')) {
+    const s = document.createElement('style');
+    s.id = 'blink-style';
+    s.textContent = '@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }';
+    document.head.appendChild(s);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const MessageList = ({
     messages, isTyping, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, handleNewChat
 }) => {
@@ -26,7 +43,7 @@ const MessageList = ({
                                     {/* AI LOGO */}
                                     {isAI && (
                                         <div className="shrink-0 mt-1 no-toggle">
-                                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1 shadow-sm">
+                                            <div className={`w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1 shadow-sm ${msg.isStreaming ? 'animate-pulse' : ''}`}>
                                                 <img src={AILogo} alt="AI" className="w-full h-full object-contain mix-blend-multiply" />
                                             </div>
                                         </div>
@@ -49,16 +66,32 @@ const MessageList = ({
                                                 ? 'bg-red-50 border border-red-200 text-red-600 rounded-tl-sm'
                                                 : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'
                                             }`}>
-                                            <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
-                                            <span className="text-[10px] opacity-50 mt-1 block text-right">{msg.time}</span>
+
+                                            {/* İçerik: boşsa "yazıyor" göster, doluysa metni ve imleci göster */}
+                                            {isAI && msg.isStreaming && msg.text === '' ? (
+                                                <span className="text-[10px] text-slate-400 tracking-widest animate-pulse">
+                                                    Yanıt oluşturuluyor...
+                                                </span>
+                                            ) : (
+                                                <p className="leading-relaxed whitespace-pre-wrap break-words">
+                                                    {msg.text}
+                                                    {/* Mesaj hâlâ geliyor ve içerik varsa: canlı imleç */}
+                                                    {isAI && msg.isStreaming && msg.text !== '' && <StreamingCursor />}
+                                                </p>
+                                            )}
+
+                                            {/* Zaman damgası — streaming bitince göster */}
+                                            {!msg.isStreaming && (
+                                                <span className="text-[10px] opacity-50 mt-1 block text-right">{msg.time}</span>
+                                            )}
                                         </div>
 
                                         {/* AI mesajında RAG badge'i */}
-                                        {isAI && msg.ragUsed && msg.ragSources && msg.ragSources.length > 0 && (
+                                        {isAI && !msg.isStreaming && msg.ragUsed && msg.ragSources && msg.ragSources.length > 0 && (
                                             <div className="flex items-center gap-1 mt-0.5">
                                                 <Database size={10} className="text-slate-300" />
                                                 <span className="text-[10px] text-slate-400">
-                                                    Belge: {msg.ragSources.slice(0, 2).join(', ')}
+                                                    Belge: {msg.ragSources.slice(0, 2).map(s => typeof s === 'string' ? s : `${s.file} (s.${s.page})`).join(', ')}
                                                     {msg.ragSources.length > 2 && ` +${msg.ragSources.length - 2} daha`}
                                                 </span>
                                             </div>
@@ -68,20 +101,6 @@ const MessageList = ({
                             </div>
                         );
                     })}
-
-                    {/* YAZIYOR ANİMASYONU */}
-                    {isTyping && (
-                        <div className="flex justify-start gap-3 w-full no-toggle">
-                            <div className="shrink-0 mt-1">
-                                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1 shadow-sm">
-                                    <img src={AILogo} alt="AI" className="w-full h-full object-contain animate-pulse mix-blend-multiply" />
-                                </div>
-                            </div>
-                            <div className="flex items-center p-3 rounded-2xl rounded-tl-sm bg-white border border-slate-200 text-sm shadow-sm">
-                                <span className="text-[10px] text-slate-500 animate-pulse tracking-widest">Yanıt oluşturuluyor...</span>
-                            </div>
-                        </div>
-                    )}
 
                     <div ref={messagesEndRef} />
                 </div>

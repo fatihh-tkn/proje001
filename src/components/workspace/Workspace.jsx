@@ -8,6 +8,7 @@ import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SNAP_LAYOUTS, getGridLayout } from './layoutUtils';
 import { TileWindow } from './TileWindow';
 import { TrashDropZone } from './TrashDropZone';
+import { useBackendStatus } from '../../hooks/useBackendStatus';
 
 const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onCloseTab, onFocusTab, onMaximizeTab, onOpenFile, onBackgroundDoubleClick }) => {
     const [minimizedTabs, setMinimizedTabs] = useState([]);
@@ -218,6 +219,19 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
         }
     };
 
+    // Global backend durumunu logoyla bütünleştirmek için çekiyoruz
+    const { isOnline, progress, stage, stages } = useBackendStatus();
+    const [logoGlow, setLogoGlow] = useState(false);
+
+    // Backend aktif olduğu an, logoda 2 saniyelik bir "Parlayıp sönme" (Glow) patlaması yaratıyoruz
+    useEffect(() => {
+        if (isOnline) {
+            setLogoGlow(true);
+            const timer = setTimeout(() => setLogoGlow(false), 2500); // 2.5 saniye sonra solarak eski transparan/gri hale döner
+            return () => clearTimeout(timer);
+        }
+    }, [isOnline]);
+
     return (
         <DndContext
             sensors={sensors}
@@ -238,8 +252,55 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                 className="flex-1 flex items-center justify-center relative overflow-hidden select-none workspace-dev-logo-container transition-all duration-500"
             >
 
-                <div className="relative w-[85%] h-[85%] max-w-[1200px] flex items-center justify-center transition-all duration-500 z-0 pointer-events-none">
-                    <img src={FullLogoImage} alt="Yılgenci Base Logo" className="w-full h-full object-contain opacity-5 grayscale workspace-base-logo transition-all duration-500" />
+                {/* LOGO ALANI: Yükleme (Progress) Animasyonlu */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+                    <div className="relative w-[70%] max-w-[800px] aspect-video flex items-center justify-center transition-all duration-500">
+                        {/* Alt Katman: Soluk Gri Base */}
+                        <img
+                            src={FullLogoImage}
+                            alt="Yılgenci Base Logo"
+                            className={`absolute inset-0 w-full h-full object-contain workspace-base-logo transition-all duration-1000 ease-in-out ${logoGlow
+                                ? 'opacity-80 scale-[1.02] filter-none' // Parlama anı: Net Kırmızı ve tam renk, hafif büyür
+                                : isOnline
+                                    ? 'opacity-5 grayscale scale-100' // Stabil an: Soluk ve gri
+                                    : 'opacity-[0.03] grayscale brightness-50 scale-100' // Başlatılma anı: Aşırı soluk
+                                }`}
+                        />
+
+                        {/* Üst Katman: Dolan Ön Dolgu (Maskeleme ile) - Kendi orijinal rengini boyar */}
+                        {!isOnline && (
+                            <img
+                                src={FullLogoImage}
+                                alt="Yılgenci Progress Logo"
+                                className="absolute inset-0 w-full h-full object-contain opacity-40 transition-all duration-[100ms] ease-linear"
+                                style={{
+                                    // Soldan sağa doğru progress oranında görünür kılar (clip-path: inset(top right bottom left))
+                                    clipPath: `inset(0% ${100 - progress}% 0% 0%)`,
+                                    // Orijinal renk tonunu (kırmızısını) korur fakat daha dolgun gösterir
+                                    filter: 'saturate(1.2) brightness(0.9)',
+                                }}
+                            />
+                        )}
+                    </div>
+
+                    {/* Logonun altında beliren Yavaş Progress Yazıları */}
+                    <div
+                        className={`mt-4 flex flex-col items-center justify-center transition-all duration-1000 transform ${!isOnline || logoGlow
+                            ? 'opacity-100 translate-y-0'
+                            : 'opacity-0 translate-y-4 pointer-events-none'
+                            }`}
+                    >
+                        <span className={`text-sm font-medium tracking-widest uppercase transition-colors duration-500 ${logoGlow ? 'text-[#8a1717] drop-shadow-md font-bold' : 'text-slate-400'
+                            }`}>
+                            {logoGlow ? "SİSTEM HAZIR VE AKTİF" : stages[stage]?.text || "Bekleniyor..."}
+                        </span>
+
+                        {!isOnline && (
+                            <span className="text-xl font-black mt-1 text-slate-300 tracking-tighter tabular-nums drop-shadow-sm">
+                                %{Math.floor(progress)}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="absolute inset-0 z-10 p-1 pointer-events-none">

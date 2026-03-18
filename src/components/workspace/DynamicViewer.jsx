@@ -7,6 +7,7 @@ const DocxViewer = lazy(() => import('../viewers/DocxViewer'));
 const ExcelViewer = lazy(() => import('../viewers/ExcelViewer'));
 const DatabaseViewer = lazy(() => import('../settings/DatabaseViewer'));
 const ApiUsageViewer = lazy(() => import('../settings/ai/ApiUsageViewer'));
+const ImageViewer = lazy(() => import('../viewers/ImageViewer'));
 
 export const DynamicViewer = ({ tab }) => {
     return (
@@ -17,13 +18,14 @@ export const DynamicViewer = ({ tab }) => {
             </div>
         }>
             {tab.type === 'bpmn' && <BpmnViewer url={tab.url} title={tab.title} />}
-            {tab.type === 'pdf' && <PdfViewer url={tab.url} title={tab.title} />}
+            {tab.type === 'pdf' && <PdfViewer url={tab.url} title={tab.title} initialPage={tab.meta?.page ? Number(tab.meta.page) : undefined} />}
             {(tab.type === 'doc' || tab.type === 'docx') && <DocxViewer url={tab.url} title={tab.title} />}
             {(tab.type === 'xls' || tab.type === 'xlsx') && <ExcelViewer url={tab.url} title={tab.title} />}
             {tab.type === 'database' && <DatabaseViewer />}
             {tab.type === 'api-usage' && <ApiUsageViewer />}
+            {tab.type === 'image-viewer' && <ImageViewer url={tab.url} title={tab.title} bbox={tab.meta?.bbox} />}
 
-            {tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'image-viewer' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

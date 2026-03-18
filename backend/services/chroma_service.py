@@ -46,13 +46,19 @@ class ChromaService:
         collection_name: str,
         query_texts: list[str],
         n_results: int = 5,
+        where: dict | None = None,
     ) -> dict[str, Any]:
         """Belirtilen koleksiyona doğal dil sorgusu atar."""
         collection = self.get_or_create_collection(collection_name)
-        results = collection.query(
-            query_texts=query_texts,
-            n_results=n_results,
-        )
+        
+        query_args = {
+            "query_texts": query_texts,
+            "n_results": n_results,
+        }
+        if where:
+            query_args["where"] = where
+            
+        results = collection.query(**query_args)
         return results  # type: ignore[return-value]
 
     def delete_collection(self, name: str) -> dict[str, str]:

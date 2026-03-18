@@ -447,11 +447,13 @@ async def rename_computer(body: dict):
 async def delete_session(session_id: str):
     import sqlite3
     from core.monitor_db import DB_PATH
+    from services.ai_service import clear_session_history
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM monitor_logs WHERE session_id = ?", (session_id,))
     conn.commit()
     conn.close()
+    clear_session_history(session_id)
     return {"ok": True}
 
 # ── Modeller Endpoint ──────────────────────────────────────────────────────────
@@ -467,6 +469,7 @@ import httpx
 @router.post("/custom-models/verify")
 async def verify_custom_model(body: dict):
     api_key = body.get("api_key", "").strip()
+    model_name = body.get("model_name", "").strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key gereklidir")
         
@@ -476,6 +479,32 @@ async def verify_custom_model(body: dict):
     # API türünü tahmin et ve desteklenen modelleri çek
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
+            if model_name:
+                # Canlı İstek Testi
+                if api_key.startswith("AIza"):
+                    provider = "Google"
+                    payload = {"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
+                    res = await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}", json=payload)
+                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
+                
+                elif api_key.startswith("sk-ant-"):
+                    provider = "Anthropic"
+                    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+                    payload = {"model": model_name, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+                    res = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
+                
+                elif api_key.startswith("sk-") or api_key.startswith("gsk_"):
+                    provider = "OpenAI/Groq"
+                    url = "https://api.openai.com/v1/chat/completions" if api_key.startswith("sk-") else "https://api.groq.com/openai/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {api_key}"}
+                    payload = {"model": model_name, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+                    res = await client.post(url, headers=headers, json=payload)
+                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
+                
+                else:
+                    return {"ok": False, "provider": "Bilinmeyen", "models": []}
+
             if api_key.startswith("AIza"):
                 provider = "Google"
                 res = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
@@ -485,10 +514,16 @@ async def verify_custom_model(body: dict):
                         if "generateContent" in m.get("supportedGenerationMethods", []):
                             name = m.get("name", "").replace("models/", "")
                             available_models.append(name)
+                else:
+                    return {"ok": False, "provider": provider, "models": []}
+
             elif api_key.startswith("sk-ant-"):
                 provider = "Anthropic"
-                # Anthropic does not have a formal list models endpoint in the same way, return defaults
-                available_models = ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"]
+                # Anthropic doesn't have an open models endpoint with Bearer auth, assuming it works if key format matches
+                # To be absolutely sure, we could make a dummy request, but for now we skip.
+                # Just return success.
+                available_models = ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229"]
+
             elif api_key.startswith("sk-") or api_key.startswith("gsk_"):
                 provider = "OpenAI/Groq"
                 url = "https://api.openai.com/v1/models" if api_key.startswith("sk-") else "https://api.groq.com/openai/v1/models"
@@ -496,13 +531,19 @@ async def verify_custom_model(body: dict):
                 if res.status_code == 200:
                     data = res.json()
                     available_models = [m.get("id") for m in data.get("data", [])]
+                else:
+                    return {"ok": False, "provider": provider, "models": []}
+            else:
+                return {"ok": False, "provider": "Bilinmeyen", "models": []}
+                
         except Exception as e:
             print("Model çekme hatası:", e)
+            return {"ok": False, "provider": provider, "models": []}
 
     return {
-        "ok": True, 
+        "ok": len(available_models) > 0, 
         "provider": provider, 
-        "models": available_models if available_models else ["gemini-2.0-flash", "gpt-4o", "claude-3-5-sonnet", "custom-model"]
+        "models": available_models
     }
 
 @router.post("/custom-models")

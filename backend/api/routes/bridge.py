@@ -15,24 +15,33 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/upload-and-analyze")
 async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False)):
     try:
-        # 1. Dosyayı geçici klasöre kaydet
-        file_path = f"{UPLOAD_DIR}/{uuid.uuid4()}_{file.filename}"
+        # 1. Dosyayı geçici klasöre kaydet (UUID ile benzersiz isim → çakışma olmaz)
+        unique_prefix = str(uuid.uuid4())[:8]
+        safe_filename = file.filename.replace(" ", "_")
+        file_path = f"{UPLOAD_DIR}/{unique_prefix}_{safe_filename}"
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
-        # 2. Görme motoruna dosyayı ver (OCR ve Koordinat taraması + API)
-        chunks = analyze_pdf_with_vision(file_path, use_vision=use_vision)
-        
-        # 3. Sonucu React'e (Karantina alanına) geri gönder
+
+        # 2. Görme motoruna dosyayı ver
+        #    NOT: original_name olarak asıl dosya adını geçiriyoruz.
+        #    processor.py bunu source metadata olarak kullanır → frontend ile eşleşir.
+        chunks = analyze_pdf_with_vision(
+            file_path,
+            use_vision=use_vision,
+            original_name=safe_filename   # ← ChromaDB'deki source bu olacak
+        )
+
+        # 3. Sonucu React'e geri gönder
         return {
             "status": "success",
             "message": "Dosya başarıyla analiz edildi, onay bekliyor.",
-            "file_name": file.filename,
+            "file_name": safe_filename,   # ← Frontend bu ismi source olarak kullanır
             "total_chunks": len(chunks),
             "chunks": chunks
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # --- 2. KÖPRÜ: HAFIZAYA KAZIMA ---
 @router.post("/save-to-db")

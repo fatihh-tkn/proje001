@@ -1,6 +1,31 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, Activity, Monitor, Trash2 } from 'lucide-react';
+import { Search, RefreshCw, Activity, Monitor, Trash2, Wifi, Cpu, Clock, Hash, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_BASE, fetchWithTimeout, getModelColor, fmtCost, fmt, formatDate } from '../utils';
+import { SlideDeleteBar } from '../DeleteSlider';
+
+/* ─── Stat Card ─────────────────────────────────────────────────── */
+function StatCard({ label, value, sub, accent }) {
+    return (
+        <div className="flex flex-col gap-1 p-4">
+            <span className={`text-xl font-medium font-mono ${accent ? 'text-[var(--accent)]' : 'text-[var(--workspace-text)]'}`}>{value}</span>
+            <span className="text-[9px] font-medium text-[var(--sidebar-text-muted)] uppercase tracking-widest">{label}</span>
+            {sub && <span className="text-[9px] text-[var(--sidebar-text-muted)] opacity-60">{sub}</span>}
+        </div>
+    );
+}
+
+/* ─── Info Row ───────────────────────────────────────────────────── */
+function InfoRow({ icon: Icon, label, value, mono }) {
+    return (
+        <div className="flex items-center justify-between py-2.5 border-b border-black/[0.04] last:border-0">
+            <div className="flex items-center gap-2 text-[var(--sidebar-text-muted)]">
+                <Icon size={12} />
+                <span className="text-[10px] font-medium">{label}</span>
+            </div>
+            <span className={`text-[10px] font-medium text-[var(--workspace-text)] ${mono ? 'font-mono tracking-widest' : ''}`}>{value}</span>
+        </div>
+    );
+}
 
 export const ComputersTab = React.memo(() => {
     const [computers, setComputers] = useState([]);
@@ -9,7 +34,7 @@ export const ComputersTab = React.memo(() => {
     const [search, setSearch] = useState('');
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
-    const [aliases, setAliases] = useState({}); // key -> custom name
+    const [aliases, setAliases] = useState({});
 
     const fetchComputers = useCallback(async () => {
         setLoading(true);
@@ -73,45 +98,53 @@ export const ComputersTab = React.memo(() => {
     const selected = useMemo(() => computers.find(c => c.id === selectedId), [computers, selectedId]);
 
     return (
-        <div className="flex h-[calc(100vh-220px)] min-h-[500px] bg-[var(--window-bg)] border border-[var(--window-border)] rounded-sm overflow-hidden shadow-md">
-            {/* ── Sol Panel: Cihaz Listesi ── */}
-            <div className="w-[260px] shrink-0 border-r border-[var(--window-border)] flex flex-col bg-[var(--sidebar-hover)]">
-                {/* Başlık + Yenile */}
-                <div className="px-4 py-3 border-b border-[var(--window-border)] flex justify-between items-center">
-                    <span className="text-[11px] font-black text-[var(--workspace-text)] uppercase tracking-widest">
-                        Aktif Cihazlar
+        <div className="flex bg-white select-none w-full h-full overflow-hidden animate-in fade-in duration-300">
+            {/* SOL SAIDBAR: Liste */}
+            <div className="w-1/3 min-w-[280px] max-w-sm flex flex-col bg-gray-50 border-r border-black/[0.05]">
+
+                {/* Başlık */}
+                <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.04]">
+                    <div className="flex items-center gap-2">
+                        <Monitor size={13} className="text-[var(--accent)]" />
+                        <span className="text-[10px] font-medium text-[var(--workspace-text)] uppercase tracking-widest">Cihazlar</span>
                         {computers.length > 0 && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-[var(--accent)] text-white rounded-full text-[9px]">{computers.length}</span>
+                            <span className="px-1.5 py-0.5 bg-[var(--accent)]/20 text-[var(--accent)] rounded text-[9px] font-medium">{computers.length}</span>
                         )}
-                    </span>
-                    <button onClick={fetchComputers} className="p-1.5 rounded-sm hover:bg-[var(--window-bg)] text-[var(--sidebar-text-muted)] transition-all hover:text-[var(--accent)]">
-                        <RefreshCw size={13} />
+                    </div>
+                    <button
+                        onClick={fetchComputers}
+                        className="p-1 rounded-sm text-[var(--sidebar-text-muted)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                    >
+                        <RefreshCw size={12} />
                     </button>
                 </div>
 
                 {/* Arama */}
-                <div className="px-3 py-2.5 border-b border-[var(--window-border)]">
+                <div className="px-3 py-3 border-b border-black/[0.05]">
                     <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sidebar-text-muted)]" size={12} />
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sidebar-text-muted)] pointer-events-none" size={11} />
                         <input
-                            className="w-full pl-8 pr-3 py-1.5 bg-[var(--window-bg)] border border-[var(--window-border)] rounded-sm text-[11px] text-[var(--workspace-text)] placeholder:text-[var(--sidebar-text-muted)] focus:outline-none focus:border-[var(--accent)]"
-                            placeholder="Ara (IP, MAC, isim...)"
+                            className="w-full pl-7 pr-3 py-1.5 bg-white border border-black/[0.08] rounded-[3px] text-[11px] text-[var(--workspace-text)] shadow-sm placeholder:text-[var(--sidebar-text-muted)]/50 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                            placeholder="IP, MAC veya isim..."
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
                 </div>
 
-                {/* Cihaz Listesi */}
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 mac-horizontal-scrollbar">
+                {/* Liste */}
+                <div className="flex-1 overflow-y-auto">
                     {loading ? (
-                        <div className="flex flex-col items-center justify-center h-32 gap-2 opacity-40">
-                            <Activity className="animate-spin text-[var(--accent)]" size={18} />
-                            <span className="text-[9px] font-bold uppercase">Aranıyor...</span>
+                        <div className="flex flex-col items-center justify-center h-40 gap-3 opacity-40">
+                            <Activity className="animate-spin text-[var(--accent)]" size={20} />
+                            <span className="text-[9px] font-medium uppercase tracking-widest">Yükleniyor</span>
                         </div>
                     ) : filtered.length === 0 ? (
-                        <div className="text-center py-10 text-[var(--sidebar-text-muted)] text-[11px] font-bold px-4 opacity-60">
-                            {search ? 'Eşleşen cihaz yok' : 'Henüz kayıtlı cihaz yok'}
+                        <div className="flex flex-col items-center justify-center h-40 gap-2 opacity-40 px-6 text-center">
+                            <Monitor size={24} strokeWidth={1} />
+                            <span className="text-[10px] font-medium text-[var(--sidebar-text-muted)]">
+                                {search ? 'Eşleşen cihaz yok' : 'Henüz cihaz yok'}
+                            </span>
                         </div>
                     ) : (
                         filtered.map(c => {
@@ -121,48 +154,51 @@ export const ComputersTab = React.memo(() => {
                                 <div
                                     key={c.id}
                                     onClick={() => setSelectedId(c.id)}
-                                    className={`p-3 rounded-sm border cursor-pointer transition-all relative group ${isSelected
-                                        ? 'bg-[var(--accent-light,_#eff6ff)] border-[var(--accent)] shadow-sm'
-                                        : 'bg-[var(--window-bg)] border-transparent hover:border-[var(--window-border)] hover:bg-[var(--window-bg)]'}`}
+                                    className={`group relative cursor-pointer transition-all duration-200 overflow-hidden mx-2 my-1 rounded-[3px] ${isSelected
+                                        ? 'bg-white shadow-sm ring-1 ring-black/[0.04]'
+                                        : 'hover:bg-white/60'}`}
                                 >
-                                    <div className="flex items-center gap-2.5">
-                                        <div className={`p-1.5 rounded-sm flex-shrink-0 ${isSelected ? 'bg-[var(--accent)] text-white' : 'bg-[var(--sidebar-hover)] text-[var(--sidebar-text-muted)]'}`}>
-                                            <Monitor size={14} />
+
+                                    <SlideDeleteBar
+                                        onDelete={() => handleDelete({ stopPropagation: () => { } }, c)}
+                                        label="Cihazı Sil"
+                                        iconSize={13}
+                                    >
+                                        <div className="flex items-center gap-3 px-4 py-3">
+                                            {/* Online dot */}
+                                            <div className="relative shrink-0">
+                                                <div className={`w-7 h-7 rounded-sm flex items-center justify-center transition-colors duration-200
+                                                    ${isSelected ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : 'bg-gray-100 text-[var(--sidebar-text-muted)]'}`}>
+                                                    <Monitor size={14} />
+                                                </div>
+                                                <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-[var(--sidebar-hover)]" />
+                                            </div>
+
+                                            {/* İsim & MAC */}
+                                            <div className="flex-1 min-w-0">
+                                                {editingId === c.id ? (
+                                                    <input
+                                                        autoFocus
+                                                        className="w-full text-[11px] font-medium bg-[var(--window-bg)] border border-[var(--accent)] rounded px-1.5 py-0.5 text-[var(--workspace-text)] focus:outline-none"
+                                                        value={editName}
+                                                        onChange={e => setEditName(e.target.value)}
+                                                        onBlur={() => commitEdit(c)}
+                                                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(c); if (e.key === 'Escape') setEditingId(null); }}
+                                                        onClick={e => e.stopPropagation()}
+                                                    />
+                                                ) : (
+                                                    <p
+                                                        className={`text-[11px] font-medium truncate transition-colors duration-200 ${isSelected ? 'text-[var(--workspace-text)]' : 'text-[var(--sidebar-text-muted)] group-hover:text-[var(--workspace-text)]'}`}
+                                                        onDoubleClick={e => startEdit(e, c)}
+                                                        title="Çift tıklayarak yeniden adlandır"
+                                                    >
+                                                        {displayName}
+                                                    </p>
+                                                )}
+                                                <p className={`text-[9px] font-mono truncate mt-0.5 transition-colors duration-200 ${isSelected ? 'text-[var(--accent)]/70' : 'text-[var(--sidebar-text-muted)]/50'}`}>{c.mac}</p>
+                                            </div>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            {/* Çift tıkla düzenle */}
-                                            {editingId === c.id ? (
-                                                <input
-                                                    autoFocus
-                                                    className="w-full text-[11px] font-medium bg-[var(--window-bg)] border border-[var(--accent)] rounded px-1 py-0.5 text-[var(--workspace-text)] focus:outline-none"
-                                                    value={editName}
-                                                    onChange={e => setEditName(e.target.value)}
-                                                    onBlur={() => commitEdit(c)}
-                                                    onKeyDown={e => { if (e.key === 'Enter') commitEdit(c); if (e.key === 'Escape') setEditingId(null); }}
-                                                    onClick={e => e.stopPropagation()}
-                                                />
-                                            ) : (
-                                                <h4
-                                                    className={`text-[11px] font-medium truncate ${isSelected ? 'text-[var(--accent)]' : 'text-[var(--workspace-text)]'}`}
-                                                    onDoubleClick={e => startEdit(e, c)}
-                                                    title="Çift tıklayarak yeniden adlandır"
-                                                    style={{ cursor: 'default' }}
-                                                >
-                                                    {displayName}
-                                                </h4>
-                                            )}
-                                            <p className="text-[9px] font-mono text-[var(--sidebar-text-muted)] truncate mt-0.5">{c.ip}</p>
-                                        </div>
-                                        {/* Silme butonu */}
-                                        <button
-                                            onClick={e => handleDelete(e, c)}
-                                            className="p-1 rounded-sm opacity-0 group-hover:opacity-100 text-[var(--sidebar-text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-all flex-shrink-0"
-                                            title="Cihazı Sil"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    </div>
-                                    {isSelected && <div className="absolute right-0 top-2 bottom-2 w-0.5 bg-[var(--accent)] rounded-full" />}
+                                    </SlideDeleteBar>
                                 </div>
                             );
                         })
@@ -170,118 +206,100 @@ export const ComputersTab = React.memo(() => {
                 </div>
             </div>
 
-            {/* ── Sağ Panel: Detay ── */}
-            <div className="flex-1 flex flex-col bg-[var(--window-bg)] overflow-hidden">
+            {/* ── Sağ Panel ── */}
+            <div className="flex-1 flex flex-col bg-white overflow-hidden">
                 {selected ? (
                     <div className="flex flex-col h-full">
-                        {/* Detay Header */}
-                        <div className="px-6 py-5 border-b border-[var(--window-border)] bg-[var(--sidebar-hover)] flex items-center justify-between">
-                            <div className="flex gap-4 items-center">
-                                <div className="p-3 bg-[var(--accent-light,_#eff6ff)] border border-[var(--accent)] rounded-sm text-[var(--accent)] shadow-sm">
-                                    <Monitor size={24} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-[var(--workspace-text)] tracking-tight leading-none">{getDisplayName(selected)}</h2>
-                                    <div className="flex items-center gap-3 mt-1.5">
-                                        <span className="flex items-center gap-1 text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Çevrimiçi
-                                        </span>
-                                        <span className="text-[9px] text-[var(--sidebar-text-muted)]">Son: {formatDate(selected.lastActive)}</span>
+
+                        {/* Header */}
+                        <div className="border-b border-black/[0.05] overflow-hidden bg-white/50">
+                            <SlideDeleteBar onDelete={() => handleDelete({ stopPropagation: () => { } }, selected)} label="Cihazı Sil">
+                                <div className="flex items-center gap-3 min-w-0 px-6 py-4">
+                                    <div className="relative shrink-0">
+                                        <div className="w-10 h-10 rounded-sm bg-[var(--accent)]/10 border border-[var(--accent)]/20 flex items-center justify-center text-[var(--accent)]">
+                                            <Monitor size={20} />
+                                        </div>
+                                        <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[var(--window-bg)]" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h2 className="text-sm font-medium text-[var(--workspace-text)] truncate">{getDisplayName(selected)}</h2>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="flex items-center gap-1 text-[9px] font-medium text-emerald-400 uppercase">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                                                Çevrimiçi
+                                            </span>
+                                            <span className="text-gray-300">·</span>
+                                            <span className="text-[9px] font-mono text-[var(--sidebar-text-muted)]">{selected.ip}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <button
-                                onClick={e => handleDelete(e, selected)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-red-500 border border-red-200 hover:bg-red-500 hover:text-white text-[10px] font-black transition-all"
-                            >
-                                <Trash2 size={12} /> SİL
-                            </button>
+                            </SlideDeleteBar>
                         </div>
 
-                        {/* Detay İçerik */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 mac-horizontal-scrollbar">
-                            {/* Teknik Bilgiler + İstatistikler */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-4 bg-[var(--sidebar-hover)] rounded-sm border border-[var(--window-border)] space-y-3">
-                                    <span className="text-[9px] font-black text-[var(--sidebar-text-muted)] uppercase tracking-widest opacity-60">Ağ Bilgileri</span>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-bold text-[var(--sidebar-text-muted)]">IP</span>
-                                            <span className="text-[10px] font-mono font-black text-[var(--workspace-text)] px-2 py-0.5 bg-[var(--window-bg)] rounded border border-[var(--window-border)]">{selected.ip}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-bold text-[var(--sidebar-text-muted)]">MAC</span>
-                                            <span className="text-[10px] font-mono font-black text-[var(--workspace-text)] px-2 py-0.5 bg-[var(--window-bg)] rounded border border-[var(--window-border)]">{selected.mac}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-bold text-[var(--sidebar-text-muted)]">İlk Görülme</span>
-                                            <span className="text-[10px] font-mono font-bold text-[var(--sidebar-text-muted)]">{formatDate(selected.firstSeen)}</span>
-                                        </div>
-                                    </div>
-                                </div>
+                        {/* İçerik */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-5 mac-horizontal-scrollbar">
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="p-3 bg-[var(--sidebar-hover)] border border-[var(--window-border)] rounded-sm flex flex-col items-center justify-center">
-                                        <span className="text-lg font-black text-[var(--accent)] font-mono">{fmtCost(selected.totalCost)}</span>
-                                        <span className="text-[8px] font-black text-[var(--sidebar-text-muted)] mt-1 uppercase tracking-wider">Toplam Maliyet</span>
-                                    </div>
-                                    <div className="p-3 bg-[var(--sidebar-hover)] border border-[var(--window-border)] rounded-sm flex flex-col items-center justify-center">
-                                        <span className="text-lg font-black text-[var(--workspace-text)] font-mono">{selected.totalRequests}</span>
-                                        <span className="text-[8px] font-black text-[var(--sidebar-text-muted)] mt-1 uppercase tracking-wider">İstek Sayısı</span>
-                                    </div>
-                                    <div className="p-3 bg-[var(--sidebar-hover)] border border-[var(--window-border)] rounded-sm flex flex-col items-center justify-center col-span-2">
-                                        <span className="text-lg font-black text-[var(--workspace-text)] font-mono">{fmt(selected.totalTokens)}</span>
-                                        <span className="text-[8px] font-black text-[var(--sidebar-text-muted)] mt-1 uppercase tracking-wider">Toplam Token</span>
-                                    </div>
+                            {/* İstatistik Bar */}
+                            <div className="grid grid-cols-3 divide-x divide-black/[0.05] ring-1 ring-black/[0.06] rounded-sm overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.03)] bg-white">
+                                <StatCard label="Toplam Maliyet" value={fmtCost(selected.totalCost)} accent />
+                                <StatCard label="İstek Sayısı" value={selected.totalRequests} />
+                                <StatCard label="Toplam Token" value={fmt(selected.totalTokens)} />
+                            </div>
+
+                            {/* Ağ Bilgileri */}
+                            <div>
+                                <p className="text-[9px] font-medium text-gray-400 uppercase tracking-widest mb-2 px-1">Ağ Bilgileri</p>
+                                <div className="ring-1 ring-black/[0.06] shadow-sm rounded-sm px-4 bg-gray-50/50">
+                                    <InfoRow icon={Wifi} label="IP Adresi" value={selected.ip} mono />
+                                    <InfoRow icon={Hash} label="MAC Adresi" value={selected.mac} mono />
+                                    <InfoRow icon={Clock} label="İlk Görülme" value={formatDate(selected.firstSeen)} />
+                                    <InfoRow icon={TrendingUp} label="Son Aktivite" value={formatDate(selected.lastActive)} />
                                 </div>
                             </div>
 
                             {/* Kullanılan Modeller */}
+                            {selected.models.length > 0 && (
+                                <div>
+                                    <p className="text-[9px] font-medium text-[var(--sidebar-text-muted)] uppercase tracking-widest mb-2">Kullanılan Modeller</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {selected.models.map((m, idx) => (
+                                            <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-black/[0.05] rounded-[3px] shadow-sm hover:border-[var(--accent)]/40 transition-colors">
+                                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getModelColor(m) }} />
+                                                <span className="text-[10px] font-medium text-[var(--workspace-text)]">{m}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Son İşlemler */}
                             <div>
-                                <span className="text-[9px] font-black text-[var(--sidebar-text-muted)] uppercase tracking-widest opacity-60 block mb-3">Kullanılan Modeller</span>
-                                <div className="flex flex-wrap gap-2">
-                                    {selected.models.map((m, idx) => (
-                                        <div key={idx} className="px-3 py-1.5 bg-[var(--sidebar-hover)] border border-[var(--window-border)] rounded-sm flex items-center gap-2 hover:border-[var(--accent)] transition-all">
-                                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getModelColor(m) }} />
-                                            <span className="text-[10px] font-black text-[var(--workspace-text)]">{m}</span>
+                                <p className="text-[9px] font-medium text-gray-400 uppercase tracking-widest mb-2 px-1">Son İşlemler</p>
+                                <div className="ring-1 ring-black/[0.06] rounded-sm overflow-hidden divide-y divide-black/[0.03] shadow-sm bg-white">
+                                    {selected.logs.slice(0, 10).map((log, idx) => (
+                                        <div key={idx} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors group">
+                                            {log.status === 'success'
+                                                ? <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
+                                                : <AlertCircle size={12} className="text-red-400 shrink-0" />
+                                            }
+                                            <span className="text-[10px] font-medium text-[var(--workspace-text)] truncate flex-1 group-hover:text-[var(--accent)] transition-colors">{log.model}</span>
+                                            <span className="text-[9px] font-mono text-[var(--sidebar-text-muted)] shrink-0">{formatDate(log.timestamp)}</span>
+                                            <span className="text-[9px] font-mono text-[var(--sidebar-text-muted)] shrink-0 w-10 text-right">{fmt(log.totalTokens)}tk</span>
+                                            <span className="text-[9px] font-medium text-[var(--accent)] font-mono shrink-0 w-14 text-right">{fmtCost(log.cost)}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            {/* Son İşlemler */}
-                            <div>
-                                <span className="text-[9px] font-black text-[var(--sidebar-text-muted)] uppercase tracking-widest opacity-60 block mb-3">Son İşlemler</span>
-                                <div className="space-y-1.5">
-                                    {selected.logs.slice(0, 8).map((log, idx) => (
-                                        <div key={idx} className="px-4 py-2.5 bg-[var(--sidebar-hover)] hover:bg-[var(--window-bg)] border border-transparent hover:border-[var(--window-border)] rounded-sm flex justify-between items-center transition-all group cursor-default">
-                                            <div className="flex items-center gap-3">
-                                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${log.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                                <span className="text-[9px] font-mono text-[var(--sidebar-text-muted)] w-20 shrink-0">{formatDate(log.timestamp)}</span>
-                                                <span className="text-[11px] font-bold text-[var(--workspace-text)] group-hover:text-[var(--accent)] transition-colors truncate max-w-[120px]">{log.model}</span>
-                                            </div>
-                                            <div className="flex items-center gap-4 shrink-0">
-                                                <span className="text-[9px] font-mono text-[var(--sidebar-text-muted)]">{fmt(log.totalTokens)} tk</span>
-                                                <span className="text-[10px] font-black text-[var(--accent)] font-mono">{fmtCost(log.cost)}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-4 text-[var(--sidebar-text-muted)]">
-                        <div className="p-6 border-2 border-dashed border-[var(--window-border)] rounded-full opacity-30">
-                            <Monitor size={40} strokeWidth={1} />
-                        </div>
-                        <p className="text-[11px] font-bold opacity-30 uppercase tracking-widest">Detayları görmek için cihaz seçin</p>
+                    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--sidebar-text-muted)] opacity-30">
+                        <Monitor size={36} strokeWidth={1} />
+                        <p className="text-[10px] font-medium uppercase tracking-widest">Detay için cihaz seçin</p>
                     </div>
                 )}
             </div>
         </div>
     );
 });
-
-
-// ── Models Tab ──

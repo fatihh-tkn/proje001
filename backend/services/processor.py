@@ -79,95 +79,180 @@ def ask_gemini_vision(image_path: str) -> str:
         print("ask_gemini_vision Error:", str(e))
         return f"[Yapay Zeka Okuma Hatası: {str(e)}]"
 
-def analyze_pdf_with_vision(file_path: str, use_vision: bool = False) -> list[dict]:
+def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_name: str | None = None) -> list[dict]:
     """
     Multimodal (Çok Modlu) & Koordinat Sensörlü PDF Analiz Motoru.
+
+    MİMARİ: 2 Katmanlı Chunk Yapısı
+    ───────────────────────────────────────────────────────────────────────
+    Katman 1: Belge Özeti (chunk_index=0) — her belgeden 1 adet
+              İlk 2 sayfa + son sayfa metni birleştirilerek oluşturulur.
+              Her sorguda otomatik olarak bağlam sağlar (modül adı, kapsam).
+    Katman 2: Sayfa Chunk'ları (chunk_index=page_num) — sayfadan 1 adet
+              Sayfanın tüm blokları + belge başlığı birleştirilerek kaydedilir.
+              Semantik arama bu chunk'larda yapılır.
+
+    original_name: Diskdeki dosya adı UUID içerdiğinden, ChromaDB source metadata'sı
+                   ve frontend filtrelemesi için orijinal dosya adı kullanılır.
     """
+    # source metadata için kullanılacak isim: orijinal > disk basename
+    file_basename = original_name if original_name else os.path.basename(file_path)
     chunks = []
-    
+
     try:
         doc = fitz.open(file_path)
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        total_pages = len(doc)
+        base_name = os.path.splitext(file_basename)[0]
         image_dir = os.path.join(os.path.dirname(file_path), f"images_{base_name}")
         os.makedirs(image_dir, exist_ok=True)
-        
-        for page_num in range(len(doc)):
+
+        # Belge özeti için tüm sayfa metinlerini geçici olarak topla
+        page_texts_for_summary: list[str] = []
+        page_data: list[dict] = []  # Her sayfa için (texts, image_path, page_w, page_h)
+
+        # ── 1. GEÇİŞ: Tüm sayfaları tara, resim oluştur, metinleri topla ──────
+        for page_num in range(total_pages):
             page = doc.load_page(page_num)
-            
+
+
             zoom_factor = 2
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
             image_filename = f"page_{page_num + 1}.png"
             image_path = os.path.join(image_dir, image_filename)
             pix.save(image_path)
-            
+
             page_rect = page.rect
             page_w, page_h = page_rect.width, page_rect.height
-            
-            ai_deep_text = ""
+
+            blocks = page.get_text("blocks")
+            page_texts: list[str] = []
+            for block in blocks:
+                if len(block) >= 7 and block[6] == 0:
+                    txt = block[4].strip()
+                    if txt:
+                        page_texts.append(txt)
+
+            combined = "\n".join(page_texts)
+            page_texts_for_summary.append(combined)
+            page_data.append({
+                "image_path": image_path,
+                "page_w": page_w,
+                "page_h": page_h,
+                "texts": page_texts,
+                "combined": combined,
+            })
+
+        # ── KATMAN 1: Belge Özeti Chunk'ı ───────────────────────────────────
+        # İlk 2 sayfa + son sayfa → belgenin kapsamını/başlığını özetler
+        summary_parts: list[str] = []
+        summary_page_indices = list(dict.fromkeys(
+            [0, 1, total_pages - 1]
+        ))  # Tekrar olmasın (1 sayfalı PDF için)
+        for idx in summary_page_indices:
+            if idx < total_pages and page_texts_for_summary[idx].strip():
+                summary_parts.append(
+                    f"=== Sayfa {idx + 1} ===\n{page_texts_for_summary[idx][:1500]}"
+                )
+
+        if summary_parts:
+            summary_text = (
+                f"BELGE ADI: {file_basename}\n"
+                f"TOPLAM SAYFA: {total_pages}\n\n"
+                "--- BELGE GENEL BAĞLAMI ---\n"
+                + "\n\n".join(summary_parts)
+            )
+            # Özet chunk'ın image_path'i belgenin ilk sayfası
+            summary_image = page_data[0]["image_path"] if page_data else ""
+            chunks.append({
+                "id": str(uuid.uuid4()),
+                "text": summary_text,
+                "metadata": {
+                    "page": 0,              # 0 → Belge özeti
+                    "chunk_index": 0,
+                    "source": file_basename,
+                    "type": "document_summary",
+                    "image_path": summary_image,
+                    "zoom_factor": 2,
+                    "page_width": float(page_data[0]["page_w"]) if page_data else 0,
+                    "page_height": float(page_data[0]["page_h"]) if page_data else 0,
+                    "bbox": "0,0,0,0",
+                    "total_pages": total_pages,
+                }
+            })
+
+        # ── KATMAN 2: Sayfa Chunk'ları ───────────────────────────────────────
+        for page_num, pd in enumerate(page_data):
+            image_path = pd["image_path"]
+            page_w = pd["page_w"]
+            page_h = pd["page_h"]
+            full_page_bbox = f"0,0,{page_w},{page_h}"
+
+            # Vision (Derin Görsel AI Okuma)
             if use_vision:
                 ai_deep_text = ask_gemini_vision(image_path)
-                
                 if ai_deep_text and not ai_deep_text.startswith("[Uyarı"):
                     chunks.append({
                         "id": str(uuid.uuid4()),
-                        "text": f"--- YAPAY ZEKA GÖRSEL ANALİZİ (SAYFA {page_num+1}) ---\n{ai_deep_text}",
+                        "text": (
+                            f"[{file_basename} | Sayfa {page_num+1}/{total_pages} | AI Görsel Analizi]\n"
+                            f"{ai_deep_text}"
+                        ),
                         "metadata": {
                             "page": page_num + 1,
                             "chunk_index": 0,
-                            "source": os.path.basename(file_path),
+                            "source": file_basename,
                             "type": "ai_vision_analysis",
                             "image_path": image_path,
-                            "zoom_factor": zoom_factor,
+                            "zoom_factor": 2,
                             "page_width": float(page_w),
                             "page_height": float(page_h),
-                            "bbox": f"0,0,{page_w},{page_h}"
+                            "bbox": full_page_bbox,
+                            "total_pages": total_pages,
                         }
                     })
 
-            blocks = page.get_text("blocks")
-            has_text = False
-            
-            for block_index, block in enumerate(blocks):
-                if len(block) >= 7 and block[6] == 0:
-                    text_content = block[4].strip()
-                    if text_content:
-                        has_text = True
-                        x0, y0, x1, y1 = block[0], block[1], block[2], block[3]
-                        
-                        chunks.append({
-                            "id": str(uuid.uuid4()),
-                            "text": text_content,
-                            "metadata": {
-                                "page": page_num + 1,
-                                "chunk_index": block_index + 1,
-                                "source": os.path.basename(file_path),
-                                "type": "multimodal_text_with_bbox",
-                                "image_path": image_path,
-                                "zoom_factor": zoom_factor,
-                                "page_width": float(page_w),
-                                "page_height": float(page_h),
-                                "bbox": f"{x0},{y0},{x1},{y1}",
-                            }
-                        })
-            
-            if not has_text and not use_vision:
+            if pd["texts"]:
+                # Sayfanın metnini belge başlığı ile birleştir → bağlam korunur
+                page_header = (
+                    f"[{file_basename} | Sayfa {page_num+1}/{total_pages}]\n"
+                )
+                combined_text = page_header + pd["combined"]
                 chunks.append({
                     "id": str(uuid.uuid4()),
-                    "text": "[Görsel İçerik / Taranmış Sayfa]",
+                    "text": combined_text,
                     "metadata": {
                         "page": page_num + 1,
                         "chunk_index": 1,
-                        "source": os.path.basename(file_path),
-                        "type": "multimodal_scanned_image",
+                        "source": file_basename,
+                        "type": "multimodal_text_with_bbox",
                         "image_path": image_path,
-                        "zoom_factor": zoom_factor,
+                        "zoom_factor": 2,
                         "page_width": float(page_w),
                         "page_height": float(page_h),
-                        "bbox": f"0,0,{page_w},{page_h}"
+                        "bbox": full_page_bbox,
+                        "total_pages": total_pages,
                     }
                 })
-                
-        doc.close()
+            elif not use_vision:
+                chunks.append({
+                    "id": str(uuid.uuid4()),
+                    "text": f"[{file_basename} | Sayfa {page_num+1}/{total_pages}]\n[Görsel İçerik / Taranmış Sayfa]",
+                    "metadata": {
+                        "page": page_num + 1,
+                        "chunk_index": 1,
+                        "source": file_basename,
+                        "type": "multimodal_scanned_image",
+                        "image_path": image_path,
+                        "zoom_factor": 2,
+                        "page_width": float(page_w),
+                        "page_height": float(page_h),
+                        "bbox": full_page_bbox,
+                        "total_pages": total_pages,
+                    }
+                })
+
+        # ───────────────────────────────────────────────────────────────────
+
     except Exception as e:
         print(f"analyze_pdf_with_vision Error: {str(e)}")
         chunks.append({
@@ -175,5 +260,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False) -> list[di
             "text": "Dosya okunamadı veya işlenemedi.",
             "metadata": {"error": str(e), "source": os.path.basename(file_path)}
         })
-        
+    finally:
+        if 'doc' in locals() and hasattr(doc, 'close'):
+            doc.close()
+
     return chunks

@@ -18,7 +18,7 @@ const fileChipMeta = (type) => {
 const ChatInputArea = ({
     isSideOpen, inputValue, setInputValue, isExpanded, setIsExpanded,
     handleSendMessage, handleKeyDown, handleTextareaScroll, isTextareaScrolling, textareaRef,
-    droppedFile, onClearFile,
+    droppedFile, onClearFile, isTyping,
 }) => {
     const chip = droppedFile ? fileChipMeta(droppedFile.type) : null;
 
@@ -81,10 +81,13 @@ const ChatInputArea = ({
                             <button className="p-2 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"><Settings2 size={16} /></button>
                             <button
                                 onClick={handleSendMessage}
-                                disabled={!inputValue.trim()}
+                                disabled={!inputValue.trim() || isTyping}
                                 className="flex items-center gap-2 bg-[#961e27] hover:bg-[#7a1820] disabled:bg-slate-100 disabled:text-slate-400 text-white px-5 py-2 rounded-xl font-bold text-sm transition-all focus:outline-none shadow-sm active:scale-95"
                             >
-                                <span>Gönder</span> <Send size={14} />
+                                {isTyping
+                                    ? <><span className="text-xs tracking-widest opacity-70">Yanıt alınıyor</span><Send size={14} className="opacity-50 animate-pulse" /></>
+                                    : <><span>Gönder</span><Send size={14} /></>
+                                }
                             </button>
                         </div>
                     </motion.div>
