@@ -21,7 +21,14 @@ export const fetchWithTimeout = (url, options = {}, timeoutMs = 5000) => {
 // ─── Ortak Yardımcı Fonksiyonlar ───
 export const fmt = (n) => (n ?? 0).toLocaleString('tr-TR');
 export const fmtMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`;
-export const fmtCost = (v) => v < 0.01 ? `$${(v * 100).toFixed(4)}¢` : `$${v.toFixed(4)}`;
+export const fmtCost = (v) => {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: v < 0.01 ? 4 : 2,
+        maximumFractionDigits: 6
+    }).format(v || 0);
+};
 export const getModelColor = (name) => MODEL_COLORS[name] || MODEL_COLORS.default;
 export const formatDate = (isoString) => {
     return new Date(isoString).toLocaleString('tr-TR', {

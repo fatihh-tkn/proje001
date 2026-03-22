@@ -1,0 +1,123 @@
+TOTAL: 13555
+[
+  {
+    "file": "src\\components\\settings\\DatabaseViewer.jsx",
+    "lines": 887
+  },
+  {
+    "file": "backend\\services\\ai_service.py",
+    "lines": 701
+  },
+  {
+    "file": "backend\\api\\routes\\monitor.py",
+    "lines": 576
+  },
+  {
+    "file": "backend\\migrations\\versions\\cd62cda0a732_turkce_tam_sema.py",
+    "lines": 573
+  },
+  {
+    "file": "backend\\database\\sql\\models.py",
+    "lines": 560
+  },
+  {
+    "file": "src\\components\\settings\\databases\\VectorDatabaseViewer.jsx",
+    "lines": 492
+  },
+  {
+    "file": "src\\components\\workspace\\Workspace.jsx",
+    "lines": 394
+  },
+  {
+    "file": "src\\components\\settings\\ai\\tabs\\ModelsTab.jsx",
+    "lines": 380
+  },
+  {
+    "file": "src\\components\\settings\\archive\\ArchiveDocsViewer.jsx",
+    "lines": 362
+  },
+  {
+    "file": "src\\components\\chatbar\\ChatBar.jsx",
+    "lines": 333
+  },
+  {
+    "file": "src\\components\\settings\\ai\\tabs\\LogsTab.jsx",
+    "lines": 306
+  },
+  {
+    "file": "src\\components\\settings\\ai\\tabs\\ComputersTab.jsx",
+    "lines": 305
+  },
+  {
+    "file": "src\\components\\settings\\ai\\tabs\\DashboardTab.jsx",
+    "lines": 298
+  },
+  {
+    "file": "src\\components\\settings\\SettingsMenu.jsx",
+    "lines": 296
+  },
+  {
+    "file": "backend\\services\\processor.py",
+    "lines": 267
+  },
+  {
+    "file": "src\\components\\sidebar\\Sidebar.jsx",
+    "lines": 266
+  },
+  {
+    "file": "src\\components\\viewers\\ExcelViewer.jsx",
+    "lines": 244
+  },
+  {
+    "file": "src\\components\\sidebar\\WorkspacePanel.jsx",
+    "lines": 229
+  },
+  {
+    "file": "backend\\database\\sql\\repositories\\document_repo.py",
+    "lines": 223
+  },
+  {
+    "file": "src\\components\\settings\\databases\\GraphDatabaseViewer.jsx",
+    "lines": 221
+  },
+  {
+    "file": "src\\components\\settings\\SqlDatabaseViewer.jsx",
+    "lines": 213
+  },
+  {
+    "file": "src\\components\\chatbar\\ChatInputArea.jsx",
+    "lines": 209
+  },
+  {
+    "file": "src\\components\\workspace\\TileWindow.jsx",
+    "lines": 207
+  },
+  {
+    "file": "src\\components\\settings\\databases\\SqlSchemaViewer.jsx",
+    "lines": 205
+  },
+  {
+    "file": "src\\components\\chatbar\\RecentChats.jsx",
+    "lines": 188
+  },
+  {
+    "file": "backend\\api\\routes\\files.py",
+    "lines": 187
+  },
+  {
+    "file": "src\\components\\sidebar\\TreeNode.jsx",
+    "lines": 181
+  },
+  {
+    "file": "src\\components\\settings\\auth\\AuthViewer.jsx",
+    "lines": 180
+  },
+  {
+    "file": "src\\store\\workspaceStore.js",
+    "lines": 165
+  },
+  {
+    "file": "backend\\api\\routes\\archive.py",
+    "lines": 163
+  }
+]

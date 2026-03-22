@@ -56,8 +56,15 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     };
 
     const handleEmptyClick = (e) => {
-        if (e.target.closest('button, textarea, .no-toggle')) return;
-        setIsSideOpen((prev) => !prev);
+        if (!isSideOpen) {
+            setIsSideOpen(true);
+        } else {
+            // Açıkken sadece boşluklara tıklandığında kapansın
+            const isInteractive = e.target.closest('button, input, textarea, a, summary, .interactive, .message-bubble');
+            if (!isInteractive) {
+                setIsSideOpen(false);
+            }
+        }
     };
 
     const handleChatScroll = () => {
@@ -268,9 +275,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`h-screen bg-white border-l flex shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.03)] overflow-hidden font-sans transition-all duration-500 ease-in-out cursor-default relative
-                ${isSideOpen ? 'w-[27rem]' : 'w-20'}
-                ${isDragOver ? 'border-red-400 bg-red-50/30' : 'border-slate-200'}
+            className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSideOpen ? 'w-[27rem] cursor-default' : 'w-[68px] cursor-pointer hover:bg-slate-200/50'} relative bg-[#f1f5f9] border-l border-slate-200/60 shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
+                ${isDragOver ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}
             `}
         >
             {/* Drop overlay göstergesi */}
@@ -284,18 +290,10 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                 </div>
             )}
 
-            {/* 1. GÖRÜNMEZ TOGGLE BARI */}
-            <div
-                className="absolute left-0 top-0 bottom-0 w-4 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group z-30 hover:bg-slate-100"
-                title={isSideOpen ? "Paneli Daralt" : "Paneli Genişlet"}
-            >
-                <div className="flex-1 flex items-center justify-center w-full text-red-500 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                    {isSideOpen ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
-                </div>
-            </div>
+
 
             {/* 2. ANA İÇERİK ALANI */}
-            <div className="flex-1 flex flex-col min-w-0 h-full relative bg-slate-50/30 w-full">
+            <div className="flex-1 flex flex-col min-w-0 h-full relative w-full bg-gradient-to-b from-[#f1f5f9] to-[#e2e8f0]/30">
                 {/* ÜST KISIM */}
                 <RecentChats
                     isSideOpen={isSideOpen}

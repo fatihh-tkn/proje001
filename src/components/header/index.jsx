@@ -18,9 +18,9 @@ const Header = ({ tabs = [], activeTabId, onTabClick, onCloseTab, onCloseAllTabs
       <div className="flex-1 flex items-center h-full overflow-hidden px-1 py-1">
 
         {tabs.length === 0 ? (
-          // HİÇ SEKME YOKSA: Hayalet (Ghost) Backend Yükleme Göstergesi
+          // HİÇ SEKME YOKSA: Boş bırakıyoruz (Yükleme ekranı artık sol üstte kutucuk olarak görünmeyecek)
           <div className="h-full flex items-center">
-            <GhostStatusBox />
+            
           </div>
         ) : (
           // SEKME VARSA: Modern Mac-Style Pill (Hap) Tasarımı (Tüm alanı kaplayabilir)

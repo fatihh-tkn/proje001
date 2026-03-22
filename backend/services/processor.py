@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 from core.config import settings
-from core.monitor_db import add_log_to_db
+from core.db_bridge import add_log_to_db
 
 def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 300) -> list[str]:
     chunks = []

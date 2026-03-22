@@ -20,3 +20,4 @@ class ChatResponse(BaseModel):
     success: bool = True
     rag_used: bool = False
     rag_sources: list[str] = []
+    ui_action: dict | None = None

@@ -8,7 +8,7 @@ from schemas.chroma_schema import (
     DeleteDocumentsRequest,
     QueryRequest,
 )
-from services.chroma_service import chroma_service
+from database.vector.chroma_db import vector_db
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ router = APIRouter()
 def list_collections() -> dict[str, list[str]]:
     """ChromaDB içindeki tüm koleksiyonların adlarını döner."""
     try:
-        return {"collections": chroma_service.list_collections()}
+        return {"collections": vector_db.list_collections()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -26,7 +26,7 @@ def list_collections() -> dict[str, list[str]]:
 def get_collection_info(name: str) -> dict[str, Any]:
     """Bir koleksiyonun kayıt sayısını ve adını döner."""
     try:
-        return chroma_service.get_collection_info(name)
+        return vector_db.get_collection_info(name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -38,7 +38,7 @@ def add_documents(body: AddDocumentsRequest) -> dict[str, Any]:
     Koleksiyon yoksa otomatik oluşturulur.
     """
     try:
-        return chroma_service.add_documents(
+        return vector_db.add_documents(
             collection_name=body.collection,
             documents=body.documents,
             metadatas=body.metadatas,
@@ -52,7 +52,7 @@ def add_documents(body: AddDocumentsRequest) -> dict[str, Any]:
 def query_collection(body: QueryRequest) -> dict[str, Any]:
     """Belirtilen koleksiyona doğal dil sorgusu atar ve en yakın sonuçları döner."""
     try:
-        return chroma_service.query(
+        return vector_db.query(
             collection_name=body.collection,
             query_texts=body.query_texts,
             n_results=body.n_results,
@@ -65,7 +65,7 @@ def query_collection(body: QueryRequest) -> dict[str, Any]:
 def delete_collection(body: DeleteCollectionRequest) -> dict[str, str]:
     """Belirtilen koleksiyonu tamamen siler."""
     try:
-        return chroma_service.delete_collection(body.collection)
+        return vector_db.delete_collection(body.collection)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -73,7 +73,7 @@ def delete_collection(body: DeleteCollectionRequest) -> dict[str, str]:
 def delete_documents(body: DeleteDocumentsRequest) -> dict[str, Any]:
     """Belirtilen ID'lere sahip olan dokümanları/vektörleri siler."""
     try:
-        return chroma_service.delete_documents(body.collection, body.ids)
+        return vector_db.delete_documents(body.collection, body.ids)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -81,6 +81,6 @@ def delete_documents(body: DeleteDocumentsRequest) -> dict[str, Any]:
 def get_documents_in_collection(name: str, limit: int = 100) -> dict[str, Any]:
     """Belirtilen koleksiyondaki vektör ve doküman içeriklerini döndürür."""
     try:
-        return chroma_service.get_documents(name, limit)
+        return vector_db.get_documents(name, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

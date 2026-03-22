@@ -36,7 +36,6 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
     const handleMinimizeClick = (e) => {
         e.stopPropagation();
         setIsMinimizingAction(true);
-        // State'in güncellenip exit animasyon frame'inin devreye girmesi için ufak bir bekleme (microtask)
         setTimeout(() => {
             onMinimize();
         }, 5);
@@ -53,14 +52,11 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
         opacity: isDragging ? 0 : 1,
     };
 
-    // Exit animasyonunu kapatma vs küçültme durumuna göre ayırıyoruz
     const getExitAnimation = () => {
         if (isDraggingGhost) return false;
         if (isMinimizingAction) {
-            // Windows tarzı tab menüye (yukarı) doğru küçülerek çekilme
             return { opacity: 0, scale: 0.1, y: -window.innerHeight * 0.4, filter: 'blur(4px)' };
         }
-        // Normal (Kapatma/X) animasyonu
         return { opacity: 0, scale: 0.85, filter: 'blur(8px)' };
     };
 
@@ -78,49 +74,69 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
             {...(!isMaximized && !isDraggingGhost ? attributes : {})}
 
             className={`
-        flex flex-col shadow-2xl backdrop-blur-md min-w-0 min-h-0
-        border cyber-window pointer-events-auto
+        flex flex-col min-w-0 min-h-0 pointer-events-auto overflow-hidden
         ${showSnap ? 'z-[99999]' : isActive ? 'z-50' : 'z-10'}
-        ${isMaximized ? '' : 'rounded-[4px]'}
         ${!isMaximized && customZoneClass ? customZoneClass : ''}
-        
-        ${isActive ? 'border-slate-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)]' : 'border-slate-200 bg-slate-50 opacity-90'}
-        
+        ${isActive
+            ? 'shadow-[0_0_0_1px_rgba(160,27,27,0.5),0_20px_60px_rgba(0,0,0,0.2)]'
+            : 'shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.06)] opacity-90'}
         ${isMaximized ? 'w-full h-full' : 'w-full h-full relative'}
       `}
         >
             <div
                 {...(!isMaximized && !isDraggingGhost ? listeners : {})}
                 onDoubleClick={(e) => { e.stopPropagation(); if (onMaximize) onMaximize(); }}
-                className={`h-8 border-b flex items-center justify-between px-3 shrink-0 select-none transition-colors duration-300 ${isMaximized ? '' : 'rounded-t-[4px]'}
-          ${isActive ? 'bg-[#A01B1B] border-[#8a1717]' : 'bg-slate-50 border-slate-200'}
-          ${!isMaximized ? 'cursor-grab active:cursor-grabbing' : ''}
-        `}
+                className={`
+                    h-7 flex items-center justify-between px-2.5 shrink-0 select-none
+                    transition-all duration-200
+                    ${!isMaximized ? 'cursor-grab active:cursor-grabbing' : ''}
+                    ${isActive
+                        ? 'bg-gradient-to-r from-[#8a1717] to-[#B52020] border-b border-[#6e1010]/60'
+                        : 'bg-[#f8f8f8] border-b border-slate-200/80 backdrop-blur-sm'
+                    }
+                `}
             >
                 <div className="flex items-center gap-2 flex-1 min-w-0 pr-2 pointer-events-none">
                     {tab.type === 'pdf'
-                        ? <FileText size={14} className={`shrink-0 ${isActive ? 'text-white/80' : 'text-red-500'}`} />
-                        : <Activity size={14} className={`shrink-0 ${isActive ? 'text-white/80' : 'text-slate-500'}`} />}
-                    <span className={`text-xs font-semibold tracking-wide truncate ${isActive ? 'text-white' : 'text-slate-700'}`}>{tab.title}</span>
+                        ? <FileText size={12} strokeWidth={2} className={`shrink-0 ${isActive ? 'text-white/70' : 'text-[#A01B1B]/60'}`} />
+                        : <Activity size={12} strokeWidth={2} className={`shrink-0 ${isActive ? 'text-white/70' : 'text-slate-400'}`} />}
+                    <span className={`text-[11px] font-semibold tracking-wide truncate ${isActive ? 'text-white/95' : 'text-slate-600'}`}>{tab.title}</span>
                 </div>
 
                 {/* CONTROLS */}
-                <div className="flex items-center gap-2.5 shrink-0 relative z-[9999]" onPointerDown={(e) => e.stopPropagation()}>
-                    <button onClick={handleMinimizeClick} className={`transition-colors cursor-pointer focus:outline-none hover:scale-110 transform duration-200 ${isActive ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-slate-800'}`} title="Küçült">
-                        <Minus size={13} strokeWidth={2.5} />
+                <div className="flex items-center gap-2 shrink-0 relative z-[9999]" onPointerDown={(e) => e.stopPropagation()}>
+                    <button
+                        onClick={handleMinimizeClick}
+                        className={`w-5 h-5 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110
+                            ${isActive
+                                ? 'text-white/50 hover:text-white hover:bg-white/15'
+                                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/70'
+                            }`}
+                        title="Küçült"
+                    >
+                        <Minus size={10} strokeWidth={2.5} />
                     </button>
 
                     <div
                         ref={snapContainerRef}
-                        className="relative flex items-center justify-center -my-2 py-2 px-1"
+                        className="relative flex items-center justify-center"
                         onMouseEnter={handleMouseEnterSnap}
                         onMouseLeave={handleMouseLeaveSnap}
                     >
-                        <button onClick={(e) => { e.stopPropagation(); setShowSnap(!showSnap); }} className={`transition-colors cursor-pointer ${isMaximized ? 'text-white hover:text-white/80' : isActive ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-slate-800'}`} title="Ekran Düzeni (Üzerine Gelin)">
-                            <LayoutTemplate size={12} strokeWidth={2.5} />
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setShowSnap(!showSnap); }}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110
+                                ${isMaximized
+                                    ? 'text-white/50 hover:text-white hover:bg-white/15'
+                                    : isActive
+                                        ? 'text-white/50 hover:text-white hover:bg-white/15'
+                                        : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/70'
+                                }`}
+                            title="Ekran Düzeni"
+                        >
+                            <LayoutTemplate size={10} strokeWidth={2} />
                         </button>
 
-                        {/* SNAP LAYOUT POPUP - PORTAL KULLANIMI İLE YEPYENİ BİR BOYUT */}
                         {showSnap && !isMaximized && !isDraggingGhost && createPortal(
                             <div className="fixed inset-0 z-[999999] pointer-events-none">
                                 <AnimatePresence>
@@ -137,7 +153,6 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
                                         onMouseEnter={handleMouseEnterSnap}
                                         onMouseLeave={handleMouseLeaveSnap}
                                     >
-                                        {/* Ok / Pointer İşareti */}
                                         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-t border-l border-slate-200/80 rotate-45 transform pointer-events-none"></div>
 
                                         {SNAP_LAYOUTS.map((layout) => (
@@ -168,13 +183,23 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
                         )}
                     </div>
 
-                    <button onClick={(e) => { e.stopPropagation(); onClose(); }} className={`transition-colors cursor-pointer ${isActive ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-red-500'}`}>
-                        <X size={14} strokeWidth={2.5} />
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onClose(); }}
+                        className={`w-5 h-5 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110
+                            ${isActive
+                                ? 'text-white/50 hover:text-white hover:bg-white/15'
+                                : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+                            }`}
+                    >
+                        <X size={10} strokeWidth={2.5} />
                     </button>
                 </div>
             </div>
 
-            <div className={`flex-1 bg-white relative flex items-center justify-center overflow-hidden w-full h-full ${isMaximized ? '' : 'rounded-b-[4px]'}`} onPointerDown={(e) => e.stopPropagation()}>
+            <div
+                className="flex-1 bg-white relative flex items-center justify-center overflow-hidden w-full h-full"
+                onPointerDown={(e) => e.stopPropagation()}
+            >
                 <DynamicViewer tab={tab} />
             </div>
         </motion.div>

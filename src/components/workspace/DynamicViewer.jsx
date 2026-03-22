@@ -5,8 +5,11 @@ const BpmnViewer = lazy(() => import('../viewers/BpmnViewer'));
 const PdfViewer = lazy(() => import('../viewers/PdfViewer'));
 const DocxViewer = lazy(() => import('../viewers/DocxViewer'));
 const ExcelViewer = lazy(() => import('../viewers/ExcelViewer'));
+const DatabasesViewer = lazy(() => import('../settings/databases/DatabasesViewer'));
 const DatabaseViewer = lazy(() => import('../settings/DatabaseViewer'));
 const ApiUsageViewer = lazy(() => import('../settings/ai/ApiUsageViewer'));
+const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
+const ArchiveDocsViewer = lazy(() => import('../settings/archive/ArchiveDocsViewer'));
 const ImageViewer = lazy(() => import('../viewers/ImageViewer'));
 
 export const DynamicViewer = ({ tab }) => {
@@ -21,11 +24,14 @@ export const DynamicViewer = ({ tab }) => {
             {tab.type === 'pdf' && <PdfViewer url={tab.url} title={tab.title} initialPage={tab.meta?.page ? Number(tab.meta.page) : undefined} />}
             {(tab.type === 'doc' || tab.type === 'docx') && <DocxViewer url={tab.url} title={tab.title} />}
             {(tab.type === 'xls' || tab.type === 'xlsx') && <ExcelViewer url={tab.url} title={tab.title} />}
+            {tab.type === 'databases-viewer' && <DatabasesViewer />}
             {tab.type === 'database' && <DatabaseViewer />}
             {tab.type === 'api-usage' && <ApiUsageViewer />}
+            {tab.type === 'auth' && <AuthViewer />}
+            {tab.type === 'archive-docs' && <ArchiveDocsViewer />}
             {tab.type === 'image-viewer' && <ImageViewer url={tab.url} title={tab.title} bbox={tab.meta?.bbox} />}
 
-            {tab.type !== 'image-viewer' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

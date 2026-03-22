@@ -98,9 +98,9 @@ export const ComputersTab = React.memo(() => {
     const selected = useMemo(() => computers.find(c => c.id === selectedId), [computers, selectedId]);
 
     return (
-        <div className="flex bg-white select-none w-full h-full overflow-hidden animate-in fade-in duration-300">
+        <div className="flex bg-transparent select-none w-full h-full overflow-hidden animate-in fade-in duration-300 p-6 gap-6">
             {/* SOL SAIDBAR: Liste */}
-            <div className="w-1/3 min-w-[280px] max-w-sm flex flex-col bg-gray-50 border-r border-black/[0.05]">
+            <div className="w-1/3 min-w-[280px] max-w-sm flex flex-col bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
 
                 {/* Başlık */}
                 <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.04]">
@@ -207,7 +207,7 @@ export const ComputersTab = React.memo(() => {
             </div>
 
             {/* ── Sağ Panel ── */}
-            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+            <div className="flex-1 flex flex-col bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
                 {selected ? (
                     <div className="flex flex-col h-full">
 

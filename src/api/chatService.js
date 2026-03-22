@@ -1,7 +1,7 @@
 // Yapay zeka ile konuşacak fonksiyonlar
 
-const BASE = "http://localhost:8000/api/chat/";
-const STREAM_BASE = "http://localhost:8000/api/chat/stream";
+const BASE = "/api/chat/";
+const STREAM_BASE = "/api/chat/stream";
 
 const getDeviceId = () => {
   let deviceId = localStorage.getItem('device_id');

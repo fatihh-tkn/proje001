@@ -38,34 +38,36 @@ const MessageList = ({
 
                         return (
                             <div key={msg.id} className={`flex w-full ${isAI ? 'justify-start' : 'justify-end'}`}>
-                                <div className={`flex gap-3 max-w-[90%] ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
+                                <div className={`flex flex-col gap-1.5 max-w-[95%] ${isAI ? 'items-start' : 'items-end'}`}>
 
-                                    {/* AI LOGO */}
+                                    {/* AI LOGO & ISIM */}
                                     {isAI && (
-                                        <div className="shrink-0 mt-1 no-toggle">
-                                            <div className={`w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1 shadow-sm ${msg.isStreaming ? 'animate-pulse' : ''}`}>
-                                                <img src={AILogo} alt="AI" className="w-full h-full object-contain mix-blend-multiply" />
+                                        <div className="flex items-center no-toggle pl-1.5 mb-0.5">
+                                            <div className={`w-8 h-8 flex items-center justify-center ${msg.isStreaming ? 'animate-pulse' : ''}`}>
+                                                <img src={AILogo} alt="AI" className="w-full h-full object-contain mix-blend-multiply opacity-80" />
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="flex flex-col gap-1 no-toggle">
+                                    <div className="flex flex-col gap-1 no-toggle min-w-0">
                                         {/* Kullanıcı mesajında dosya chip'i */}
                                         {!isAI && msg.fileContext && (
                                             <div className="flex justify-end">
-                                                <span className="inline-flex items-center gap-1 text-[10px] bg-red-50 border border-red-200 text-red-500 rounded-md px-2 py-0.5">
-                                                    <FileText size={10} />
+                                                <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 backdrop-blur-sm border border-white/30 text-slate-700 shadow-sm rounded-lg px-2.5 py-1 mb-1">
+                                                    <FileText size={12} className="text-red-500" />
                                                     {msg.fileContext.name}
                                                 </span>
                                             </div>
                                         )}
 
-                                        <div className={`p-3 rounded-2xl text-sm shadow-sm ${!isAI
-                                            ? 'bg-red-50 border border-red-100 text-slate-800 rounded-tr-sm'
+                                        <div className={`p-3 text-[15px] transition-all overflow-hidden [overflow-wrap:anywhere] ${!isAI
+                                            ? 'text-slate-800 border border-slate-800/80 rounded-2xl rounded-tr-sm bg-transparent shadow-sm'
                                             : msg.isError
-                                                ? 'bg-red-50 border border-red-200 text-red-600 rounded-tl-sm'
-                                                : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'
-                                            }`}>
+                                                ? 'text-red-600 bg-transparent'
+                                                : 'text-slate-800 bg-transparent'
+                                            }`}
+                                            style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"' }}
+                                        >
 
                                             {/* İçerik: boşsa "yazıyor" göster, doluysa metni ve imleci göster */}
                                             {isAI && msg.isStreaming && msg.text === '' ? (
@@ -73,7 +75,7 @@ const MessageList = ({
                                                     Yanıt oluşturuluyor...
                                                 </span>
                                             ) : (
-                                                <p className="leading-relaxed whitespace-pre-wrap break-words">
+                                                <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                                     {msg.text}
                                                     {/* Mesaj hâlâ geliyor ve içerik varsa: canlı imleç */}
                                                     {isAI && msg.isStreaming && msg.text !== '' && <StreamingCursor />}
@@ -82,7 +84,9 @@ const MessageList = ({
 
                                             {/* Zaman damgası — streaming bitince göster */}
                                             {!msg.isStreaming && (
-                                                <span className="text-[10px] opacity-50 mt-1 block text-right">{msg.time}</span>
+                                                <span className="text-[10px] mt-1.5 block text-right tracking-wide font-medium text-slate-400">
+                                                    {msg.time}
+                                                </span>
                                             )}
                                         </div>
 

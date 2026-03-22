@@ -4,44 +4,53 @@ import time
 import json
 from datetime import datetime
 from typing import AsyncGenerator
-from core.monitor_db import get_user_models, add_log_to_db
-
+from fastapi.concurrency import run_in_threadpool
+from core.db_bridge import get_user_models, add_log_to_db
+from core.prompts import (
+    get_file_qa_prompt,
+    get_general_rag_prompt,
+    attach_chat_memory,
+    build_full_prompt,
+    build_gemini_contents,
+    build_openai_messages
+)
 # ── Sabitler ─────────────────────────────────────────────────────────────────
 FILE_MODE_MAX_CHUNKS   = 40
-GENERAL_RAG_TOP_K      = 5
+GENERAL_RAG_TOP_K      = 10
 CHUNK_CHAR_LIMIT       = 2000
-# Bir session'da tutulacak maksimum tur sayısı (1 tur = 1 kullanıcı + 1 AI mesajı)
-# Sadece doğal akış için son 2 mesajı in-memory tutarız. Ana hafıza Chat-RAG (ChromaDB) olacak.
 MAX_HISTORY_TURNS      = 2
+LLM_PRE_FILTER_DISTANCE_THRESHOLD = 0.55
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Session konuşma hafızası (in-memory) ───────────────────────────────────
-# {session_id: [{"role": "user"|"assistant", "text": "..."}, ...]}
-_session_history: dict[str, list[dict]] = {}
-
+# ── Session konuşma hafızası (SQLite) ───────────────────────────────────
 
 def _get_history(session_id: str) -> list[dict]:
-    return list(_session_history.get(session_id, []))
+    from database.sql.session import get_session
+    from database.sql.repositories.chat_repo import ChatRepository
+    with get_session() as db:
+        repo = ChatRepository(db)
+        messages = repo.get_messages(session_id, limit=MAX_HISTORY_TURNS * 2)
+        out = []
+        for msg in messages:
+            out.append({"role": msg.rol, "text": msg.icerik})
+        return out
 
-
-def _save_to_history(session_id: str, user_text: str, ai_text: str) -> None:
-    if session_id not in _session_history:
-        _session_history[session_id] = []
-    _session_history[session_id].append({"role": "user",      "text": user_text})
-    _session_history[session_id].append({"role": "assistant", "text": ai_text})
-    # Çok büyümemesi için eski mesajları kırp
-    max_msgs = MAX_HISTORY_TURNS * 2
-    if len(_session_history[session_id]) > max_msgs:
-        _session_history[session_id] = _session_history[session_id][-max_msgs:]
-
-    # ── Chat-RAG Kayıt (Maliyet Kurtaran Anlamsal Hafıza) ──
-    try:
-        from services.chroma_service import chroma_service
-        # Session ID'den güvenli bir koleksiyon adı oluştur (tireleri alt çizgi yap vb.)
-        safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
+def _save_to_history(session_id: str, user_text: str, ai_text: str, model: str = None) -> None:
+    from database.sql.session import get_session
+    from database.sql.repositories.chat_repo import ChatRepository
+    with get_session() as db:
+        repo = ChatRepository(db)
+        if not repo.get_session(session_id):
+            repo.create_session(session_id=session_id)
         
+        repo.add_message(session_id, "user", user_text)
+        repo.add_message(session_id, "assistant", ai_text, model=model)
+
+    try:
+        from database.vector.chroma_db import vector_db
+        safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
         doc_text = f"Kullanıcı dedi ki: {user_text}\nAI Cevap Verdi: {ai_text}"
-        chroma_service.add_documents(
+        vector_db.add_documents(
             collection_name=safe_col_name,
             documents=[doc_text],
             metadatas=[{"type": "chat_log", "time": time.time()}],
@@ -50,16 +59,32 @@ def _save_to_history(session_id: str, user_text: str, ai_text: str) -> None:
     except Exception as e:
         print(f"[CHAT-RAG SAVE ERROR]: {e}")
 
-
 def clear_session_history(session_id: str) -> None:
-    """Session silindiğinde çağrılır."""
-    _session_history.pop(session_id, None)
+    from database.sql.session import get_session
+    from database.sql.repositories.chat_repo import ChatRepository
+    with get_session() as db:
+        repo = ChatRepository(db)
+        repo.delete_session(session_id)
+        
     try:
-        from services.chroma_service import chroma_service
+        from database.vector.chroma_db import vector_db
         safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
-        chroma_service.delete_collection(safe_col_name)
+        vector_db.delete_collection(safe_col_name)
     except Exception:
         pass
+
+def _fetch_chat_memory(session_id: str, query: str) -> str:
+    try:
+        from database.vector.chroma_db import vector_db
+        safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
+        if safe_col_name in vector_db.list_collections():
+            results = vector_db.query(collection_name=safe_col_name, query_texts=[query], n_results=2)
+            docs = results.get("documents", [[]])[0]
+            if docs:
+                return "\n\n".join(docs)
+    except Exception as e:
+        print(f"[CHAT-RAG QUERY ERROR]: {e}")
+    return ""
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -76,131 +101,13 @@ def _build_file_context(
     collection_name: str | None,
     top_k_candidates: int = 40,
     max_pages: int = 8,
-) -> tuple[str, list[dict]]:
-    """
-    2 KATMANLI BAĞLAM MİMARİSİ:
-
-    Katman 1 — Belge Özeti (document_summary chunk, page=0):
-        Her sorguda otomatik olarak eklenir. AI "bu belge ne?" sorusunu
-        her zaman bilir. MM01 = Malzeme Yönetimi Modülü gibi genel bağlam
-        kaybolmaz.
-
-    Katman 2 — Sayfa-Çeşitli Toplama:
-        ChromaDB'den 40 aday alınır, her sayfadan 1 en iyi chunk seçilir.
-        Böylece belgenin farklı bölgelerinden max_pages sayfa gelir.
-    """
-    try:
-        from services.chroma_service import chroma_service
-        all_collections = chroma_service.list_collections()
-        if not all_collections:
-            return "", []
-
-        target_cols = [collection_name] if collection_name else all_collections
-
-        parts: list[str] = []
-        sources: list[dict] = []
-        seen_keys: set[str] = set()
-
-        for col in target_cols:
-            if col not in all_collections:
-                continue
-            try:
-                # ── KATMAN 1: Belge Özeti (document_summary) ────────────────
-                # page=0 olan chunk'ı doğrudan sorgula (her zaman ekle)
-                try:
-                    summary_results = chroma_service.query(
-                        collection_name=col,
-                        query_texts=[file_name],   # Belge adıyla ara
-                        n_results=1,
-                        where={"$and": [{"source": file_name}, {"page": 0}]}
-                    )
-                    s_docs_list = summary_results.get("documents")
-                    if s_docs_list and len(s_docs_list) > 0 and s_docs_list[0]:
-                        s_docs = s_docs_list[0]
-                        if s_docs and s_docs[0].strip():
-                            parts.insert(0, f"=== BELGE GENEL BAĞLAMI ===\n{s_docs[0][:2000]}")
-                            # Özet chunk sekme olarak açılmaz (page=0), sadece AI bağlamı için
-                except Exception as ex:
-                    print(f"[RAG] Summary fetch hatası: {ex}")
-                    pass
-
-                # ── KATMAN 2: Sayfa-Çeşitli Toplama ────────────────────────
-                results = chroma_service.query(
-                    collection_name=col,
-                    query_texts=[user_message],
-                    n_results=min(top_k_candidates, 40),
-                    where={"source": file_name}
-                )
-
-                doc_list = results.get("documents")
-                meta_list = results.get("metadatas")
-
-                docs = doc_list[0] if doc_list and len(doc_list) > 0 else []
-                metas = meta_list[0] if meta_list and len(meta_list) > 0 else []
-
-                # Aday listesi (page=0 olan özet chunk'ları hariç tut)
-                all_candidates: list[tuple[str, dict, int]] = []
-                for rank, (doc, meta) in enumerate(zip(docs, metas)):
-                    if meta.get("page", 1) == 0:
-                        continue  # Özet chunk zaten Katman 1'de eklendi
-                    all_candidates.append((doc, meta, rank))
-
-                # Her sayfadan en iyi 1 chunk seç
-                best_per_page: dict[str, tuple[str, dict, int]] = {}
-                for doc, meta, rank in all_candidates:
-                    page     = str(meta.get("page", "0"))
-                    src      = meta.get("source", file_name)
-                    page_key = f"{src}_p{page}"
-                    if page_key not in best_per_page:
-                        best_per_page[page_key] = (doc, meta, rank)
-                    elif rank < best_per_page[page_key][2]:
-                        best_per_page[page_key] = (doc, meta, rank)
-
-                # Rank'a göre sırala ve max_pages ile sınırla
-                selected = sorted(best_per_page.values(), key=lambda x: x[2])[:max_pages]
-
-                for doc, meta, _ in selected:
-                    src   = meta.get("source", file_name)
-                    page  = meta.get("page", "")
-                    ctype = meta.get("type", "text")
-                    text  = _truncate(doc.strip())
-                    if not text:
-                        continue
-
-                    header = (
-                        f"[{src}"
-                        + (f" | Sayfa {page}" if page else "")
-                        + (f" | {ctype}" if ctype not in ("text", "multimodal_text_with_bbox") else "")
-                        + "]"
-                    )
-                    parts.append(f"{header}\n{text}")
-
-                    source_key = f"{src}_p{page}_{meta.get('bbox', '')}"
-                    if source_key not in seen_keys and page:
-                        sources.append({
-                            "file": src,
-                            "page": page,
-                            "bbox": meta.get("bbox", ""),
-                            "image_path": meta.get("image_path", "")
-                        })
-                        seen_keys.add(source_key)
-
-            except Exception as e:
-                print(f"[RAG-FILE] Koleksiyon '{col}' okunamadı: {e}")
-
-        if not parts:
-            return _build_semantic_context(
-                user_message=user_message,
-                file_name=file_name,
-                collection_name=collection_name,
-                top_k=max_pages,
-            )
-
-        return "\n\n---\n\n".join(parts), sources
-
-    except Exception as e:
-        print(f"[RAG-FILE] Hata: {e}")
-        return "", []
+) -> tuple[str, list[dict], dict | None]:
+    return _build_semantic_context(
+        user_message=user_message,
+        file_name=file_name,
+        collection_name=collection_name,
+        top_k=max_pages
+    )
 
 
 def _build_semantic_context(
@@ -208,61 +115,103 @@ def _build_semantic_context(
     file_name: str | None = None,
     collection_name: str | None = None,
     top_k: int = GENERAL_RAG_TOP_K,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[dict], dict | None]:
     """
-    Semantic (anlam bazlı) arama – genel RAG modu.
-    file_name verilirse sadece o kaynak filtrelenir.
+    RAG Pipeline Optimizasyonu:
+    1. ChromaDB'den vektörel anlamsal sonuçları getir (Aşama 1).
+    2. DocumentRepository üzerinden SQLite JOIN yaparak ilgili metinleri, relations tablosunu ve location_marker'ı çek (Aşama 2 & 3).
+    3. LLM_PRE_FILTER_DISTANCE_THRESHOLD eşiğindeki sonuçları reddet.
     """
     try:
-        from services.chroma_service import chroma_service
-        all_collections = chroma_service.list_collections()
+        from database.vector.chroma_db import vector_db
+        from database.sql.session import get_session
+        from database.sql.repositories.document_repo import DocumentRepository
+
+        all_collections = vector_db.list_collections()
         if not all_collections:
-            return "", []
+            return "", [], None
 
         target_cols = [collection_name] if collection_name else all_collections
         parts:   list[str] = []
         sources: list[dict] = []
-        seen_keys = set()
+        best_ui_action: dict | None = None
 
         for col in target_cols:
             if col not in all_collections:
                 continue
             try:
-                results = chroma_service.query(
+                # Aşama 1: Vektör Araması (Semantic Retrieval)
+                results = vector_db.query(
                     collection_name=col,
                     query_texts=[user_message],
-                    n_results=top_k,
+                    n_results=top_k * 2,
                 )
-                docs  = results.get("documents", [[]])[0]
-                metas = results.get("metadatas", [[]])[0]
+                chroma_ids = results.get("ids", [[]])[0]
+                dists = results.get("distances", [[]])[0]
 
-                for doc, meta in zip(docs, metas):
-                    src  = meta.get("source", col)
-                    page = meta.get("page", "")
+                if not chroma_ids:
+                    continue
 
-                    if file_name and src != file_name:
-                        continue
+                # Kaba filtreleme (Python Router Threshold)
+                filtered_ids = []
+                for rank, cid in enumerate(chroma_ids):
+                    dist = dists[rank] if rank < len(dists) else 0.0
+                    if dist <= LLM_PRE_FILTER_DISTANCE_THRESHOLD:
+                        filtered_ids.append(cid)
+                
+                if not filtered_ids:
+                    continue
 
-                    header = f"[Kaynak: {src}" + (f", Sayfa {page}" if page else "") + "]"
-                    parts.append(f"{header}\n{_truncate(doc)}")
-                    
-                    source_key = f"{src}_p{page}_{meta.get('bbox', '')}"
-                    if source_key not in seen_keys:
+                # Aşama 2 & 3: Graf Genişletmesi ve SQLite JOIN
+                with get_session() as db:
+                    repo = DocumentRepository(db)
+                    rich_contexts = repo.node_ids_to_context(filtered_ids[:top_k])
+
+                    for ctx in rich_contexts:
+                        doc_info = ctx["document"]
+                        src = doc_info["filename"]
+                        
+                        if file_name and src != file_name:
+                            continue
+
+                        marker = ctx["location_marker"]
+                        content = ctx["content"]
+
+                        # 1 Derece Derinlikte Graf Okuması (Relations)
+                        graph_note = ""
+                        if ctx["related_nodes"]:
+                            graph_note = "\n[Sistem Graph Notu: Bu düğüm şunlarla ilişkilidir:\n"
+                            for rel in ctx["related_nodes"]:
+                                tgt = rel.get('document_name') or 'Bilinmeyen'
+                                r_type = rel.get('relation_type', 'bağlı')
+                                graph_note += f"- '{tgt}' ({r_type})\n"
+                            graph_note += "]\n"
+
+                        header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + "]"
+                        parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
+
+                        # UI Action Belirleme (İlk ve en yakın sonuç)
+                        if marker and not best_ui_action:
+                            best_ui_action = {
+                                "command": "OPEN_TAB",
+                                "url": f"http://localhost:8000/files/{src}#{marker}"
+                            }
+
                         sources.append({
                             "file": src,
-                            "page": page,
-                            "bbox": meta.get("bbox", ""),
-                            "image_path": meta.get("image_path", "")
+                            "location_marker": marker,
+                            "chroma_id": ctx["chroma_id"],
                         })
-                        seen_keys.add(source_key)
-            except Exception:
+
+            except Exception as ex:
+                print(f"[RAG-SEMANTIC] Hata - Koleksiyon {col}: {ex}")
                 continue
 
-        return "\n\n---\n\n".join(parts), sources
+        return "\n\n---\n\n".join(parts), sources, best_ui_action
 
     except Exception as e:
-        print(f"[RAG-SEMANTIC] Hata: {e}")
-        return "", []
+        print(f"[RAG-SEMANTIC] Genel Hata: {e}")
+        return "", [], None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -276,113 +225,52 @@ class AIService:
         session_id: str = "default_chat",
         ip: str = "127.0.0.1",
         mac: str = "00:00:00:00",
-    ) -> tuple[str, bool, list[str]]:
+    ) -> tuple[str, bool, list[dict], dict | None]:
         """
-        Döner: (yanıt_metni, rag_kullanıldı_mı, kaynak_listesi)
+        Döner: (yanıt_metni, rag_kullanıldı_mı, kaynak_listesi, ui_action)
         """
-        models = get_user_models()
+        models = await run_in_threadpool(get_user_models)
         if not models:
             return (
                 "❌ Hata: Kayıtlı hiçbir yapay zeka modeli bulunamadı. "
                 "Lütfen önce 'Ayarlar -> Yapay Zeka Modelleri' kısmından bir model ve API anahtarı ekleyin.",
                 False,
                 [],
+                None,
             )
 
         active_model      = models[0]
         model_name        = active_model["name"]
         api_key           = active_model["api_key"]
         start_time        = time.time()
+        ui_action         = None
 
         # ── RAG bağlamı ──────────────────────────────────────────────────────
         if file_name:
-            # DOSYA-ÖZELİNDE MOD
-            rag_context, rag_sources = _build_file_context(user_message, file_name, collection_name)
-            system_intro = (
-                f"PROFILIN: Sen çok üst düzey, bağımsız düşünebilen bir yapay zeka ve danışmansın.\n"
-                f"KULLANICI TALEBİ: Sana bir soru soruyor ve arka planda '{file_name}' adlı belgenin veritabanı tarama sonuçlarını (gizli bağlam olarak) sağlıyor.\n\n"
-                f"KATI KURALLAR:\n"
-                f"1. KESİNLİKLE belgeyi özetleme, 'Belgede şu yazıyor' diye madde madde sayma veya metni kopyala-yapıştır yapma!\n"
-                f"2. Kullanıcının ne istediğini ANLA ve sanki hiçbir belge yokmuş gibi, DİREKT konuyu anlatan, çözüm sunan, kendi yorumlarını katan bir cevap yaz.\n"
-                f"3. Gelen veritabanı sonuçlarını sadece 'kendi bilgini zenginleştirmek' ve 'haklı çıkmak' için arka planda kullan.\n"
-                f"4. Eğer veritabanından aldığın güzel bir koordinat veya spesifik bir bilgi varsa bunu doğal cümlenin akışı içinde yedir ve cümlenin veya paragrafın sonuna [Sayfa X] yaz. Böylece sistem o resmi otomatik açabilsin.\n"
-                f"Örnek Kötü Cevap: 'Sözleşmenin 2. sayfasında fesih hakkından bahsedilmiştir.'\n"
-                f"Örnek İyi Cevap: 'Fesih hakkı ticari anlaşmalarda senin gözetmen gereken en büyük detaydır. Sizin koşullarınızda da gördüğüm kadarıyla bu durum gayet net güvenceye alınmış [Sayfa 2]. Buna ek olarak...'\n\n"
-            )
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name)
+            system_intro = get_file_qa_prompt(file_name)
         else:
-            # GENEL MOD: anlam bazlı arama
-            rag_context, rag_sources = _build_semantic_context(user_message, collection_name=collection_name)
-            system_intro = (
-                "Sen çok yetenekli bir asistansın. Aşağıda kullanıcının sistemine yüklenmiş "
-                "belgelerden elde edilen ilgili bilgiler yer almaktadır. Bu bilgileri kullanarak "
-                "soruyu cevapla. Eğer bilgi bulunmuyorsa kendi genel bilginle yanıt ver.\n\n"
-            )
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name)
+            system_intro = get_general_rag_prompt()
 
-        # ── Chat-RAG (Eski Sohbetleri Tarama) ─────────────────────────────────
-        chat_memory_text = ""
-        try:
-            from services.chroma_service import chroma_service
-            safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
-            # Bu koleksiyon varsa kullanıcının sorusuyla anlamsal eşleşen eski 2 mesajı bul
-            if safe_col_name in chroma_service.list_collections():
-                results = chroma_service.query(collection_name=safe_col_name, query_texts=[user_message], n_results=2)
-                docs = results.get("documents", [[]])[0]
-                if docs:
-                    chat_memory_text = "\n\n".join(docs)
-        except Exception as e:
-            print(f"[CHAT-RAG QUERY ERROR]: {e}")
-
-        if chat_memory_text:
-            system_intro += (
-                "=== ESKİ SOHBET GEÇMİŞİ (HATIRLAMAN GEREKENLER) ===\n"
-                "Kullanıcının şu anki sorusuyla bağlantılı olarak daha önce konuştuğunuz bazı konuşma kesitleri aşağıdadır:\n"
-                f"{chat_memory_text}\n"
-                "====================================================\n\n"
-            )
-        # ──────────────────────────────────────────────────────────────────────
-
-        if rag_context:
-            full_prompt = (
-                system_intro
-                + "=== BELGE İÇERİĞİ ===\n"
-                + rag_context
-                + "\n\n=== KULLANICI SORUSU ===\n"
-                + user_message
-            )
-        else:
-            # Hafızada kayıt yok – düz soru
-            full_prompt = user_message
-        # ────────────────────────────────────────────────────────────────────
+        # ── Chat-RAG ─────────────────────────────────────────────────────────
+        chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
+        system_intro = attach_chat_memory(system_intro, chat_memory_text)
+        
+        full_prompt = build_full_prompt(system_intro, rag_context, user_message)
 
         is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
-
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
             if model_name.lower().strip() in invalid_names or "1.5" in model_name:
-                actual_model_name = "gemini-2.5-pro" if "pro" in model_name.lower() else "gemini-2.0-flash"
+                actual_model_name = "gemini-1.5-pro" if "pro" in model_name.lower() else "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
 
         # ── Konuşma geçmişi ──────────────────────────────────────────────
-        history = _get_history(session_id)
+        history = await run_in_threadpool(_get_history, session_id)
 
-        # Gemini için contents dizisi (user/model rolleri)
-        def _build_gemini_contents(current_text: str) -> list[dict]:
-            contents = []
-            for msg in history:
-                role = "user" if msg["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [{"text": msg["text"]}]})
-            contents.append({"role": "user", "parts": [{"text": current_text}]})
-            return contents
-
-        # OpenAI için messages dizisi (user/assistant rolleri)
-        def _build_openai_messages(system_text: str, current_text: str) -> list[dict]:
-            msgs = [{"role": "system", "content": system_text}]
-            for msg in history:
-                role = "user" if msg["role"] == "user" else "assistant"
-                msgs.append({"role": role, "content": msg["text"]})
-            msgs.append({"role": "user", "content": current_text})
-            return msgs
-        # ───────────────────────────────────────────────────────────────
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -393,7 +281,7 @@ class AIService:
                     )
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
-                        "contents": _build_gemini_contents(full_prompt),
+                        "contents": build_gemini_contents(history, full_prompt),
                     }
                     response = await client.post(
                         url, headers={"Content-Type": "application/json"}, json=payload
@@ -421,7 +309,7 @@ class AIService:
                         },
                         json={
                             "model": actual_model_name,
-                            "messages": _build_openai_messages(system_intro, full_prompt),
+                            "messages": build_openai_messages(history, system_intro, full_prompt),
                         },
                     )
                     response.raise_for_status()
@@ -460,12 +348,12 @@ class AIService:
                     "rag_used":         bool(rag_context),
                     "rag_file":         file_name or "",
                 }
-                add_log_to_db(log_entry)
+                await run_in_threadpool(add_log_to_db, log_entry)
 
                 # Konuşma geçmişine kaydet (sadece ham mesajlar, RAG bağlamı değil)
-                _save_to_history(session_id, user_message, reply_text)
+                await run_in_threadpool(_save_to_history, session_id, user_message, reply_text, actual_model_name)
 
-                return reply_text, bool(rag_context), rag_sources
+                return reply_text, bool(rag_context), rag_sources, ui_action
 
         except httpx.HTTPStatusError as e:
             end_time    = time.time()
@@ -499,11 +387,11 @@ class AIService:
                 "mac":              mac,
                 "rag_used":         False,
             }
-            add_log_to_db(log_entry)
-            return f"❌ API Hatası: {error_msg}", False, []
+            await run_in_threadpool(add_log_to_db, log_entry)
+            return f"❌ API Hatası: {error_msg}", False, [], None
 
         except Exception as e:
-            return f"❌ Sistemsel bir hata oluştu: {str(e)}", False, []
+            return f"❌ Sistemsel hata oluştu: {str(e)}", False, [], None
 
     # ── STREAMING ─────────────────────────────────────────────────────────────
     @staticmethod
@@ -519,7 +407,7 @@ class AIService:
         SSE formatında text chunk'ları yield eder.
         Her chunk: 'data: <json>\n\n'  (type: 'chunk' | 'done' | 'error')
         """
-        models = get_user_models()
+        models = await run_in_threadpool(get_user_models)
         if not models:
             yield f"data: {json.dumps({'type': 'error', 'text': '❌ Kayıtlı model bulunamadı. Ayarlar → Yapay Zeka Modelleri kısmından ekleyin.'})}\n\n"
             return
@@ -530,86 +418,31 @@ class AIService:
         start_time   = time.time()
 
         # RAG bağlamı
+        ui_action = None
         if file_name:
-            rag_context, rag_sources = _build_file_context(user_message, file_name, collection_name)
-            system_intro = (
-                f"PROFILIN: Sen çok üst düzey, bağımsız düşünebilen bir yapay zeka ve danışmansın.\n"
-                f"KULLANICI TALEBİ: Sana bir soru soruyor ve arka planda '{file_name}' adlı belgenin veritabanı tarama sonuçlarını (gizli bağlam olarak) sağlıyor.\n\n"
-                f"KATI KURALLAR:\n"
-                f"1. KESİNLİKLE belgeyi özetleme, 'Belgede şu yazıyor' diye madde madde sayma veya metni kopyala-yapıştır yapma!\n"
-                f"2. Kullanıcının ne istediğini ANLA ve sanki hiçbir belge yokmuş gibi, DİREKT konuyu anlatan, çözüm sunan, kendi yorumlarını katan bir cevap yaz.\n"
-                f"3. Gelen veritabanı sonuçlarını sadece 'kendi bilgini zenginleştirmek' ve 'haklı çıkmak' için arka planda kullan.\n"
-                f"4. Eğer veritabanından aldığın güzel bir koordinat veya spesifik bir bilgi varsa bunu doğal cümlenin akışı içinde yedir ve cümlenin veya paragrafın sonuna [Sayfa X] yaz. Böylece sistem o resmi otomatik açabilsin.\n"
-                f"Örnek Kötü Cevap: 'Sözleşmenin 2. sayfasında fesih hakkından bahsedilmiştir.'\n"
-                f"Örnek İyi Cevap: 'Fesih hakkı ticari anlaşmalarda senin gözetmen gereken en büyük detaydır. Sizin koşullarınızda da gördüğüm kadarıyla bu durum gayet net güvenceye alınmış [Sayfa 2]. Buna ek olarak...'\n\n"
-            )
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name)
+            system_intro = get_file_qa_prompt(file_name)
         else:
-            rag_context, rag_sources = _build_semantic_context(user_message, collection_name=collection_name)
-            system_intro = (
-                "Sen çok yetenekli bir asistansın. Aşağıda kullanıcının sistemine yüklenmiş "
-                "belgelerden elde edilen ilgili bilgiler yer almaktadır. Bu bilgileri kullanarak "
-                "soruyu cevapla. Eğer bilgi bulunmuyorsa kendi genel bilginle yanıt ver.\n\n"
-            )
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name)
+            system_intro = get_general_rag_prompt()
 
-        # ── Chat-RAG (Eski Sohbetleri Tarama) ─────────────────────────────────
-        chat_memory_text = ""
-        try:
-            from services.chroma_service import chroma_service
-            safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
-            if safe_col_name in chroma_service.list_collections():
-                results = chroma_service.query(collection_name=safe_col_name, query_texts=[user_message], n_results=2)
-                docs = results.get("documents", [[]])[0]
-                if docs:
-                    chat_memory_text = "\n\n".join(docs)
-        except Exception as e:
-            print(f"[CHAT-RAG QUERY ERROR]: {e}")
-
-        if chat_memory_text:
-            system_intro += (
-                "=== ESKİ SOHBET GEÇMİŞİ (HATIRLAMAN GEREKENLER) ===\n"
-                "Kullanıcının şu anki sorusuyla bağlantılı olarak daha önce konuştuğunuz bazı konuşma kesitleri aşağıdadır:\n"
-                f"{chat_memory_text}\n"
-                "====================================================\n\n"
-            )
-        # ──────────────────────────────────────────────────────────────────────
-
-        if rag_context:
-            full_prompt = (
-                system_intro
-                + "=== ARKA PLAN VERİTABANI SONUÇLARI (GİZLİ REFERANS BİLGİSİ) ===\n"
-                + rag_context
-                + "\n\n=== KULLANICI SORUSU ===\n"
-                + user_message
-            )
-        else:
-            full_prompt = user_message
+        # ── Chat-RAG ─────────────────────────────────────────────────────────
+        chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
+        system_intro = attach_chat_memory(system_intro, chat_memory_text)
+        
+        full_prompt = build_full_prompt(system_intro, rag_context, user_message)
 
         is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
             if model_name.lower().strip() in invalid_names or "1.5" in model_name:
-                actual_model_name = "gemini-2.5-pro" if "pro" in model_name.lower() else "gemini-2.0-flash"
+                actual_model_name = "gemini-1.5-pro" if "pro" in model_name.lower() else "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
 
         # ── Konuşma geçmişi ──────────────────────────────────────────────
-        history = _get_history(session_id)
-
-        def _build_gemini_contents_s(current_text: str) -> list[dict]:
-            contents = []
-            for msg in history:
-                role = "user" if msg["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [{"text": msg["text"]}]})
-            contents.append({"role": "user", "parts": [{"text": current_text}]})
-            return contents
-
-        def _build_openai_messages_s(system_text: str, current_text: str) -> list[dict]:
-            msgs = [{"role": "system", "content": system_text}]
-            for msg in history:
-                role = "user" if msg["role"] == "user" else "assistant"
-                msgs.append({"role": role, "content": msg["text"]})
-            msgs.append({"role": "user", "content": current_text})
-            return msgs
-        # ───────────────────────────────────────────────────────────────
+        history = await run_in_threadpool(_get_history, session_id)
 
         full_reply = ""
         prompt_tokens = 0
@@ -626,7 +459,7 @@ class AIService:
                     )
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
-                        "contents": _build_gemini_contents_s(full_prompt),
+                        "contents": build_gemini_contents(history, full_prompt),
                     }
 
                     async with client.stream(
@@ -673,7 +506,7 @@ class AIService:
                         },
                         json={
                             "model": actual_model_name,
-                            "messages": _build_openai_messages_s(system_intro, full_prompt),
+                            "messages": build_openai_messages(history, system_intro, full_prompt),
                             "stream": True,
                         },
                     ) as response:
@@ -730,13 +563,13 @@ class AIService:
                 "rag_used":         bool(rag_context),
                 "rag_file":         file_name or "",
             }
-            add_log_to_db(log_entry)
+            await run_in_threadpool(add_log_to_db, log_entry)
 
             # Konuşma geçmişine kaydet
-            _save_to_history(session_id, user_message, full_reply)
+            await run_in_threadpool(_save_to_history, session_id, user_message, full_reply, actual_model_name)
 
             # done sinyali
-            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': ui_action})}\n\n"
 
         except httpx.HTTPStatusError as e:
             end_time    = time.time()
@@ -768,7 +601,7 @@ class AIService:
                 "mac":              mac,
                 "rag_used":         False,
             }
-            add_log_to_db(log_entry)
+            await run_in_threadpool(add_log_to_db, log_entry)
             yield f"data: {json.dumps({'type': 'error', 'text': f'❌ API Hatası: {error_msg}'})}\n\n"
 
         except Exception as e:

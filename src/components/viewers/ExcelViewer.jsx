@@ -26,7 +26,7 @@ const ExcelViewer = ({ url, title }) => {
                 formData.append('file', blob, title || 'data.xlsx');
 
                 // 3. FastAPI Backend üzerinden veriyi işle
-                const apiResponse = await fetch('http://localhost:8000/api/files/parse', {
+                const apiResponse = await fetch('/api/files/parse', {
                     method: 'POST',
                     body: formData,
                 });

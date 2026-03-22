@@ -3,11 +3,13 @@ from typing import Any
 from chromadb import Collection
 
 from core.chroma import get_chroma_client
+from database.vector.provider import VectorDBProvider
 
 
-class ChromaService:
+class ChromaVectorDB(VectorDBProvider):
     """
     ChromaDB koleksiyonları üzerinde CRUD işlemleri yapan servis katmanı.
+    VectorDBProvider arayuzunu uygular.
     """
 
     def get_or_create_collection(self, name: str) -> Collection:
@@ -120,5 +122,5 @@ class ChromaService:
         return combined
 
 
-chroma_service = ChromaService()
+vector_db = ChromaVectorDB()
 

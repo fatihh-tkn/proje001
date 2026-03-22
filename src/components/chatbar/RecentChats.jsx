@@ -6,34 +6,34 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
     const [sessions, setSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [deletingId, setDeletingId] = useState(null); // hangi session siliniyor
+    const [editingSessionId, setEditingSessionId] = useState(null);
+    const [editValue, setEditValue] = useState('');
 
     const fetchSessions = useCallback(async () => {
         try {
             setIsLoading(true);
-            const res = await fetch('http://localhost:8000/api/monitor/sessions?limit=10');
+            const res = await fetch('/api/monitor/sessions?limit=10');
             const data = await res.json();
-            if (data && data.sessions) {
-                setSessions(data.sessions.filter(s => s.messageCount > 0));
-            }
-        } catch (error) {
-            console.error("Sohbetler yüklenemedi:", error);
+            setSessions(data.sessions || []);
+        } catch (e) {
+            console.error("Geçmiş oturumlar yüklenemedi", e);
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Changed from setLoading to setIsLoading to match state variable
         }
     }, []);
 
     useEffect(() => {
-        if (isChatsOpen && isSideOpen) {
+        if (isChatsOpen) {
             fetchSessions();
         }
-    }, [isChatsOpen, isSideOpen, currentSessionId, fetchSessions]);
+    }, [isChatsOpen, fetchSessions]); // Removed isSideOpen and currentSessionId from dependencies as per instruction, added fetchSessions
 
     // ── Sohbet silme ──────────────────────────────────────────────────────────
     const handleDelete = async (e, sessionId) => {
         e.stopPropagation(); // session'a tıklamayı engelle
         setDeletingId(sessionId);
         try {
-            await fetch(`http://localhost:8000/api/monitor/sessions/${sessionId}`, {
+            await fetch(`/api/monitor/sessions/${sessionId}`, {
                 method: 'DELETE',
             });
             setSessions((prev) => prev.filter(s => s.sessionId !== sessionId));
@@ -50,11 +50,35 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
     // ─────────────────────────────────────────────────────────────────────────
 
     const getChatTitle = (session) => {
+        const customTitles = JSON.parse(localStorage.getItem('custom_chat_titles') || '{}');
+        if (customTitles[session.sessionId]) return customTitles[session.sessionId];
+
         const firstUserMsg = session.messages?.find(m => m.role === 'user');
         if (firstUserMsg && firstUserMsg.content) {
             return firstUserMsg.content.substring(0, 32) + (firstUserMsg.content.length > 32 ? '...' : '');
         }
         return 'Yeni Sohbet';
+    };
+
+    const handleDoubleClick = (e, session) => {
+        e.stopPropagation();
+        setEditingSessionId(session.sessionId);
+        setEditValue(getChatTitle(session));
+    };
+
+    const handleSaveEdit = (sessionId) => {
+        if (editValue.trim() !== '') {
+            const customTitles = JSON.parse(localStorage.getItem('custom_chat_titles') || '{}');
+            customTitles[sessionId] = editValue.trim();
+            localStorage.setItem('custom_chat_titles', JSON.stringify(customTitles));
+            setSessions(prev => [...prev]);
+        }
+        setEditingSessionId(null);
+    };
+
+    const handleKeyDown = (e, sessionId) => {
+        if (e.key === 'Enter') handleSaveEdit(sessionId);
+        else if (e.key === 'Escape') setEditingSessionId(null);
     };
 
     const formatTime = (isoString) => {
@@ -63,19 +87,19 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
     };
 
     return (
-        <div className={`pt-6 shrink-0 bg-transparent flex transition-all duration-300 ${isSideOpen ? 'pb-2 pt-4 pr-4 pl-8 flex-col' : 'px-0 pb-2 flex-col items-center w-full'}`}>
+        <div className={`shrink-0 bg-transparent flex transition-all duration-300 ${isSideOpen ? 'pb-2 pt-3 pr-4 pl-4 flex-col' : 'pt-5 px-0 pb-2 flex-col items-center w-full'}`}>
             {isSideOpen && (
                 <div className="flex items-center justify-between mb-2 w-full shrink-0">
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 cursor-pointer group no-toggle" onClick={() => setIsChatsOpen(!isChatsOpen)}>
-                            <h3 className="text-xs font-bold text-slate-500 tracking-widest uppercase group-hover:text-slate-700">Son Sohbetler</h3>
-                            <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 ${isChatsOpen ? 'rotate-180' : ''}`} />
+                        <div className="flex items-center gap-1.5 cursor-pointer group no-toggle" onClick={() => setIsChatsOpen(!isChatsOpen)}>
+                            <h3 className="text-[10px] font-medium text-slate-400 tracking-wide group-hover:text-slate-600">Son Sohbetler</h3>
+                            <ChevronDown size={12} className={`text-slate-300 group-hover:text-slate-500 transition-transform duration-300 ${isChatsOpen ? 'rotate-180' : ''}`} />
                         </div>
                         {/* Yazı uzunluğunda alt çizgi */}
-                        <div className="h-[1px] bg-slate-200 w-full opacity-60"></div>
+                        <div className="h-[1px] bg-slate-200/50 w-full opacity-60"></div>
                     </div>
-                    <button onClick={handleNewChat} className="flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors focus:outline-none p-1 rounded" title="Yeni Sohbet Başlat">
-                        <Plus size={16} />
+                    <button onClick={handleNewChat} className="flex items-center justify-center text-[10px] font-medium tracking-wide text-slate-400 hover:text-[#b91d2c] transition-colors focus:outline-none p-1 rounded" title="Yeni Sohbet Başlat">
+                        Yeni Sohbet
                     </button>
                 </div>
             )}
@@ -101,16 +125,39 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
                                     exit={{ opacity: 0, x: -10, height: 0, marginBottom: 0 }}
                                     transition={{ duration: 0.18 }}
                                     onClick={() => handleLoadSession && handleLoadSession(session)}
-                                    className={`rounded-lg bg-white border cursor-pointer group transition-all flex items-center no-toggle relative
-                                        ${session.sessionId === currentSessionId ? 'border-red-300 shadow-[0_2px_8px_rgba(239,68,68,0.08)] bg-red-50/10' : 'border-slate-100 hover:border-slate-300 shadow-sm'}
-                                        ${isSideOpen ? 'px-3 py-2 flex-col items-start w-full' : 'w-10 h-10 justify-center mx-auto'}`}
-                                    title={getChatTitle(session)}
+                                    className={`cursor-pointer group transition-colors duration-200 flex items-center no-toggle relative
+                                        ${session.sessionId === currentSessionId ? 'text-red-600' : 'text-slate-600 hover:text-slate-900'}
+                                        ${isSideOpen ? 'py-1 w-full' : 'w-7 h-7 justify-center mx-auto'}`}
+                                    title="İsmini değiştirmek için çift tıkla"
                                 >
-                                    <div className="flex items-center gap-2 font-medium text-slate-700 text-xs w-full">
-                                        <MessageSquare size={13} className={`shrink-0 transition-colors ${session.sessionId === currentSessionId ? 'text-red-400' : 'text-slate-400 group-hover:text-red-500'}`} />
-                                        {isSideOpen && <span className="truncate flex-1 pr-5">{getChatTitle(session)}</span>}
+                                    <div className={`flex items-center gap-1.5 font-medium text-[12px] w-full h-full min-w-0 ${session.sessionId === currentSessionId ? 'font-bold' : ''}`}>
+                                        <MessageSquare size={13} className={`shrink-0 transition-colors ${session.sessionId === currentSessionId ? 'text-red-500' : 'text-slate-400 group-hover:text-red-400'}`} />
+                                        
+                                        {isSideOpen && (
+                                            <div 
+                                                className="flex flex-row items-center justify-between w-full min-w-0 pr-6"
+                                                onDoubleClick={(e) => handleDoubleClick(e, session)}
+                                            >
+                                                {editingSessionId === session.sessionId ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editValue}
+                                                        onChange={e => setEditValue(e.target.value)}
+                                                        onBlur={() => handleSaveEdit(session.sessionId)}
+                                                        onKeyDown={e => handleKeyDown(e, session.sessionId)}
+                                                        autoFocus
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="w-full bg-white border border-red-300 rounded px-1 -ml-1 text-[11px] h-4 outline-none shadow-sm"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <span className="truncate flex-1 pr-1.5 leading-none">{getChatTitle(session)}</span>
+                                                        <span className="text-[9px] text-slate-400 opacity-80 shrink-0 leading-none">{formatTime(session.endTime)}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    {isSideOpen && <span className="text-[9px] text-slate-400 mt-0.5 opacity-80">{formatTime(session.endTime)}</span>}
 
                                     {/* ── Sil butonu — sadece açıkken ve hover'da ─── */}
                                     {isSideOpen && (

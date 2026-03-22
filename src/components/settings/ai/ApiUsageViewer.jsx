@@ -53,28 +53,64 @@ export default function ApiUsageViewer() {
     }
 
     return (
-        <div className="w-full h-full flex flex-col bg-[#f5f5f7] font-sans text-[var(--workspace-text)]">
-
-            {/* ═══ BODY: Sol Sekme Nav + Sağ İçerik ══════════════════════ */}
-            <div className="flex flex-1 overflow-hidden">
-
-                {/* Sol dikey sekme listesi */}
-                <div className="w-52 shrink-0 border-r border-black/[0.05] bg-white/70 backdrop-blur-sm flex flex-col gap-1 p-3 overflow-y-auto">
-                    <span className="text-[10px] uppercase font-medium text-[var(--sidebar-text-muted)] tracking-widest px-3 pt-1 pb-2 opacity-60">Görünüm</span>
-                    <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={LayoutDashboard} label="Genel Özet" />
-                    <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={List} label="Detaylı Loglar" />
-                    <TabButton active={activeTab === 'sessions'} onClick={() => setActiveTab('sessions')} icon={Monitor} label="Aktif Bilgisayarlar" />
-                    <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={Key} label="Yapay Zeka Modelleri" />
+        <div className="flex flex-col h-full w-full bg-[#f8f9fa] font-sans">
+            {/* ── HEADER ── */}
+            <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-slate-200/60 bg-white">
+                <div>
+                    <h2 className="text-[14px] font-semibold text-slate-800 flex items-center gap-2">
+                        <Activity className="text-[#b91d2c]" size={18} />
+                        Yapay Zeka Sunucusu
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-1">Sunucu durumunu, aktif modelleri ve log kayıtlarını inceleyin.</p>
                 </div>
+            </div>
 
-                {/* Sağ içerik alanı */}
-                <div className="flex-1 overflow-hidden flex flex-col">
-                    {activeTab === 'sessions' && <ComputersTab />}
-                    {activeTab === 'dashboard' && <DashboardTab data={data} />}
-                    {activeTab === 'logs' && <LogsTab />}
-                    {activeTab === 'models' && <ModelsTab />}
-                </div>
+            {/* ── YATAY SEKMELER ── */}
+            <div className="flex-none px-6 flex items-center gap-4 border-b border-slate-200/60 bg-white pt-2 overflow-x-auto">
+                <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
+                        ${activeTab === 'dashboard' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                    `}
+                >
+                    <LayoutDashboard size={14} /> Genel Özet
+                    {activeTab === 'dashboard' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('logs')}
+                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
+                        ${activeTab === 'logs' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                    `}
+                >
+                    <List size={14} /> Detaylı Loglar
+                    {activeTab === 'logs' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('sessions')}
+                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
+                        ${activeTab === 'sessions' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                    `}
+                >
+                    <Monitor size={14} /> Aktif Bilgisayarlar
+                    {activeTab === 'sessions' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('models')}
+                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
+                        ${activeTab === 'models' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                    `}
+                >
+                    <Key size={14} /> AI Modelleri
+                    {activeTab === 'models' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                </button>
+            </div>
 
+            {/* ── İÇERİK ALANI ── */}
+            <div className="flex-1 overflow-auto bg-[#f8f9fa] flex flex-col">
+                {activeTab === 'dashboard' && <DashboardTab data={data} />}
+                {activeTab === 'logs' && <LogsTab />}
+                {activeTab === 'sessions' && <ComputersTab />}
+                {activeTab === 'models' && <ModelsTab />}
             </div>
         </div>
     );

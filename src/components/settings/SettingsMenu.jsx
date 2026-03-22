@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, FolderOpen, X, Check, Database, Activity } from 'lucide-react';
+import { Palette, FolderOpen, X, Check, Database, Activity, Archive, Users } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -199,7 +199,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                                 if (onOpenFile) {
                                     onOpenFile({
                                         id: 'database-settings',
-                                        title: 'Veritabanı Yönetimi',
+                                        title: 'Vektörleştirme',
                                         type: 'database',
                                     });
                                 }
@@ -208,7 +208,23 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                         >
                             <Database size={14} className="text-slate-500 shrink-0" />
-                            <span>Veritabanı</span>
+                            <span>Vektörleştirme</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'databases-viewer',
+                                        title: 'Veritabanları',
+                                        type: 'databases-viewer',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                        >
+                            <Database size={14} className="text-blue-500 shrink-0" />
+                            <span>Veritabanları</span>
                         </button>
 
                         {/* YAPAY ZEKA */}
@@ -227,6 +243,43 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                         >
                             <Activity size={14} className="text-slate-500 shrink-0" />
                             <span>Yapay Zeka</span>
+                        </button>
+
+                        {/* KULLANICI / YETKİLENDİRME */}
+                        <div className="w-full h-px bg-white/[0.05] my-1" />
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'auth-settings',
+                                        title: 'Kullanıcı ve Rol Yönetimi',
+                                        type: 'auth',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-[#A01B1B]/80 hover:bg-white/[0.03] hover:text-[#A01B1B]`}
+                        >
+                            <Users size={14} className="text-[#A01B1B]/70 shrink-0" />
+                            <span>Kullanıcı Yönetimi</span>
+                        </button>
+
+                        {/* ARŞİV (SOHBET/BELGE) */}
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'archive-docs-settings',
+                                        title: 'Belge ve Sohbet Arşivi',
+                                        type: 'archive-docs',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-slate-400 hover:bg-white/[0.03] hover:text-white/80`}
+                        >
+                            <Archive size={14} className="text-slate-500 shrink-0" />
+                            <span>Arşiv</span>
                         </button>
                     </div>
 
