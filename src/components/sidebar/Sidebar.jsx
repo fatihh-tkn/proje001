@@ -89,7 +89,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const wsTabCount = activeWs?.tabs?.length || 0;
 
     return (
-        <aside className={`relative ${isCollapsed ? 'w-[68px]' : 'w-72'} transition-all duration-300 ease-in-out flex h-screen shrink-0 z-20 cursor-default`}
+        <aside className={`relative ${isCollapsed ? 'w-[68px]' : 'w-72'} font-sans transition-all duration-300 ease-in-out flex h-screen shrink-0 z-20 cursor-default`}
             style={{ background: 'linear-gradient(180deg, #1a1a1c 0%, #161618 100%)', borderRight: '1px solid #2a2a2d' }}
         >
             <div
@@ -97,68 +97,81 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 onClick={handleSidebarClick}
             >
                 {/* ── LOGO HEADER ── */}
-                <div className={`flex items-center h-14 shrink-0 transition-all duration-300 ${isCollapsed ? 'px-3 justify-center' : 'px-4'}`}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                >
+                <div className={`flex items-center h-14 shrink-0 transition-all duration-300 ${isCollapsed ? 'px-0 justify-center' : 'px-4'}`}>
                     <div
-                        className="flex items-center overflow-hidden cursor-pointer w-full"
+                        className="flex items-center overflow-hidden cursor-pointer w-full h-full"
                         onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
                     >
-                        <AnimatePresence mode="wait">
-                            {!isCollapsed ? (
-                                <motion.div
-                                    key="full-logo"
-                                    initial={{ opacity: 0, x: -8 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -8 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="flex items-center"
-                                >
-                                    <img src={FullLogoImage} alt="Yılgenci Logo" className="h-6 w-auto object-contain" style={{ minWidth: '110px' }} />
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="symbol-logo"
-                                    initial={{ opacity: 0, scale: 0.7 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.7 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="flex items-center justify-center w-full"
-                                >
-                                    <img src={SymbolImage} alt="Yılgenci Sembol" className="h-7 w-7 object-contain" />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                        <div className={`relative flex items-center h-10 w-full ${isCollapsed ? '' : 'ml-1'}`}>
+                            {/* SEMBOL LOGO (Alt Katman - Her Zaman Sabit) */}
+                            <motion.div
+                                initial={false}
+                                animate={{
+                                    opacity: isCollapsed ? 1 : 0,
+                                    scale: isCollapsed ? 1 : 0.85,
+                                    x: isCollapsed ? 0 : -10
+                                }}
+                                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                                className={`absolute inset-0 flex items-center justify-center`}
+                            >
+                                <img src={SymbolImage} alt="Yılgenci Sembol" className="h-9 w-9 object-contain" />
+                            </motion.div>
+
+                            {/* TAM LOGO (Üst Katman - Maskelenerek Kapanan) */}
+                            <motion.div
+                                initial={false}
+                                animate={{
+                                    width: isCollapsed ? "0%" : "100%",
+                                    opacity: isCollapsed ? 0 : 1,
+                                    x: isCollapsed ? -20 : 1
+                                }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                className="relative flex items-center overflow-hidden whitespace-nowrap"
+                            >
+                                <img src={FullLogoImage} alt="Yılgenci Logo" className="h-9 w-auto object-contain" style={{ minWidth: '150px' }} />
+                            </motion.div>
+                        </div>
                     </div>
                 </div>
 
-                {/* ── SEKME NAVİGASYONU ── */}
+                {/* ── SEKME NAVİGASYONU (SEGMENTED CONTROL) ── */}
                 {!isCollapsed && (
-                    <div className="flex px-3 pt-3 pb-0 gap-1"
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                    >
-                        {[
-                            { id: 'files', label: 'Dosyalar', icon: Files, badge: null },
-                            { id: 'workspace', label: 'Alan', icon: LayoutGrid, badge: wsTabCount > 0 ? wsTabCount : null },
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={(e) => { e.stopPropagation(); setSidebarTab(tab.id); }}
-                                className={`relative flex-1 flex items-center justify-center gap-1.5 pb-2.5 pt-1 text-[10px] font-semibold tracking-widest uppercase transition-all duration-200 border-b-2
-                                    ${sidebarTab === tab.id
-                                        ? 'text-white border-[#A01B1B]'
-                                        : 'text-slate-500 border-transparent hover:text-slate-300 hover:border-slate-700'
-                                    }`}
-                            >
-                                <tab.icon size={11} />
-                                {tab.label}
-                                {tab.badge !== null && (
-                                    <span className="bg-[#A01B1B]/90 text-white text-[8px] font-bold px-1 py-px leading-none">
-                                        {tab.badge}
-                                    </span>
-                                )}
-                            </button>
-                        ))}
+                    <div className="px-3 pt-3 pb-2 w-full">
+                        <div className="flex relative bg-slate-800/60 p-[3px] rounded-sm border border-slate-700/50 w-full">
+                            {[
+                                { id: 'files', label: 'Dosyalar', icon: Files, badge: null },
+                                { id: 'workspace', label: 'Alan', icon: LayoutGrid, badge: null },
+                            ].map(tab => {
+                                const isActive = sidebarTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={(e) => { e.stopPropagation(); setSidebarTab(tab.id); }}
+                                        className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold tracking-widest uppercase transition-colors duration-200 z-10 rounded-[2px]
+                                            ${isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200'}
+                                        `}
+                                    >
+                                        {isActive && (
+                                            <motion.div
+                                                layoutId="sidebar-tab-indicator"
+                                                className="absolute inset-0 bg-slate-700/80 rounded-[2px] shadow-sm border border-slate-600/50"
+                                                initial={false}
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                                            />
+                                        )}
+                                        <span className="relative z-20 flex items-center gap-1.5">
+                                            <tab.icon size={12} className={isActive ? 'text-[#A01B1B]' : ''} />
+                                            {tab.label}
+                                            {tab.badge !== null && (
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 min-w-[16px] flex items-center justify-center leading-none rounded-[3px] transition-colors ${isActive ? 'bg-[#A01B1B] text-white shadow-sm' : 'bg-slate-700 border border-slate-600 text-slate-300'}`}>
+                                                    {tab.badge}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 
@@ -221,12 +234,9 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     )}
                 </div>
 
-                {/* ── ALT FOOTER ── */}
-                <div className={`shrink-0 flex items-center relative transition-all duration-300 px-3 py-3 gap-3
+                <div className={`shrink-0 flex items-center relative transition-all duration-300 px-3 py-4 gap-4
                     ${isCollapsed ? 'flex-col justify-center' : 'justify-between'}
-                `}
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
-                >
+                `}>
                     <SettingsMenu
                         isOpen={settingsOpen}
                         onClose={() => setSettingsOpen(false)}
@@ -248,7 +258,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         title="Ayarlar"
                     >
                         <Settings
-                            size={isCollapsed ? 20 : 16}
+                            size={isCollapsed ? 24 : 20}
                             className={`${settingsOpen ? 'rotate-45' : 'group-hover:rotate-12'} transition-transform duration-300`}
                         />
                     </button>
@@ -256,12 +266,12 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     {/* Kullanıcı */}
                     <div
                         onClick={(e) => e.stopPropagation()}
-                        className={`flex items-center justify-center bg-slate-800/60 border border-slate-700/50 cursor-pointer hover:border-[#A01B1B]/60 hover:bg-slate-800 transition-all duration-200
-                            ${isCollapsed ? 'w-9 h-9' : 'w-7 h-7'}
+                        className={`flex items-center justify-center bg-slate-800/60 border border-slate-700/50 rounded-sm cursor-pointer hover:border-[#A01B1B]/60 hover:bg-slate-800 transition-all duration-200
+                            ${isCollapsed ? 'w-11 h-11' : 'w-9 h-9'}
                         `}
                         title="Kullanıcı"
                     >
-                        <User size={isCollapsed ? 16 : 13} className="text-slate-400" />
+                        <User size={isCollapsed ? 20 : 16} className="text-slate-400" />
                     </div>
                 </div>
             </div>
