@@ -19,7 +19,7 @@ FILE_MODE_MAX_CHUNKS   = 40
 GENERAL_RAG_TOP_K      = 10
 CHUNK_CHAR_LIMIT       = 2000
 MAX_HISTORY_TURNS      = 2
-LLM_PRE_FILTER_DISTANCE_THRESHOLD = 0.55
+LLM_PRE_FILTER_DISTANCE_THRESHOLD = 1.6
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Session konuşma hafızası (SQLite) ───────────────────────────────────
@@ -348,10 +348,11 @@ class AIService:
                     "rag_used":         bool(rag_context),
                     "rag_file":         file_name or "",
                 }
-                await run_in_threadpool(add_log_to_db, log_entry)
-
                 # Konuşma geçmişine kaydet (sadece ham mesajlar, RAG bağlamı değil)
+                # NOT: Loglardan önce kaydediyoruz ki Foreign Key hatası oluşmasın (Sohbet Oturumu gereklidir)
                 await run_in_threadpool(_save_to_history, session_id, user_message, reply_text, actual_model_name)
+
+                await run_in_threadpool(add_log_to_db, log_entry)
 
                 return reply_text, bool(rag_context), rag_sources, ui_action
 
@@ -563,10 +564,11 @@ class AIService:
                 "rag_used":         bool(rag_context),
                 "rag_file":         file_name or "",
             }
-            await run_in_threadpool(add_log_to_db, log_entry)
-
             # Konuşma geçmişine kaydet
+            # NOT: Loglardan önce kaydediyoruz ki Foreign Key hatası oluşmasın
             await run_in_threadpool(_save_to_history, session_id, user_message, full_reply, actual_model_name)
+
+            await run_in_threadpool(add_log_to_db, log_entry)
 
             # done sinyali
             yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': ui_action})}\n\n"

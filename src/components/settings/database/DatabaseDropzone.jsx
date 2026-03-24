@@ -1,5 +1,6 @@
 import React from 'react';
-import { Upload, Zap, Activity, CheckCircle2, ShieldCheck, X } from 'lucide-react';
+import { Upload, Zap, Activity, CheckCircle2, ShieldCheck, X, Network } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const DatabaseDropzone = ({
     phase,
@@ -18,127 +19,183 @@ const DatabaseDropzone = ({
     approvedCount
 }) => {
     return (
-        <div className="w-[42%] shrink-0 border-r border-slate-200 flex flex-col">
-            <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-slate-50/60">
-                <Upload size={12} className="text-slate-400" />
-                <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Besleme Alanı</span>
+        <div className="w-[42%] shrink-0 border-r border-slate-200 flex flex-col bg-slate-50/30 relative">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-white/50 backdrop-blur-md z-10">
+                <Network size={14} className="text-slate-400" />
+                <span className="text-[11px] font-bold text-slate-500 tracking-widest uppercase">Veri Madenciliği Merkezi</span>
                 {(phase === 'staged' || phase === 'saving') && (
-                    <button onClick={handleCancel} className="ml-auto text-slate-400 hover:text-red-500 transition-colors">
-                        <X size={12} />
+                    <button onClick={handleCancel} className="ml-auto text-slate-400 hover:text-[#A01B1B] transition-colors p-1 bg-white hover:bg-red-50 rounded-md border border-slate-200 hover:border-red-200">
+                        <X size={14} />
                     </button>
                 )}
             </div>
 
-            <div className="flex-1 p-4 flex items-center justify-center">
-                {/* ── idle: drop zone ── */}
-                {phase === 'idle' && (
-                    <div className="w-full h-full flex flex-col gap-3">
-                        <div className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
-                            <div className="flex items-center gap-2">
-                                <div className="p-1.5 bg-purple-50 rounded-lg">
-                                    <Zap size={13} className="text-purple-600 animate-pulse" />
-                                </div>
-                                <div>
-                                    <p className="text-[11px] font-bold text-slate-700">Derin AI Görsel Okuma (B Yolu)</p>
-                                    <p className="text-[9px] text-slate-400">Gemini 1.5 Pro API ile okları ve grafikleri anlar</p>
-                                </div>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" className="sr-only peer" checked={useVision} onChange={e => setUseVision(e.target.checked)} />
-                                <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-600"></div>
-                            </label>
-                        </div>
-
-                        <label
-                            onDragEnter={() => setDragOver(true)}
-                            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                            onDragLeave={(e) => {
-                                if (!dropRef.current?.contains(e.relatedTarget)) setDragOver(false);
-                            }}
-                            onDrop={handleDrop}
-                            ref={dropRef}
-                            className={`relative w-full h-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 overflow-hidden group select-none
-                            ${dragOver || dragActive
-                                    ? 'border-[#A01B1B] bg-red-50 shadow-[0_0_0_4px_rgba(160,27,27,0.08),inset_0_0_20px_rgba(160,27,27,0.04)]'
-                                    : 'border-slate-300 hover:border-slate-400 bg-slate-50 hover:bg-white'
-                                }`}
+            <div className="flex-1 p-5 flex items-center justify-center relative">
+                <AnimatePresence mode="wait">
+                    {/* ── idle: drop zone ── */}
+                    {phase === 'idle' && (
+                        <motion.div
+                            key="idle"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="w-full h-full flex flex-col gap-4"
                         >
-                            <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx" />
+                            <div className="flex items-center justify-between px-4 py-3 bg-white/70 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100/50 rounded-xl">
+                                        <Zap size={14} className="text-purple-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[12px] font-bold text-slate-700">Derin AI Görsel Okuma (B Yolu)</p>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">Gemini 1.5 Pro ile grafik ve akışları çözümler</p>
+                                    </div>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" className="sr-only peer" checked={useVision} onChange={e => setUseVision(e.target.checked)} />
+                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-[#A01B1B]"></div>
+                                </label>
+                            </div>
 
-                            {/* köşe aksentleri */}
-                            {['top-3 left-3', 'top-3 right-3', 'bottom-3 left-3', 'bottom-3 right-3'].map(pos => (
-                                <span key={pos} className={`absolute ${pos} w-3.5 h-3.5 transition-all duration-200
-                                ${pos.includes('top') && pos.includes('left') ? 'border-t-2 border-l-2 rounded-tl' : ''}
-                                ${pos.includes('top') && pos.includes('right') ? 'border-t-2 border-r-2 rounded-tr' : ''}
-                                ${pos.includes('bottom') && pos.includes('left') ? 'border-b-2 border-l-2 rounded-bl' : ''}
-                                ${pos.includes('bottom') && pos.includes('right') ? 'border-b-2 border-r-2 rounded-br' : ''}
-                                ${dragOver || dragActive ? 'border-[#A01B1B] scale-110' : 'border-slate-300 group-hover:border-slate-500'}
-                            `} />
-                            ))}
-
-                            {/* ikon */}
-                            <div className={`p-4 rounded-xl mb-4 transition-all duration-200
-                            ${dragOver || dragActive
-                                    ? 'bg-red-100 border border-red-200 scale-110'
-                                    : 'bg-white border border-slate-200 group-hover:border-slate-300 shadow-sm'
-                                }`}
+                            <motion.label
+                                onDragEnter={() => setDragOver(true)}
+                                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={(e) => {
+                                    if (!dropRef.current?.contains(e.relatedTarget)) setDragOver(false);
+                                }}
+                                onDrop={handleDrop}
+                                ref={dropRef}
+                                animate={{
+                                    scale: dragOver || dragActive ? 1.02 : 1,
+                                    boxShadow: dragOver || dragActive ? '0 0 25px rgba(160,27,27,0.15)' : 'none'
+                                }}
+                                className={`relative w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed cursor-pointer transition-colors overflow-hidden group select-none backdrop-blur-sm
+                                ${dragOver || dragActive
+                                        ? 'border-[#A01B1B] bg-red-50/40'
+                                        : 'border-slate-300 hover:border-slate-400 bg-white/50 hover:bg-white/80'
+                                    }`}
                             >
-                                <Upload size={28} className={`transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                            </div>
+                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx" />
 
-                            <p className={`text-sm font-semibold transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-600 group-hover:text-slate-800'}`}>
-                                {dragOver || dragActive ? 'Dosyayı bırakın' : 'Dosya sürükleyin veya seçin'}
-                            </p>
-                            <p className="text-[11px] text-slate-400 mt-1.5">PDF, DOCX, TXT, BPMN, XLSX</p>
+                                <motion.div
+                                    animate={{
+                                        y: dragOver || dragActive ? -5 : 0,
+                                        scale: dragOver || dragActive ? 1.1 : 1
+                                    }}
+                                    className={`p-5 rounded-2xl mb-4 transition-colors relative z-10
+                                    ${dragOver || dragActive
+                                            ? 'bg-gradient-to-br from-red-50 to-rose-100 border border-red-200 text-[#A01B1B]'
+                                            : 'bg-white border border-slate-200 text-slate-400 group-hover:text-slate-600 group-hover:border-slate-300 shadow-sm'
+                                        }`}
+                                >
+                                    <Network size={32} />
+                                </motion.div>
 
-                            {/* pulse ring - drag active */}
-                            {(dragOver || dragActive) && (
-                                <span className="absolute inset-0 rounded-xl border-2 border-[#A01B1B]/30 animate-ping pointer-events-none" />
-                            )}
-                        </label>
-                    </div>
-                )}
+                                <p className={`text-[14px] font-bold z-10 transition-colors ${dragOver || dragActive ? 'text-[#A01B1B]' : 'text-slate-600 group-hover:text-slate-800'}`}>
+                                    {dragOver || dragActive ? 'Veri Ağına Besle' : 'Dosya sürükleyin veya seçin'}
+                                </p>
+                                <p className="text-[11px] font-medium text-slate-400 mt-2 z-10 bg-slate-100/50 px-3 py-1 rounded-full border border-slate-200">
+                                    PDF, DOCX, TXT, BPMN, XLSX
+                                </p>
 
-                {/* ── analyzing: spinner + progress ── */}
-                {phase === 'analyzing' && (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-5 px-6">
-                        <div className="relative w-16 h-16 flex items-center justify-center">
-                            <div className="absolute inset-0 rounded-full border-2 border-slate-200" />
-                            <div className="absolute inset-0 rounded-full border-t-2 border-[#A01B1B] animate-spin" />
-                            <div className="absolute inset-2 rounded-full border border-slate-100 border-t-red-200 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
-                            <Activity size={18} className="text-[#A01B1B]" />
-                        </div>
-                        <div className="w-full text-center">
-                            <p className="text-[12px] font-semibold text-slate-800 mb-0.5 truncate">{stagedFile?.name}</p>
-                            <p className="text-[11px] text-slate-500 mb-4">OCR ve Koordinat Taraması yapılıyor...</p>
-                            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-[#A01B1B] rounded-full transition-all duration-150"
-                                    style={{ width: `${progress}%` }}
+                                {/* pulse ring - drag active */}
+                                {(dragOver || dragActive) && (
+                                    <motion.span
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: [0.2, 0.5, 0] }}
+                                        transition={{ duration: 1.5, repeat: Infinity }}
+                                        className="absolute inset-0 rounded-2xl border-2 border-[#A01B1B]/40 pointer-events-none"
+                                    />
+                                )}
+                            </motion.label>
+                        </motion.div>
+                    )}
+
+                    {/* ── analyzing: AI Graph Network Effect ── */}
+                    {phase === 'analyzing' && (
+                        <motion.div
+                            key="analyzing"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="w-full h-full flex flex-col items-center justify-center gap-6 px-8"
+                        >
+                            <div className="relative w-24 h-24 flex items-center justify-center">
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 8, ease: "linear", repeat: Infinity }}
+                                    className="absolute inset-0 border-[1px] border-dashed border-slate-300 rounded-full"
                                 />
+                                <motion.div
+                                    animate={{ rotate: -360 }}
+                                    transition={{ duration: 12, ease: "linear", repeat: Infinity }}
+                                    className="absolute inset-2 border-[1px] border-[#A01B1B]/30 rounded-full"
+                                />
+                                <motion.div
+                                    animate={{ scale: [1, 1.1, 1] }}
+                                    transition={{ duration: 2, repeat: Infinity }}
+                                    className="w-12 h-12 bg-gradient-to-br from-[#A01B1B] to-red-600 rounded-full shadow-[0_0_20px_rgba(160,27,27,0.4)] flex items-center justify-center text-white"
+                                >
+                                    <Network size={20} />
+                                </motion.div>
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-1.5 text-right">{Math.round(progress)}%</p>
-                        </div>
-                    </div>
-                )}
+                            <div className="w-full text-center">
+                                <p className="text-[13px] font-bold text-slate-800 mb-1 truncate">{stagedFile?.name}</p>
+                                <motion.p
+                                    animate={{ opacity: [0.5, 1, 0.5] }}
+                                    transition={{ duration: 1.5, repeat: Infinity }}
+                                    className="text-[11px] font-medium text-[#A01B1B] mb-5 tracking-wide"
+                                >
+                                    BİLGİ AĞI ÇÖZÜMLENİYOR...
+                                </motion.p>
+                                <div className="w-full h-2 bg-slate-200/60 rounded-full overflow-hidden border border-slate-200/50">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-[#A01B1B] to-rose-400 rounded-full"
+                                        style={{ width: `${progress}%` }}
+                                        layout
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center mt-2 px-1">
+                                    <span className="text-[10px] text-slate-400 font-mono">NODE_EXTRACT</span>
+                                    <span className="text-[10px] text-slate-500 font-bold">{Math.round(progress)}%</span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
 
-                {/* ── staged / saving ── */}
-                {(phase === 'staged' || phase === 'saving') && stagedFile && (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4">
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                            <CheckCircle2 size={26} className="text-emerald-500" />
-                        </div>
-                        <p className="text-[13px] font-semibold text-slate-800 truncate max-w-full">{stagedFile.name}</p>
-                        <p className="text-[11px] text-slate-500 text-center">
-                            Analiz tamamlandı.<br />
-                            <span className="text-[#A01B1B] font-semibold">{chunksLength} parçadan {approvedCount} adedi</span> onaylandı.
-                        </p>
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg">
-                            <ShieldCheck size={12} className="text-amber-500" />
-                            <span className="text-[10px] text-amber-600 font-medium">Veritabanı korunuyor</span>
-                        </div>
-                    </div>
-                )}
+                    {/* ── staged / saving ── */}
+                    {(phase === 'staged' || phase === 'saving') && stagedFile && (
+                        <motion.div
+                            key="staged"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="w-full h-full flex flex-col items-center justify-center gap-4 px-6 text-center"
+                        >
+                            <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring" }}
+                                className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl shadow-sm"
+                            >
+                                <CheckCircle2 size={32} className="text-emerald-500" />
+                            </motion.div>
+                            <div>
+                                <p className="text-[14px] font-bold text-slate-800 truncate max-w-full mb-1">{stagedFile.name}</p>
+                                <p className="text-[11px] text-slate-500 font-medium">Ağ Düğümleri Başarıyla Çıkarıldı</p>
+                            </div>
+                            <div className="px-5 py-3 bg-white border border-slate-200 rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] w-full text-left">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[11px] text-slate-500">Çıkarılan Düğüm</span>
+                                    <span className="text-[11px] font-bold text-slate-700">{chunksLength}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[11px] text-slate-500">Seçili Önaylı Dügüm</span>
+                                    <span className="text-[11px] font-bold text-[#A01B1B]">{approvedCount}</span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

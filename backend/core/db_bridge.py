@@ -14,6 +14,7 @@ from typing import Optional
 
 from database.sql.session import get_session
 from database.sql.repositories.log_repo import LogRepository
+from database.sql.repositories.chat_repo import ChatRepository
 from database.sql.models import AIModeli
 
 # Backward compatibility
@@ -26,10 +27,17 @@ def _utcnow() -> str:
 
 # -- add_log_to_db ------------------------------------------------------------
 def add_log_to_db(log_entry: dict) -> None:
+    session_id = log_entry.get("sessionId") or log_entry.get("session_id")
     with get_session() as db:
+        # OTURUM KONTROLÜ: FOREIGN KEY hatasını önlemek için session yoksa oluşturuyoruz.
+        if session_id:
+            chat_repo = ChatRepository(db)
+            if not chat_repo.get_session(session_id):
+                chat_repo.create_session(session_id=session_id, title="Yeni Sohbet")
+
         repo = LogRepository(db)
         repo.add(
-            session_id=log_entry.get("sessionId") or log_entry.get("session_id"),
+            session_id=session_id,
             provider=log_entry.get("provider"),
             model=log_entry.get("model"),
             status=log_entry.get("status", "success"),

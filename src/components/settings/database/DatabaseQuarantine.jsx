@@ -1,21 +1,33 @@
 import React from 'react';
-import { ShieldCheck, CheckCheck, FileText, CheckCircle2, CornerDownRight, AlertTriangle, Loader2, Save } from 'lucide-react';
+import { ShieldCheck, CheckCheck, FileText, CheckCircle2, AlertTriangle, Loader2, Save, Fingerprint, DatabaseZap } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const SkeletonChunk = () => (
-    <div className="bg-white border border-slate-100 rounded-xl p-3 animate-pulse">
-        <div className="flex gap-2">
-            <div className="w-3 h-3 rounded bg-slate-200 mt-0.5 shrink-0" />
-            <div className="flex-1 space-y-1.5">
-                <div className="h-2.5 bg-slate-200 rounded w-full" />
-                <div className="h-2.5 bg-slate-200 rounded w-4/5" />
-            </div>
+    <div className="bg-white border-l-4 border-slate-200 border-y border-r rounded-r-xl rounded-l-md p-4 animate-pulse flex flex-col gap-3 shadow-sm">
+        <div className="flex gap-2 items-center">
+            <div className="w-4 h-4 rounded-md bg-slate-200 shrink-0" />
+            <div className="h-3 bg-slate-200 rounded w-1/3" />
         </div>
-        <div className="flex gap-4 mt-2.5 pt-2 border-t border-slate-100">
+        <div className="space-y-2">
+            <div className="h-2.5 bg-slate-200 rounded w-full" />
+            <div className="h-2.5 bg-slate-200 rounded w-4/5" />
+            <div className="h-2.5 bg-slate-200 rounded w-2/3" />
+        </div>
+        <div className="flex gap-4 mt-1 pt-2 border-t border-slate-100">
             <div className="h-2 bg-slate-100 rounded w-16" />
             <div className="h-2 bg-slate-100 rounded w-20" />
         </div>
     </div>
 );
+
+const getTypeColor = (type) => {
+    if (!type) return 'border-slate-300';
+    if (type.includes('bpmn')) return 'border-purple-500';
+    if (type.includes('pdf')) return 'border-blue-500';
+    if (type.includes('pptx')) return 'border-orange-500';
+    if (type.includes('excel')) return 'border-emerald-500';
+    return 'border-slate-300';
+};
 
 const DatabaseQuarantine = ({
     chunks,
@@ -28,94 +40,134 @@ const DatabaseQuarantine = ({
     saveError
 }) => {
     return (
-        <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-slate-50/60">
-                <ShieldCheck size={12} className="text-amber-500" />
-                <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Karantina / Onay İstasyonu</span>
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-white z-10">
+                <ShieldCheck size={14} className="text-emerald-600" />
+                <span className="text-[11px] font-bold text-slate-500 tracking-widest uppercase">Güvenli Düğüm Onayı</span>
                 {/* ── TOPLU ONAY (sağ üst köşe) ── */}
-                {chunks.length > 0 && phase !== 'saving' && (
-                    <button
-                        onClick={handleApproveAll}
-                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1 bg-[#A01B1B] hover:bg-[#8a1717] text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 shadow-sm"
-                        title="Tüm Parçaları Onayla"
-                    >
-                        <CheckCheck size={11} /> Tümünü Onayla
-                    </button>
-                )}
-                {chunks.length > 0 && (
-                    <span className={`text-[10px] bg-amber-100 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-semibold ${chunks.length > 0 && phase !== 'saving' ? '' : 'ml-auto'}`}>
-                        {chunks.length} parça
-                    </span>
-                )}
+                <AnimatePresence>
+                    {chunks.length > 0 && phase !== 'saving' && (
+                        <motion.button
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            onClick={handleApproveAll}
+                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-[#A01B1B] text-slate-600 hover:text-white text-[11px] font-bold rounded-lg transition-colors active:scale-95 shadow-sm"
+                            title="Tüm Parçaları Onayla"
+                        >
+                            <CheckCheck size={14} /> Tümünü Onayla
+                        </motion.button>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* skeleton + chunks */}
-            {skeletonChunks > 0 ? (
-                <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                    {Array.from({ length: skeletonChunks }).map((_, i) => <SkeletonChunk key={i} />)}
-                </div>
-            ) : chunks.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3 p-6">
-                    <ShieldCheck size={26} className="text-slate-300" />
-                    <p className="text-[11px] text-center text-slate-400">
-                        Dosya analiz edildiğinde parçalar<br />burada onay için sıralanacak.
-                    </p>
-                </div>
-            ) : (
-                <div className="flex flex-col flex-1 min-h-0">
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400">
-                        {chunks.map((c, idx) => {
-                            const isApproved = approvedChunks.has(c.id);
-                            return (
-                                <div
-                                    key={c.id}
-                                    onClick={() => toggleApproval(c.id)}
-                                    className={`bg-white border-2 rounded-xl p-3 hover:shadow-sm transition-all cursor-pointer ${isApproved ? 'border-[#A01B1B] bg-red-50/20' : 'border-slate-200 hover:border-slate-300'}`}
-                                >
-                                    <div className="flex items-start gap-2">
-                                        <CornerDownRight size={11} className="text-slate-400 mt-0.5 shrink-0" />
-                                        <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed flex-1">{c.text}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-slate-100">
-                                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                                            <FileText size={9} /> Sayfa {c.page}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400">[x:{c.x}, y:{c.y}]</span>
-                                        <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold">
-                                            {isApproved ? <CheckCircle2 size={11} className="text-[#A01B1B]" /> : <></>}
-                                            <span className={isApproved ? "text-[#A01B1B]" : "text-amber-500"}>#{idx + 1}</span>
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })}
+            <div className="flex-1 overflow-hidden relative flex flex-col">
+                {skeletonChunks > 0 ? (
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {Array.from({ length: skeletonChunks }).map((_, i) => <SkeletonChunk key={i} />)}
                     </div>
+                ) : chunks.length === 0 ? (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                        className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4 p-6 bg-slate-50/30"
+                    >
+                        <DatabaseZap size={40} className="text-slate-200" />
+                        <p className="text-[12px] text-center text-slate-400 font-medium">
+                            Veri ağı henüz beslenmedi.<br />Çıkarılan düğümler burada listelenecek.
+                        </p>
+                    </motion.div>
+                ) : (
+                    <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400">
+                            <AnimatePresence>
+                                {chunks.map((c, idx) => {
+                                    const isApproved = approvedChunks.has(c.id);
+                                    const borderColor = getTypeColor(c.metadata?.type);
 
-                    {saveError && (
-                        <div className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg shrink-0">
-                            <AlertTriangle size={12} className="text-red-500 shrink-0" />
-                            <p className="text-[11px] text-red-600">{saveError}</p>
+                                    return (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: idx * 0.05 > 0.5 ? 0 : idx * 0.05 }}
+                                            key={c.id}
+                                            onClick={() => toggleApproval(c.id)}
+                                            className={`relative bg-white border-y border-r border-l-4 rounded-r-xl rounded-l-md p-4 transition-all cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.02)]
+                                                hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] hover:-translate-y-0.5
+                                                ${isApproved ? 'border-l-[#A01B1B] border-y-[#A01B1B]/30 border-r-[#A01B1B]/30 bg-red-50/10' : `${borderColor} border-y-slate-200 border-r-slate-200 hover:border-r-slate-300`}
+                                            `}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={`mt-0.5 p-1.5 rounded-md shrink-0 ${isApproved ? 'bg-[#A01B1B]/10 text-[#A01B1B]' : 'bg-slate-100 text-slate-400'}`}>
+                                                    <Fingerprint size={14} />
+                                                </div>
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                            Node #{idx + 1}
+                                                        </span>
+                                                        {isApproved && <CheckCircle2 size={14} className="text-[#A01B1B]" />}
+                                                    </div>
+                                                    <p className="text-[12px] text-slate-700 font-medium leading-relaxed font-sans whitespace-pre-wrap">
+                                                        {c.text}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100">
+                                                <span className="text-[10px] text-slate-400 flex items-center gap-1.5 font-medium">
+                                                    <FileText size={11} /> Kaynak: {c.metadata?.source || 'Bilinmiyor'}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                                                    Sayfa {c.page}
+                                                </span>
+                                                {c.metadata?.type && (
+                                                    <span className="text-[10px] text-slate-400 border border-slate-200 px-2 py-0.5 rounded-md ml-auto truncate max-w-[100px]">
+                                                        {c.metadata.type}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    );
+                                })}
+                            </AnimatePresence>
                         </div>
-                    )}
 
-                    <div className="p-3 shrink-0 border-t border-slate-200 bg-slate-50/40">
-                        <button
-                            onClick={handleSave}
-                            disabled={phase === 'saving' || approvedChunks.size === 0}
-                            className={`w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm focus:outline-none
-                                ${approvedChunks.size > 0
-                                    ? 'bg-[#A01B1B] hover:bg-[#8a1717] text-white hover:shadow-md active:scale-[0.98]'
-                                    : 'bg-slate-200 text-slate-400 hover:bg-slate-300'}
-                                ${(phase === 'saving' || approvedChunks.size === 0) ? 'cursor-not-allowed opacity-70' : ''}`}
-                        >
-                            {phase === 'saving'
-                                ? <><Loader2 size={15} className="animate-spin" /> Kaydediliyor...</>
-                                : <><Save size={15} /> Vektörleştir ve Hafızaya Kaydet</>
-                            }
-                        </button>
+                        {saveError && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-2 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl shrink-0">
+                                <AlertTriangle size={16} className="text-red-500 shrink-0" />
+                                <p className="text-[12px] font-medium text-red-700">{saveError}</p>
+                            </motion.div>
+                        )}
+
+                        <div className="p-4 shrink-0 border-t border-slate-200 bg-white z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
+                            <motion.button
+                                whileHover={phase !== 'saving' && approvedChunks.size > 0 ? { scale: 1.01 } : {}}
+                                whileTap={phase !== 'saving' && approvedChunks.size > 0 ? { scale: 0.98 } : {}}
+                                onClick={handleSave}
+                                disabled={phase === 'saving' || approvedChunks.size === 0}
+                                className={`relative w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl font-bold text-[13px] transition-all overflow-hidden
+                                    ${approvedChunks.size > 0
+                                        ? 'bg-gradient-to-r from-[#A01B1B] to-[#b32020] text-white shadow-[0_4px_15px_rgba(160,27,27,0.3)]'
+                                        : 'bg-slate-100 text-slate-400'}
+                                    ${(phase === 'saving' || approvedChunks.size === 0) ? 'cursor-not-allowed opacity-80' : ''}`}
+                            >
+                                {phase === 'saving' && (
+                                    <motion.div
+                                        className="absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)] w-[200%]"
+                                        animate={{ x: ["-100%", "50%"] }}
+                                        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                    />
+                                )}
+
+                                {phase === 'saving'
+                                    ? <><Loader2 size={16} className="animate-spin relative z-10" /> <span className="relative z-10">Bilgi Ağlarına İşleniyor...</span></>
+                                    : <><Save size={16} /> Seçili {approvedChunks.size} Düğümü Hafızaya İşle</>
+                                }
+                            </motion.button>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

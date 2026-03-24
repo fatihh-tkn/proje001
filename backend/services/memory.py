@@ -1,101 +1,82 @@
 import uuid
-from typing import Any
 
 from database.vector.chroma_db import vector_db
 from database.sql.session import get_session
-from database.sql.models import Document
-from database.sql.repositories.document_repo import DocumentRepository
+from database.sql.models import Belge
 from sqlalchemy import select
+
 
 class MemoryEngine:
     """
-    Vektör motoru bağlantısını temsil eden sınıf (Hafızaya Kazıma).
-    Karantina alanından (React) onaylanan verileri önce SQLite'a yedekler 
-    (İleride farklı vektör DB'ye geçmek için), ardından ilgili VectorDB servisine 
-    sadece metadata olarak SQLite ID'sini verecek şekilde gönderir.
+    ChromaDB vektör motoruna yazma katmanı.
+    SQL yan etkilerini de (Belge kaydı işaretleme) TEK session içinde halleder.
     """
-    
-    def save_to_memory(self, chunks: list[dict], collection_name: str = "yilgenci_collection"):
-        """
-        Gelen chunk listesini ChromaDB (veya aktif vektör DB) koleksiyonuna ekler.
-        Eklerken SQLite'ta kalıcı Document referansı oluşturur ve sqlite_doc_id ekler.
-        """
+
+    def save_to_memory(self, chunks: list[dict], collection_name: str = "yilgenci_collection") -> None:
         if not chunks:
             return
-            
-        # 1. Dosya adını bul
-        source_name = "Bilinmeyen Dosya"
-        for chunk in chunks:
-            meta = chunk.get("metadata", {})
-            if isinstance(meta, dict) and "source" in meta:
-                source_name = meta["source"]
-                break
-                
-        # 2. SQLite'a kalıcı olarak kaydet (Repository Pattern)
-        with get_session() as db:
-            repo = DocumentRepository(db)
-            stmt = select(Document).where(Document.filename == source_name).limit(1)
-            doc = db.scalar(stmt)
-            if not doc:
-                doc = repo.create(
-                    filename=source_name,
-                    file_type="unknown",
-                    access_role="public"
-                )
-            sqlite_doc_id = doc.id
-            
-        # 3. Chunkları Vektör DB için hazırla
-        texts = []
-        metadatas = []
-        ids = []
-        
-        for chunk in chunks:
-            # Text garantisi
-            text = chunk.get("text", "")
-            if not text.strip():
-                continue
-                
-            # Benzersiz ID oluştur
-            curr_id = chunk.get("id")
-            if not curr_id or curr_id.startswith("chunk-") or curr_id == "error-chunk":
-                curr_id = str(uuid.uuid4())
-                
-            meta = chunk.get("metadata", {})
-            if not isinstance(meta, dict):
-                meta = {}
-            
-            # Kritik SQLite Kancası
-            meta["sqlite_doc_id"] = sqlite_doc_id
-                
-            # ChromaDB metadata'da None veya iç içe dictionary desteklemez, flat temizlik yapılabilir
-            clean_meta = {}
-            for k, v in meta.items():
-                if v is not None and type(v) in [str, int, float, bool]:
-                    clean_meta[k] = v
-                else:
-                    clean_meta[k] = str(v)
 
-            texts.append(text)
-            metadatas.append(clean_meta)
-            ids.append(curr_id)
+        # Dosya adını belirle
+        source_name = next(
+            (c.get("metadata", {}).get("source") for c in chunks if c.get("metadata", {}).get("source")),
+            "Bilinmeyen Dosya"
+        )
 
-        if texts:
-            # Vektör veri tabanına (özetlenen VectorDBProvider üzerinden) yaz
-            vector_db.add_documents(
-                collection_name=collection_name,
-                documents=texts,
-                metadatas=metadatas,
-                ids=ids
-            )
-            
-            # SQLite Document tablosunda vektörleştiğini işaretle
+        # ── SQL: Belge oluştur/bul + vektörleştime işaretini güncelle (TEK session) ──
+        sqlite_doc_id: str | None = None
+        try:
             with get_session() as db:
-                repo_update = DocumentRepository(db)
-                repo_update.mark_vectorized(
-                    doc_id=sqlite_doc_id, 
-                    chroma_collection=collection_name, 
-                    chunk_count=len(texts)
-                )
+                doc = db.scalar(select(Belge).where(Belge.dosya_adi == source_name).limit(1))
+                if not doc:
+                    file_ext = source_name.rsplit(".", 1)[-1] if "." in source_name else "unknown"
+                    doc = Belge(
+                        dosya_adi=source_name,
+                        dosya_turu=file_ext,
+                        durum="onaylandi",
+                        vektorlestirildi_mi=False,
+                    )
+                    db.add(doc)
+                    db.flush()   # kimliği üret ama tamamlamadan ilerle
 
-# Uygulama genelinde kullanılacak Motor (singleton benzeri)
+                sqlite_doc_id = doc.kimlik
+
+                # ChromaDB için hazırlık: metadata temizliği
+                texts, metadatas, ids = [], [], []
+                for chunk in chunks:
+                    text = chunk.get("text", "")
+                    if not text.strip():
+                        continue
+                    curr_id = chunk.get("id") or str(uuid.uuid4())
+                    meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
+
+                    clean_meta = {"sqlite_doc_id": sqlite_doc_id}
+                    for k, v in meta.items():
+                        clean_meta[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+
+                    texts.append(text)
+                    metadatas.append(clean_meta)
+                    ids.append(curr_id)
+
+                if texts:
+                    # ChromaDB yazma (session açıkken OK — ChromaDB ayrı süreç)
+                    vector_db.add_documents(
+                        collection_name=collection_name,
+                        documents=texts,
+                        metadatas=metadatas,
+                        ids=ids,
+                    )
+
+                    # Belge kaydını güncelle
+                    doc.vektorlestirildi_mi = True
+                    doc.vektordb_koleksiyon = collection_name
+                    doc.parca_sayisi        = len(texts)
+
+                db.commit()
+
+        except Exception as e:
+            print(f"[MemoryEngine] save_to_memory hatası: {e}")
+            import traceback; traceback.print_exc()
+
+
+# Singleton motor
 memory_engine = MemoryEngine()

@@ -2,14 +2,12 @@
 backend/api/routes/archive.py
 ──────────────────────────────────────────────────────────────────────
 Arşiv Yöneticisi API Endpoint'leri.
-
-Tablolar: belgeler (Belge modeli)
-  - Klasörleme: belge.meta["klasor_kimlik"] alanı kullanılır.
-  - Durum: 'arsivde' | 'karantina' | 'onaylandi' | 'reddedildi' | 'folder'
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from pydantic import BaseModel
+from typing import List, Optional
 from database.sql.session import get_session
 from database.sql.models import Belge, Kullanici, VektorParcasi
 import os
@@ -25,23 +23,35 @@ os.makedirs(ARSIV_KLASORU, exist_ok=True)
 # ── Pydantic Şemaları ──────────────────────────────────────────────────────────
 
 class KlasorOlusturRequest(BaseModel):
-    ad: str
-    ust_klasor_kimlik: str | None = None
+    name: str
+    parent_id: Optional[str] = None
 
 
 class BelgeTasiRequest(BaseModel):
     belge_kimlik: str
-    hedef_klasor_kimlik: str | None = None
+    hedef_klasor_kimlik: Optional[str] = None
+
+
+class YenidenAdlandirRequest(BaseModel):
+    kimlik: str
+    yeni_ad: str
+
+
+class TopluSilRequest(BaseModel):
+    ids: List[str]
+
+
+class MetaGuncelleRequest(BaseModel):
+    kimlik: str
+    etiketler: Optional[List[str]] = None
+    aciklama: Optional[str] = None
 
 
 # ── API Endpoint'leri ──────────────────────────────────────────────────────────
 
 @router.get("/list")
-def arsiv_listele(klasor_kimlik: str = None):
-    """
-    Verilen klasör içindeki belge ve klasörleri döner.
-    klasor_kimlik=None ise kök dizin gösterilir.
-    """
+def arsiv_listele():
+    """Tüm belge ve klasörleri döner."""
     with get_session() as db:
         belgeler = db.scalars(select(Belge)).all()
 
@@ -50,14 +60,12 @@ def arsiv_listele(klasor_kimlik: str = None):
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
-            # Yükleyici bilgisi
             yukleyen_adi = "Bilinmiyor"
             if b.yukleyen_kimlik:
                 kullanici = db.get(Kullanici, b.yukleyen_kimlik)
                 if kullanici:
                     yukleyen_adi = kullanici.tam_ad
 
-            # Bağlantılı parçalar
             parcalar = db.scalars(
                 select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
             ).all()
@@ -68,6 +76,7 @@ def arsiv_listele(klasor_kimlik: str = None):
                 "file_type": b.dosya_turu,
                 "file_size": b.dosya_boyutu_bayt,
                 "created_at": b.olusturulma_tarihi,
+                "updated_at": b.guncelleme_tarihi,
                 "is_vectorized": b.vektorlestirildi_mi,
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
@@ -79,6 +88,8 @@ def arsiv_listele(klasor_kimlik: str = None):
                 ],
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
+                "etiketler": meta.get("etiketler", []),
+                "aciklama": meta.get("aciklama", ""),
             })
 
         return {"items": sonuclar}
@@ -86,18 +97,15 @@ def arsiv_listele(klasor_kimlik: str = None):
 
 @router.post("/create-folder")
 def klasor_olustur(istek: KlasorOlusturRequest):
-    """
-    Arşiv içinde yeni bir klasör oluşturur.
-    Klasör, meta["klasor_kimlik"] ile üst dizinine bağlanır.
-    """
+    """Arşiv içinde yeni bir klasör oluşturur."""
     with get_session() as db:
         yeni_klasor = Belge(
-            dosya_adi=istek.ad,
+            dosya_adi=istek.name,
             dosya_turu="folder",
             dosya_boyutu_bayt=0,
             parca_sayisi=0,
             durum="folder",
-            meta={"klasor_kimlik": istek.ust_klasor_kimlik} if istek.ust_klasor_kimlik else {}
+            meta={"klasor_kimlik": istek.parent_id} if istek.parent_id else {}
         )
         db.add(yeni_klasor)
         db.commit()
@@ -107,10 +115,7 @@ def klasor_olustur(istek: KlasorOlusturRequest):
 
 @router.post("/move")
 def belge_tasi(istek: BelgeTasiRequest):
-    """
-    Bir belgeyi farklı bir klasöre taşır.
-    hedef_klasor_kimlik=None ise kök dizine taşır.
-    """
+    """Bir belgeyi farklı bir klasöre taşır."""
     with get_session() as db:
         belge = db.get(Belge, istek.belge_kimlik)
         if not belge:
@@ -127,15 +132,90 @@ def belge_tasi(istek: BelgeTasiRequest):
         return {"status": "success"}
 
 
+@router.patch("/rename")
+def yeniden_adlandir(istek: YenidenAdlandirRequest):
+    """Belge veya klasörün adını değiştirir."""
+    with get_session() as db:
+        belge = db.get(Belge, istek.kimlik)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        belge.dosya_adi = istek.yeni_ad
+        db.commit()
+        return {"status": "success"}
+
+
+@router.delete("/delete")
+def toplu_sil(istek: TopluSilRequest):
+    """Birden fazla belge veya klasörü siler. Diskten de kaldırır."""
+    silinen = 0
+    with get_session() as db:
+        for kid in istek.ids:
+            belge = db.get(Belge, kid)
+            if not belge:
+                continue
+            # Diskten kaldır (klasörler için yol yoktur)
+            if belge.depolama_yolu and os.path.exists(belge.depolama_yolu):
+                try:
+                    os.remove(belge.depolama_yolu)
+                except Exception:
+                    pass
+            db.delete(belge)
+            silinen += 1
+        db.commit()
+    return {"status": "success", "silinen": silinen}
+
+
+@router.patch("/meta")
+def meta_guncelle(istek: MetaGuncelleRequest):
+    """Dosyanın etiket ve açıklama bilgisini günceller."""
+    with get_session() as db:
+        belge = db.get(Belge, istek.kimlik)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+
+        meta = dict(belge.meta or {})
+        if istek.etiketler is not None:
+            meta["etiketler"] = istek.etiketler
+        if istek.aciklama is not None:
+            meta["aciklama"] = istek.aciklama
+
+        belge.meta = meta
+        db.commit()
+        return {"status": "success"}
+
+
+@router.get("/file/{kimlik}")
+def dosya_getir(kimlik: str):
+    """Dosyayı tarayıcıda önizlemek için stream eder."""
+    with get_session() as db:
+        belge = db.get(Belge, kimlik)
+        if not belge or not belge.depolama_yolu:
+            raise HTTPException(status_code=404, detail="Dosya bulunamadı.")
+        if not os.path.exists(belge.depolama_yolu):
+            raise HTTPException(status_code=404, detail="Fiziksel dosya eksik.")
+
+        import mimetypes
+        import urllib.parse
+
+        mime_type, _ = mimetypes.guess_type(belge.dosya_adi)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+            
+        encoded_filename = urllib.parse.quote(belge.dosya_adi)
+
+        return FileResponse(
+            path=belge.depolama_yolu,
+            media_type=mime_type,
+            headers={"Content-Disposition": f"inline; filename*=utf-8''{encoded_filename}"}
+        )
+
+
 @router.post("/direct-upload")
 def dogrudan_yukle(
     file: UploadFile = File(...),
     folder_id: str = Form(None)
 ):
-    """
-    Dosyayı vektörleştirme olmadan doğrudan arşive yükler.
-    SQL'deki belgeler tablosuna 'arsivde' durumuyla kaydeder.
-    """
+    """Dosyayı vektörleştirme olmadan doğrudan arşive yükler."""
     os.makedirs(ARSIV_KLASORU, exist_ok=True)
 
     benzersiz_ad = f"{uuid.uuid4().hex[:8]}_{file.filename}"

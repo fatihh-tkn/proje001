@@ -248,53 +248,53 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                         <div
                             className={`relative w-full h-full grid gap-0 pointer-events-none ${gridLayoutClass}`}
                         >
-                                {/* Mount/Unmount performans kaybını önlemek için tüm localTabs'i tarıyoruz. Minimizeleri 'hidden' yapıyoruz */}
-                                {localTabs.map((tab, idx) => {
-                                    const isMinimized = minimizedTabs.includes(tab.id);
-                                    
-                                    const layoutConfig = customLayoutMode ? SNAP_LAYOUTS.find(l => l.id === customLayoutMode) : null;
-                                    const zoneClass = layoutConfig && layoutConfig.zones[idx]
-                                        ? layoutConfig.zones[idx].class.replace('w-full h-full', '').trim()
-                                        : '';
-                                        
-                                    const displayClass = isMinimized ? 'hidden' : '';
+                            {/* Mount/Unmount performans kaybını önlemek için tüm localTabs'i tarıyoruz. Minimizeleri 'hidden' yapıyoruz */}
+                            {localTabs.map((tab, idx) => {
+                                const isMinimized = minimizedTabs.includes(tab.id);
 
-                                    if (tab.isEmpty) {
-                                        if (isMinimized) return null; // Boş slot minimize edilemez ama görünmemeli
-                                        return (
-                                            <div
-                                                key={tab.id}
-                                                className={`pointer-events-auto relative border-2 border-transparent hover:border-slate-400/50 hover:bg-slate-500/5 transition-all rounded-[4px] ${zoneClass}`}
-                                                onDragOver={(e) => {
-                                                    if (e.dataTransfer.types.includes('application/json')) {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                    }
-                                                }}
-                                                onDrop={(e) => {
+                                const layoutConfig = customLayoutMode ? SNAP_LAYOUTS.find(l => l.id === customLayoutMode) : null;
+                                const zoneClass = layoutConfig && layoutConfig.zones[idx]
+                                    ? layoutConfig.zones[idx].class.replace('w-full h-full', '').trim()
+                                    : '';
+
+                                const displayClass = isMinimized ? 'hidden' : '';
+
+                                if (tab.isEmpty) {
+                                    if (isMinimized) return null; // Boş slot minimize edilemez ama görünmemeli
+                                    return (
+                                        <div
+                                            key={tab.id}
+                                            className={`pointer-events-auto relative border-2 border-transparent hover:border-slate-400/50 hover:bg-slate-500/5 transition-all rounded-[4px] ${zoneClass}`}
+                                            onDragOver={(e) => {
+                                                if (e.dataTransfer.types.includes('application/json')) {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    const data = e.dataTransfer.getData('application/json');
-                                                    if (data) {
-                                                        try {
-                                                            const file = JSON.parse(data);
-                                                            if (file && file.id && onOpenFile) {
-                                                                targetDropZoneIndexRef.current = { id: file.id, index: idx };
-                                                                onOpenFile(file);
-                                                            }
-                                                        } catch (err) {
-                                                            console.error("Gözlemciye sürüklerken hata:", err);
+                                                }
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                const data = e.dataTransfer.getData('application/json');
+                                                if (data) {
+                                                    try {
+                                                        const file = JSON.parse(data);
+                                                        if (file && file.id && onOpenFile) {
+                                                            targetDropZoneIndexRef.current = { id: file.id, index: idx };
+                                                            onOpenFile(file);
                                                         }
+                                                    } catch (err) {
+                                                        console.error("Gözlemciye sürüklerken hata:", err);
                                                     }
-                                                }}
-                                            />
-                                        );
-                                    }
+                                                }
+                                            }}
+                                        />
+                                    );
+                                }
 
-                                    return (
-                                        <div key={tab.id} className={`${displayClass} ${zoneClass} relative pointer-events-auto flex items-stretch justify-stretch col-span-1 row-span-1`}>
-                                            <TileWindow
-                                                tab={tab}
+                                return (
+                                    <div key={tab.id} className={`${displayClass} ${zoneClass} relative pointer-events-auto flex items-stretch justify-stretch col-span-1 row-span-1`}>
+                                        <TileWindow
+                                            tab={tab}
                                             isActive={activeTabId === tab.id}
                                             activeId={activeDragId}
                                             isMaximized={false}
@@ -309,12 +309,12 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                             onFocus={() => {
                                                 if (onFocusTab) onFocusTab(tab.id);
                                             }}
-                                                onMaximize={() => onMaximizeTab && onMaximizeTab(tab.id)}
-                                                onSelectLayout={(layoutId, zoneId) => handleSelectLayout(tab.id, layoutId, zoneId)}
-                                            />
-                                        </div>
-                                    );
-                                })}
+                                            onMaximize={() => onMaximizeTab && onMaximizeTab(tab.id)}
+                                            onSelectLayout={(layoutId, zoneId) => handleSelectLayout(tab.id, layoutId, zoneId)}
+                                        />
+                                    </div>
+                                );
+                            })}
                         </div>
                     </SortableContext>
                 </div>

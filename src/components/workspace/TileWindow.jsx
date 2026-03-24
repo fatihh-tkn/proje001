@@ -78,8 +78,8 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
         ${showSnap ? 'z-[99999]' : isActive ? 'z-50' : 'z-10'}
         ${!isMaximized && customZoneClass ? customZoneClass : ''}
         ${isActive
-            ? 'shadow-[0_0_0_1px_rgba(160,27,27,0.5),0_20px_60px_rgba(0,0,0,0.2)]'
-            : 'shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.06)] opacity-90'}
+                    ? 'shadow-[0_0_0_1px_rgba(160,27,27,0.5),0_20px_60px_rgba(0,0,0,0.2)]'
+                    : 'shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.06)] opacity-90'}
         ${isMaximized ? 'w-full h-full' : 'w-full h-full relative'}
       `}
         >
