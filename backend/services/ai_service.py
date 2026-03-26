@@ -14,12 +14,29 @@ from core.prompts import (
     build_gemini_contents,
     build_openai_messages
 )
-# ── Sabitler ─────────────────────────────────────────────────────────────────
-FILE_MODE_MAX_CHUNKS   = 40
-GENERAL_RAG_TOP_K      = 10
-CHUNK_CHAR_LIMIT       = 2000
-MAX_HISTORY_TURNS      = 2
-LLM_PRE_FILTER_DISTANCE_THRESHOLD = 1.6
+# ── Sabitler (SQL Veritabanı Sistem Ayarları) ──────────────────────────────────────────
+class AppSettings:
+    @staticmethod
+    def _get(key: str, default):
+        try:
+            from core.db_bridge import get_system_settings
+            val = get_system_settings().get(key)
+            return type(default)(val) if val is not None else default
+        except Exception:
+            return default
+
+    @property
+    def FILE_MODE_MAX_CHUNKS(self) -> int: return self._get("FILE_MODE_MAX_CHUNKS", 40)
+    @property
+    def GENERAL_RAG_TOP_K(self) -> int: return self._get("GENERAL_RAG_TOP_K", 10)
+    @property
+    def CHUNK_CHAR_LIMIT(self) -> int: return self._get("CHUNK_CHAR_LIMIT", 2000)
+    @property
+    def MAX_HISTORY_TURNS(self) -> int: return self._get("MAX_HISTORY_TURNS", 2)
+    @property
+    def LLM_PRE_FILTER_DISTANCE_THRESHOLD(self) -> float: return self._get("LLM_PRE_FILTER_DISTANCE_THRESHOLD", 1.6)
+
+SETTINGS = AppSettings()
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Session konuşma hafızası (SQLite) ───────────────────────────────────
@@ -29,22 +46,32 @@ def _get_history(session_id: str) -> list[dict]:
     from database.sql.repositories.chat_repo import ChatRepository
     with get_session() as db:
         repo = ChatRepository(db)
-        messages = repo.get_messages(session_id, limit=MAX_HISTORY_TURNS * 2)
+        messages = repo.get_messages(session_id, limit=SETTINGS.MAX_HISTORY_TURNS * 2)
         out = []
         for msg in messages:
             out.append({"role": msg.rol, "text": msg.icerik})
         return out
 
-def _save_to_history(session_id: str, user_text: str, ai_text: str, model: str = None) -> None:
+def _save_to_history(
+    session_id: str,
+    user_text: str,
+    ai_text: str,
+    model: str = None,
+    rag_sources: list = None,
+) -> None:
     from database.sql.session import get_session
     from database.sql.repositories.chat_repo import ChatRepository
     with get_session() as db:
         repo = ChatRepository(db)
         if not repo.get_session(session_id):
             repo.create_session(session_id=session_id)
-        
+
         repo.add_message(session_id, "user", user_text)
-        repo.add_message(session_id, "assistant", ai_text, model=model)
+        repo.add_message(
+            session_id, "assistant", ai_text,
+            model=model,
+            rag_sources=rag_sources,
+        )
 
     try:
         from database.vector.chroma_db import vector_db
@@ -89,7 +116,8 @@ def _fetch_chat_memory(session_id: str, query: str) -> str:
 
 
 
-def _truncate(text: str, limit: int = CHUNK_CHAR_LIMIT) -> str:
+def _truncate(text: str, limit: int = None) -> str:
+    limit = limit or SETTINGS.CHUNK_CHAR_LIMIT
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n...[{len(text) - limit} karakter kırpıldı]"
@@ -114,7 +142,7 @@ def _build_semantic_context(
     user_message: str,
     file_name: str | None = None,
     collection_name: str | None = None,
-    top_k: int = GENERAL_RAG_TOP_K,
+    top_k: int = None,
 ) -> tuple[str, list[dict], dict | None]:
     """
     RAG Pipeline Optimizasyonu:
@@ -122,6 +150,7 @@ def _build_semantic_context(
     2. DocumentRepository üzerinden SQLite JOIN yaparak ilgili metinleri, relations tablosunu ve location_marker'ı çek (Aşama 2 & 3).
     3. LLM_PRE_FILTER_DISTANCE_THRESHOLD eşiğindeki sonuçları reddet.
     """
+    top_k = top_k or SETTINGS.GENERAL_RAG_TOP_K
     try:
         from database.vector.chroma_db import vector_db
         from database.sql.session import get_session
@@ -156,7 +185,7 @@ def _build_semantic_context(
                 filtered_ids = []
                 for rank, cid in enumerate(chroma_ids):
                     dist = dists[rank] if rank < len(dists) else 0.0
-                    if dist <= LLM_PRE_FILTER_DISTANCE_THRESHOLD:
+                    if dist <= SETTINGS.LLM_PRE_FILTER_DISTANCE_THRESHOLD:
                         filtered_ids.append(cid)
                 
                 if not filtered_ids:
@@ -348,9 +377,13 @@ class AIService:
                     "rag_used":         bool(rag_context),
                     "rag_file":         file_name or "",
                 }
-                # Konuşma geçmişine kaydet (sadece ham mesajlar, RAG bağlamı değil)
-                # NOT: Loglardan önce kaydediyoruz ki Foreign Key hatası oluşmasın (Sohbet Oturumu gereklidir)
-                await run_in_threadpool(_save_to_history, session_id, user_message, reply_text, actual_model_name)
+                # Sadece sohbetsel veriyi (History DB) kaydet! Token/Maliyet artık ApiCagrisi'na emanet (Issue 5 - Normalization)
+                await run_in_threadpool(
+                    _save_to_history,
+                    session_id, user_message, reply_text,
+                    actual_model_name,
+                    rag_sources,
+                )
 
                 await run_in_threadpool(add_log_to_db, log_entry)
 
@@ -564,9 +597,13 @@ class AIService:
                 "rag_used":         bool(rag_context),
                 "rag_file":         file_name or "",
             }
-            # Konuşma geçmişine kaydet
-            # NOT: Loglardan önce kaydediyoruz ki Foreign Key hatası oluşmasın
-            await run_in_threadpool(_save_to_history, session_id, user_message, full_reply, actual_model_name)
+            # Sadece sohbetsel veriyi (History DB) kaydet! (Issue 5 - Normalization)
+            await run_in_threadpool(
+                _save_to_history,
+                session_id, user_message, full_reply,
+                actual_model_name,
+                rag_sources,
+            )
 
             await run_in_threadpool(add_log_to_db, log_entry)
 

@@ -11,43 +11,41 @@ from database.sql.init_db import init_db
 import asyncio
 from fastapi.concurrency import run_in_threadpool
 
-def _load_graph():
+def _graph_ready_hint():
+    """Lazy Graf Modu: startup'ta yükleme yok. Düğümler sorgu anında SQL'den çekilir."""
     try:
         from database.sql.session import get_session
         from database.sql.models import BilgiIliskisi
-        from database.graph.networkx_db import graph_db
-        from sqlalchemy import select
-        
+        from sqlalchemy import func, select
         with get_session() as db:
-            db_edges = list(db.scalars(select(BilgiIliskisi)).all())
-            formatted_edges = []
-            for e in db_edges:
-                src = e.kaynak_parca_kimlik
-                dst = e.hedef_parca_kimlik
-                weight = float(e.agirlik) if e.agirlik is not None else 1.0
-                if src and dst:
-                    formatted_edges.append({
-                        "from_id": src,
-                        "to_id": dst,
-                        "relation": e.iliski_turu,
-                        "weight": weight
-                    })
-            if formatted_edges:
-                graph_db.build_graph(formatted_edges)
-                print(f"[GRAPH] Bilgi grafiği motoru {len(formatted_edges)} kenar ile hafızaya yüklendi.")
-            else:
-                print(f"[GRAPH] Veritabanında ilişki bulunamadı, grafik boş başlatıldı.")
+            count = db.scalar(select(func.count()).select_from(BilgiIliskisi)) or 0
+        print(f"[GRAPH] Lazy mod hazır — {count} kenar SQL'de mevcut, startup RAM yüklemesi YOK.")
     except Exception as e:
-        print(f"[GRAPH-ERROR] Bilgi grafiği başlatılamadı: {e}")
+        print(f"[GRAPH] Kenar sayısı okunamadı: {e}")
+
+
+def _init_logs():
+    """logs.db şemasını kur ve eski logları sil (TTL rotation)."""
+    try:
+        from database.logs.init_logs_db import init_logs_db, rotate_old_logs
+        init_logs_db()
+        # Varsayılan: 30 günden eski logları sil (sistem_ayarlari'ndan okunabilir)
+        try:
+            from core.db_bridge import get_system_settings
+            days = int(get_system_settings().get("LOG_RETENTION_DAYS", 30))
+        except Exception:
+            days = 30
+        rotate_old_logs(retention_days=days)
+    except Exception as e:
+        print(f"[LOGS-INIT] logs.db başlatılamadı: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Uygulama başladığında DB tablolarını oluştur."""
     init_db()
-    
-    # Arka planda grafiği okuyalım ki Uvicorn açılışı kilitlenmesin
-    asyncio.create_task(run_in_threadpool(_load_graph))
+    asyncio.create_task(run_in_threadpool(_graph_ready_hint))
+    asyncio.create_task(run_in_threadpool(_init_logs))
 
     yield
 

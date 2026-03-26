@@ -1,1 +1,0 @@
-invalid type: string "Kullanıcı dedi ki: ca01de giriş ekranından malzeme kodu girme\nAI Cevap Verdi: Sisteminizde bulunan \"CA01- İş Planı Yaratma\" adlı belgede, giriş ekranından malzeme kodu girme işlemi hakkında doğrudan bilgi bulunmamaktadır. Belge, genel olarak iş planı yaratma süreciyle ilgilidir ve içeriğinde bu tür spesifik bir adım açıklanmamıştır.", expected f64

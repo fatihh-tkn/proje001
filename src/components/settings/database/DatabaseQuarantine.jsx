@@ -43,7 +43,7 @@ const DatabaseQuarantine = ({
         <div className="flex-1 flex flex-col min-w-0 bg-white">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-white z-10">
                 <ShieldCheck size={14} className="text-emerald-600" />
-                <span className="text-[11px] font-bold text-slate-500 tracking-widest uppercase">Güvenli Düğüm Onayı</span>
+                <span className="text-[11px] font-bold text-slate-500 tracking-widest uppercase">Parça İnceleme</span>
                 {/* ── TOPLU ONAY (sağ üst köşe) ── */}
                 <AnimatePresence>
                     {chunks.length > 0 && phase !== 'saving' && (
@@ -74,7 +74,7 @@ const DatabaseQuarantine = ({
                     >
                         <DatabaseZap size={40} className="text-slate-200" />
                         <p className="text-[12px] text-center text-slate-400 font-medium">
-                            Veri ağı henüz beslenmedi.<br />Çıkarılan düğümler burada listelenecek.
+                            Henüz dosya yüklenmedi.<br />Parçalar burada görünecek.
                         </p>
                     </motion.div>
                 ) : (
@@ -160,8 +160,8 @@ const DatabaseQuarantine = ({
                                 )}
 
                                 {phase === 'saving'
-                                    ? <><Loader2 size={16} className="animate-spin relative z-10" /> <span className="relative z-10">Bilgi Ağlarına İşleniyor...</span></>
-                                    : <><Save size={16} /> Seçili {approvedChunks.size} Düğümü Hafızaya İşle</>
+                                    ? <><Loader2 size={16} className="animate-spin relative z-10" /> <span className="relative z-10">Kaydediliyor...</span></>
+                                    : <><Save size={16} /> Seçili {approvedChunks.size} Parçayı Kaydet</>
                                 }
                             </motion.button>
                         </div>

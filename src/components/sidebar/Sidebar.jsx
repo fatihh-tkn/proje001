@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder, Settings, User,
-    ChevronsRight, ChevronsLeft, Files, LayoutGrid
+    ChevronsRight, ChevronsLeft, Files, LayoutGrid, Webhook
 } from 'lucide-react';
 
 import FullLogoImage from '../../assets/logo-acik.png';
@@ -13,12 +13,63 @@ import WorkspacePanel from './WorkspacePanel';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
     const [treeData, setTreeData] = useState([]);
+    const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [currentBasePath, setCurrentBasePath] = useState(localStorage.getItem('savedBasePath') || '');
     const [additionalFiles, setAdditionalFiles] = useState([]);
     const [sidebarTab, setSidebarTab] = useState('files');
+
+    const fetchArchive = async () => {
+        try {
+            const res = await fetch('/api/archive/list');
+            if (res.ok) {
+                const data = await res.json();
+                setArchiveData(data.items || []);
+            }
+        } catch (err) {
+            console.error("Archive fetch error:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchArchive();
+    }, []);
+
+    const getArchiveTree = () => {
+        if (!archiveData || archiveData.length === 0) return null;
+
+        const map = {};
+        const rootNodes = [];
+
+        archiveData.forEach(item => {
+            map[item.id] = {
+                id: `archive_${item.id}`,
+                name: item.filename,
+                type: item.file_type === 'folder' ? 'folder' : 'file',
+                extension: item.file_type !== 'folder' ? item.file_type : undefined,
+                url: `/api/archive/file/${item.id}`,
+                children: []
+            };
+        });
+
+        archiveData.forEach(item => {
+            const node = map[item.id];
+            if (item.folder_id && map[item.folder_id]) {
+                map[item.folder_id].children.push(node);
+            } else {
+                rootNodes.push(node);
+            }
+        });
+
+        return {
+            id: 'archive_root_folder',
+            name: 'Arşiv',
+            type: 'folder',
+            children: rootNodes
+        };
+    };
 
     useEffect(() => {
         if (settingsOpen) setSettingsOpen(false);
@@ -92,6 +143,17 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
         <aside className={`relative ${isCollapsed ? 'w-[68px]' : 'w-72'} font-sans transition-all duration-300 ease-in-out flex h-screen shrink-0 z-20 cursor-default`}
             style={{ background: 'linear-gradient(180deg, #1a1a1c 0%, #161618 100%)', borderRight: '1px solid #2a2a2d' }}
         >
+            {/* SettingsMenu — overflow-hidden dışında, doğrudan aside içinde */}
+            <SettingsMenu
+                isOpen={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
+                onSetBasePath={handleSetBasePath}
+                onAddFiles={handleAddFiles}
+                currentBasePath={currentBasePath}
+                isCollapsed={isCollapsed}
+                onOpenFile={onOpenFile}
+            />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
                 onClick={handleSidebarClick}
@@ -186,7 +248,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     {/* DOSYALAR */}
                     {(isCollapsed || sidebarTab === 'files') && (
                         <>
-                            {(treeData.length === 0 && additionalFiles.length === 0) && !isCollapsed && (
+                            {(treeData.length === 0 && additionalFiles.length === 0 && archiveData.length === 0) && !isCollapsed && (
                                 <div
                                     onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
                                     className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
@@ -200,7 +262,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                 </div>
                             )}
                             <div className="flex flex-col space-y-0.5 w-full">
-                                {[...additionalFiles, ...treeData].map((node) => (
+                                {[...additionalFiles, ...treeData, getArchiveTree()].filter(Boolean).map((node) => (
                                     <TreeNode
                                         key={node.id}
                                         node={node}
@@ -237,16 +299,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 <div className={`shrink-0 flex items-center relative transition-all duration-300 px-3 py-4 gap-4
                     ${isCollapsed ? 'flex-col justify-center' : 'justify-between'}
                 `}>
-                    <SettingsMenu
-                        isOpen={settingsOpen}
-                        onClose={() => setSettingsOpen(false)}
-                        onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
-                        onSetBasePath={handleSetBasePath}
-                        onAddFiles={handleAddFiles}
-                        currentBasePath={currentBasePath}
-                        isCollapsed={isCollapsed}
-                        onOpenFile={onOpenFile}
-                    />
+
 
                     {/* Ayarlar Butonu */}
                     <button
@@ -260,6 +313,23 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         <Settings
                             size={isCollapsed ? 24 : 20}
                             className={`${settingsOpen ? 'rotate-45' : 'group-hover:rotate-12'} transition-transform duration-300`}
+                        />
+                    </button>
+
+                    {/* Otomasyon (n8n) Butonu */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onOpenFile) {
+                                onOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n' });
+                            }
+                        }}
+                        className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57]`}
+                        title="Otomasyon (n8n)"
+                    >
+                        <Webhook
+                            size={isCollapsed ? 24 : 20}
+                            className="group-hover:scale-110 transition-transform duration-300"
                         />
                     </button>
 

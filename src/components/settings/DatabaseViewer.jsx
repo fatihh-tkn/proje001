@@ -90,13 +90,19 @@ const DatabaseViewer = ({ readOnly }) => {
     const fetchRecords = useCallback(async () => {
         setDbLoading(true);
         try {
-            // Backend hazır mı? 5 saniye timeout
+            // Önce Backend/ChromaDB ayakta mı kontrol ediliyor
             await fetchWithTimeout(`${BASE}/collections/${COLLECTION}`, {}, 5000);
             setBackendReady(true);
-            const stored = JSON.parse(localStorage.getItem('db_records') || '[]');
-            setRecords(stored);
-            setTotalVectors(stored.reduce((s, r) => s + (r.chunks || 0), 0));
-        } catch {
+
+            // Gerçek SQL listesini çek
+            const res = await fetch('/api/sql/documents');
+            if (!res.ok) throw new Error("SQL Belge listesi alınamadı");
+            const data = await res.json();
+
+            setRecords(data.records || []);
+            setTotalVectors(data.records?.reduce((s, r) => s + (r.chunks || 0), 0) || 0);
+        } catch (err) {
+            console.error("fetchRecords error:", err);
             setBackendReady(false);
             setRecords([]);
         } finally {
@@ -189,12 +195,64 @@ const DatabaseViewer = ({ readOnly }) => {
         }
     };
 
-    const handleDrop = (e) => {
+    const getArchiveFileBlob = async (id) => {
+        try {
+            const res = await fetch(`/api/archive/file/${id}`);
+            if (!res.ok) throw new Error('Arşiv dosyası alınamadı');
+            // Dosyanın adını header'dan (Content-Disposition) okumaya çalış, yoksa varsayılan
+            const contentDisposition = res.headers.get('Content-Disposition');
+            let filename = `arsiv_dosyasi_${id}.pdf`; // Fallback extension
+            if (contentDisposition && contentDisposition.includes('filename=')) {
+                const matches = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (matches && matches[1]) filename = matches[1];
+            }
+            const blob = await res.blob();
+            return new File([blob], filename, { type: blob.type });
+        } catch (err) {
+            console.error('Arşivden dosya okuma hatası:', err);
+            return null;
+        }
+    };
+
+    const handleDrop = async (e) => {
         e.preventDefault();
         setDragOver(false);
         setDragActive(false);
+
+        // 1. OS Üstünden Gelen Dosya Kontrolü
         const file = e.dataTransfer.files?.[0];
-        if (file && phase === 'idle') startAnalysis(file);
+        if (file && phase === 'idle') {
+            startAnalysis(file);
+            return;
+        }
+
+        // 2. Arşiv'den Sürüklenen Dosya Kontrolü
+        // (application/json veya itemId formatında)
+        const payloadStr = e.dataTransfer.getData('application/json');
+        let archiveIds = [];
+        if (payloadStr) {
+            try {
+                const payload = JSON.parse(payloadStr);
+                if (payload.type === 'archive_items' && payload.ids) {
+                    archiveIds = payload.ids;
+                }
+            } catch (err) { }
+        }
+        if (archiveIds.length === 0) {
+            const fallbackId = e.dataTransfer.getData('itemId');
+            if (fallbackId) archiveIds = [fallbackId];
+        }
+
+        if (archiveIds.length > 0 && phase === 'idle') {
+            // Şimdilik sadece ilk dosyayı analiz edelim
+            const firstId = archiveIds[0];
+            const archiveFile = await getArchiveFileBlob(firstId);
+            if (archiveFile) {
+                startAnalysis(archiveFile);
+            } else {
+                alert("Arşiv dosyası aktarılamadı.");
+            }
+        }
     };
 
     const handleFileInput = (e) => {
@@ -213,63 +271,83 @@ const DatabaseViewer = ({ readOnly }) => {
         const safeFileName = stagedFile.name.replace(/ /g, '_');
 
         try {
+            // ── ADIM 1: Arşivleme (fiziksel dosya + belgeler tablosu) ──────────────
             let belgeKimlik = null;
+            let archiveWarning = null;
+
             if (tempFilePath) {
-                try {
-                    const archiveRes = await fetch('/api/archive-document', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            temp_path: tempFilePath,
-                            final_name: safeFileName,
-                            chunk_count: validChunks.length,
-                            chroma_collection: COLLECTION
-                        })
-                    });
+                const archiveRes = await fetch('/api/archive-document', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        temp_path: tempFilePath,
+                        final_name: safeFileName,
+                        chunk_count: validChunks.length,
+                        chroma_collection: COLLECTION
+                    })
+                });
+
+                if (archiveRes.ok) {
                     const archiveData = await archiveRes.json();
-                    belgeKimlik = archiveData.belge_kimlik;
-                } catch (archiveErr) {
-                    console.error("Arşivleme hatası:", archiveErr);
+                    belgeKimlik = archiveData.belge_kimlik ?? null;
+                    if (!belgeKimlik) {
+                        // Sunucu 200 döndürdü ama belge_kimlik yoksa beklenmedik durum
+                        archiveWarning = 'Dosya arşivlendi ancak belge kimliği alınamadı. Depolama yolu boş kalabilir.';
+                        console.warn('[handleSave] archive-document 200 ama belge_kimlik yok:', archiveData);
+                    }
+                } else {
+                    // HTTP hata kodu → sessizce geçme, kullanıcıya uyar ama işlemi durdurma
+                    let detail = '';
+                    try { const errData = await archiveRes.json(); detail = errData.detail || ''; } catch (_) { }
+                    archiveWarning = `Fiziksel arşivleme başarısız (${archiveRes.status}${detail ? ': ' + detail : ''}). Vektör kaydı yine de yapılacak ancak depolama yolu boş kalacak.`;
+                    console.error('[handleSave] archive-document hata:', archiveRes.status, detail);
                 }
             }
 
-            // Vector+SQL İlişkilerinin kaydedilmesi için Bridge sistemini kullan
-            await fetch('/api/save-to-db', {
+            // ── ADIM 2: Vektör + SQL İlişkileri kaydet ───────────────────────────
+            const saveRes = await fetch('/api/save-to-db', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     file_name: safeFileName,
                     chunks: validChunks,
                     collection_name: COLLECTION,
-                    belge_kimlik: belgeKimlik
+                    belge_kimlik: belgeKimlik   // null ise bridge kendi Belge'yi bulur/oluşturur
                 })
             });
 
-            const stored = JSON.parse(localStorage.getItem('db_records') || '[]');
-            const idx = stored.findIndex(r => r.file === safeFileName);
-            const entry = {
-                id: `rec_${Date.now()}`,
-                file: safeFileName,
-                chunks: validChunks.length + (idx >= 0 ? stored[idx].chunks : 0),
-                date: new Date().toISOString(),
-                active: true,
-            };
-            if (idx >= 0) stored[idx] = entry; else stored.push(entry);
-            localStorage.setItem('db_records', JSON.stringify(stored));
+            if (!saveRes.ok) {
+                const errData = await saveRes.json().catch(() => ({}));
+                throw new Error(`Vektör kaydı başarısız: ${errData.detail || saveRes.status}`);
+            }
 
-            setPhase('idle'); setStagedFile(null); setChunks([]); setApprovedChunks(new Set()); setTempFilePath(null);
-            await fetchRecords();
+            // localStorage yazımı iptal edildi, gerçek veritabanı yansıması kullanılacak.
+
+            // ── Temizle & Yenile ─────────────────────────────────────────────────
+            setPhase('idle');
+            setStagedFile(null);
+            setChunks([]);
+            setApprovedChunks(new Set());
+            setTempFilePath(null);
+
+            // Arşiv uyarısı varsa kullanıcıya göster (kaydı engelleme)
+            if (archiveWarning) setSaveError(`⚠️ ${archiveWarning}`);
+
+            await fetchRecords(); // Listeyi SQL'den taze çeker
         } catch (err) {
             setSaveError(err.message || 'Kayıt sırasında hata oluştu.');
             setPhase('staged');
         }
     };
 
+
     const handleDeleteRecord = async (rec) => {
         // Confirm is now handled by inline popup
         setDeleteConfirm(null);
 
-        // Find all vectors for this file and delete them from chroma
+        // Şimdilik sadece Frontend'den Chroma Vector siliniyor.
+        // Geliştirilecek Mimari: /api/sql/documents/{id} DELETE endpoint'i tüm SQL 
+        // ve Chroma kayıtlarını silecek şekilde ayarlanmalı.
         const vectors = recordVectors[rec.id] || [];
         const vectorIds = vectors.map(v => v.id).filter(Boolean);
 
@@ -285,12 +363,8 @@ const DatabaseViewer = ({ readOnly }) => {
             }
         }
 
-        const stored = JSON.parse(localStorage.getItem('db_records') || '[]').filter(r => r.id !== rec.id);
-        localStorage.setItem('db_records', JSON.stringify(stored));
-        setRecords(stored);
-        setTotalVectors(stored.reduce((s, r) => s + (r.chunks || 0), 0));
-
         if (expandedRecord === rec.id) setExpandedRecord(null);
+        await fetchRecords(); // SQL'den gerçek güncel listeyi iste
     };
 
     const handleDeleteVector = async (recId, vectorId) => {
@@ -303,7 +377,7 @@ const DatabaseViewer = ({ readOnly }) => {
                 body: JSON.stringify({ collection: COLLECTION, ids: [vectorId] }),
             });
 
-            // update UI state
+            // update UI state temporarily for immediate visual feedback
             setRecordVectors(prev => {
                 const updated = { ...prev };
                 if (updated[recId]) {
@@ -312,15 +386,7 @@ const DatabaseViewer = ({ readOnly }) => {
                 return updated;
             });
 
-            // update localStorage count
-            const stored = JSON.parse(localStorage.getItem('db_records') || '[]');
-            const idx = stored.findIndex(r => r.id === recId);
-            if (idx >= 0) {
-                stored[idx].chunks = Math.max(0, stored[idx].chunks - 1);
-                localStorage.setItem('db_records', JSON.stringify(stored));
-                setRecords(stored);
-                setTotalVectors(stored.reduce((s, r) => s + (r.chunks || 0), 0));
-            }
+            await fetchRecords(); // Vector sayısı için DB'den gerçeğini çek
         } catch (err) {
             console.error("Vector item deletion error", err);
         }
@@ -450,7 +516,7 @@ const DatabaseViewer = ({ readOnly }) => {
                     </div>
                     <div>
                         <h2 className="text-[16px] font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-                            Bilgi Grafiği & Vektör Merkezi
+                            Dosya İşleme ve Analiz
                             <span className="flex h-2 w-2 relative ml-1">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -458,7 +524,7 @@ const DatabaseViewer = ({ readOnly }) => {
                         </h2>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[11px] font-medium text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-sm">{COLLECTION}</span>
-                            <span className="text-[11px] text-slate-400 font-medium">Aktif Nöral Depolama Birimi</span>
+                            <span className="text-[11px] text-slate-400 font-medium">Aktif Dosya İşleme Birimi</span>
                         </div>
                     </div>
                 </div>
@@ -467,7 +533,7 @@ const DatabaseViewer = ({ readOnly }) => {
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
                         <BarChart3 size={12} className="text-[#A01B1B]" />
                         <span className="text-[11px] font-bold text-slate-600">
-                            {totalVectors.toLocaleString('tr-TR')} Vektör
+                            {totalVectors.toLocaleString('tr-TR')} Parça
                         </span>
                     </div>
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
@@ -496,7 +562,7 @@ const DatabaseViewer = ({ readOnly }) => {
                         title="Orphan chunk'ları onar"
                     >
                         <ShieldCheck size={13} className="text-slate-500" />
-                        <span className="text-[11px] font-bold text-slate-500">Ağı Onar</span>
+                        <span className="text-[11px] font-bold text-slate-500">Onarım</span>
                     </button>
 
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg shadow-sm">

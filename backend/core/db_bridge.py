@@ -51,6 +51,8 @@ def add_log_to_db(log_entry: dict) -> None:
             mac=log_entry.get("mac"),
             request_preview=(log_entry.get("request") or "")[:2000] or None,
             response_preview=(log_entry.get("response") or "")[:2000] or None,
+            rag_kullanildi_mi=bool(log_entry.get("rag_used", False)),
+            rag_dosya_adi=log_entry.get("rag_file") or None,
         )
 
 
@@ -149,3 +151,37 @@ def delete_user_model(model_id: str) -> None:
 # -- init_db (no-op: main.py lifespan ile yapiliyor) --------------------------
 def init_db() -> None:
     pass
+
+# -- System Settings & Audit Logs (Issue 1 & 2) --------------------------------
+def get_system_settings() -> dict:
+    """SQL veritabanından sistem ayarlarını sözlük olarak okur."""
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    with get_session() as db:
+        rows = list(db.scalars(select(SistemAyari)).all())
+        return {r.anahtar: r.deger for r in rows}
+
+
+def add_audit_log(
+    islem_turu: str,
+    tablo_adi: Optional[str] = None,
+    kayit_kimlik: Optional[str] = None,
+    eski_deger: Optional[dict] = None,
+    yeni_deger: Optional[dict] = None,
+    kullanici_kimlik: Optional[str] = None,
+    ip_adresi: Optional[str] = None,
+) -> None:
+    """Kritik sistem eylemlerini denetim_izleri (Audit Logs) tablosuna kaydeder."""
+    from database.sql.models import DenetimIzi
+    with get_session() as db:
+        log = DenetimIzi(
+            kullanici_kimlik=kullanici_kimlik,
+            islem_turu=islem_turu,
+            tablo_adi=tablo_adi,
+            kayit_kimlik=kayit_kimlik,
+            eski_deger=eski_deger,
+            yeni_deger=yeni_deger,
+            ip_adresi=ip_adresi,
+        )
+        db.add(log)
+        db.commit()

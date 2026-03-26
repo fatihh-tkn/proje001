@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, FolderOpen, X, Check, Database, Activity, Archive, Users } from 'lucide-react';
+import { Palette, FolderOpen, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -60,55 +60,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                     {/* Menü Listesi */}
                     <div className="py-1">
 
-                        {/* TEMA */}
-                        <button
-                            onClick={() => setActiveSection(activeSection === 'theme' ? null : 'theme')}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer
-                ${activeSection === 'theme' ? 'bg-white/5 text-white' : 'text-white/60 hover:bg-white/[0.03] hover:text-white/80'}`}
-                        >
-                            <Palette size={14} className="text-slate-500 shrink-0" />
-                            <span>Tema</span>
-                        </button>
 
-                        <AnimatePresence>
-                            {activeSection === 'theme' && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="overflow-hidden bg-[#161616]"
-                                >
-                                    <div className="py-1">
-                                        {THEMES.map((theme) => (
-                                            <button
-                                                key={theme.id}
-                                                onClick={() => onThemeChange && onThemeChange(theme.id)}
-                                                className={`w-full flex items-center gap-3 px-6 py-1.5 text-[11px] transition-colors cursor-pointer
-                          ${currentTheme === theme.id
-                                                        ? 'text-white/90 bg-white/5'
-                                                        : 'text-white/40 hover:text-white/60 hover:bg-white/[0.02]'
-                                                    }`}
-                                            >
-                                                <div className="flex gap-1">
-                                                    {theme.colors.map((color, i) => (
-                                                        <div
-                                                            key={i}
-                                                            className="w-3 h-3 rounded-full border border-white/10"
-                                                            style={{ backgroundColor: color }}
-                                                        />
-                                                    ))}
-                                                </div>
-                                                <span className="flex-1 text-left">{theme.name}</span>
-                                                {currentTheme === theme.id && (
-                                                    <Check size={12} className="text-red-500 shrink-0" />
-                                                )}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
 
                         {/* DOSYA YOLU */}
                         <button
@@ -193,13 +145,12 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                         </AnimatePresence>
 
                         {/* VERİTABANI */}
-                        <div className="w-full h-px bg-white/[0.05] my-1" />
                         <button
                             onClick={() => {
                                 if (onOpenFile) {
                                     onOpenFile({
                                         id: 'database-settings',
-                                        title: 'Vektörleştirme',
+                                        title: 'Dosya İşleme',
                                         type: 'database',
                                     });
                                 }
@@ -207,15 +158,15 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             }}
                             className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                         >
-                            <Database size={14} className="text-slate-500 shrink-0" />
-                            <span>Vektörleştirme</span>
+                            <FileCog size={14} className="text-slate-500 shrink-0" />
+                            <span>Dosya İşleme</span>
                         </button>
                         <button
                             onClick={() => {
                                 if (onOpenFile) {
                                     onOpenFile({
                                         id: 'databases-viewer',
-                                        title: 'Veritabanları',
+                                        title: 'Veritabanı',
                                         type: 'databases-viewer',
                                     });
                                 }
@@ -223,17 +174,35 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             }}
                             className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                         >
-                            <Database size={14} className="text-blue-500 shrink-0" />
-                            <span>Veritabanları</span>
+                            <Database size={14} className="text-slate-500 shrink-0" />
+                            <span>Veritabanı</span>
                         </button>
 
-                        {/* YAPAY ZEKA */}
+                        {/* YAPAY ZEKA MERKEZİ */}
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'ai-orchestrator-settings',
+                                        title: 'Yapay Zeka Merkezi',
+                                        type: 'ai-orchestrator',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                        >
+                            <Bot size={14} className="text-slate-500 shrink-0" />
+                            <span>Yapay Zeka Merkezi</span>
+                        </button>
+
+                        {/* SİSTEM METRİKLERİ */}
                         <button
                             onClick={() => {
                                 if (onOpenFile) {
                                     onOpenFile({
                                         id: 'api-usage-settings',
-                                        title: 'Yapay Zeka',
+                                        title: 'Sistem Metrikleri',
                                         type: 'api-usage',
                                     });
                                 }
@@ -241,46 +210,13 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             }}
                             className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                         >
-                            <Activity size={14} className="text-slate-500 shrink-0" />
-                            <span>Yapay Zeka</span>
+                            <Cpu size={14} className="text-slate-500 shrink-0" />
+                            <span>Sistem Metrikleri</span>
                         </button>
 
-                        {/* KULLANICI / YETKİLENDİRME */}
-                        <div className="w-full h-px bg-white/[0.05] my-1" />
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'auth-settings',
-                                        title: 'Kullanıcı ve Rol Yönetimi',
-                                        type: 'auth',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-[#A01B1B]/80 hover:bg-white/[0.03] hover:text-[#A01B1B]`}
-                        >
-                            <Users size={14} className="text-[#A01B1B]/70 shrink-0" />
-                            <span>Kullanıcı Yönetimi</span>
-                        </button>
 
-                        {/* ARŞİV (SOHBET/BELGE) */}
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'archive-docs-settings',
-                                        title: 'Belge ve Sohbet Arşivi',
-                                        type: 'archive-docs',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-slate-400 hover:bg-white/[0.03] hover:text-white/80`}
-                        >
-                            <Archive size={14} className="text-slate-500 shrink-0" />
-                            <span>Arşiv</span>
-                        </button>
+
+
                     </div>
 
                     {/* Footer */}

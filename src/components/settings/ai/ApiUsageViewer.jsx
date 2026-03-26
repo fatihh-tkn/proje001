@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, RefreshCw, LayoutDashboard, List, Monitor, Key } from 'lucide-react';
+import { Activity, RefreshCw, LayoutDashboard, List, Monitor, Key, Users, Shield } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from './utils';
 import { TabButton } from './components/TabButton';
 import { DashboardTab } from './tabs/DashboardTab';
 import { LogsTab } from './tabs/LogsTab';
 import { ComputersTab } from './tabs/ComputersTab';
-import { ModelsTab } from './tabs/ModelsTab';
+import { UsersTab, RolesTab } from './tabs/AuthTabs';
 /* ════════════════════════════════════════════════════════════════════
    Ana Bileşen (Tabs wrapper)
 ═══════════════════════════════════════════════════════════════════ */
@@ -95,13 +95,22 @@ export default function ApiUsageViewer() {
                     {activeTab === 'sessions' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
                 </button>
                 <button
-                    onClick={() => setActiveTab('models')}
+                    onClick={() => setActiveTab('users')}
                     className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
-                        ${activeTab === 'models' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                        ${activeTab === 'users' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
                     `}
                 >
-                    <Key size={14} /> AI Modelleri
-                    {activeTab === 'models' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                    <Users size={14} /> Kullanıcılar
+                    {activeTab === 'users' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('roles')}
+                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
+                        ${activeTab === 'roles' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
+                    `}
+                >
+                    <Shield size={14} /> Rol ve Yetki
+                    {activeTab === 'roles' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
                 </button>
             </div>
 
@@ -110,7 +119,8 @@ export default function ApiUsageViewer() {
                 {activeTab === 'dashboard' && <DashboardTab data={data} />}
                 {activeTab === 'logs' && <LogsTab />}
                 {activeTab === 'sessions' && <ComputersTab />}
-                {activeTab === 'models' && <ModelsTab />}
+                {activeTab === 'users' && <UsersTab />}
+                {activeTab === 'roles' && <RolesTab />}
             </div>
         </div>
     );

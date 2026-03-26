@@ -37,16 +37,16 @@ def chunk_text(text: str, chunk_size: int = _CHUNK_SIZE, overlap: int = _CHUNK_O
     return chunks
 
 
-def _extract_slide_blocks(page) -> tuple[str, str]:
+def _extract_slide_blocks(page) -> tuple[str, str, str]:
     """
-    Bir slayt sayfasından başlık + gövde metnini çıkarır.
+    Bir slayt sayfasından başlık + gövde metnini ve birleşik sınır kutusunu (bbox) çıkarır.
     Blokları Y koordinatına göre sıralar → okuma düzenini korur.
     
-    Dönüş: (title_text, body_text)
+    Dönüş: (title_text, body_text, bounding_box_str)
     """
     blocks = page.get_text("blocks")  # (x0, y0, x1, y1, text, block_no, block_type)
     text_blocks = [
-        (b[1], b[4].strip())   # (y0, text)
+        (b[1], b[4].strip(), b[:4])   # (y0, text, (x0, y0, x1, y1))
         for b in blocks
         if len(b) >= 7 and b[6] == 0 and b[4].strip()
     ]
@@ -54,17 +54,24 @@ def _extract_slide_blocks(page) -> tuple[str, str]:
     text_blocks.sort(key=lambda x: x[0])
 
     if not text_blocks:
-        return "", ""
+        return "", "", "0,0,0,0"
 
     # İlk blok genellikle slayt başlığıdır
     title = text_blocks[0][1] if text_blocks else ""
     # Geri kalanlar gövde
-    body_parts = [t for _, t in text_blocks[1:]]
+    body_parts = [t for _, t, _ in text_blocks[1:]]
     body = "\n\n".join(p for p in body_parts if len(p) > 5)
 
-    return title, body
+    # Genel sınır kutusunu (bounding box) hesapla (Tüm metinleri kaplayan kutu)
+    min_x = min([bbox[0] for _, _, bbox in text_blocks])
+    min_y = min([bbox[1] for _, _, bbox in text_blocks])
+    max_x = max([bbox[2] for _, _, bbox in text_blocks])
+    max_y = max([bbox[3] for _, _, bbox in text_blocks])
+    bbox_str = f"{min_x:.1f},{min_y:.1f},{max_x:.1f},{max_y:.1f}"
 
-def ask_gemini_vision(image_path: str) -> str:
+    return title, body, bbox_str
+
+def ask_gemini_vision(image_path: str, context: str = "") -> str:
     """Gemini 1.5 Pro ile yüksek zekalı görsel okuma ve Dashboard entegrasyonu"""
     try:
         if not settings.GEMINI_API_KEY:
@@ -76,32 +83,35 @@ def ask_gemini_vision(image_path: str) -> str:
         
         start_time = time.time()
         
-        from PIL import Image
+        from PIL import Image, ImageEnhance, ImageFilter
         img = Image.open(image_path)
         
-        prompt = """Bu görsel bir SAP veya kurumsal yazılım eğitim slaydıdır.
+        # 5. Görsel İyileştirme (Pre-processing)
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.2)
+        img = img.filter(ImageFilter.SHARPEN)
+        
+        context_block = f"\nBAĞLAM (Önceki sayfa/slaytların özeti):\n{context}\nBu bağlamı anlam bütünlüğünü kurmak için kullan.\n" if context else ""
+        
+        prompt = f"""GÖREV:
+Aşağıdaki görseli detaylıca analiz et.{context_block}
 
-GÖREVIN:
-1. Ekranda görünen TÜM metin içeriğini çıkar:
-   - Form alanı etiketleri (örn: "Malzeme:", "Mal grubu:", "Birim:")
-   - Sekme isimleri (örn: "Temel veriler 1", "SD: Satış org.")
-   - Buton ve menü etiketleri
-   - Açıklama kutuları ve ok işaretli notlar
-   - Tablo başlıkları ve hücre değerleri
-   - Sayfa başlığı ve alt başlık
+1. TÜR BELİRLEME (Dinamik Analiz):
+Görselin ne olduğunu tespit et (Örn: "Fatura", "Eğitim Slaytı", "SAP Ekranı", "Teknik Şartname", "Sözleşme", "Form", "Tablo" vb.).
+Tipine göre en uygun veri formatında değerleri çıkar. (Fatura ise IBAN/Tutar/Tarih; SAP veya bir yazılım ekranı ise sekme/menü/form etiketleri; Sözleşme ise maddeler).
 
-2. Yapılandırılmış formatta çıkar:
-   SLAYT BAŞLIĞI: [başlık]
-   
-   EKRAN ALANLARI:
-   - [alan adı]: [açıklaması veya değeri]
-   
-   SEKMELER: [sekme listesi]
-   
-   AÇIKLAMA KUTULARI:
-   - [açıklama metni] → İşaret ettiği alan: [alan adı]
+2. KOORDİNAT (Bounding Box) ETİKETLEME:
+Çıkardığın her bir önemli metin bloğu, tablo satırı veya form alanı için, görsel üzerindeki yaklaşık 
+koordinatlarını [y_üst, x_sol, y_alt, x_sağ] formatında (0 ile 1000 arasında normalize edilmiş) belirt. Veremiyorsan "Belirsiz" yaz.
 
-Sadece görünür içeriği çıkar, yorum yapma."""
+YANIT FORMATI (Tam Olarak Bu Yapıya Uyun):
+[BELGE TÜRÜ]: <Tespit Edilen Tür>
+
+[ANALİZ VE KOORDİNATLAR]:
+- <Alan/Etiket Adı>: <Metin İçeriği> | Koordinat: [y1, x1, y2, x2]
+- <Alan/Etiket Adı>: <Metin İçeriği> | Koordinat: [y1, x1, y2, x2]
+
+Mümkün olan en detaylı, hiyerarşik (örn. Tablo>Satır veya Menü>Alt Menü) yapıyı kullan ve sadece gördüğünü yaz. Yorum yapma."""
         
         response = model.generate_content([prompt, img])
         text_out = response.text
@@ -184,8 +194,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             page_rect      = page.rect
             page_w, page_h = page_rect.width, page_rect.height
 
-            # Y-koordinatına göre sıralı metin blokları
-            title, body = _extract_slide_blocks(page)
+            # Y-koordinatına göre sıralı metin blokları ve bounding box
+            title, body, body_bbox = _extract_slide_blocks(page)
             slide_titles.append(title)
 
             page_data.append({
@@ -194,6 +204,7 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                 "page_h":     page_h,
                 "title":      title,
                 "body":       body,
+                "body_bbox":  body_bbox,
             })
 
         # ── KATMAN 1: Belge Özeti — tüm slayt başlıklarından ──────────────
@@ -223,17 +234,40 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             })
 
         # ── KATMAN 2: Slayt Chunk'ları ─────────────────────────────────────
+        # ── KATMAN 2: Slayt Chunk'ları ─────────────────────────────────────
+        vision_ai_results = {}
+        if use_vision:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            
+            def fetch_vision(idx, pd_item):
+                prev_context = ""
+                if idx > 0:
+                    prev_pd = page_data[idx - 1]
+                    prev_context = f"Başlık: {prev_pd['title']}"
+                    if prev_pd['body']:
+                        prev_context += f" | İçerik Özeti: {prev_pd['body'][:150]}"
+                return ask_gemini_vision(pd_item["image_path"], context=prev_context)
+                
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {executor.submit(fetch_vision, i, pd): i for i, pd in enumerate(page_data)}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        vision_ai_results[idx] = future.result()
+                    except Exception as e:
+                        vision_ai_results[idx] = f"[Hata: {str(e)}]"
+
         for page_num, pd in enumerate(page_data):
             image_path     = pd["image_path"]
             page_w         = pd["page_w"]
             page_h         = pd["page_h"]
-            full_page_bbox = f"0,0,{page_w},{page_h}"
+            full_page_bbox = pd["body_bbox"] if pd["body_bbox"] != "0,0,0,0" else f"0,0,{page_w},{page_h}"
             title          = pd["title"]
             body           = pd["body"]
 
             # Vision AI — SAP ekran görüntüsü gibi görselleri de okur
             if use_vision:
-                ai_text = ask_gemini_vision(image_path)
+                ai_text = vision_ai_results.get(page_num, "")
                 if ai_text and not ai_text.startswith("[Uyarı"):
                     chunks.append({
                         "id": str(uuid.uuid4()),

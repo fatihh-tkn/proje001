@@ -7,10 +7,10 @@ Mimari Katmanlar:
   1. Kimlik & Yetki         → Kullanici, Rol, KullaniciRol
   2. Sohbet & Hafıza        → SohbetOturumu, SohbetMesaji
   3. Belge & Arşiv          → Belge, VektorParcasi
-  4. Bilgi Grafiği           → BilgiIliskisi
-  5. Yapay Zeka İzleme      → ApiCagrisi, AIModeli, BilgisayarOturumu
-  6. Arşiv Klasörleme       → ArşivKlasoru (belgeye klasör bilgisi meta üzerinden taşınır)
-  7. Sistem & Audit         → SistemAyari, DenetimIzi
+  4. Bilgi Grafiği          → BilgiIliskisi (Optimized Indexes)
+  5. Yapay Zeka İzleme      → AIModeli, BilgisayarOturumu (Logs moved to logs.db)
+  6. Sistem & Güvenlik      → Kullanici, Rol, KullaniciRol, SistemAyarlari
+  7. Denetim & İzleme       → DenetimIzleri
 
 Tasarım Kuralları:
   - Tüm PK alanlar UUID string (36 karakter).
@@ -208,6 +208,10 @@ class SohbetMesaji(Base):
     rag_kaynaklar: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # UI yönlendirme aksiyonu (dosya aç, sayfaya git vb.)
     ui_aksiyonu: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Kullanıcı geri bildirimi: -1 (hatalı), 0 (nötr), 1 (faydalı)
+    geri_bildirim: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Kullanıcının yanıtı neden hatalı bulduğuna dair serbest metin notu
+    duzeltme_notu: Mapped[str | None] = mapped_column(Text, nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
 
     # İlişkiler
@@ -259,6 +263,11 @@ class Belge(Base):
     # Belge durumu
     durum: Mapped[str] = mapped_column(String(32), nullable=False, default="karantina")
     vektorlestirildi_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # İşlem pipeline izleme
+    isleme_suresi_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hata_kodu: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Belgede en son ne zaman arama yapıldığı (kullanılmayan belgeleri tespit için)
+    son_sorgulama_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Esnek metadata: {"klasor_kimlik": "...", "etiketler": ["muhasebe"], "yazar": "Ahmet"}
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
@@ -301,6 +310,12 @@ class VektorParcasi(Base):
     sayfa_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bounding box (görüntü tabanlı parçalar için)
     sinir_kutusu: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Hangi embedding modeliyle vektörleştirildiği (model geçişlerini takip için)
+    embedding_modeli: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Bu parçanın RAG sorgularında kaç kez getirildiği
+    tiklanma_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # En son hangi sorguda kullanıldığı
+    son_sorgulanma_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
 
     # İlişkiler
@@ -370,60 +385,17 @@ class BilgiIliskisi(Base):
         Index("ix_bilgi_iliskileri_kaynak", "kaynak_parca_kimlik"),
         Index("ix_bilgi_iliskileri_hedef", "hedef_parca_kimlik"),
         Index("ix_bilgi_iliskileri_turu", "iliski_turu"),
+        # BİLEŞİK İNDEKSLER: Graf gezintisini ve tür bazlı filtrelemeyi hızlandırır
+        Index("ix_bilgi_iliskileri_kaynak_turu", "kaynak_parca_kimlik", "iliski_turu"),
+        Index("ix_bilgi_iliskileri_hedef_turu", "hedef_parca_kimlik", "iliski_turu"),
     )
 
 
 # ═══════════════════════════════════════════════════════════════════
 # 5. YAPAY ZEKA İZLEME KATMANI
-#    api_cagrilari, ai_modelleri, bilgisayar_oturumlari
+#    AIModeli, BilgisayarOturumu
+#    (ApiCagrisi/Logs tablosu logs.db üzerine taşınmıştır)
 # ═══════════════════════════════════════════════════════════════════
-
-class ApiCagrisi(Base):
-    """
-    Her LLM API çağrısının tam kaydı.
-    Maliyet, token, gecikme ve hata bilgilerini içerir.
-    Raporlama ve maliyet analizi için temel tablo.
-    """
-    __tablename__ = "api_cagrilari"
-
-    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    oturum_kimlik: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("sohbet_oturumlari.kimlik", ondelete="SET NULL"), nullable=True
-    )
-    kullanici_kimlik: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("kullanicilar.kimlik", ondelete="SET NULL"), nullable=True
-    )
-    # Tedarikçi: openai | google | anthropic | ollama
-    tedarikci: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Model adı: gpt-4o | gemini-2.0-flash | claude-3-5-sonnet
-    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    # 'basarili' | 'hata'
-    durum: Mapped[str] = mapped_column(String(16), nullable=False)
-    hata_kodu: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    hata_mesaji: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Token bilgileri
-    istek_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    yanit_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    toplam_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    maliyet_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # Performans
-    sure_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Ağ bilgisi
-    ip_adresi: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    mac_adresi: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # Debug önizlemesi (büyük payload'lar kırpılır)
-    istek_onizleme: Mapped[str | None] = mapped_column(Text, nullable=True)
-    yanit_onizleme: Mapped[str | None] = mapped_column(Text, nullable=True)
-    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
-
-    __table_args__ = (
-        Index("ix_api_cagrilari_oturum_kimlik", "oturum_kimlik"),
-        Index("ix_api_cagrilari_kullanici_kimlik", "kullanici_kimlik"),
-        Index("ix_api_cagrilari_olusturulma_tarihi", "olusturulma_tarihi"),
-        Index("ix_api_cagrilari_model", "model"),
-        Index("ix_api_cagrilari_tedarikci", "tedarikci"),
-        Index("ix_api_cagrilari_durum", "durum"),
-    )
 
 
 class AIModeli(Base):
@@ -556,5 +528,4 @@ ChatMessage   = SohbetMesaji
 Document   = Belge
 Node       = VektorParcasi
 Relation   = BilgiIliskisi
-ApiLog     = ApiCagrisi
 UserModel  = AIModeli

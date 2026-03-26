@@ -146,19 +146,58 @@ def yeniden_adlandir(istek: YenidenAdlandirRequest):
 
 @router.delete("/delete")
 def toplu_sil(istek: TopluSilRequest):
-    """Birden fazla belge veya klasörü siler. Diskten de kaldırır."""
+    """Birden fazla belge veya klasörü siler. Diskten, VektörDB'den ve GraphDB'den aynı anda temizler."""
+    from database.sql.models import VektorParcasi
+    from database.vector.chroma_db import vector_db
+    from database.graph.networkx_db import graph_db
+    from sqlalchemy import select
+
     silinen = 0
     with get_session() as db:
         for kid in istek.ids:
             belge = db.get(Belge, kid)
             if not belge:
                 continue
+
+            # VektörDB (ChromaDB) ve GraphDB Temizliği
+            if belge.vektorlestirildi_mi and belge.vektordb_koleksiyon:
+                # İlgili parçaları SQL üzerinden bul (Primary Key'ler graf, ChromaDB_ID'ler vektör için)
+                parcalar = db.scalars(
+                    select(VektorParcasi).where(VektorParcasi.belge_kimlik == belge.kimlik)
+                ).all()
+                if parcalar:
+                    chroma_ids = [p.chromadb_kimlik for p in parcalar]
+                    graf_ids = [str(p.kimlik) for p in parcalar]
+                    
+                    try:
+                        vector_db.delete_documents(belge.vektordb_koleksiyon, chroma_ids)
+                    except Exception as e:
+                        print(f"[ARŞİV SİLME] ChromaDB hatası: {e}")
+                        
+                    try:
+                        graph_db.remove_nodes(graf_ids)
+                    except Exception as e:
+                        print(f"[ARŞİV SİLME] GraphDB hatası: {e}")
+
             # Diskten kaldır (klasörler için yol yoktur)
             if belge.depolama_yolu and os.path.exists(belge.depolama_yolu):
                 try:
                     os.remove(belge.depolama_yolu)
                 except Exception:
                     pass
+
+            # Denetim İzi (Audit Log)
+            from core.db_bridge import add_audit_log
+            try:
+                add_audit_log(
+                    islem_turu="silme",
+                    tablo_adi="belgeler",
+                    kayit_kimlik=belge.kimlik,
+                    eski_deger={"dosya_adi": belge.dosya_adi, "dosya_turu": belge.dosya_turu}
+                )
+            except Exception as e:
+                print(f"[AUDIT LOG HATA] {e}")
+
             db.delete(belge)
             silinen += 1
         db.commit()

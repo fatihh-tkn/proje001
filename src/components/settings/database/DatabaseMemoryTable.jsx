@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     Database, FileText, Search, Trash2, AlertTriangle, Layers,
-    ChevronDown, ChevronRight, X, Network, Share2, Box
+    ChevronDown, ChevronRight, X, Network, Share2, Box, CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,7 +30,7 @@ const DatabaseMemoryTable = ({
     recordVectors, expandedPages, togglePageExpansion,
     deleteConfirm, setDeleteConfirm,
     handleDeleteRecord, handleDeleteVector,
-    fetchRecords, recordGraphStats = {}
+    fetchRecords, recordGraphStats = {}, handleApproveDocument = () => { }
 }) => {
     return (
         <div className="flex flex-col flex-1 min-h-0">
@@ -40,7 +40,7 @@ const DatabaseMemoryTable = ({
                 <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-md">
                     <Database size={13} className="text-slate-500" />
                 </div>
-                <span className="text-[11px] font-bold text-slate-600 tracking-widest uppercase">Aktif Bilgi Ağı</span>
+                <span className="text-[11px] font-bold text-slate-600 tracking-widest uppercase">Dosya Listesi</span>
 
                 <div className="ml-6 relative flex-1 max-w-xs">
                     <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -67,7 +67,7 @@ const DatabaseMemoryTable = ({
 
             {/* ══ KOLON BAŞLIKLARI ══ */}
             <div className="grid grid-cols-[3fr_1.5fr_1fr_1.5fr_60px] items-center px-6 py-2 border-b border-slate-200 bg-slate-50 shrink-0">
-                {['Kaynak Düğüm', 'Bağlantı', 'Parça', 'Tarih', ''].map((h, i) => (
+                {['Dosya', 'Bağlantı', 'Parça', 'Tarih', ''].map((h, i) => (
                     <span key={i} className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{h}</span>
                 ))}
             </div>
@@ -80,22 +80,28 @@ const DatabaseMemoryTable = ({
                 {!dbLoading && filteredRecords.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
                         <Box size={32} strokeWidth={1} className="text-slate-200" />
-                        <p className="text-[13px] font-semibold text-slate-500">{search ? `"${search}" bulunamadı` : 'Ağda henüz dosya yok'}</p>
+                        <p className="text-[13px] font-semibold text-slate-500">{search ? `"${search}" bulunamadı` : 'Henüz işlenen dosya yok'}</p>
                     </div>
                 )}
 
                 <AnimatePresence>
                     {!dbLoading && filteredRecords.map((rec) => {
-                        const style = getFileStyle(rec.file);
-                        const isExpanded = expandedRecord === rec.id;
-                        const gs = recordGraphStats[rec.id];
+                        // SQL'den gelen format ile eşleştirme:
+                        const recordId = rec.id;
+                        const recordFile = rec.file || "İsimsiz";
+                        const recordChunks = rec.chunks || 0;
+                        const recordDate = rec.date || new Date().toISOString();
+
+                        const style = getFileStyle(recordFile);
+                        const isExpanded = expandedRecord === recordId;
+                        const gs = recordGraphStats[recordId];
                         const totalLinks = (gs?.total_internal_links ?? 0) + (gs?.total_external_links ?? 0);
                         const connFiles = gs?.connected_files || [];
-                        const vectors = recordVectors[rec.id] || [];
+                        const vectors = recordVectors[recordId] || [];
 
                         return (
                             <motion.div
-                                key={rec.id}
+                                key={recordId}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -103,7 +109,7 @@ const DatabaseMemoryTable = ({
                             >
                                 {/* ── Ana Satır ── */}
                                 <div
-                                    onClick={() => toggleRecordExpansion(rec)}
+                                    onClick={() => toggleRecordExpansion({ id: recordId, file: recordFile })}
                                     className="grid grid-cols-[3fr_1.5fr_1fr_1.5fr_60px] items-center px-6 py-3 cursor-pointer"
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 pr-4">
@@ -111,37 +117,48 @@ const DatabaseMemoryTable = ({
                                             <FileText size={13} className={style.color} />
                                         </div>
                                         <div className="flex flex-col min-w-0">
-                                            <span className="text-[12px] text-slate-800 truncate font-semibold">{rec.file}</span>
-                                            <span className="text-[10px] text-slate-400 font-mono">…{rec.id.substring(rec.id.length - 8)}</span>
+                                            <span className="text-[12px] text-slate-800 truncate font-semibold">{recordFile}</span>
+                                            <span className="text-[10px] text-slate-400 font-mono">…{recordId.substring(recordId.length - 8)}</span>
                                         </div>
                                     </div>
 
                                     <div className="flex items-center gap-1.5">
                                         <Network size={11} className="text-slate-400 shrink-0" />
                                         <span className="text-[12px] font-semibold text-slate-600">
-                                            {gs ? totalLinks : (rec.chunks > 1 ? rec.chunks - 1 : 0)}
+                                            {gs ? totalLinks : (recordChunks > 1 ? recordChunks - 1 : 0)}
                                         </span>
                                         <span className="text-[10px] text-slate-400">link</span>
                                     </div>
 
                                     <div>
-                                        <span className="text-[12px] font-bold text-[#A01B1B]">{rec.chunks}</span>
+                                        <span className="text-[12px] font-bold text-[#A01B1B]">{recordChunks}</span>
                                     </div>
 
                                     <div className="flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                        <span className="text-[11px] text-slate-400">{fmtDate(rec.date)}</span>
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${rec.status === 'karantina' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+                                        <span className="text-[11px] text-slate-400">{fmtDate(recordDate)}</span>
                                     </div>
 
                                     <div className="flex items-center justify-end gap-1 pr-1">
                                         <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+
+                                        {rec.status === 'karantina' && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleApproveDocument(recordId); }}
+                                                className="p-1 rounded hover:bg-emerald-50 hover:text-emerald-500 text-amber-500 transition-all flex items-center gap-1"
+                                                title="Onayla ve Aktifleştir"
+                                            >
+                                                <CheckCircle2 size={13} />
+                                            </button>
+                                        )}
+
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'record', id: rec.id }); }}
+                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'record', id: recordId }); }}
                                             className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-slate-300 transition-all"
                                         >
                                             <Trash2 size={12} />
                                         </button>
-                                        {deleteConfirm?.type === 'record' && deleteConfirm?.id === rec.id && (
+                                        {deleteConfirm?.type === 'record' && deleteConfirm?.id === recordId && (
                                             <div
                                                 className="absolute right-16 z-50 flex items-center gap-2 bg-white border border-red-200 shadow-lg rounded-lg p-2.5 min-w-max"
                                                 onClick={e => e.stopPropagation()}
@@ -168,7 +185,7 @@ const DatabaseMemoryTable = ({
                                             {/* ── Özet şerit ── */}
                                             <div className="flex items-center gap-0 border-b border-slate-100">
                                                 <div className="flex-1 flex items-center gap-2 px-6 py-3 border-r border-slate-100">
-                                                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Vektör</span>
+                                                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Parça</span>
                                                     <span className="text-[14px] font-extrabold text-[#A01B1B] ml-auto">{rec.chunks}</span>
                                                 </div>
                                                 <div className="flex-1 flex items-center gap-2 px-6 py-3 border-r border-slate-100">
@@ -265,7 +282,7 @@ const DatabaseMemoryTable = ({
                                                                                     {/* İçerik */}
                                                                                     <div className="flex-1 min-w-0">
                                                                                         <div className="flex items-center gap-2 mb-1">
-                                                                                            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Nodül</span>
+                                                                                            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Parça</span>
                                                                                             <span className="font-mono text-[9px] text-slate-300 bg-slate-100 px-1 py-0.5 rounded">#{vector.id.substring(vector.id.length - 6)}</span>
                                                                                         </div>
                                                                                         <p className="text-[12px] text-slate-700 leading-relaxed line-clamp-2">{vector.text}</p>

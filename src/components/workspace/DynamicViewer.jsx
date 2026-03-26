@@ -8,9 +8,11 @@ const ExcelViewer = lazy(() => import('../viewers/ExcelViewer'));
 const DatabasesViewer = lazy(() => import('../settings/databases/DatabasesViewer'));
 const DatabaseViewer = lazy(() => import('../settings/DatabaseViewer'));
 const ApiUsageViewer = lazy(() => import('../settings/ai/ApiUsageViewer'));
-const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
+
 const ArchiveDocsViewer = lazy(() => import('../settings/archive/ArchiveDocsViewer'));
 const ImageViewer = lazy(() => import('../viewers/ImageViewer'));
+const N8nViewer = lazy(() => import('../settings/n8n/N8nViewer'));
+const AiOrchestratorViewer = lazy(() => import('../settings/ai/AiOrchestratorViewer'));
 
 export const DynamicViewer = ({ tab }) => {
     return (
@@ -27,11 +29,12 @@ export const DynamicViewer = ({ tab }) => {
             {tab.type === 'databases-viewer' && <DatabasesViewer />}
             {tab.type === 'database' && <DatabaseViewer />}
             {tab.type === 'api-usage' && <ApiUsageViewer />}
-            {tab.type === 'auth' && <AuthViewer />}
             {tab.type === 'archive-docs' && <ArchiveDocsViewer />}
             {tab.type === 'image-viewer' && <ImageViewer url={tab.url} title={tab.title} bbox={tab.meta?.bbox} />}
+            {tab.type === 'n8n' && <N8nViewer />}
+            {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer />}
 
-            {tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

@@ -442,21 +442,102 @@ export default function ArchiveDocsViewer() {
         fetchArchive();
     };
 
+    const handleBatchMove = async (docIds, targetFolderId) => {
+        setLoading(true);
+        for (const id of docIds) {
+            await fetch('/api/archive/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ belge_kimlik: id, hedef_klasor_kimlik: targetFolderId })
+            });
+        }
+        fetchArchive();
+        setSelectedIds(new Set());
+    };
+
     // Drag-and-drop handlers
     const handleDragStart = (e, item) => {
-        e.dataTransfer.setData('itemId', item.id);
+        let dragIds = [item.id];
+        // Seçim modundaysak ve sürüklenen öğe seçili gruptaysa, tüm grubu sürükle
+        if (selectedIds.has(item.id) && selectedIds.size > 1) {
+            dragIds = Array.from(selectedIds);
+        }
+
+        e.dataTransfer.setData('application/json', JSON.stringify({
+            type: 'archive_items',
+            ids: dragIds
+        }));
+        e.dataTransfer.setData('itemId', item.id); // Geriye dönük uyumluluk (Fallback)
+
+        if (dragIds.length > 1) {
+            // Sürüklenen diğer öğelerin "toplanma (stack)" hissi veren Animasyonlu Ghost (Hayalet) resmi
+            const ghost = document.createElement('div');
+            ghost.style.position = 'absolute';
+            ghost.style.top = '-1000px';
+            ghost.style.left = '-1000px';
+            ghost.style.display = 'flex';
+            ghost.style.alignItems = 'center';
+            ghost.style.justifyContent = 'center';
+            ghost.style.pointerEvents = 'none';
+
+            let stackHtml = `<div style="position:relative; width:120px; height:120px;">`;
+            const displayCount = Math.min(dragIds.length, 4);
+            for (let i = 0; i < displayCount; i++) {
+                const rotation = i * 6 - 5;
+                const offset = i * 4;
+                const zIndex = 10 - i;
+                stackHtml += `
+                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
+                        ${i === 0 ? `<div style="font-size:10px; font-weight:bold; color:#334155; text-align:center; padding:0 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;">${item.filename}</div>` : `<div style="width:30px; height:3px; background:#e2e8f0; border-radius:2px; margin-bottom:4px;"></div><div style="width:20px; height:3px; background:#e2e8f0; border-radius:2px;"></div>`}
+                    </div>
+                `;
+            }
+            stackHtml += `
+                <div style="position:absolute; bottom:0px; right:0px; background:#A01B1B; color:white; font-size:11px; font-weight:bold; border-radius:999px; padding:3px 10px; z-index:20; box-shadow:0 2px 5px rgba(160,27,27,0.4); border:2px solid white;">
+                    ${dragIds.length} Dosya
+                </div>
+            </div>`;
+            ghost.innerHTML = stackHtml;
+
+            document.body.appendChild(ghost);
+            e.dataTransfer.setDragImage(ghost, 60, 60);
+
+            setTimeout(() => {
+                if (document.body.contains(ghost)) document.body.removeChild(ghost);
+            }, 0);
+        }
     };
+
     const handleDragOver = (e, folderId) => {
         e.preventDefault();
         setDragOverFolder(folderId);
     };
+
     const handleDrop = async (e, targetFolderId) => {
         e.preventDefault();
+        setDragOverFolder(null);
+
+        const payloadStr = e.dataTransfer.getData('application/json');
+        if (payloadStr) {
+            try {
+                const payload = JSON.parse(payloadStr);
+                if (payload.type === 'archive_items' && payload.ids) {
+                    const idsToMove = payload.ids.filter(id => id !== targetFolderId);
+                    if (idsToMove.length > 0) {
+                        await handleBatchMove(idsToMove, targetFolderId);
+                    }
+                    return;
+                }
+            } catch (err) {
+                console.error("Payload hatası", err);
+            }
+        }
+
+        // Tekli dosya yedeği (Fallback)
         const draggedId = e.dataTransfer.getData('itemId');
         if (draggedId && draggedId !== targetFolderId) {
             await handleMove(draggedId, targetFolderId);
         }
-        setDragOverFolder(null);
     };
 
     const updateDocInList = (id, patch) => {
@@ -568,6 +649,17 @@ export default function ArchiveDocsViewer() {
                     {selectedIds.size > 0 && (
                         <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
                             <span className="font-semibold text-slate-700">{selectedIds.size} seçildi</span>
+                            <button onClick={() => {
+                                const allIds = currentItems.map(item => item.id);
+                                if (selectedIds.size === allIds.length && allIds.length > 0) {
+                                    setSelectedIds(new Set());
+                                } else {
+                                    setSelectedIds(new Set(allIds));
+                                }
+                            }}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#A01B1B]/10 text-[#A01B1B] hover:bg-[#A01B1B]/20 font-medium transition-colors">
+                                <CheckSquare size={11} /> Tümünü Seç
+                            </button>
                             <button onClick={() => handleBatchDelete([...selectedIds])}
                                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-600 hover:bg-red-100 font-medium transition-colors">
                                 <Trash2 size={11} /> Sil
@@ -638,7 +730,14 @@ export default function ArchiveDocsViewer() {
                                                     onDragOver={(e) => handleDragOver(e, folder.id)}
                                                     onDragLeave={() => setDragOverFolder(null)}
                                                     onDrop={(e) => handleDrop(e, folder.id)}
-                                                    onDoubleClick={() => { setCurrentFolderId(folder.id); setSearchQuery(''); }}
+                                                    onDoubleClick={() => {
+                                                        if (selectedIds.size === 0) {
+                                                            setCurrentFolderId(folder.id); setSearchQuery('');
+                                                        }
+                                                    }}
+                                                    onClick={(e) => {
+                                                        if (selectedIds.size > 0) toggleSelect(folder.id, e);
+                                                    }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: folder }); }}
                                                     className={`group relative flex flex-col p-3.5 bg-white border rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all select-none
                                                         ${isSelected ? 'border-[#A01B1B] ring-1 ring-[#A01B1B]/20' : isDragOver ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-400/30' : 'border-slate-200 hover:border-slate-300'}`}
@@ -672,7 +771,10 @@ export default function ArchiveDocsViewer() {
                                                     draggable
                                                     onDragStart={(e) => handleDragStart(e, doc)}
                                                     onDragOver={(e) => e.preventDefault()}
-                                                    onClick={() => setSelectedDoc(doc)}
+                                                    onClick={(e) => {
+                                                        if (selectedIds.size > 0) toggleSelect(doc.id, e);
+                                                        else setSelectedDoc(doc);
+                                                    }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: doc }); }}
                                                     className={`group relative flex flex-col p-3.5 bg-white border rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all select-none
                                                         ${selectedDoc?.id === doc.id ? 'border-[#A01B1B] ring-1 ring-[#A01B1B]/20'

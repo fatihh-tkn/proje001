@@ -20,37 +20,63 @@ TABLO_ACIKLAMALARI = {
     "belgeler":             "Belgeler (Arşiv)",
     "vektor_parcalari":     "Vektör Parçaları (Chunk'lar)",
     "bilgi_iliskileri":     "Bilgi Grafiği İlişkileri",
-    "api_cagrilari":        "API Çağrı Logları",
+    "api_cagrilari":        "(ESKİ) API Kayıtları (Kullanımdan Kaldırılacak)",
+    "api_loglari":          "(YENİ DOSYA) API Logları (logs.db WAL Modu)",
     "ai_modelleri":         "AI Model Tanımları",
     "bilgisayar_oturumlari": "Bağlı Bilgisayarlar",
     "sistem_ayarlari":      "Sistem Ayarları",
     "denetim_izleri":       "Denetim İzleri (Audit Log)",
 }
 
-@router.get("/tables", summary="Tüm SQL tablolarını listele")
+@router.get("/tables", summary="Tüm SQL tablolarını listele (App.db + Logs.db birleşik)")
 def get_tables():
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-    tables = list(metadata.tables.keys())
-    # Her tabloya açıklama ekle
-    enriched = [{"name": t, "aciklama": TABLO_ACIKLAMALARI.get(t, t)} for t in tables]
-    return {"tables": tables, "tablo_bilgileri": enriched}
+    from database.sql.session import engine
+    from database.logs.session import logs_engine
+
+    # app.db
+    metadata_app = MetaData()
+    metadata_app.reflect(bind=engine)
+    tables_app = list(metadata_app.tables.keys())
+
+    # logs.db
+    metadata_logs = MetaData()
+    metadata_logs.reflect(bind=logs_engine)
+    tables_logs = list(metadata_logs.tables.keys())
+
+    all_tables = sorted(tables_app + tables_logs)
+    enriched = [{"name": t, "aciklama": TABLO_ACIKLAMALARI.get(t, t)} for t in all_tables]
+    return {"tables": all_tables, "tablo_bilgileri": enriched}
 
 @router.get("/tables/{table_name}", summary="Belirtilen SQL tablosunun verilerini getir")
 def get_table_data(table_name: str, limit: int = Query(100, le=500), offset: int = 0):
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-    if table_name not in metadata.tables:
+    from database.sql.session import engine
+    from database.logs.session import logs_engine
+
+    metadata_app = MetaData()
+    metadata_app.reflect(bind=engine)
+
+    metadata_logs = MetaData()
+    metadata_logs.reflect(bind=logs_engine)
+
+    db_engine = None
+    table_obj = None
+
+    if table_name in metadata_app.tables:
+        db_engine = engine
+        table_obj = metadata_app.tables[table_name]
+    elif table_name in metadata_logs.tables:
+        db_engine = logs_engine
+        table_obj = metadata_logs.tables[table_name]
+    else:
         raise HTTPException(status_code=404, detail="Tablo bulunamadı")
         
-    table = metadata.tables[table_name]
-    with engine.connect() as conn:
-        stmt = select(table).limit(limit).offset(offset)
+    with db_engine.connect() as conn:
+        stmt = select(table_obj).limit(limit).offset(offset)
         result = conn.execute(stmt)
         columns = [col for col in result.keys()]
         rows = [dict(zip(columns, row)) for row in result.fetchall()]
         
-        count_stmt = select(func.count()).select_from(table)
+        count_stmt = select(func.count()).select_from(table_obj)
         total = conn.execute(count_stmt).scalar()
         
     return {
@@ -304,3 +330,54 @@ def repair_integrity():
         "repaired_chunks": repaired,
         "created_belgeler": created_belgeler,
     }
+
+
+@router.post("/documents/{doc_id}/approve", summary="Karantinadaki belgeyi onayla")
+def approve_document(doc_id: str):
+    from database.sql.models import Belge
+    with get_session() as db:
+        b = db.scalar(select(Belge).where(Belge.kimlik == doc_id))
+        if not b:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı")
+        b.durum = "onaylandi"
+        db.commit()
+    return {"status": "success", "message": "Belge onaylandı"}
+
+@router.get("/documents", summary="Belge listesini SQL'den getir (Dosya İşleme UI için)")
+def get_documents():
+    """
+    belgeler tablosundan gerçek zamanlı dosya listesi döner.
+    Her kayıt için ilişkili vektor_parcalari sayısını da hesaplar.
+    Frontend'deki localStorage bağımlılığının yerine geçer.
+    """
+    from database.sql.models import Belge
+    from sqlalchemy import desc
+
+    with get_session() as db:
+        belgeler = db.scalars(
+            select(Belge)
+            .where(Belge.dosya_turu != "folder")   # klasör kayıtlarını dışla
+            .order_by(desc(Belge.olusturulma_tarihi))
+        ).all()
+
+        results = []
+        for b in belgeler:
+            # Gerçek parça sayısını VektorParcasi tablosundan say
+            gercek_parca = db.scalar(
+                select(func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik == b.kimlik)
+            ) or 0
+
+            results.append({
+                "id":           b.kimlik,
+                "file":         b.dosya_adi,
+                "file_type":    b.dosya_turu,
+                "chunks":       gercek_parca,
+                "date":         b.olusturulma_tarihi,
+                "active":       b.vektorlestirildi_mi,
+                "status":       b.durum,
+                "storage_path": b.depolama_yolu,
+                "collection":   b.vektordb_koleksiyon,
+            })
+
+    return {"records": results, "total": len(results)}

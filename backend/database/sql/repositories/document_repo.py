@@ -150,18 +150,41 @@ class DocumentRepository:
         if not chroma_ids:
             return []
 
-        # 1. Aşama: ChromaDB ID'sine karşılık gelen Node'ları ve Document'ları getir (JOIN simülasyonu)
+        from datetime import datetime, timezone
+
+        # 1. Aşama: ChromaDB ID'sine karşılık gelen Node'ları ve Document'ları getir
         stmt = select(VektorParcasi).where(VektorParcasi.chromadb_kimlik.in_(chroma_ids))
         nodes = list(self.db.scalars(stmt).all())
 
+        # GHOST VECTOR CLEANUP (İlişkisi Kopuk Veri Silinmesi)
+        found_ids = {n.chromadb_kimlik for n in nodes}
+        missing_ids = [cid for cid in chroma_ids if cid not in found_ids]
+        if missing_ids:
+            try:
+                # Ghost vektorleri ChromaDB'den kalıcı olarak temizleyerek veri hatasını canlı onarıyoruz.
+                from database.vector.chroma_db import vector_db
+                vector_db.delete_documents("yilgenci_collection", missing_ids)
+                print(f"[RAG HEALER] {len(missing_ids)} adet hayalet vektör ChromaDB'den silindi: {missing_ids[:2]}...")
+            except Exception as e:
+                print(f"[RAG HEALER] Hayalet vektör silme işlemi başarısız: {e}")
+
+        simdi = datetime.now(timezone.utc).isoformat()
         results = []
         for node in nodes:
+            # Hit sayacını ve son sorgulanma tarihini güncelle
+            node.tiklanma_sayisi = (node.tiklanma_sayisi or 0) + 1
+            node.son_sorgulanma_tarihi = simdi
+
             doc = self.db.get(Belge, node.belge_kimlik)
+
+            # Belgenin son sorgulama tarihini de güncelle
+            if doc:
+                doc.son_sorgulama_tarihi = simdi
 
             # 2. Aşama: Relations tablosundan komşu düğümleri (nodes) bul
             edge_stmt = select(BilgiIliskisi).where(BilgiIliskisi.kaynak_parca_kimlik == node.kimlik).limit(5)
             edges = list(self.db.scalars(edge_stmt).all())
-            
+
             # İlişkili node'ları bulup onların belgesini ve içeriğini de ekliyoruz
             related_nodes = []
             for edge in edges:
@@ -190,6 +213,9 @@ class DocumentRepository:
                 },
                 "related_nodes": related_nodes,
             })
+
+        # Tüm hit sayaçlarını tek commit ile yaz
+        self.db.commit()
         return results
 
     # ── Bilgi Grafiği işlemleri ───────────────────────────────────

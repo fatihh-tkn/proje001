@@ -2,7 +2,9 @@
 database/repositories/log_repo.py
 ────────────────────────────────────
 ApiLog için veri erişim katmanı.
-Mevcut monitor.db / monitor_db.py'nin ORM karşılığı.
+
+Loglar artık ana app.db'ye DEĞİL, ayrı logs.db'ye yazılır.
+Bu sayede app.db'nin şişmesi önlenir.
 """
 
 from __future__ import annotations
@@ -12,16 +14,26 @@ from typing import Optional
 from sqlalchemy import func, select, desc
 from sqlalchemy.orm import Session
 
-from database.sql.models import ApiCagrisi
+from database.logs.models import ApiLog
+from database.logs.session import get_logs_session
 
-# Backward compatibility
-ApiLog = ApiCagrisi
+# Metin kırpma limiti (karakter) — büyük payload'lar kesilir
+_PREVIEW_LIMIT = 500
+
+
+def _trim(text: Optional[str]) -> Optional[str]:
+    """Önizleme metnini _PREVIEW_LIMIT karakterle kırpar."""
+    if not text:
+        return None
+    return text[:_PREVIEW_LIMIT] + "…" if len(text) > _PREVIEW_LIMIT else text
 
 
 class LogRepository:
 
     def __init__(self, db: Session):
-        self.db = db
+        # db parametresi geriye dönük uyumluluk için alınır ama kullanılmaz.
+        # Tüm yazma işlemleri kendi logs.db session'ı üzerinden gider.
+        self._main_db = db
 
     def add(
         self,
@@ -39,8 +51,10 @@ class LogRepository:
         mac: Optional[str] = None,
         request_preview: Optional[str] = None,
         response_preview: Optional[str] = None,
-    ) -> ApiCagrisi:
-        log = ApiCagrisi(
+        rag_kullanildi_mi: bool = False,
+        rag_dosya_adi: Optional[str] = None,
+    ) -> ApiLog:
+        log = ApiLog(
             oturum_kimlik=session_id,
             tedarikci=provider,
             model=model,
@@ -53,12 +67,15 @@ class LogRepository:
             sure_ms=duration_ms,
             ip_adresi=ip,
             mac_adresi=mac,
-            istek_onizleme=request_preview,
-            yanit_onizleme=response_preview,
+            istek_onizleme=_trim(request_preview),   # Max 500 karakter
+            yanit_onizleme=_trim(response_preview),  # Max 500 karakter
+            rag_kullanildi_mi=rag_kullanildi_mi,
+            rag_dosya_adi=rag_dosya_adi,
         )
-        self.db.add(log)
-        self.db.commit()
-        self.db.refresh(log)
+        with get_logs_session() as db:
+            db.add(log)
+            db.commit()
+            db.refresh(log)
         return log
 
     def list_logs(
@@ -66,26 +83,27 @@ class LogRepository:
         session_id: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 100,
-    ) -> list[ApiCagrisi]:
-        stmt = select(ApiCagrisi).order_by(desc(ApiCagrisi.olusturulma_tarihi)).limit(limit)
-        if session_id:
-            stmt = stmt.where(ApiCagrisi.oturum_kimlik == session_id)
-        if status:
-            stmt = stmt.where(ApiCagrisi.durum == status)
-        return list(self.db.scalars(stmt).all())
+    ) -> list[ApiLog]:
+        with get_logs_session() as db:
+            stmt = select(ApiLog).order_by(desc(ApiLog.olusturulma_tarihi)).limit(limit)
+            if session_id:
+                stmt = stmt.where(ApiLog.oturum_kimlik == session_id)
+            if status:
+                stmt = stmt.where(ApiLog.durum == status)
+            return list(db.scalars(stmt).all())
 
     def get_stats(self) -> dict:
         """Toplam maliyet, token ve istek sayısı gibi istatistikleri döner."""
-        stmt = select(
-            func.count(ApiCagrisi.kimlik),
-            func.sum(ApiCagrisi.toplam_token),
-            func.sum(ApiCagrisi.maliyet_usd),
-            func.avg(ApiCagrisi.sure_ms),
-        )
-        res = self.db.execute(stmt).first()
+        with get_logs_session() as db:
+            stmt = select(
+                func.count(ApiLog.kimlik),
+                func.sum(ApiLog.toplam_token),
+                func.sum(ApiLog.maliyet_usd),
+                func.avg(ApiLog.sure_ms),
+            )
+            res = db.execute(stmt).first()
         if not res:
             return {"count": 0, "total_tokens": 0, "total_cost": 0.0, "avg_duration": 0}
-        
         return {
             "count": res[0] or 0,
             "total_tokens": int(res[1] or 0),
@@ -95,5 +113,6 @@ class LogRepository:
 
     def clear_all(self):
         """Tüm logları temizler."""
-        self.db.execute(ApiCagrisi.__table__.delete())
-        self.db.commit()
+        with get_logs_session() as db:
+            db.execute(ApiLog.__table__.delete())
+            db.commit()
