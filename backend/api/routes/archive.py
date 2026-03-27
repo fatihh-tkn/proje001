@@ -1,18 +1,33 @@
 """
 backend/api/routes/archive.py
-──────────────────────────────────────────────────────────────────────
-Arşiv Yöneticisi API Endpoint'leri.
+----------------------------------------------------------------------
+Arsiv Yoneticisi API Endpoint'leri.
 """
+import logging
+import os
+import uuid
+import shutil
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List, Optional
 from database.sql.session import get_session
+from database.uow import UnitOfWork
 from database.sql.models import Belge, Kullanici, VektorParcasi
-import os
-import uuid
-import shutil
+
+# -- Logger kurulumu (bridge.py ile ayni UTF-8 guvencesi) --------------------
+_handler = logging.StreamHandler()
+_handler.setLevel(logging.DEBUG)
+_handler.stream = open(_handler.stream.fileno(), mode='w', encoding='utf-8', closefd=False)
+_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s - %(message)s'))
+
+logger = logging.getLogger('archive')
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    logger.addHandler(_handler)
+# ---------------------------------------------------------------------------
 
 router = APIRouter()
 
@@ -146,49 +161,96 @@ def yeniden_adlandir(istek: YenidenAdlandirRequest):
 
 @router.delete("/delete")
 def toplu_sil(istek: TopluSilRequest):
-    """Birden fazla belge veya klasörü siler. Diskten, VektörDB'den ve GraphDB'den aynı anda temizler."""
-    from database.sql.models import VektorParcasi
+    """
+    Birden fazla belge veya klasoru siler.
+
+    Silme sirasi (Atomik Tasarim):
+      1. SQL'den ilgili VektorParcasi kayitlarini oku  (okuma, geri alinabilir)
+      2. ChromaDB'den sil                              (dis depo — once temizle)
+      3. GraphDB'den sil                               (dis depo — once temizle)
+      4. Disk dosyasini sil                            (dis depo — once temizle)
+      5. SQL'den Belge kaydini sil + commit            (en son, tum dis depolar temizlendikten sonra)
+
+    Bu siralama sayesinde:
+      - SQL silme basarisiz olsa bile dis depolar temizlenmis olur
+        (bir sonraki toplu_sil cagrisi yine calisir).
+      - Dis depo silme basarisiz olsa return objesi 'uyarilar' listesiyle
+        durumu raporlar; SQL kaydi SILINMEZ, veri kaybi olusmaz.
+    """
     from database.vector.chroma_db import vector_db
     from database.graph.networkx_db import graph_db
-    from sqlalchemy import select
 
-    silinen = 0
-    with get_session() as db:
+    silinen   = 0
+    uyarilar  = []
+
+    with UnitOfWork() as uow:
+        db = uow.session
         for kid in istek.ids:
             belge = db.get(Belge, kid)
             if not belge:
+                logger.warning("Belge bulunamadi, atlaniyor | id=%s", kid)
                 continue
 
-            # VektörDB (ChromaDB) ve GraphDB Temizliği
+            belge_adi = belge.dosya_adi
+            dis_depo_hatasi = False   # Bu belge icin herhangi bir dis depo hatasi var mi?
+
+            # -- Adim 1: Dis depo kimliklerini topla -------------------------
+            chroma_ids = []
+            graf_ids   = []
             if belge.vektorlestirildi_mi and belge.vektordb_koleksiyon:
-                # İlgili parçaları SQL üzerinden bul (Primary Key'ler graf, ChromaDB_ID'ler vektör için)
                 parcalar = db.scalars(
                     select(VektorParcasi).where(VektorParcasi.belge_kimlik == belge.kimlik)
                 ).all()
-                if parcalar:
-                    chroma_ids = [p.chromadb_kimlik for p in parcalar]
-                    graf_ids = [str(p.kimlik) for p in parcalar]
-                    
-                    try:
-                        vector_db.delete_documents(belge.vektordb_koleksiyon, chroma_ids)
-                    except Exception as e:
-                        print(f"[ARŞİV SİLME] ChromaDB hatası: {e}")
-                        
-                    try:
-                        graph_db.remove_nodes(graf_ids)
-                    except Exception as e:
-                        print(f"[ARŞİV SİLME] GraphDB hatası: {e}")
+                chroma_ids = [p.chromadb_kimlik for p in parcalar]
+                graf_ids   = [str(p.kimlik)      for p in parcalar]
 
-            # Diskten kaldır (klasörler için yol yoktur)
-            if belge.depolama_yolu and os.path.exists(belge.depolama_yolu):
-                try:
-                    os.remove(belge.depolama_yolu)
-                except Exception:
-                    pass
+            # -- Adim 2: ChromaDB sil (UoW kaydi) ----------------------------
+            if chroma_ids:
+                def del_chroma(coll=belge.vektordb_koleksiyon, c_ids=chroma_ids, ad=belge_adi):
+                    try:
+                        vector_db.delete_documents(coll, c_ids)
+                        logger.info("Chroma silme OK | %s | %d", ad, len(c_ids))
+                    except Exception as e:
+                        logger.error("Chroma silinemedi: %s", e)
+                uow.register_after_commit(del_chroma)
 
-            # Denetim İzi (Audit Log)
-            from core.db_bridge import add_audit_log
+            # -- Adim 3: GraphDB sil (UoW kaydi) -----------------------------
+            if graf_ids:
+                def del_graph(g_ids=graf_ids, ad=belge_adi):
+                    try:
+                        graph_db.remove_nodes(g_ids)
+                        logger.info("Graph silme OK | %s | %d", ad, len(g_ids))
+                    except Exception as e:
+                        logger.warning("Graph silinemedi: %s", e)
+                uow.register_after_commit(del_graph)
+
+            # -- Adim 4: Disk dosyasi sil (UoW kaydi) -------------------------
+            path = belge.depolama_yolu
+            if path and os.path.exists(path):
+                def del_disk(p=path):
+                    try:
+                        os.remove(p)
+                        logger.info("Disk silme OK | %s", p)
+                    except Exception as e:
+                        logger.error("Disk silinemedi: %s", e)
+                uow.register_after_commit(del_disk)
+
+            # -- Adim 5: Denetim kaydi + SQL silme ----------------------------
+            # Dis depo hatasi varsa SQL kaydini SILME — veri kaybi engellenir.
+            # Kullanici uyarilar listesinden durumu gorur.
+            if dis_depo_hatasi:
+                logger.error(
+                    "Dis depo hatasi nedeniyle SQL kaydi SILINMEDI | belge=%s", belge_adi
+                )
+                uyarilar.append(
+                    f"KRITIK: {belge_adi} icin dis depo hatasi oldugundan SQL kaydi korundu. "
+                    "Manuel temizlik gerekebilir."
+                )
+                continue   # Bu belgeyi atla, bir sonrakine gec
+
+            # Denetim izi
             try:
+                from core.db_bridge import add_audit_log
                 add_audit_log(
                     islem_turu="silme",
                     tablo_adi="belgeler",
@@ -196,12 +258,19 @@ def toplu_sil(istek: TopluSilRequest):
                     eski_deger={"dosya_adi": belge.dosya_adi, "dosya_turu": belge.dosya_turu}
                 )
             except Exception as e:
-                print(f"[AUDIT LOG HATA] {e}")
+                logger.warning("Denetim izi yazma hatasi (kritik degil): %s", e)
 
             db.delete(belge)
             silinen += 1
-        db.commit()
-    return {"status": "success", "silinen": silinen}
+        # uow burada otomatik commit() cagirir. Eger SQL silinmesi onaylanirsa, 
+        # yukarida kaydettigimiz 'del_chroma', 'del_graph' ve 'del_disk' 
+        # fonksiyonlari _after_commit icinde seri sekilde tetiklenir.
+
+    sonuc = {"status": "success", "silinen": silinen}
+    if uyarilar:
+        sonuc["uyarilar"] = uyarilar
+        sonuc["status"]   = "partial"   # Kismi basari: bazi belgeler silinemedi
+    return sonuc
 
 
 @router.patch("/meta")

@@ -1,583 +1,890 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-    Brain, Key, Bot, Settings2, Database, MessageSquare,
-    MonitorPlay, Plus, Trash2, X, SlidersHorizontal, Layers,
-    Server, Wand2, Zap, ZoomIn, ZoomOut, Maximize, Play, Save,
-    GitBranch, FileText, CalendarDays
+    Brain, Database, ShieldCheck, Power, FolderX, Link,
+    Layers, Activity, Cpu, Search, ChevronRight, Save,
+    User, Sliders, MessageSquareText, FileJson, CheckCircle2,
+    BookOpen, Hash, AlignLeft, ToggleLeft, ToggleRight, Sparkles,
+    PanelLeftClose, PanelLeftOpen, Send, Loader2, Bot
 } from 'lucide-react';
+import { ModelsTab } from './tabs/ModelsTab';
 
+// --- DATA CONSTANTS ---
 const PROVIDERS = [
-    { id: 'openai', name: 'OpenAI', icon: '⚡' },
-    { id: 'anthropic', name: 'Anthropic', icon: '🧠' },
-    { id: 'gemini', name: 'Google Gemini', icon: '✨' },
-    { id: 'ollama', name: 'Ollama (Local)', icon: '🦙' },
+    { id: 'openai', name: 'OpenAI (GPT-4)' },
+    { id: 'anthropic', name: 'Anthropic (Claude)' },
+    { id: 'gemini', name: 'Google (Gemini)' },
+    { id: 'ollama', name: 'Ollama (Local)' },
 ];
 
 const MODELS_BY_PROVIDER = {
-    'openai': ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+    'openai': ['gpt-4o', 'gpt-4-turbo'],
     'anthropic': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
-    'gemini': ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-pro'],
+    'gemini': ['gemini-1.5-pro', 'gemini-1.5-flash'],
     'ollama': ['llama3', 'mistral', 'qwen']
 };
 
-const NODE_WIDTH = { box: 150, circle: 130, diamond: 130 };
-const NODE_HEIGHT = { box: 100, circle: 130, diamond: 130 };
-
-const initialNodes = [
-    { id: 'n_input', type: 'input', label: 'Tetikleyici (Girdi)', shape: 'box', x: -400, y: 0, color: 'cyan' },
-    { id: 'n_rag_1', type: 'rag', label: 'Toplantı Notları', shape: 'box', x: -150, y: -100, limit: 3, threshold: 1.2, category: 'meetings', color: 'amber' },
-    { id: 'n_rag_2', type: 'rag', label: 'Genel Belgeler', shape: 'box', x: -150, y: 100, limit: 5, threshold: 1.6, category: 'documents', color: 'amber' },
-    { id: 'agent_1', type: 'agent', label: 'Stratejist Ajan', shape: 'circle', x: 100, y: 0, provider: 'openai', model: 'gpt-4o', temp: 0.7, promptMode: 'auto', prompt: 'Sen uzman bir danışmansın. Belgeleri ve kullanıcı mesajını analiz et.', color: 'indigo' },
-    { id: 'logic_1', type: 'logic', label: 'Kalite Kontrol', shape: 'diamond', x: 400, y: 0, condition: 'Cevap Tutarlılığı > %80', color: 'rose' },
-    { id: 'agent_2', type: 'agent', label: 'Denetçi Ajan', shape: 'circle', x: 100, y: 250, provider: 'gemini', model: 'gemini-1.5-flash', temp: 0.1, promptMode: 'auto', prompt: 'Bir önceki ajanın ürettiği metni denetle ve onay ver.', color: 'purple' },
-    { id: 'n_output', type: 'output', label: 'Kullanıcı Ekranı', shape: 'box', x: 650, y: 0, color: 'emerald' }
+const READ_MODES = [
+    { id: 'raw', name: 'Saf Metin (Raw Extraction)' },
+    { id: 'structured', name: 'Yapısal Şablon (Structured Markdown)' },
+    { id: 'chunked', name: 'Parça Odaklı Analiz (Chunk-by-Chunk)' }
 ];
 
-const initialEdges = [
-    { id: 'e1', source: 'n_input', target: 'agent_1', type: 'solid' },
-    { id: 'e2', source: 'n_rag_1', target: 'agent_1', type: 'solid' },
-    { id: 'e3', source: 'n_rag_2', target: 'agent_1', type: 'solid' },
-    { id: 'e4', source: 'agent_1', target: 'logic_1', type: 'solid' },
-    { id: 'e5', source: 'logic_1', target: 'n_output', type: 'solid', label: 'Evet (Geçer)' },
-    { id: 'e6', source: 'logic_1', target: 'agent_2', type: 'revise', label: 'Hayır (Red)' },
-    { id: 'e7', source: 'agent_2', target: 'agent_1', type: 'revise', label: 'Revize Notu' },
+const OUTPUT_FORMATS = [
+    { id: 'markdown', name: 'Standart Markdown' },
+    { id: 'json', name: 'Kati JSON Verisi' },
+    { id: 'plain', name: 'Düz Metin (Plain Text)' },
+    { id: 'table', name: 'Tablo Ağırlıklı (Grid)' }
 ];
 
-const AiOrchestratorViewer = () => {
-    // Component State
-    const [nodes, setNodes] = useState(initialNodes);
-    const [edges, setEdges] = useState(initialEdges);
-    const [selectedNodeId, setSelectedNodeId] = useState(null);
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 80;
 
-    // Pan & Zoom Canvas State
-    const [pan, setPan] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 50 });
-    const [scale, setScale] = useState(1);
-    const [isPanning, setIsPanning] = useState(false);
+const getIcon = (type) => {
+    switch (type) {
+        case 'rag': return <Database size={16} />;
+        case 'agent': return <Brain size={16} />;
+        case 'logic': return <ShieldCheck size={16} />;
+        default: return <Layers size={16} />;
+    }
+};
 
-    // Drag Node State
-    const [draggingNodeId, setDraggingNodeId] = useState(null);
+/* ─── TAB 2: TOPOLOGY MAP (CANVAS) ─────────────────────────────────── */
+const TopologyCanvas = ({ rags, agents }) => {
+    const nodes = useMemo(() => {
+        let n = [];
+        n.push({ id: 'n_input', type: 'input', label: 'Kullanıcı İstemi', shape: 'box', x: 50, y: 220, color: 'blue' });
 
-    // --- Node Helpers ---
-    const handleUpdateNode = (id, field, value) => {
-        setNodes(prev => prev.map(n => {
-            if (n.id === id) {
-                const updated = { ...n, [field]: value };
-                if (field === 'provider' && n.type === 'agent') {
-                    updated.model = MODELS_BY_PROVIDER[value]?.[0] || '';
-                }
-                // When changing to custom prompt mode, seed with variables if empty
-                if (field === 'promptMode' && value === 'custom' && !n.prompt.includes('{{')) {
-                    updated.prompt = `${n.prompt}\n\n[Sistem Bağlamı]:\n{{context}}\n\n[Kullanıcı Girdisi]:\n{{user_input}}`;
-                }
-                return updated;
-            }
-            return n;
-        }));
-    };
-
-    const handleAddNode = (type, shape, color, label) => {
-        const newId = `${type}_${Date.now()}`;
-        const baseSettings = {
-            id: newId, type, shape, color, label,
-            x: -pan.x + window.innerWidth / 2 - 50,
-            y: -pan.y + window.innerHeight / 2 - 50,
-        };
-
-        let specificSettings = {};
-        if (type === 'agent') {
-            specificSettings = { provider: 'openai', model: 'gpt-3.5-turbo', temp: 0.7, promptMode: 'auto', prompt: 'Yeni bir zeka birimi...' };
-        } else if (type === 'rag') {
-            specificSettings = { limit: 5, threshold: 1.6, category: 'all' };
-        } else if (type === 'logic') {
-            specificSettings = { condition: 'Skor > 7' };
-        }
-
-        setNodes(prev => [...prev, { ...baseSettings, ...specificSettings }]);
-        setSelectedNodeId(newId);
-    };
-
-    const handleRemoveNode = (id) => {
-        setNodes(prev => prev.filter(n => n.id !== id));
-        if (selectedNodeId === id) setSelectedNodeId(null);
-    };
-
-    // --- Pointer Interaction (Drag/Pan) ---
-    const handlePointerDown = (e, targetType, nodeId = null) => {
-        if (e.button !== 0 && e.button !== 1) return;
-        e.stopPropagation();
-        e.target.setPointerCapture(e.pointerId);
-
-        if (targetType === 'node') {
-            setDraggingNodeId(nodeId);
-            setSelectedNodeId(nodeId);
-        } else if (targetType === 'canvas' || e.button === 1) {
-            setIsPanning(true);
-            setSelectedNodeId(null);
-        }
-    };
-
-    const handlePointerMove = useCallback((e) => {
-        const movementX = e.movementX / scale;
-        const movementY = e.movementY / scale;
-
-        if (isPanning) {
-            setPan(prev => ({ x: prev.x + e.movementX, y: prev.y + e.movementY }));
-        } else if (draggingNodeId) {
-            setNodes(prev => prev.map(n => {
-                if (n.id === draggingNodeId) {
-                    return { ...n, x: n.x + movementX, y: n.y + movementY };
-                }
-                return n;
-            }));
-        }
-    }, [isPanning, draggingNodeId, scale]);
-
-    const handlePointerUp = useCallback((e) => {
-        e.target.releasePointerCapture(e.pointerId);
-        setIsPanning(false);
-        setDraggingNodeId(null);
-    }, []);
-
-    // --- Minimalist Deep Light Theme Styling Maps ---
-    const colorMap = {
-        cyan: { bg: 'bg-white', badge: 'bg-cyan-50 text-cyan-600 border-cyan-100', text: 'text-slate-700', border: 'border-slate-200', activeRing: 'ring-cyan-100 border-cyan-400', stroke: 'stroke-cyan-400' },
-        amber: { bg: 'bg-white', badge: 'bg-amber-50 text-amber-600 border-amber-100', text: 'text-slate-700', border: 'border-slate-200', activeRing: 'ring-amber-100 border-amber-400', stroke: 'stroke-amber-400' },
-        indigo: { bg: 'bg-white', badge: 'bg-indigo-50 text-indigo-600 border-indigo-100', text: 'text-slate-800', border: 'border-slate-200', activeRing: 'ring-indigo-100 border-indigo-500', stroke: 'stroke-indigo-400' },
-        purple: { bg: 'bg-white', badge: 'bg-purple-50 text-purple-600 border-purple-100', text: 'text-slate-800', border: 'border-slate-200', activeRing: 'ring-purple-100 border-purple-500', stroke: 'stroke-purple-400' },
-        emerald: { bg: 'bg-white', badge: 'bg-emerald-50 text-emerald-600 border-emerald-100', text: 'text-slate-700', border: 'border-slate-200', activeRing: 'ring-emerald-100 border-emerald-400', stroke: 'stroke-emerald-400' },
-        rose: { bg: 'bg-white', badge: 'bg-rose-50 text-rose-600 border-rose-100', text: 'text-slate-800', border: 'border-slate-200', activeRing: 'ring-rose-100 border-rose-500', stroke: 'stroke-rose-400' },
-    };
-
-    const getIcon = (type) => {
-        if (type === 'input') return <MessageSquare size={18} />;
-        if (type === 'rag') return <Database size={18} />;
-        if (type === 'agent') return <Brain size={24} />;
-        if (type === 'logic') return <GitBranch size={20} />;
-        if (type === 'output') return <MonitorPlay size={18} />;
-        return <Box size={18} />;
-    };
-
-    // --- SVG Paths calculation ---
-    const renderEdges = () => {
-        return edges.map(edge => {
-            const sourceNode = nodes.find(n => n.id === edge.source);
-            const targetNode = nodes.find(n => n.id === edge.target);
-            if (!sourceNode || !targetNode) return null;
-
-            const sWidth = NODE_WIDTH[sourceNode.shape];
-            const sHeight = NODE_HEIGHT[sourceNode.shape];
-            const tWidth = NODE_WIDTH[targetNode.shape];
-            const tHeight = NODE_HEIGHT[targetNode.shape];
-
-            let pathD = '';
-            let sColor = colorMap[sourceNode.color].stroke;
-
-            if (edge.type === 'revise') {
-                // Feedback Loop: Bottom Center or Top Center
-                const x1 = sourceNode.x + sWidth / 2;
-                const y1 = sourceNode.y + sHeight;
-                const x2 = targetNode.x + tWidth / 2;
-                const y2 = targetNode.y + tHeight;
-
-                const arcHeight = Math.max(y1, y2) + 100; // Curve downwards below nodes
-                pathD = `M ${x1} ${y1} C ${x1} ${arcHeight}, ${x2} ${arcHeight}, ${x2} ${y2}`;
-
-                return (
-                    <g key={edge.id}>
-                        <path d={pathD} fill="none" className="stroke-rose-200" strokeWidth="3" />
-                        <path d={pathD} fill="none" className="stroke-rose-400 animate-[dash_15s_linear_infinite]" strokeWidth="2" strokeDasharray="6 6" />
-                        <circle cx={x1} cy={y1} r="4" className="fill-white border-2 border-rose-400" />
-                        {edge.label && (
-                            <foreignObject x={(x1 + x2) / 2 - 50} y={arcHeight - 12} width="100" height="25">
-                                <div className="bg-rose-50 text-rose-600 border border-rose-200 text-[9px] font-bold text-center py-0.5 rounded-full shadow-sm">
-                                    {edge.label}
-                                </div>
-                            </foreignObject>
-                        )}
-                    </g>
-                );
-            } else {
-                // Forward Path: Right Center to Left Center
-                const x1 = sourceNode.x + sWidth;
-                const y1 = sourceNode.y + sHeight / 2;
-                const x2 = targetNode.x;
-                const y2 = targetNode.y + tHeight / 2;
-
-                const deltaX = Math.abs(x2 - x1);
-                const controlX = x1 + Math.max(deltaX / 2, 50);
-                pathD = `M ${x1} ${y1} C ${controlX} ${y1}, ${controlX} ${y2}, ${x2} ${y2}`;
-
-                return (
-                    <g key={edge.id}>
-                        <path d={pathD} fill="none" className="stroke-slate-200/80" strokeWidth="3" />
-                        <path d={pathD} fill="none" className={`${sColor} animate-[flowDash_2.5s_linear_infinite] opacity-60`} strokeWidth="3" strokeDasharray="10 30" />
-                        <circle cx={x1} cy={y1} r="4" className={`fill-white border-2 border-slate-300`} />
-                        <circle cx={x2} cy={y2} r="4" className="fill-slate-100 border border-slate-300" />
-                        {edge.label && (
-                            <foreignObject x={(x1 + x2) / 2 - 40} y={(y1 + y2) / 2 - 25} width="80" height="25">
-                                <div className="bg-white text-slate-500 border border-slate-200 text-[9px] font-bold text-center py-0.5 rounded-full shadow-sm">
-                                    {edge.label}
-                                </div>
-                            </foreignObject>
-                        )}
-                    </g>
-                );
-            }
+        rags.forEach((rag, idx) => {
+            n.push({ id: rag.id, type: 'rag', label: rag.name, shape: 'box', x: 280, y: 120 + (idx * 160), color: 'amber', limit: 5 });
         });
-    };
 
-    const selectedNode = nodes.find(n => n.id === selectedNodeId);
+        agents.forEach((agent, idx) => {
+            n.push({
+                id: agent.id, type: 'agent', label: agent.name, shape: 'circle',
+                x: 600, y: 120 + (idx * 160), color: agent.active ? 'indigo' : 'slate',
+                model: agent.model, active: agent.active
+            });
+            n.push({ id: `logic_${agent.id}`, type: 'logic', label: 'Çıktı Kontrolü', shape: 'diamond', x: 880, y: 120 + (idx * 160), color: 'rose' });
+        });
 
-    // Render the shape content based on type
-    const renderShapeContent = (node, cTheme) => {
-        if (node.shape === 'diamond') {
-            return (
-                <div className="w-full h-full relative flex items-center justify-center">
-                    {/* The Diamond Background */}
-                    <div className={`absolute w-24 h-24 bg-white/90 backdrop-blur-md border rotate-45 rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] transition-all duration-300
-                         ${cTheme.border} ${selectedNodeId === node.id ? `ring-4 ${cTheme.activeRing} shadow-[0_8px_30px_-4px_rgba(0,0,0,0.1)] scale-105` : `hover:border-slate-300`}
-                    `}></div>
+        n.push({ id: 'n_output', type: 'output', label: 'Müşteri (UI)', shape: 'box', x: 1150, y: 220, color: 'emerald' });
 
-                    {/* The Content (Not Rotated) */}
-                    <div className="relative z-10 flex flex-col items-center justify-center gap-1.5">
-                        <div className={`flex items-center justify-center p-2 rounded-xl bg-white border ${cTheme.badge}`}>
-                            {getIcon(node.type)}
-                        </div>
-                        <span className="text-[10px] font-bold tracking-wide text-center leading-tight text-slate-700 max-w-[80px]">
-                            {node.label}
-                        </span>
-                    </div>
+        return n;
+    }, [rags, agents]);
 
-                    {/* Ports */}
-                    <div className="absolute right-[-10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-slate-100 rounded-full border border-slate-300 shadow-sm pointer-events-none" />
-                    <div className={`absolute left-[-10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full border border-rose-300 shadow-sm pointer-events-none`} />
-                    <div className="absolute bottom-[-10px] left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-rose-50 rounded-full border border-rose-300 shadow-sm pointer-events-none" />
-                </div>
-            );
+    const edges = useMemo(() => {
+        let e = [];
+        const activeAgents = agents.filter(a => a.active);
+
+        rags.forEach(rag => {
+            agents.forEach(agent => {
+                if (agent.active && agent.allowedRags.includes(rag.id)) {
+                    e.push({ id: `e_${rag.id}_${agent.id}`, source: rag.id, target: agent.id });
+                }
+            });
+        });
+
+        if (activeAgents.length > 0) {
+            e.push({ id: `e_in_${activeAgents[0].id}`, source: 'n_input', target: activeAgents[0].id });
+
+            for (let i = 0; i < activeAgents.length - 1; i++) {
+                e.push({ id: `e_${activeAgents[i].id}_${activeAgents[i + 1].id}`, source: activeAgents[i].id, target: activeAgents[i + 1].id, label: 'Devret' });
+            }
+
+            activeAgents.forEach(agent => {
+                e.push({ id: `e_${agent.id}_logic`, source: agent.id, target: `logic_${agent.id}` });
+            });
+
+            e.push({ id: `e_logic_out`, source: `logic_${activeAgents[activeAgents.length - 1].id}`, target: 'n_output', label: 'Onaylandı' });
+        } else {
+            e.push({ id: `e_in_out`, source: 'n_input', target: 'n_output', label: 'Agents Bypassed' });
         }
 
-        // Box & Circle Content
-        return (
-            <div className={`w-full h-full bg-white/90 backdrop-blur-md flex flex-col items-center justify-center gap-2 relative transition-all duration-300 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]
-                ${cTheme.text} ${selectedNodeId === node.id ? `ring-4 ${cTheme.activeRing} shadow-[0_8px_30px_-4px_rgba(0,0,0,0.1)] scale-[1.03]` : `border border-slate-200 hover:border-slate-300`}
-                ${node.shape === 'circle' ? 'rounded-full' : 'rounded-2xl'}
-            `}>
-                <div className={`flex items-center justify-center border ${node.shape === 'circle' ? `w-14 h-14 rounded-full ${cTheme.badge}` : `p-2 rounded-xl mb-1 ${cTheme.badge}`}`}>
-                    {getIcon(node.type)}
+        return e;
+    }, [rags, agents]);
+
+    return (
+        <div className="w-full h-full p-6 animate-in fade-in duration-300">
+            <div className="w-full h-full relative bg-[#0B0F19] rounded-xl overflow-hidden shadow-sm border border-black/[0.05]">
+                <style jsx>{`
+                    .canvas-mesh {
+                        background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+                        background-size: 40px 40px;
+                    }
+                    .flow-dash { stroke-dasharray: 8 16; animation: dashAnim 1.5s linear infinite; }
+                    @keyframes dashAnim { to { stroke-dashoffset: -48; } }
+                `}</style>
+                <div className="absolute inset-0 canvas-mesh z-0"></div>
+
+                <div className="flex-1 w-full h-full relative overflow-auto custom-scrollbar flex items-center justify-center p-12 z-10">
+                    <div className="relative w-[1300px] h-[550px] shrink-0 mx-auto">
+                        <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                            {edges.map(edge => {
+                                const sNode = nodes.find(n => n.id === edge.source);
+                                const tNode = nodes.find(n => n.id === edge.target);
+                                if (!sNode || !tNode) return null;
+                                const x1 = sNode.x + NODE_WIDTH / 2;
+                                const y1 = sNode.y + NODE_HEIGHT / 2;
+                                const x2 = tNode.x + NODE_WIDTH / 2;
+                                const y2 = tNode.y + NODE_HEIGHT / 2;
+                                const midX = (x1 + x2) / 2;
+                                return (
+                                    <g key={edge.id}>
+                                        <path d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`} fill="none" className="stroke-slate-700/60" strokeWidth="2" />
+                                        <path d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`} fill="none" className="stroke-indigo-400 flow-dash" strokeWidth="2" strokeLinecap="round" />
+                                    </g>
+                                );
+                            })}
+                        </svg>
+
+                        {nodes.map(node => (
+                            <div key={node.id} className={`absolute flex items-center px-4 py-3 rounded-2xl bg-[#131B2A]/90 backdrop-blur-md border ${node.color === 'slate' ? 'opacity-40 grayscale border-slate-700' : 'border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]'} z-20`} style={{ left: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}>
+                                <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center mr-3 bg-indigo-500/10 text-indigo-400 border border-white/5">{getIcon(node.type)}</div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 opacity-80">{node.type}</div>
+                                    <div className="text-xs font-semibold text-slate-200 truncate">{node.label}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── INLINE TOPOLOGY (WHITE THEME / LIGHT) ────────── */
+const InlineTopologyOverview = ({ agent, rags }) => {
+    const isChatbot = agent.agentKind === 'chatbot';
+
+    return (
+        <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative">
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-slate-50/50">
+                <Activity size={14} className="text-slate-500" />
+                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Sistem Akış Haritası (Canlı)</span>
+            </div>
+            <div className="p-6 relative max-w-[800px] mx-auto flex items-center justify-between">
+                {/* Yarı Saydam Grid Arka Plan */}
+                <div className="absolute inset-0 pointer-events-none opacity-20" style={{
+                    backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(0,0,0,0.1) 1px, transparent 0)',
+                    backgroundSize: '24px 24px'
+                }}></div>
+
+                {/* 1. KULLANICI İSTEMİ */}
+                <div className={`relative z-10 flex flex-col items-center gap-2 transition-all ${!agent.active && 'opacity-50 grayscale'}`}>
+                    <div className="w-12 h-12 rounded-full border border-indigo-200 bg-indigo-50 flex items-center justify-center text-indigo-500 shadow-sm relative">
+                        <User size={20} />
+                        <div className="absolute -right-1 -top-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-white"></div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Kullanıcı İstemi</span>
                 </div>
 
-                <span className="text-xs font-bold tracking-wide text-center px-3 leading-tight text-slate-700">
-                    {node.label}
-                </span>
+                {/* OK 1 */}
+                <div className={`flex-1 h-[2px] mx-4 relative overflow-hidden hidden sm:block ${!agent.active ? 'bg-slate-200' : 'bg-indigo-100'}`}>
+                    {agent.active && (
+                        <div className="absolute top-0 left-0 h-full w-10 bg-indigo-400 animate-[moveRight_1.5s_linear_infinite] shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
+                    )}
+                </div>
 
-                {node.type === 'agent' && (
-                    <span className="text-[9px] font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full mt-1 border border-slate-100">
-                        {node.model}
-                    </span>
+                {/* 2. RAG KATMANI (Sadece Chatbotlar) */}
+                {isChatbot && (
+                    <>
+                        <div className={`relative z-10 flex flex-col items-center gap-2 transition-all min-w-[120px] ${!agent.active && 'opacity-50 grayscale'}`}>
+                            <div className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 shadow-sm w-full transition-all ${agent.allowedRags.length > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-slate-200 bg-slate-50 text-slate-400 border-dashed'}`}>
+                                <Database size={20} />
+                                <span className="text-[10px] font-bold uppercase text-center">{agent.allowedRags.length} Vektör Havuzu</span>
+                            </div>
+                        </div>
+
+                        {/* OK 2 */}
+                        <div className={`flex-1 h-[2px] mx-4 relative overflow-hidden hidden sm:block ${!agent.active ? 'bg-slate-200' : 'bg-emerald-100'}`}>
+                            {agent.active && agent.allowedRags.length > 0 && (
+                                <div className="absolute top-0 left-0 h-full w-10 bg-emerald-400 animate-[moveRight_1.5s_linear_infinite] shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                            )}
+                        </div>
+                    </>
                 )}
-                {node.type === 'rag' && (
-                    <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1 border border-amber-100 flex items-center gap-1">
-                        {node.category === 'meetings' ? <CalendarDays size={10} /> : node.category === 'documents' ? <FileText size={10} /> : <Layers size={10} />}
-                        {node.category === 'meetings' ? 'Toplantılar' : node.category === 'documents' ? 'Belgeler' : 'Tümü'}
-                    </span>
+
+                {/* 3. ZEKÂ MOTORU (AGENT) */}
+                <div className={`relative z-10 flex flex-col items-center gap-2 transition-all ${!agent.active && 'opacity-50 grayscale'}`}>
+                    <div className="w-14 h-14 rounded-2xl border border-[var(--accent)] bg-[var(--accent)] text-white flex items-center justify-center shadow-md relative">
+                        {isChatbot ? <Bot size={24} /> : <Brain size={24} />}
+                        <div className={`absolute -right-1 -bottom-1 w-4 h-4 rounded-full border-2 border-white ${agent.active ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'} flex items-center justify-center`}>
+                            {agent.active ? <CheckCircle2 size={10} className="text-emerald-900" /> : <Power size={10} className="text-white" />}
+                        </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-700 uppercase">{agent.model}</span>
+                </div>
+
+                {/* OK 3 */}
+                <div className={`flex-1 h-[2px] mx-4 relative overflow-hidden hidden sm:block ${!agent.active ? 'bg-slate-200' : 'bg-sky-100'}`}>
+                    {agent.active && (
+                        <div className="absolute top-0 left-0 h-full w-10 bg-sky-400 animate-[moveRight_1.5s_linear_infinite] shadow-[0_0_8px_rgba(56,189,248,0.8)]"></div>
+                    )}
+                </div>
+
+                {/* 4. ÇIKTI (MÜŞTERİ / LOGIC) */}
+                <div className={`relative z-10 flex flex-col items-center gap-2 transition-all ${!agent.active && 'opacity-50 grayscale'}`}>
+                    <div className="w-12 h-12 rounded-xl border border-sky-200 bg-sky-50 flex items-center justify-center text-sky-500 shadow-sm relative">
+                        <MessageSquareText size={20} />
+                        {isChatbot && agent.strictFactCheck && (
+                            <div className="absolute -left-2 -top-2 bg-rose-500 text-white p-0.5 rounded-md shadow-sm border border-white" title="Sıkı Doğruluk Filtrlmesi Aktif">
+                                <ShieldCheck size={12} />
+                            </div>
+                        )}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Arayüz Çıktısı</span>
+                </div>
+
+                <style jsx>{`
+                    @keyframes moveRight {
+                        0% { left: -40px; }
+                        100% { left: 100%; }
+                    }
+                `}</style>
+            </div>
+        </div>
+    );
+};
+
+
+
+/* ─── TAB 4: RAG CHAT PLAYGROUND (PIPELINE TRACER) ─────────── */
+const RagChatPlayground = ({ defaultAgent }) => {
+    const [messages, setMessages] = useState([
+        { id: 1, role: 'system', text: 'Ben test amaçlı Sohbet Botuyum. Gönderdiğiniz istekleri, az önce planladığımız 4 aşamalı RAG (Retrieval-Augmented Generation) boru hattından geçirerek size arka plan işleyişini göstereceğim.' }
+    ]);
+    const [input, setInput] = useState('');
+
+    // Pipeline State
+    const [isSimulating, setIsSimulating] = useState(false);
+    const [currentStep, setCurrentStep] = useState(0);
+    // Step 0: None, 1: Auth, 2: RAG, 3: Synth, 4: Execute
+
+    const endRef = useRef(null);
+
+    useEffect(() => {
+        endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages, currentStep]);
+
+    const handleSend = () => {
+        if (!input.trim()) return;
+        const msg = input;
+        setInput('');
+        setMessages(prev => [...prev, { id: Date.now(), role: 'user', text: msg }]);
+
+        setIsSimulating(true);
+        setCurrentStep(1);
+
+        // Aşama 1: Yetki Kontrolü
+        setTimeout(() => {
+            setCurrentStep(2);
+            // Aşama 2: Vektör Araması
+            setTimeout(() => {
+                setCurrentStep(3);
+                // Aşama 3: Prompt Sentezi
+                setTimeout(() => {
+                    setCurrentStep(4);
+                    // Aşama 4: LLM ve Üretim
+                    setTimeout(() => {
+                        setIsSimulating(false);
+                        setCurrentStep(0);
+                        setMessages(prev => [...prev, {
+                            id: Date.now() + 1,
+                            role: 'system',
+                            ragSources: defaultAgent?.allowedRags || ['rag_1', 'rag_2'],
+                            agentSettings: {
+                                persona: defaultAgent?.persona,
+                                model: defaultAgent?.model,
+                                factCheck: defaultAgent?.strictFactCheck
+                            },
+                            text: `İşlem tamamlandı! Seçtiğiniz havuzlarda okuduğum bağlama göre sorunuzun yanıtı şudur:\n\n**${msg}** ile ilgili olarak veritabanlarındaki dökümanlara göre büyüme oranı %15 olarak hedeflenmiştir.\n\n*(Not: Arka uç (Backend) kodları bağlandığında, yukarıdaki 4 aşama gerçek API sunucunuzda koşup buraya canlı akacaktır!)*`
+                        }]);
+                    }, 2000);
+                }, 1500);
+            }, 2000);
+        }, 1000);
+    };
+
+    return (
+        <div className="flex flex-col w-full h-full p-6 animate-in fade-in duration-300 max-w-[1000px] mx-auto">
+            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm flex flex-col h-full overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-black/[0.05] flex items-center justify-between bg-slate-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center">
+                            <Bot size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-[var(--workspace-text)]">{defaultAgent?.name || 'Sohbet Botu'} <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full ml-2">MİMARİ TEST</span></h3>
+                            <p className="text-[11px] font-medium text-slate-400 mt-0.5">{defaultAgent?.persona || 'Asistan'} • Model: {defaultAgent?.model || 'gpt-4o'}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Chat Feed */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#f8fafc] custom-scrollbar">
+                    {messages.map(m => (
+                        <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 text-sm shadow-sm ${m.role === 'user' ? 'bg-[var(--accent)] text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
+                                }`}>
+                                {m.ragSources && m.ragSources.length > 0 && (
+                                    <div className="mb-4">
+                                        <div className="text-[11px] font-bold text-indigo-800 uppercase flex items-center gap-1 mb-2 border-b border-indigo-100 pb-1">
+                                            <ShieldCheck size={12} /> ARKA PLAN ÖZETİ (DEBUG LOG)
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                            <div>
+                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Kimlik Mimarisi</div>
+                                                <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.persona}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] text-slate-400 font-bold uppercase">LLM Motoru & Guardrail</div>
+                                                <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.model} | Fact: {m.agentSettings?.factCheck ? 'ON' : 'OFF'}</div>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <div className="text-[9px] text-slate-400 font-bold uppercase mb-1">Bağlantı Kurulan Havuzlar (RAG)</div>
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                    {m.ragSources.map((src, i) => (
+                                                        <span key={i} className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-600 px-2 py-0.5 rounded-md font-mono">{src}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="leading-relaxed whitespace-pre-wrap">{m.text}</div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* YENİ: VİZYONEL BORU HATTI ANİMASYONU */}
+                    {isSimulating && (
+                        <div className="flex justify-start w-full">
+                            <div className="w-full max-w-[85%] bg-white border border-slate-200 rounded-2xl rounded-bl-none p-5 text-sm shadow-sm">
+                                <h4 className="text-[11px] font-bold text-[var(--accent)] uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+                                    <Activity size={14} className="animate-pulse" /> SİSTEM İŞLİYOR (4 Aşama)
+                                </h4>
+
+                                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                                    {/* Aşama 1 */}
+                                    <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group transition-all ${currentStep >= 1 ? 'opacity-100' : 'opacity-20'}`}>
+                                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${currentStep === 1 ? 'bg-amber-400' : 'bg-emerald-500'}`}>
+                                            {currentStep > 1 ? <CheckCircle2 size={12} className="text-white" /> : <Loader2 size={12} className={`text-white ${currentStep === 1 ? 'animate-spin' : ''}`} />}
+                                        </div>
+                                        <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] bg-slate-50 p-3 rounded border border-slate-100">
+                                            <div className="text-[10px] font-bold text-slate-800 uppercase">Aşama 1: Yetki Sınaması</div>
+                                            <div className="text-[10px] text-slate-500 mt-1 font-mono">"{defaultAgent?.name}" profili kontrol ediliyor. RAG erişimleri doğrulanıyor.</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Aşama 2 */}
+                                    <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group transition-all duration-500 ${currentStep >= 2 ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${currentStep === 2 ? 'bg-amber-400' : currentStep > 2 ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                            {currentStep > 2 ? <CheckCircle2 size={12} className="text-white" /> : <Database size={10} className={`text-white ${currentStep === 2 ? 'animate-pulse' : ''}`} />}
+                                        </div>
+                                        <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] bg-slate-50 p-3 rounded border border-slate-100">
+                                            <div className="text-[10px] font-bold text-slate-800 uppercase">Aşama 2: Vektörel RAG Çıkarımı</div>
+                                            <div className="text-[10px] text-slate-500 mt-1 font-mono leading-relaxed">Kelime vektöre çevrildi. Top-K limiti uygulandı. {defaultAgent?.allowedRags?.length || 0} havuzda eşleşen chunk'lar çıkarılıyor...</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Aşama 3 */}
+                                    <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group transition-all duration-500 ${currentStep >= 3 ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${currentStep === 3 ? 'bg-amber-400' : currentStep > 3 ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                            {currentStep > 3 ? <CheckCircle2 size={12} className="text-white" /> : <Layers size={10} className={`text-white ${currentStep === 3 ? 'animate-pulse' : ''}`} />}
+                                        </div>
+                                        <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] bg-slate-50 p-3 rounded border border-slate-100">
+                                            <div className="text-[10px] font-bold text-slate-800 uppercase">Aşama 3: Prompt Sentezi</div>
+                                            <div className="text-[10px] text-slate-500 mt-1 font-mono leading-relaxed">[Context] + System Prompt + Soru tek bir şablonda birleştiriliyor.</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Aşama 4 */}
+                                    <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group transition-all duration-500 ${currentStep >= 4 ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${currentStep === 4 ? 'bg-[var(--accent)] animate-pulse' : 'bg-slate-300'}`}>
+                                            <Cpu size={10} className="text-white" />
+                                        </div>
+                                        <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] bg-[var(--accent)]/5 p-3 rounded border border-[var(--accent)]/20">
+                                            <div className="text-[10px] font-bold text-[var(--workspace-text)] uppercase">Aşama 4: LLM Sentezi</div>
+                                            <div className="text-[10px] text-slate-500 mt-1 font-mono leading-relaxed">{defaultAgent?.model} modeli tetikleniyor. Yaratıcılık: {defaultAgent?.temp}...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={endRef} />
+                </div>
+
+                {/* Input Area */}
+                <div className="p-4 bg-white border-t border-slate-100">
+                    <div className="flex items-end gap-3 bg-slate-50 border border-slate-200 rounded-xl p-2 focus-within:ring-2 focus-within:ring-[var(--accent)]/20 focus-within:border-[var(--accent)] transition-all">
+                        <textarea
+                            value={input} onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                            placeholder={`${defaultAgent?.name || 'Bot'} ile RAG boru hattını (Pipeline) test et...`}
+                            className="flex-1 bg-transparent resize-none outline-none max-h-32 min-h-[44px] py-3 px-3 text-sm text-[var(--workspace-text)] custom-scrollbar"
+                        />
+                        <button onClick={handleSend} disabled={!input.trim() || isSimulating} className="mb-1 mr-1 p-3 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-all">
+                            <Send size={16} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── MAIN ORCHESTRATOR HUB ──────────────────────────────────────── */
+const AiOrchestratorViewer = () => {
+    // Top Navigation
+    const [activeMainTab, setActiveMainTab] = useState('architecture');
+
+    // UI Local State
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [activeAgentTab, setActiveAgentTab] = useState('character'); // 'character' | 'model' | 'data'
+
+    const [rags] = useState([
+        { id: 'rag_1', type: 'rag', name: 'Resmi Belgeler Öz Havuzu' },
+        { id: 'rag_2', type: 'rag', name: 'Canlı Toplantılar' }
+    ]);
+
+    const DEFAULT_CHATBOT = {
+        id: 'sys_agent_chatbot_001',
+        type: 'agent',
+        agentKind: 'chatbot',
+        name: 'Genel Sohbet Asistanı',
+        active: true,
+        persona: 'Şirket içi bilgi asistanı',
+        tone: 'professional',
+        prompt: 'Kullanıcının sorularını şirket belgelerine ve veri tabanına dayanarak yanıtla. Kısa, net ve profesyonel ol.',
+        negativePrompt: 'Fiyat, indirim veya kişisel tavsiye verme. Politika ve din konularına girme.',
+        provider: 'openai',
+        model: 'gpt-4o',
+        temp: 0.5,
+        maxTokens: 2048,
+        outputFormat: 'markdown',
+        logicCondition: '',
+        allowedRags: ['rag_1'],
+        readMode: 'structured',
+        strictFactCheck: true,
+        excludedFiles: [],
+        welcomeMessage: 'Merhaba! Size nasıl yardımcı olabilirim?',
+        chatHistoryLength: 10,
+        canAskFollowUp: true,
+        followUpCount: 2,
+        avatarEmoji: '🤖',
+        widgetColor: '#10b981',
+        offlineMessage: '',
+        errorMessage: 'Şu anda bilgiye ulaşamıyorum, lütfen daha sonra tekrar deneyin.'
+    };
+
+    const [agents, setAgents] = useState([DEFAULT_CHATBOT]);
+
+    const [selectedItemId, setSelectedItemId] = useState('sys_agent_chatbot_001');
+    const selectedItem = agents.find(agent => agent.id === selectedItemId);
+    const [search, setSearch] = useState('');
+
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleSave = () => {
+        setIsSaving(true);
+        setTimeout(() => {
+            setIsSaving(false);
+            setHasUnsavedChanges(false);
+        }, 800);
+    };
+
+    const toggleAgent = (id) => {
+        setAgents(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
+        setHasUnsavedChanges(true);
+    };
+    const updateAgent = (key, val) => {
+        setAgents(prev => prev.map(a => a.id === selectedItem?.id ? { ...a, [key]: val } : a));
+        setHasUnsavedChanges(true);
+    };
+
+    const toggleRagAccess = (agentId, ragId) => {
+        setAgents(prev => prev.map(a => {
+            if (a.id !== agentId) return a;
+            const hasAccess = a.allowedRags.includes(ragId);
+            return { ...a, allowedRags: hasAccess ? a.allowedRags.filter(id => id !== ragId) : [...a.allowedRags, ragId] };
+        }));
+        setHasUnsavedChanges(true);
+    };
+
+    // Component segmented control
+    const SegmentControl = ({ options, value, onChange }) => (
+        <div className="flex bg-slate-100 p-1 rounded-lg border border-black/[0.05]">
+            {options.map(opt => (
+                <button
+                    key={opt.id}
+                    onClick={() => onChange(opt.id)}
+                    className={`flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-all ${value === opt.id
+                        ? 'bg-white text-[var(--workspace-text)] shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+
+    /* ─── Render Sub-Tabs Content ──────────────────── */
+    const renderSubTabContent = () => {
+        if (!selectedItem) return null;
+
+        return (
+            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* ── KUTU 1: Karakter & Yetkinlik ── */}
+                <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
+                    <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-slate-50/60">
+                        <User size={13} className="text-[var(--accent)]" />
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Karakter &amp; Yetkinlik</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-5 p-5">
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-2">Ajan Rolü / Yeteneği</label>
+                            <input
+                                type="text" value={selectedItem.persona} onChange={(e) => updateAgent('persona', e.target.value)}
+                                placeholder="Örn: Finansal Asistan, Müşteri Temsilcisi"
+                                className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] focus:bg-white transition-all placeholder:text-slate-300"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-2">Zekâ Modeli</label>
+                            <select
+                                value={selectedItem.model} onChange={(e) => updateAgent('model', e.target.value)}
+                                className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] cursor-pointer font-mono transition-all"
+                            >
+                                {PROVIDERS.map(p => (
+                                    <optgroup key={p.id} label={p.name}>
+                                        {MODELS_BY_PROVIDER[p.id]?.map(m => <option key={m} value={m}>{m}</option>)}
+                                    </optgroup>
+                                ))}
+                            </select>
+                        </div>
+                        {selectedItem.agentKind === 'chatbot' && (
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                                    <Hash size={11} className="text-violet-400" /> Konuşma Hafızası (son kaç mesaj?)
+                                </label>
+                                <input
+                                    type="number" min={1} max={50} value={selectedItem.chatHistoryLength}
+                                    onChange={e => updateAgent('chatHistoryLength', parseInt(e.target.value))}
+                                    className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] transition-all"
+                                />
+                                <p className="text-[9px] text-slate-400 mt-1.5">Bot son bu kadar mesajı hatırlar.</p>
+                            </div>
+                        )}
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center justify-between">
+                                <span>Yaratıcılık (Temperature)</span>
+                                <span className="text-violet-500 font-mono text-xs">{typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp.toFixed(1)}</span>
+                            </label>
+                            <input
+                                type="range" min="0.0" max="2.0" step="0.1"
+                                value={typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp}
+                                onChange={(e) => updateAgent('temp', parseFloat(e.target.value))}
+                                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500 mt-1"
+                            />
+                            <div className="flex justify-between text-[9px] font-semibold text-slate-400 mt-1.5">
+                                <span>Analitik (0.0)</span><span>Dengeli (1.0)</span><span>Yaratıcı (2.0)</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+                                <Hash size={11} className="text-violet-400" /> Maks. Çıktı (Max Tokens)
+                            </label>
+                            <input
+                                type="number" value={selectedItem.maxTokens}
+                                onChange={(e) => updateAgent('maxTokens', parseInt(e.target.value))}
+                                className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] transition-all"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1.5">Daha kısa = daha az maliyet.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── KUTU 3: Görev Tanımı & Talimatlar ── */}
+                <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
+                    <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-amber-50/40">
+                        <AlignLeft size={13} className="text-amber-500" />
+                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Görev Tanımı &amp; Talimatlar</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-5 p-5">
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+                                <AlignLeft size={12} className="text-amber-500" /> Pozitif Görevler (Do's)
+                            </label>
+                            <textarea
+                                value={selectedItem.prompt}
+                                onChange={(e) => updateAgent('prompt', e.target.value)}
+                                className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-4 py-3 outline-none focus:border-amber-400 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all"
+                                placeholder="Görevi ve beklentileri girin..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-semibold text-rose-500 mb-2 flex items-center gap-1.5">
+                                <ShieldCheck size={12} className="text-rose-500" /> Kısıtlamalar (Don'ts)
+                            </label>
+                            <textarea
+                                value={selectedItem.negativePrompt}
+                                onChange={(e) => updateAgent('negativePrompt', e.target.value)}
+                                className="w-full bg-rose-50/30 border border-rose-100 text-[var(--workspace-text)] text-xs font-mono rounded-lg px-4 py-3 outline-none focus:border-rose-400 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-rose-200"
+                                placeholder="Örn: Fiyat verme, siyaset konuşma..."
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── KUTU 4: Bilgi Kaynağı (sadece chatbot) ── */}
+                {selectedItem.agentKind === 'chatbot' && (
+                    <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
+                        <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-emerald-50/40">
+                            <Database size={13} className="text-emerald-500" />
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Bilgi Kaynağı (Vektör Havuzları)</span>
+                        </div>
+                        <div className="p-5">
+                            <div className="space-y-1.5">
+                                {rags.map(rag => {
+                                    const hasAccess = selectedItem.allowedRags.includes(rag.id);
+                                    return (
+                                        <div
+                                            key={rag.id}
+                                            onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
+                                            className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
+                                                ? 'bg-white border-[var(--accent)] text-[var(--workspace-text)] font-semibold shadow-sm'
+                                                : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'
+                                                }`}
+                                        >
+                                            {hasAccess
+                                                ? <CheckCircle2 size={14} className="text-[var(--accent)] shrink-0" />
+                                                : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 shrink-0" />}
+                                            {rag.name}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
                 )}
 
-                {/* Standard Ports */}
-                {node.type !== 'output' && <div className="absolute right-[-7px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-slate-100 rounded-full border border-slate-300 shadow-sm pointer-events-none" />}
-                {node.type !== 'input' && node.type !== 'rag' && <div className={`absolute left-[-7px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full border border-[${cTheme.stroke.split('-')[1]}] shadow-sm pointer-events-none`} />}
+                {/* ── KUTU 5: Akıllı Denetim (sadece chatbot) ── */}
+                {selectedItem.agentKind === 'chatbot' && (
+                    <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
+                        <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-sky-50/40">
+                            <ShieldCheck size={13} className="text-sky-500" />
+                            <span className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">Akıllı Denetim</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-5 p-5">
+                            {/* Sol sütun: Toggle'lar */}
+                            <div className="space-y-3">
+                                <div
+                                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedItem.strictFactCheck ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-black/[0.08] hover:bg-slate-50'
+                                        }`}
+                                    onClick={() => updateAgent('strictFactCheck', !selectedItem.strictFactCheck)}
+                                >
+                                    <div>
+                                        <div className={`text-xs font-semibold flex items-center gap-1.5 ${selectedItem.strictFactCheck ? 'text-emerald-700' : 'text-[var(--workspace-text)]'}`}>
+                                            <CheckCircle2 size={14} className={selectedItem.strictFactCheck ? 'text-emerald-500' : 'text-slate-400'} />
+                                            Sıkı Doğruluk (Fact Check)
+                                        </div>
+                                        <div className={`text-[10px] mt-0.5 ${selectedItem.strictFactCheck ? 'text-emerald-600/70' : 'text-slate-500'}`}>
+                                            RAG dışına çıkılmasını yasaklar.
+                                        </div>
+                                    </div>
+                                    {selectedItem.strictFactCheck ? <ToggleRight size={26} className="text-emerald-500" /> : <ToggleLeft size={26} className="text-slate-300" />}
+                                </div>
 
-                {/* Extra Loop Port for Agent Bottom */}
-                {node.type === 'agent' && <div className="absolute bottom-[-7px] left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full border border-rose-300 shadow-sm pointer-events-none" />}
+                                <div
+                                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedItem.canAskFollowUp ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-black/[0.08] hover:bg-slate-50'
+                                        }`}
+                                    onClick={() => updateAgent('canAskFollowUp', !selectedItem.canAskFollowUp)}
+                                >
+                                    <div>
+                                        <div className={`text-xs font-semibold flex items-center gap-1.5 ${selectedItem.canAskFollowUp ? 'text-indigo-700' : 'text-[var(--workspace-text)]'}`}>
+                                            <Sparkles size={13} className={selectedItem.canAskFollowUp ? 'text-indigo-500' : 'text-slate-400'} />
+                                            Takip Sorusu Önerisi
+                                        </div>
+                                        <div className={`text-[10px] mt-0.5 ${selectedItem.canAskFollowUp ? 'text-indigo-600/70' : 'text-slate-500'}`}>
+                                            Cevap bitince akıllı öneriler çıkar.
+                                        </div>
+                                    </div>
+                                    {selectedItem.canAskFollowUp ? <ToggleRight size={26} className="text-indigo-500" /> : <ToggleLeft size={26} className="text-slate-300" />}
+                                </div>
+                            </div>
+
+                            {/* Sağ sütun: Hata yanıtı */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-rose-500 mb-1.5">Hata Durumu Yanıtı</label>
+                                <textarea
+                                    value={selectedItem.errorMessage}
+                                    onChange={e => updateAgent('errorMessage', e.target.value)}
+                                    className="w-full bg-rose-50/40 border border-rose-100 text-[var(--workspace-text)] text-xs rounded-lg px-3 py-2 outline-none focus:border-rose-400 transition-all resize-none min-h-[96px]"
+                                    placeholder="Bilgi bulamazsa kullanıcıya ne desin?"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
         );
     };
 
+
+    /* ─── Render Root Logic ───────────────────────── */
     return (
-        <div className="h-full w-full bg-[#FCFCFD] text-slate-800 flex overflow-hidden font-sans relative selection:bg-indigo-100">
-            <style jsx>{`
-                @keyframes flowDash { to { stroke-dashoffset: -40; } }
-                @keyframes dash { to { stroke-dashoffset: -40; } }
-                .minimal-grid {
-                    background-image: radial-gradient(#d1d5db 1px, transparent 1px);
-                    background-size: 24px 24px;
-                }
-            `}</style>
-
-            {/* CANVAS */}
-            <div
-                className={`absolute inset-0 z-0 minimal-grid ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-                onPointerDown={(e) => handlePointerDown(e, 'canvas')}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerUp}
-                style={{ backgroundPosition: `${pan.x}px ${pan.y}px` }}
-            >
-                <div
-                    className="absolute inset-0 origin-top-left pointer-events-none"
-                    style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
-                >
-                    <svg className="absolute inset-0 overflow-visible z-10">
-                        {renderEdges()}
-                    </svg>
-
-                    {nodes.map(node => (
-                        <div
-                            key={node.id}
-                            onPointerDown={(e) => handlePointerDown(e, 'node', node.id)}
-                            className={`absolute pointer-events-auto cursor-grab active:cursor-grabbing select-none hover:z-30 transition-none
-                                ${selectedNodeId === node.id ? 'z-40' : 'z-20'}
-                            `}
-                            style={{ left: node.x, top: node.y, width: NODE_WIDTH[node.shape], height: NODE_HEIGHT[node.shape] }}
-                        >
-                            {renderShapeContent(node, colorMap[node.color])}
-                        </div>
-                    ))}
-                </div>
+        <div className="flex flex-col w-full h-full bg-[#f4f4f5] select-none text-[var(--workspace-text)] animate-in fade-in duration-300">
+            {/* Top Level Nav Bar */}
+            <div className="h-[52px] border-b border-black/[0.06] bg-white px-2 sm:px-6 flex items-center gap-2 shrink-0">
+                <button onClick={() => setActiveMainTab('architecture')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'architecture' ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Layers size={14} /> Mimari Merkezi</button>
+                <button onClick={() => setActiveMainTab('topology')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'topology' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Activity size={14} /> Topoloji Haritası</button>
+                <button onClick={() => setActiveMainTab('models')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'models' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Cpu size={14} /> Zekâ Kaynakları</button>
+                <button onClick={() => setActiveMainTab('playground')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ml-auto ${activeMainTab === 'playground' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><MessageSquareText size={14} /> Playground (Test Terminali)</button>
             </div>
 
-            {/* HEADER */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center justify-between pointer-events-none">
-                <div className="pointer-events-auto bg-white/80 backdrop-blur-xl border border-slate-200/60 px-6 py-3 rounded-2xl shadow-sm flex items-center gap-8 text-slate-700">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100">
-                            <Layers size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-sm font-black tracking-widest uppercase text-slate-800">Agentic OS</h2>
-                            <p className="text-[10px] text-slate-400 font-mono">Kernel v2.5 - Logic Studio</p>
-                        </div>
-                    </div>
-                    <div className="h-8 w-px bg-slate-200" />
-                    <div className="flex items-center gap-2">
-                        <button className="h-9 px-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-600 text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm">
-                            <Play size={14} className="fill-current" /> Çalıştır
-                        </button>
-                        <button className="h-9 px-4 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm">
-                            <Save size={14} /> Kaydet
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <div className="flex-1 overflow-hidden">
+                {activeMainTab === 'architecture' && (
+                    <div className="flex w-full h-full overflow-hidden p-6 gap-6 max-w-[1600px] mx-auto transition-all duration-500">
 
-            {/* LEFT TOOLBOX */}
-            <div className="absolute left-6 top-1/2 -translate-y-1/2 z-[100] pointer-events-none">
-                <div className="pointer-events-auto w-[72px] bg-white/90 backdrop-blur-xl border border-slate-200 rounded-3xl p-3 flex flex-col items-center gap-4 shadow-lg pb-5 pt-5">
-
-                    <button onClick={() => handleAddNode('input', 'box', 'cyan', 'Yeni Girdi')} className="w-12 h-12 bg-white hover:bg-cyan-50 border border-slate-200 text-slate-500 hover:text-cyan-600 rounded-xl flex flex-col items-center justify-center transition-all group relative shadow-sm hover:border-cyan-200">
-                        <MessageSquare size={18} /><Plus size={12} className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 text-cyan-500 bg-white rounded-full" />
-                    </button>
-
-                    <button onClick={() => handleAddNode('rag', 'box', 'amber', 'Veritabanı')} className="w-12 h-12 bg-white hover:bg-amber-50 border border-slate-200 text-slate-500 hover:text-amber-600 rounded-xl flex flex-col items-center justify-center transition-all group relative shadow-sm hover:border-amber-200">
-                        <Database size={18} /><Plus size={12} className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 text-amber-500 bg-white rounded-full" />
-                    </button>
-
-                    <button onClick={() => handleAddNode('agent', 'circle', 'indigo', 'Yeni Zeka')} className="w-12 h-12 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-600 rounded-full flex flex-col items-center justify-center transition-all group relative shadow-sm">
-                        <Brain size={18} /><Plus size={12} className="absolute -top-0 -right-0 opacity-0 group-hover:opacity-100 text-indigo-600 bg-white rounded-full" />
-                    </button>
-
-                    {/* NEW LOGIC NODE */}
-                    <button onClick={() => handleAddNode('logic', 'diamond', 'rose', 'Karar Köprüsü')} className="w-12 h-12 bg-white hover:bg-rose-50 border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex flex-col items-center justify-center transition-all group relative shadow-sm hover:border-rose-200 rotate-45 mt-2 mb-2">
-                        <div className="-rotate-45 flex items-center justify-center"><GitBranch size={16} /></div>
-                        <Plus size={12} className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 text-rose-500 bg-white rounded-full -rotate-45" />
-                    </button>
-
-                    <button onClick={() => handleAddNode('output', 'box', 'emerald', 'Yeni Çıktı')} className="w-12 h-12 bg-white hover:bg-emerald-50 border border-slate-200 text-slate-500 hover:text-emerald-600 rounded-xl flex flex-col items-center justify-center transition-all group relative shadow-sm hover:border-emerald-200">
-                        <MonitorPlay size={18} /><Plus size={12} className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 text-emerald-500 bg-white rounded-full" />
-                    </button>
-
-                    <div className="mt-2 pt-4 border-t border-slate-200 w-full flex flex-col gap-3">
-                        <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="text-slate-400 hover:text-slate-700 flex justify-center"><ZoomIn size={16} /></button>
-                        <button onClick={() => setPan({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 50 })} className="text-slate-400 hover:text-slate-700 flex justify-center"><Maximize size={16} /></button>
-                        <button onClick={() => setScale(s => Math.max(s - 0.1, 0.5))} className="text-slate-400 hover:text-slate-700 flex justify-center"><ZoomOut size={16} /></button>
-                    </div>
-                </div>
-            </div>
-
-            {/* RIGHT SLIDE-OVER INSPECTOR */}
-            <div className={`absolute right-0 top-0 bottom-0 w-[420px] bg-white/95 backdrop-blur-2xl border-l border-slate-200 z-[100] transition-transform duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] shadow-[-30px_0_40px_rgba(0,0,0,0.03)] flex flex-col overscroll-contain
-                ${selectedNode ? 'translate-x-0' : 'translate-x-full'}`
-            }
-            >
-                {selectedNode && (
-                    <>
-                        <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl bg-${selectedNode.color}-50 text-${selectedNode.color}-600 border border-${selectedNode.color}-100`}>
-                                    {getIcon(selectedNode.type)}
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-800">{selectedNode.label}</h3>
-                                    <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Tür: {selectedNode.type}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setSelectedNodeId(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar relative">
-
-                            {/* General Setting - Name */}
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">Düğüm Tanımı</label>
-                                <input
-                                    type="text"
-                                    value={selectedNode.label}
-                                    onChange={(e) => handleUpdateNode(selectedNode.id, 'label', e.target.value)}
-                                    className="w-full bg-white border border-slate-200 text-slate-800 text-sm font-bold rounded-xl px-4 py-3 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all shadow-sm"
-                                />
-                            </div>
-
-                            {/* AGENT LOGIC */}
-                            {selectedNode.type === 'agent' && (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Server size={12} /> API Sağlayıcı</label>
-                                            <select
-                                                value={selectedNode.provider}
-                                                onChange={(e) => handleUpdateNode(selectedNode.id, 'provider', e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 cursor-pointer shadow-sm appearance-none"
-                                            >
-                                                {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Brain size={12} /> Akıl Modeli</label>
-                                            <select
-                                                value={selectedNode.model}
-                                                onChange={(e) => handleUpdateNode(selectedNode.id, 'model', e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 text-indigo-600 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 cursor-pointer shadow-sm appearance-none"
-                                            >
-                                                {MODELS_BY_PROVIDER[selectedNode.provider]?.map(m => <option key={m} value={m}>{m}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {/* PROMPT MODE TOGGLE */}
-                                    <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex text-xs font-bold">
-                                        <button
-                                            onClick={() => handleUpdateNode(selectedNode.id, 'promptMode', 'auto')}
-                                            className={`flex-1 py-2 rounded-lg transition-all ${selectedNode.promptMode === 'auto' ? 'bg-white shadow-sm text-indigo-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            Otomatik Mod
-                                        </button>
-                                        <button
-                                            onClick={() => handleUpdateNode(selectedNode.id, 'promptMode', 'custom')}
-                                            className={`flex-1 py-2 rounded-lg transition-all ${selectedNode.promptMode === 'custom' ? 'bg-white shadow-sm text-indigo-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            Kalıp (Şablon) Modu
-                                        </button>
-                                    </div>
-
-                                    <div>
-                                        <label className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">
-                                            <span>{selectedNode.promptMode === 'auto' ? 'Sistem Görevi (Statik)' : 'Değişkenli Kalıp (Dynamic)'}</span>
-                                            <Wand2 size={12} className="text-indigo-400" />
-                                        </label>
-
-                                        {selectedNode.promptMode === 'custom' && (
-                                            <div className="flex gap-2 mb-3">
-                                                <span className="text-[9px] bg-slate-100 border border-slate-200 text-slate-500 px-2 py-1 rounded-md font-mono cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors">{'{{context}}'}</span>
-                                                <span className="text-[9px] bg-slate-100 border border-slate-200 text-slate-500 px-2 py-1 rounded-md font-mono cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 transition-colors">{'{{user_input}}'}</span>
-                                            </div>
-                                        )}
-
-                                        <textarea
-                                            value={selectedNode.prompt}
-                                            onChange={(e) => handleUpdateNode(selectedNode.id, 'prompt', e.target.value)}
-                                            placeholder={selectedNode.promptMode === 'auto' ? "Örn: Sen uzman bir danışmansın..." : "Sana şu kaynaklar verildi: {{context}}..."}
-                                            className="w-full bg-white border border-slate-200 text-slate-600 text-sm leading-relaxed rounded-xl px-4 py-3 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 min-h-[160px] resize-y shadow-sm font-mono"
-                                        />
-
-                                        {selectedNode.promptMode === 'auto' && (
-                                            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                                                * Otomatik modda, veritabanından çekilen kaynaklar ve kullanıcı sorusu ajanın talimatının sonuna sistem tarafından <b>otomatik olarak</b> eklenir. Şablon yazmanıza gerek yoktur.
-                                            </p>
-                                        )}
-                                    </div>
-
-                                </div>
-                            )}
-
-                            {/* RAG DB LOGIC */}
-                            {selectedNode.type === 'rag' && (
-                                <div className="space-y-6">
-                                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 text-amber-700 text-xs leading-relaxed">
-                                        Vektörel (Semantic) arama düğümü. Seçtiğiniz kategoriye göre sadece ilgili metinleri süzerek ajanlara bilgi akışı sağlar.
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">Veri Nereden Çekilsin?</label>
-                                        <select
-                                            value={selectedNode.category || 'all'}
-                                            onChange={(e) => handleUpdateNode(selectedNode.id, 'category', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 text-amber-600 text-sm font-bold rounded-xl px-4 py-3 outline-none focus:border-amber-400 cursor-pointer shadow-sm appearance-none"
-                                        >
-                                            <option value="all">📁 Tüm Veritabanı (Hepsi)</option>
-                                            <option value="meetings">🗓️ Toplantı Notları</option>
-                                            <option value="documents">📄 Resmi Belgeler & Raporlar</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-6 pt-4 border-t border-slate-100">
-                                        <div>
-                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase mb-2">
-                                                <span>Sayfa Limiti (K Limit)</span>
-                                                <span className="text-amber-600 font-bold">{selectedNode.limit} Blok Metin</span>
-                                            </div>
-                                            <input type="range" min="1" max="10" value={selectedNode.limit} onChange={(e) => handleUpdateNode(selectedNode.id, 'limit', parseInt(e.target.value))} className="w-full accent-amber-500 cursor-pointer" />
-                                        </div>
-
-                                        <div>
-                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase mb-2">
-                                                <span>Alakasızlık Filtresi (Threshold)</span>
-                                                <span className="text-amber-600 font-bold">{'<'} {selectedNode.threshold} Mesafe</span>
-                                            </div>
-                                            <input type="range" min="0.5" max="2.0" step="0.1" value={selectedNode.threshold} onChange={(e) => handleUpdateNode(selectedNode.id, 'threshold', parseFloat(e.target.value))} className="w-full accent-amber-500 cursor-pointer" />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* LOGIC IF/CONDITION NODE */}
-                            {selectedNode.type === 'logic' && (
-                                <div className="space-y-6">
-                                    <div className="bg-rose-50 p-4 rounded-xl border border-rose-200 text-rose-700 text-xs leading-relaxed">
-                                        Bu düğüm gelen veriyi inceler ve verdiğiniz koşula göre <b>Geçer (True)</b> veya <b>Reddedilir (False)</b> olarak iki farklı yola ayrılır.
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">Karar Koşulu (Kural)</label>
+                        {/* LEFT SIDEBAR (Collapsible) */}
+                        <div className={`shrink-0 flex flex-col bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-[72px]' : 'w-[320px]'}`}>
+                            <div className="px-4 py-3 border-b border-black/[0.05] bg-slate-50/50 flex items-center justify-between shrink-0 h-[56px]">
+                                {!sidebarCollapsed && (
+                                    <div className="relative flex-1 opacity-100 transition-opacity duration-200">
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={12} />
                                         <input
-                                            type="text"
-                                            value={selectedNode.condition}
-                                            onChange={(e) => handleUpdateNode(selectedNode.id, 'condition', e.target.value)}
-                                            placeholder="Örn: Kalite Skoru > 8"
-                                            className="w-full bg-white border border-slate-200 text-slate-800 text-sm font-bold rounded-xl px-4 py-3 outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all shadow-sm"
+                                            className="w-full pl-8 pr-2 py-1.5 bg-white border border-black/[0.08] rounded-md text-[11px] text-[var(--workspace-text)] shadow-sm placeholder:text-slate-400 focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]"
+                                            placeholder="Ajan ara..."
+                                            value={search} onChange={(e) => setSearch(e.target.value)}
                                         />
-                                        <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                                            Ajanın ürettiği metinde bu kural aranır (Örn JSON içerisindeki 'skor' değeri okunur).
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                                    className={`p-1.5 text-slate-400 hover:text-[var(--accent)] rounded-md hover:bg-slate-100 transition-colors ${sidebarCollapsed ? 'mx-auto' : 'ml-2'}`}
+                                >
+                                    {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto py-3 space-y-1 custom-scrollbar">
+                                {!sidebarCollapsed && (
+                                    <div className="px-5 pb-2 flex items-center justify-between">
+                                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Workflow Agents</div>
+                                    </div>
+                                )}
+                                {agents.filter(a => a.name.toLowerCase().includes(search.toLowerCase())).map(agent => {
+                                    const isSelected = selectedItemId === agent.id;
+                                    return (
+                                        <div
+                                            key={agent.id}
+                                            onClick={() => setSelectedItemId(agent.id)}
+                                            className={`group cursor-pointer transition-all duration-200 overflow-hidden rounded-lg mx-2 ${isSelected ? 'bg-[var(--accent)]/5 shadow-sm ring-1 ring-[var(--accent)]/20' : 'hover:bg-slate-50'}`}
+                                            title={sidebarCollapsed ? agent.name : ''}
+                                        >
+                                            <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'p-2 justify-center' : 'px-3 py-2.5'}`}>
+                                                <div className="relative shrink-0">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-200 ${isSelected ? 'bg-[var(--accent)] text-white' : 'bg-white border border-black/[0.05] text-slate-500'}`}>
+                                                        {agent.agentKind === 'chatbot' ? <Bot size={18} /> : <Brain size={18} />}
+                                                    </div>
+                                                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${agent.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                                </div>
+                                                {!sidebarCollapsed && (
+                                                    <div className="flex-1 min-w-0 opacity-100 transition-opacity">
+                                                        <p className={`text-[12px] font-bold truncate transition-colors duration-200 ${isSelected ? 'text-[var(--accent)]' : 'text-slate-700'}`}>{agent.name}</p>
+                                                        <p className="text-[10px] font-medium truncate mt-0.5 text-slate-400">{agent.persona}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+
+                        {/* RIGHT DETAIL PANEL */}
+                        <div className="flex-1 flex flex-col gap-4 overflow-hidden transition-all duration-300">
+                            {selectedItem ? (
+                                <>
+                                    {/* ── KUTU 0: Mini Sistem Topolojisi (Standalone Box) ── */}
+                                    <div className="shrink-0">
+                                        <InlineTopologyOverview agent={selectedItem} rags={rags} />
+                                    </div>
+
+                                    {/* ── KUTU 1..N: Ajan Konfigürasyon Paneli ── */}
+                                    <div className="flex-1 flex flex-col bg-white border border-slate-200/80 rounded-xl shadow-[0_2px_18px_rgba(0,0,0,0.03)] overflow-hidden">
+                                        <div className="flex flex-col h-full relative">
+
+                                            {/* Agent Header */}
+                                            <div className="px-8 py-5 border-b border-black/[0.05] flex items-center justify-between shrink-0">
+                                                <div className="min-w-0 flex-1">
+                                                    <input
+                                                        type="text" value={selectedItem.name} onChange={(e) => updateAgent('name', e.target.value)}
+                                                        className="text-xl font-bold text-[var(--workspace-text)] bg-transparent outline-none border-b border-transparent focus:border-[var(--accent)]/40 w-full truncate transition-colors"
+                                                    />
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${selectedItem.active ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                                            {selectedItem.active ? 'Online & Routed' : 'Bypassed (Sleeping)'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-3 shrink-0 ml-4">
+                                                    <button
+                                                        onClick={handleSave}
+                                                        disabled={!hasUnsavedChanges || isSaving}
+                                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all min-w-[140px] justify-center ${isSaving ? 'bg-indigo-100 text-indigo-400 border-indigo-200 cursor-not-allowed' :
+                                                            hasUnsavedChanges ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700 shadow-md ring-2 ring-indigo-500/30' :
+                                                                'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                            }`}
+                                                    >
+                                                        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                        {isSaving ? 'Kaydediliyor' : hasUnsavedChanges ? 'Sisteme Kaydet' : 'Kaydedildi'}
+                                                    </button>
+
+                                                    <button onClick={() => toggleAgent(selectedItem.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${selectedItem.active ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100' : 'bg-[var(--accent)] text-white border border-[var(--accent-hover)] hover:bg-[var(--accent-hover)]'}`}>
+                                                        <Power size={14} /> {selectedItem.active ? 'Pasife Al' : 'Aktifleştir'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Tek sekme kaldığı için navigasyon barı kaldırıldı */}
+
+                                            {/* Tab Content Container */}
+                                            <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar ${!selectedItem.active && 'opacity-60 grayscale-[0.2] pointer-events-none transition-all'}`}>
+                                                {renderSubTabContent()}
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center gap-4 text-[var(--sidebar-text-muted)] p-8 bg-white border border-slate-200/80 rounded-xl shadow-sm">
+                                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center border border-black/[0.05]">
+                                        <Bot size={28} className="text-slate-300" />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm font-bold text-slate-600 mb-1">Sol panelden bir ajan seçin</p>
+                                        <p className="text-[11px] text-slate-400 max-w-[240px] leading-relaxed">
+                                            Ajanlar sistem tarafından yönetilmektedir. Yapılandırmak için sol listeden bir ajan seçin.
                                         </p>
                                     </div>
                                 </div>
                             )}
-
-                            {/* Delete Node */}
-                            <div className="pt-8 mt-auto border-t border-slate-100">
-                                <button
-                                    onClick={() => handleRemoveNode(selectedNode.id)}
-                                    className="w-full py-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-500 text-xs font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
-                                >
-                                    <Trash2 size={14} /> Düğümü Sil
-                                </button>
-                            </div>
-
                         </div>
-                    </>
+                    </div>
                 )}
+                {activeMainTab === 'topology' && <TopologyCanvas rags={rags} agents={agents} />}
+                {activeMainTab === 'models' && <ModelsTab />}
+                {activeMainTab === 'playground' && <RagChatPlayground defaultAgent={selectedItem} />}
             </div>
-
         </div>
     );
 };

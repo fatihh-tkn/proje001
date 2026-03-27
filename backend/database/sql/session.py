@@ -39,7 +39,11 @@ if DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_conn, _connection_record):
         cursor = dbapi_conn.cursor()
+        # Yabanci anahtar kisitlamalarini zorunlu hale getir
         cursor.execute("PRAGMA foreign_keys = ON;")
+        # WAL modu: es zamanli okuma/yazma icin performansi arttirir
+        # (logs.db ile ayni politika)
+        cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.close()
 
 # -- Session Factory ----------------------------------------------------------
@@ -55,10 +59,14 @@ def get_db() -> Generator[Session, None, None]:
     FastAPI dependency injection ile kullanilir:
         db: Session = Depends(get_db)
     Request bitince session otomatik kapatilir.
+    Exception durumunda rollback yapilir (FK ihlali dahil).
     """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()   # Yarim kalan transaction'i geri al
+        raise
     finally:
         db.close()
 
@@ -70,9 +78,14 @@ def get_session() -> Generator[Session, None, None]:
         with get_session() as db:
             ...
     db_bridge.py ve route'lardaki with-bloklari bu fonksiyonla calisir.
+    Exception durumunda otomatik rollback yapar; FK ihlali veya
+    flush hatasi sonrasi yarim kalan yazma islemi askida kalmaz.
     """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()   # Yarim kalan transaction'i geri al
+        raise
     finally:
         db.close()

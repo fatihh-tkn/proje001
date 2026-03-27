@@ -225,34 +225,91 @@ def get_file_graph_stats(filename: str = Query(..., description="Dosya adı")):
             "connected_files": conn_files,
         }
 
-@router.get("/schema", summary="SQL tablolarının tam şemasını ve ilişkilerini getir")
+@router.get("/schema", summary="SQL tablolarinin tam semasini ve iliskilerini getir (app.db + logs.db dinamik)")
 def get_schema():
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-    
-    tables_data = []
-    for table_name, table in metadata.tables.items():
-        columns = [{
-            "name": c.name,
-            "type": str(c.type),
-            "primary_key": c.primary_key,
-            "nullable": c.nullable
-        } for c in table.columns]
-        fks = []
-        for fk in table.foreign_keys:
-            fks.append({
-                "source_col": fk.parent.name,
-                "target_table": fk.column.table.name,
-                "target_col": fk.column.name
-            })
-            
-        tables_data.append({
-            "name": table_name,
-            "aciklama": TABLO_ACIKLAMALARI.get(table_name, table_name),
-            "columns": columns,
-            "foreign_keys": fks
-        })
-    return {"tables": tables_data}
+    """
+    Her iki veritabanini (app.db + logs.db) SQLAlchemy MetaData.reflect() ile
+    anlik olarak tarar. models.py'ye yeni bir tablo eklendiginde bu endpoint
+    hicbir degisiklik gerektirmeksizin yeni tabloyu otomatik dondurur.
+
+    Donen JSON yapisi:
+      {
+        "tables": [
+          {
+            "name": "belgeler",
+            "aciklama": "Belgeler (Arsiv)",
+            "db": "app",            # Hangi fiziksel DB dosyasinda oldugu
+            "columns": [
+              {"name": "kimlik", "type": "VARCHAR(36)", "primary_key": true, "nullable": false}
+            ],
+            "foreign_keys": [
+              {"source_col": "yukleyen_kimlik", "target_table": "kullanicilar", "target_col": "kimlik"}
+            ],
+            "row_count": 42          # Yaklasik satir sayisi (hiz icin COUNT(*))
+          }
+        ]
+      }
+    """
+    from database.sql.session import engine as app_engine
+    from database.logs.session import logs_engine
+    from sqlalchemy import text
+
+    def _reflect_db(eng, db_label: str) -> list[dict]:
+        """Verilen engine'i yansit, tablo bilgilerini standart formata donustur."""
+        meta = MetaData()
+        meta.reflect(bind=eng)
+
+        results = []
+        with eng.connect() as conn:
+            for table_name, table in meta.tables.items():
+                # -- Sutun bilgileri --
+                columns = [
+                    {
+                        "name": c.name,
+                        "type": str(c.type),
+                        "primary_key": bool(c.primary_key),
+                        "nullable": bool(c.nullable),
+                    }
+                    for c in table.columns
+                ]
+
+                # -- Yabanci anahtar (FK) baglantilar --
+                fks = [
+                    {
+                        "source_col":   fk.parent.name,
+                        "target_table": fk.column.table.name,
+                        "target_col":   fk.column.name,
+                    }
+                    for fk in table.foreign_keys
+                ]
+
+                # -- Satir sayisi (COUNT(*) -- buyuk tablolarda performansi etkilemez) --
+                try:
+                    row_count = conn.execute(
+                        text(f'SELECT COUNT(*) FROM "{table_name}"')
+                    ).scalar() or 0
+                except Exception:
+                    row_count = -1   # Erisim hatasi varsa -1 dondur
+
+                results.append(
+                    {
+                        "name":        table_name,
+                        "aciklama":    TABLO_ACIKLAMALARI.get(table_name, table_name),
+                        "db":          db_label,
+                        "columns":     columns,
+                        "foreign_keys": fks,
+                        "row_count":   row_count,
+                    }
+                )
+        return results
+
+    app_tables  = _reflect_db(app_engine,  db_label="app")
+    logs_tables = _reflect_db(logs_engine, db_label="logs")
+
+    # Tablolari birlestir; isme gore sort et (UI'da deterministic siralama)
+    all_tables = sorted(app_tables + logs_tables, key=lambda t: t["name"])
+
+    return {"tables": all_tables, "total": len(all_tables)}
 
 
 @router.post("/repair-integrity", summary="Orphan VektorParcasi kayıtlarını onar (belge_kimlik eksik/kopuk)")
@@ -381,3 +438,143 @@ def get_documents():
             })
 
     return {"records": results, "total": len(results)}
+
+
+@router.post(
+    "/sync-chunk-counts",
+    summary="parca_sayisi drift duzeltici — belgeler tablosunu VektorParcasi COUNT ile senkronize et",
+)
+def sync_chunk_counts():
+    """
+    Sorun 4 Duzeltme: Karantina/Onay gecisi sirasinda parca_sayisi yanlis
+    kaydedilebilir (esli yukleme, coklu islemci yarisi, vb.).
+
+    Bu endpoint:
+      1. Tum Belge satirlarini tarar.
+      2. Her belge icin VektorParcasi tablosundan gercek COUNT'u hesaplar.
+      3. Belgedeki parca_sayisi ile uyusmuyorsa gunceller.
+      4. Kac satirin duzeltildigini ve ne kadar saptigi raporlar.
+    """
+    from database.sql.models import Belge
+
+    guncellenen = 0
+    atlanmis    = 0
+    detaylar    = []
+
+    with get_session() as db:
+        belgeler = db.scalars(
+            select(Belge).where(Belge.dosya_turu != "folder")
+        ).all()
+
+        for b in belgeler:
+            # Gercek parca sayisini anlık say
+            gercek = db.scalar(
+                select(func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik == b.kimlik)
+            ) or 0
+
+            if b.parca_sayisi != gercek:
+                detaylar.append({
+                    "belge_id":  b.kimlik,
+                    "dosya_adi": b.dosya_adi,
+                    "eski":      b.parca_sayisi,
+                    "yeni":      gercek,
+                })
+                b.parca_sayisi = gercek
+                guncellenen += 1
+            else:
+                atlanmis += 1
+
+        if guncellenen > 0:
+            db.commit()
+
+    return {
+        "status":      "success",
+        "guncellenen": guncellenen,
+        "atlanmis":    atlanmis,
+        "detaylar":    detaylar,
+        "mesaj": (
+            f"{guncellenen} belgenin parca_sayisi guncellendi, "
+            f"{atlanmis} belge zaten senkronizeydi."
+        ),
+    }
+
+
+@router.get(
+    "/integrity-report",
+    summary="Veri butunlugu raporu — sadece okuma, duzeltme yapmaz",
+)
+def integrity_report():
+    """
+    Sistemdeki veri senkron sorunlarini raporlar.
+    Hicbir veri degistirmez; izleme paneli ve uyari sistemi icin kullanilir.
+
+    Kontrol edilen durumlar:
+      A) parca_sayisi uyumsuzlugu  — Belge.parca_sayisi != COUNT(VektorParcasi)
+      B) Hayalet parcalar          — VektorParcasi.belge_kimlik gecersiz (FK eksik)
+      C) Vektorsuz gosterilen dosyalar — vektorlestirildi_mi=True ama parca yok
+    """
+    from database.sql.models import Belge
+    from sqlalchemy import not_, exists
+
+    rapor = {
+        "A_parca_sayisi_uyumsuzlugu": [],
+        "B_hayalet_parcalar":         [],
+        "C_vektorsuz_gosterilen":     [],
+    }
+
+    with get_session() as db:
+        # -- A: parca_sayisi uyumsuzlugu ------------------------------------
+        belgeler = db.scalars(
+            select(Belge).where(Belge.dosya_turu != "folder")
+        ).all()
+
+        for b in belgeler:
+            gercek = db.scalar(
+                select(func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik == b.kimlik)
+            ) or 0
+
+            if b.parca_sayisi != gercek:
+                rapor["A_parca_sayisi_uyumsuzlugu"].append({
+                    "belge_id":  b.kimlik,
+                    "dosya_adi": b.dosya_adi,
+                    "kayitli":   b.parca_sayisi,
+                    "gercek":    gercek,
+                    "sapma":     gercek - b.parca_sayisi,
+                })
+
+            # -- C: vektorlestirildi_mi=True ama hic parcasi yok ------------
+            if b.vektorlestirildi_mi and gercek == 0:
+                rapor["C_vektorsuz_gosterilen"].append({
+                    "belge_id":  b.kimlik,
+                    "dosya_adi": b.dosya_adi,
+                })
+
+        # -- B: Hayalet parcalar (belge_kimlik gecersiz FK) -------------------
+        gecersiz_parcalar = db.scalars(
+            select(VektorParcasi).where(
+                not_(
+                    exists().where(Belge.kimlik == VektorParcasi.belge_kimlik)
+                )
+            )
+        ).all()
+
+        rapor["B_hayalet_parcalar"] = [
+            {
+                "parca_id":      p.kimlik,
+                "chroma_id":     p.chromadb_kimlik,
+                "belge_kimlik":  p.belge_kimlik,
+            }
+            for p in gecersiz_parcalar
+        ]
+
+    rapor["ozet"] = {
+        "A_uyumsuz_belge_sayisi":    len(rapor["A_parca_sayisi_uyumsuzlugu"]),
+        "B_hayalet_parca_sayisi":    len(rapor["B_hayalet_parcalar"]),
+        "C_vektorsuz_belge_sayisi":  len(rapor["C_vektorsuz_gosterilen"]),
+        "genel_durum":               "temiz" if all(
+            len(v) == 0 for v in rapor.values() if isinstance(v, list)
+        ) else "sorunlu",
+    }
+    return rapor

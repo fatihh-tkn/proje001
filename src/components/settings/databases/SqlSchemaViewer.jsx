@@ -376,6 +376,18 @@ export default function SqlSchemaViewer() {
                                 <Database size={14} className={focusedTable === table.name ? "text-red-200 drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]" : (draggingTable === table.name ? "text-indigo-200" : "text-indigo-400 drop-shadow-[0_0_6px_rgba(99,102,241,0.5)]")} />
                                 <span className="text-[13px] font-bold tracking-widest font-mono uppercase text-slate-100">{table.name}</span>
                             </div>
+                            <div className="flex items-center gap-1.5 pointer-events-none">
+                                {table.db && (
+                                    <span className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${table.db === 'logs' ? 'bg-amber-500/30 text-amber-300' : 'bg-indigo-500/30 text-indigo-300'}`}>
+                                        {table.db}
+                                    </span>
+                                )}
+                                {table.row_count != null && table.row_count >= 0 && (
+                                    <span className="text-[9px] font-mono text-slate-400 bg-white/10 px-1.5 py-0.5 rounded">
+                                        {table.row_count.toLocaleString()} satır
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         {/* Kolon Boyut Göstergesi */}

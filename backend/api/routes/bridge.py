@@ -1,12 +1,28 @@
 import os
 import shutil
 import uuid
+import logging
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from services.processor import analyze_pdf_with_vision
 from services.memory import memory_engine
 from database.sql.session import get_session
+from database.uow import UnitOfWork
 from database.sql.models import Belge
+
+# -- Logger kurulumu ----------------------------------------------------------
+# Windows'ta terminaller farkli karakter setleri kullanabilir (cp1254 gibi).
+# StreamHandler'a UTF-8 zorunlu yaparak UnicodeEncodeError'i sifirdan onleriz.
+_handler = logging.StreamHandler()
+_handler.setLevel(logging.DEBUG)
+_handler.stream = open(_handler.stream.fileno(), mode='w', encoding='utf-8', closefd=False)
+_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s - %(message)s'))
+
+logger = logging.getLogger('bridge')
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    logger.addHandler(_handler)
+# -----------------------------------------------------------------------------
 
 router = APIRouter()
 
@@ -68,7 +84,7 @@ def save_to_db(data: dict):
     if not chunks_raw:
         raise HTTPException(status_code=400, detail="Kaydedilecek veri yok!")
 
-    print(f"[save_to_db] ▶ {file_name} | {len(chunks_raw)} chunk")
+    logger.info("save_to_db -> %s | %d chunk", file_name, len(chunks_raw))
 
     try:
         def chunk_list(lst, n=900):
@@ -76,7 +92,8 @@ def save_to_db(data: dict):
             for i in range(0, len(lst), n):
                 yield lst[i:i + n]
 
-        with get_session() as db:
+        with UnitOfWork() as uow:
+            db = uow.session
             # 1. Belge kaydını çöz / oluştur & Varsa ESKİ kayıtları temizle (Re-upload durumunda üst üste binmeyi/orphan'ı engeller)
             resolved_belge_kimlik = None
             if belge_kimlik_istek:
@@ -117,9 +134,47 @@ def save_to_db(data: dict):
                 resolved_belge_kimlik = yeni.kimlik
 
             # 2. ChromaDB'ye yaz (vektörleştirme)
-            # İşlemleri SQL Session açıldıktan sonraya aldık ki hata olursa commit() çağrılmadan hepsi patlasın (Issue 3 Fix: Orphan Chunks)
-            memory_engine.save_to_memory(chunks_raw, collection_name=coll_name)
-            print(f"[save_to_db] ChromaDB ✓")
+            # Metadata temizliği ve hazırlığı
+            texts, metadatas, ids = [], [], []
+            for chunk in chunks_raw:
+                text = chunk.get("text", "")
+                if not text.strip():
+                    continue
+                curr_id = chunk.get("id") or str(uuid.uuid4())
+                meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
+
+                clean_meta = {"sqlite_doc_id": resolved_belge_kimlik}
+                for k, v in meta.items():
+                    # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
+                    clean_meta[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+
+                texts.append(text)
+                metadatas.append(clean_meta)
+                ids.append(curr_id)
+
+            if texts:
+                # Adim 1: ChromaDB'ye yaz (Atomik degil, UoW kaydiyla korunacak)
+                vector_db.add_documents(
+                    collection_name=coll_name,
+                    documents=texts,
+                    metadatas=metadatas,
+                    ids=ids,
+                )
+                logger.info("ChromaDB kayit OK | koleksiyon=%s | %d dokuman", coll_name, len(texts))
+
+                # UoW: SQL Flush oncesi Olası Hata için Telafi Kaydı (Compensation Transaction)
+                def rb_chroma():
+                    vector_db.delete_documents(coll_name, ids)
+                    logger.info("ChromaDB rollback OK | %d vektor silindi", len(ids))
+                
+                uow.register_compensation(rb_chroma)
+
+                # Adim 2: SQL'i guncelle (UoW tarafindan otomatik commit edilecek, hata verirse rb_chroma cagirilir)
+                if b:
+                    b.vektorlestirildi_mi = True
+                    b.vektordb_koleksiyon = coll_name
+                    b.parca_sayisi        = len(texts)
+                    db.flush()
 
             # 3. Semantik komşuları al
             semantic_neighbors: dict[str, list[tuple[str, float]]] = {}
@@ -248,29 +303,30 @@ def save_to_db(data: dict):
 
             if edges_to_add:
                 db.add_all(edges_to_add)
-            db.commit()
+            # UoW burada oto commit yapar (__exit__ metodu ile).
+            # db.commit() yazmaya artik gerek yok cunku try blogunun sonunda uow bitiyor.
 
-            # 4 ── NetworkX Hızlı Güncelleme: Grafiği sıfırdan oluşturmak yerine sadece yenileri ekle
-            try:
-                from database.graph.networkx_db import graph_db
-                formatted = [
-                    {"from_id": str(e.kaynak_parca_kimlik), "to_id": str(e.hedef_parca_kimlik), "relation": e.iliski_turu, "weight": float(e.agirlik or 1.0)}
-                    for e in edges_to_add
-                ]
-                # NetworkX_db add_edges metoduna ihtiyacımız var, geçici workaround: 
-                # Eğer graph_db'nin incremental desteği varsa çağır. Yoksa şimdilik add_edges_to_graph_db isimli patch func çalıştıracağız:
-                if hasattr(graph_db, "add_edges"):
-                    graph_db.add_edges(formatted)
-                else: # Fallback: graph rebuild for robustness if minimal patch used
-                    pass
-            except Exception as ge:
-                print(f"[save_to_db] NetworkX güncelleme hatası: {ge}")
+            # 4 -- NetworkX Hatali / Acik Grafikleri SQL Commit Sonrasina Birak (UoW register_after_commit)
+            def update_networkx():
+                try:
+                    from database.graph.networkx_db import graph_db
+                    formatted = [
+                        {"from_id": str(e.kaynak_parca_kimlik), "to_id": str(e.hedef_parca_kimlik), "relation": e.iliski_turu, "weight": float(e.agirlik or 1.0)}
+                        for e in edges_to_add
+                    ]
+                    if hasattr(graph_db, "add_edges"):
+                        graph_db.add_edges(formatted)
+                except Exception as ge:
+                    logger.warning("NetworkX guncelleme hatasi: %s", ge)
+
+            uow.register_after_commit(update_networkx)
 
     except Exception as e:
-        import traceback; traceback.print_exc()
+        logger.exception("Veritabani kayit hatasi (UoW Rollback tetiklendi)")
         raise HTTPException(status_code=500, detail=f"Veritabanı Kayıt Hatası: {str(e)}")
 
     return {"status": "success", "message": f"{file_name} kalıcı hafızaya eklendi!"}
+
 
 
 # --- 3. KÖPRÜ: ARŞİVLEME VE SQL KAYDI ---
