@@ -10,15 +10,14 @@ import SymbolImage from '../../assets/logo-kapali.png';
 import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
 import WorkspacePanel from './WorkspacePanel';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
-    const [treeData, setTreeData] = useState([]);
+    const isN8nBooting = useWorkspaceStore(state => state.isN8nBooting);
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [currentBasePath, setCurrentBasePath] = useState(localStorage.getItem('savedBasePath') || '');
-    const [additionalFiles, setAdditionalFiles] = useState([]);
     const [sidebarTab, setSidebarTab] = useState('files');
 
     const fetchArchive = async () => {
@@ -75,50 +74,6 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
         if (settingsOpen) setSettingsOpen(false);
     }, [isCollapsed]);
 
-    const fetchTree = async (path) => {
-        if (!path) return;
-        try {
-            const res = await fetch(`/api/files/tree?path=${encodeURIComponent(path)}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.success && data.nodes) setTreeData(data.nodes);
-            }
-        } catch (err) {
-            console.error("Local dosya yolu okunurken hata:", err);
-        }
-    };
-
-    useEffect(() => {
-        if (currentBasePath) fetchTree(currentBasePath);
-    }, [currentBasePath]);
-
-    const handleSetBasePath = (path) => {
-        setCurrentBasePath(path);
-        localStorage.setItem('savedBasePath', path);
-        setAdditionalFiles([]);
-        fetchTree(path);
-    };
-
-    const handleAddFiles = (filePaths) => {
-        const newFiles = filePaths.map(path => {
-            const nameMatch = path.match(/[^\\/\\\\]+$/);
-            const name = nameMatch ? nameMatch[0] : 'Bilinmeyen Dosya';
-            const extMatch = name.match(/\\.([^.]+)$/);
-            const ext = extMatch ? extMatch[1].toLowerCase() : '';
-            return {
-                id: path,
-                name,
-                type: 'file',
-                extension: ext,
-                url: `/api/files/download?path=${encodeURIComponent(path)}`,
-            };
-        });
-        setAdditionalFiles(prev => {
-            const prevIds = new Set(prev.map(f => f.id));
-            return [...prev, ...newFiles.filter(f => !prevIds.has(f.id))];
-        });
-    };
-
     const toggleFolder = (folderId) => {
         if (isCollapsed) return;
         setOpenFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
@@ -148,9 +103,6 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 isOpen={settingsOpen}
                 onClose={() => setSettingsOpen(false)}
                 onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
-                onSetBasePath={handleSetBasePath}
-                onAddFiles={handleAddFiles}
-                currentBasePath={currentBasePath}
                 isCollapsed={isCollapsed}
                 onOpenFile={onOpenFile}
             />
@@ -248,7 +200,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     {/* DOSYALAR */}
                     {(isCollapsed || sidebarTab === 'files') && (
                         <>
-                            {(treeData.length === 0 && additionalFiles.length === 0 && archiveData.length === 0) && !isCollapsed && (
+                            {(archiveData.length === 0) && !isCollapsed && (
                                 <div
                                     onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
                                     className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
@@ -256,13 +208,13 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                 >
                                     <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#A01B1B] transition-colors" />
                                     <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
-                                        Klasör seçmek için<br />
-                                        <span className="text-slate-400 group-hover:text-white font-medium">ayarlardan dosya yolunu</span> belirleyin.
+                                        Sistemde hiç dosya bulunumadı.<br />
+                                        <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
                                     </p>
                                 </div>
                             )}
                             <div className="flex flex-col space-y-0.5 w-full">
-                                {[...additionalFiles, ...treeData, getArchiveTree()].filter(Boolean).map((node) => (
+                                {[getArchiveTree()].filter(Boolean).map((node) => (
                                     <TreeNode
                                         key={node.id}
                                         node={node}
@@ -320,16 +272,15 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (onOpenFile) {
-                                onOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n' });
-                            }
+                            if (isN8nBooting) return;
+                            window.dispatchEvent(new CustomEvent('open-n8n-workspace'));
                         }}
-                        className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57]`}
-                        title="Otomasyon (n8n)"
+                        className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57] ${isN8nBooting ? 'cursor-wait opacity-80' : ''}`}
+                        title={isN8nBooting ? "Otomasyon (Motor Hazırlanıyor...)" : "Otomasyon (n8n)"}
                     >
                         <Webhook
                             size={isCollapsed ? 24 : 20}
-                            className="group-hover:scale-110 transition-transform duration-300"
+                            className={`${isN8nBooting ? 'animate-spin text-[#f06e57]' : 'group-hover:scale-110 shadow-sm'} transition-transform duration-300`}
                         />
                     </button>
 

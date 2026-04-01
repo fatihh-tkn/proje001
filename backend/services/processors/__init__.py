@@ -47,8 +47,24 @@ def dispatch(
         return parse_image(file_path, original_name=original_name)
 
     if ext in ("xlsx", "xls", "csv"):
-        from services.processors.excel_processor import parse_excel
-        return parse_excel(file_path, original_name=original_name)
+        # Excel / CSV dosyaları vektörleştirilmez — sadece arşivleme ve görüntüleme.
+        basename = original_name or os.path.basename(file_path)
+        return [{
+            "id":   f"archive-only-{uuid.uuid4()}",
+            "text": (
+                f"[ARŞİV] {basename} dosyası yapay zeka ile işlenmemiştir. "
+                f"Bu dosya ({ext.upper()}) yalnızca görüntüleme ve arşivleme amacıyla kaydedilmiştir. "
+                f"İçeriği hakkında soru soramazsınız, ancak dosyayı arşivden açarak tabloları inceleyebilirsiniz."
+            ),
+            "metadata": {
+                "source":        basename,
+                "type":          "archive_only",
+                "ext":           ext,
+                "is_searchable": False,
+                "page":          0,
+                "chunk_index":   0,
+            }
+        }]
 
     if ext in ("txt", "md", "docx", "doc"):
         from services.processors.text_processor import parse_text

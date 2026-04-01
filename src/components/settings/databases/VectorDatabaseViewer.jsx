@@ -44,14 +44,23 @@ export default function VectorDatabaseViewer() {
         try {
             await fetchWithTimeout(`${BASE}/collections/${COLLECTION}`, {}, 5000);
             setBackendReady(true);
-            const res = await fetch(`${BASE}/collections/${COLLECTION}/documents?limit=10000`);
+            const res = await fetch(`${BASE}/collections/${COLLECTION}/documents?limit=50000`);
             if (res.ok) {
                 const data = await res.json();
                 const vectors = [];
                 if (data && Array.isArray(data.ids)) {
                     for (let i = 0; i < data.ids.length; i++) {
                         const meta = data.metadatas ? data.metadatas[i] : {};
-                        vectors.push({ id: data.ids[i], text: data.documents ? data.documents[i] : '', file: meta.file || 'Bilinmeyen Dosya', page: meta.page || 1, x: meta.x || 0, y: meta.y || 0, rawMeta: meta });
+                        // ChromaDB metadatası `source` anahtarında tutulur, eski veriler için `file` fallback'i bırakılır.
+                        vectors.push({
+                            id: data.ids[i],
+                            text: data.documents ? data.documents[i] : '',
+                            file: meta.source || meta.file || 'Bilinmeyen Dosya',
+                            page: meta.page || 1,
+                            x: meta.x || 0,
+                            y: meta.y || 0,
+                            rawMeta: meta
+                        });
                     }
                 }
                 setAllVectors(vectors);
@@ -71,28 +80,50 @@ export default function VectorDatabaseViewer() {
 
     const handleDeleteChunk = async (chunkId, e) => {
         e.stopPropagation();
-        if (!window.confirm("Bu bilgi parçacığını silmek istediğinize emin misiniz?")) return;
+        if (!window.confirm("Bu bilgi parçacığını tüm veritabanlarından (Vektör + SQL + Graf) kalıcı olarak silmek istiyor musunuz?")) return;
         try {
-            const res = await fetch(`${BASE}/documents`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collection: COLLECTION, ids: [chunkId] }) });
-            if (res.ok) setAllVectors(prev => prev.filter(v => v.id !== chunkId));
-            else alert("Silme başarısız oldu.");
-        } catch (err) { console.error(err); alert("Sunucuya ulaşılamadı."); }
+            const res = await fetch(`/api/chunk/${encodeURIComponent(chunkId)}`, {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                setAllVectors(prev => prev.filter(v => v.id !== chunkId));
+
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Silme başarısız: ${err.detail || res.statusText}`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Sunucuya ulaşılamadı.");
+        }
     };
 
     const handleDeleteFile = async (fileName, fileId, e) => {
         e.stopPropagation();
-        if (!window.confirm(`"${fileName}" dosyasına ait TÜM vektör parçacıklarını silmek istediğinize emin misiniz?`)) return;
-        const idsToDelete = allVectors.filter(v => v.file === fileName).map(v => v.id);
+        if (!window.confirm(`"${fileName}" dosyasına ait TÜM vektör parçacıklarını tüm veritabanlarından silmek istiyor musunuz?`)) return;
+
+        const chunksToDelete = allVectors.filter(v => v.file === fileName);
+        const idsToDelete = chunksToDelete.map(v => v.id);
+
         if (idsToDelete.length > 0) {
-            try {
-                const res = await fetch(`${BASE}/documents`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collection: COLLECTION, ids: idsToDelete }) });
-                if (res.ok) setAllVectors(prev => prev.filter(v => !idsToDelete.includes(v.id)));
-                else { alert("Silme işlemi gerçekleşmedi."); return; }
-            } catch (err) { console.error(err); alert("Sunucuya ulaşılamadı."); return; }
+            // Her chunk'ı atomik endpoint'e teker teker gönder
+            let hasError = false;
+            for (const cid of idsToDelete) {
+                try {
+                    const res = await fetch(`/api/chunk/${encodeURIComponent(cid)}`, { method: 'DELETE' });
+                    if (!res.ok) { hasError = true; break; }
+                } catch {
+                    hasError = true; break;
+                }
+            }
+            if (hasError) { alert("Bazı parçalar silinemedi."); return; }
+            setAllVectors(prev => prev.filter(v => !idsToDelete.includes(v.id)));
         }
+
         setFiles(files.filter(f => f.id !== fileId));
         if (selectedFileId === fileId) { setSelectedFileId(null); setSelectedPage(null); }
     };
+
 
     const filteredVectors = React.useMemo(() => {
         if (!searchTerm) return [];

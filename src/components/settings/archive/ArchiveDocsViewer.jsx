@@ -6,6 +6,7 @@ import {
     ArrowUpDown, SlidersHorizontal, Edit2, Check, Tag, MessageSquare,
     ExternalLink, Download
 } from 'lucide-react';
+import { useWorkspaceStore } from '../../../store/workspaceStore';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
 const getFileVisual = (fileType) => {
@@ -19,6 +20,11 @@ const getFileVisual = (fileType) => {
     if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
     return { Icon: File, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100' };
 };
+
+// Sadece arşiv modunda olan formatlar
+const ARCHIVE_ONLY_TYPES = ['xls', 'xlsx', 'csv'];
+const isArchiveOnly = (fileType) => ARCHIVE_ONLY_TYPES.includes((fileType || '').toLowerCase());
+
 
 const isImage = (t) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((t || '').toLowerCase());
 const isPdf = (t) => (t || '').toLowerCase() === 'pdf';
@@ -201,7 +207,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                             ['Boyut', formatBytes(doc.file_size)],
                             ['Yükleyen', doc.uploader],
                             ['Tarih', new Date(doc.created_at).toLocaleString('tr')],
-                            ['Durum', doc.is_vectorized ? '✅ Vektörleşmiş' : '📁 Arşivde'],
+                            ['Durum', isArchiveOnly(doc.file_type)
+                                ? '📁 Yalnızca Arşiv'
+                                : doc.is_vectorized ? '✅ Vektörleşmiş' : '📁 Arşivde'],
                             ['Chunk', doc.total_chunks > 0 ? `${doc.total_chunks} parça` : '-'],
                         ].map(([k, v]) => (
                             <div key={k} className="flex justify-between border-b border-slate-50 pb-1.5">
@@ -209,6 +217,18 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 <span className="text-slate-700 font-medium text-right">{v}</span>
                             </div>
                         ))}
+
+                        {/* Excel/CSV uyarı notu */}
+                        {isArchiveOnly(doc.file_type) && (
+                            <div className="mt-1 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                                <span className="text-amber-500 text-[16px] shrink-0">⚠️</span>
+                                <p className="text-[11px] text-amber-800 leading-relaxed">
+                                    Bu <strong>{doc.file_type?.toUpperCase()}</strong> dosyası yapay zeka ile işlenmemiştir.
+                                    İçeriği hakkında soru soramazsınız, ancak dosyayı açarak tabloları inceleyebilirsiniz.
+                                </p>
+                            </div>
+                        )}
+
                     </div>
 
                     {/* Etiketler */}
@@ -393,7 +413,16 @@ export default function ArchiveDocsViewer() {
         fetchArchive(); setIsCreatingFolder(false); setNewFolderName('');
     };
 
-    const handleUploadClick = () => fileInputRef.current?.click();
+    const handleUploadClick = () => {
+        const { handleOpenFile } = useWorkspaceStore.getState();
+        if (handleOpenFile) {
+            handleOpenFile({
+                id: 'database-settings',
+                title: 'Dosya İşleme',
+                type: 'database',
+            });
+        }
+    };
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -785,9 +814,17 @@ export default function ArchiveDocsViewer() {
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
                                                     </div>
-                                                    {doc.is_vectorized && (
+                                                    {/* Vectorized badge — Excel dosyalarında gösterme */}
+                                                    {doc.is_vectorized && !isArchiveOnly(doc.file_type) && (
                                                         <span className="absolute top-2 right-2 bg-teal-50 text-teal-700 border border-teal-100 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none">VEK</span>
                                                     )}
+                                                    {/* Archive-only badge */}
+                                                    {isArchiveOnly(doc.file_type) && (
+                                                        <span className="absolute top-2 right-2 bg-amber-50 text-amber-700 border border-amber-200 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none" title="Yapay zeka ile işlenmedi">
+                                                            ARŞİV
+                                                        </span>
+                                                    )}
+
                                                     {(doc.etiketler?.length > 0) && (
                                                         <span className="absolute bottom-8 right-2 flex items-center gap-0.5 text-slate-400">
                                                             <Tag size={9} /><span className="text-[9px]">{doc.etiketler.length}</span>

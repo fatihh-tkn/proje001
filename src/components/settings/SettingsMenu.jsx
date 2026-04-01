@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, FolderOpen, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -62,87 +62,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
 
 
 
-                        {/* DOSYA YOLU */}
-                        <button
-                            onClick={() => setActiveSection(activeSection === 'path' ? null : 'path')}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer
-                ${activeSection === 'path' ? 'bg-white/5 text-white' : 'text-white/60 hover:bg-white/[0.03] hover:text-white/80'}`}
-                        >
-                            <FolderOpen size={14} className="text-slate-500 shrink-0" />
-                            <span>Dosya Yolu</span>
-                        </button>
-
-                        <AnimatePresence>
-                            {activeSection === 'path' && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="overflow-hidden bg-[#161616]"
-                                >
-                                    <div className="px-4 py-2.5 space-y-2">
-                                        <input
-                                            type="text"
-                                            value={basePath}
-                                            onChange={(e) => setBasePath(e.target.value)}
-                                            onBlur={() => {
-                                                if (onSetBasePath && basePath.trim()) {
-                                                    onSetBasePath(basePath.trim());
-                                                }
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && onSetBasePath && basePath.trim()) {
-                                                    onSetBasePath(basePath.trim());
-                                                }
-                                            }}
-                                            placeholder="C:\Belgeler\Projeler..."
-                                            className="w-full bg-[#111] border border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-white/70 placeholder-white/15 outline-none focus:border-[#555] transition-colors"
-                                        />
-
-                                        <div className="flex gap-2 w-full pt-1">
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const res = await fetch('/api/files/dialog');
-                                                        const data = await res.json();
-                                                        if (data.path) {
-                                                            setBasePath(data.path);
-                                                            if (onSetBasePath) onSetBasePath(data.path);
-                                                            onClose();
-                                                        }
-                                                    } catch (err) {
-                                                        console.error(err);
-                                                    }
-                                                }}
-                                                className="flex-1 py-1.5 bg-[#333] hover:bg-[#444] text-white/90 text-[11px] font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer"
-                                                title="Klasör Seç (Kalıcı)"
-                                            >
-                                                Gözat
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const res = await fetch('/api/files/dialog_file');
-                                                        const data = await res.json();
-                                                        if (data.paths && data.paths.length > 0) {
-                                                            if (onAddFiles) onAddFiles(data.paths);
-                                                            onClose();
-                                                        }
-                                                    } catch (err) {
-                                                        console.error(err);
-                                                    }
-                                                }}
-                                                className="flex-1 py-1.5 bg-[#333] hover:bg-[#444] text-white/90 text-[11px] font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer"
-                                                title="Geçici Bireysel Dosya Seç"
-                                            >
-                                                Dosya Ekle
-                                            </button>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                        {/* DOSYA YOLU KALDIRILDI */}
 
                         {/* VERİTABANI */}
                         <button

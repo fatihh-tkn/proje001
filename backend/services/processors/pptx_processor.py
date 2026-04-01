@@ -15,6 +15,8 @@ PDF'e çevirmeden DOĞRUDAN PPTX okuma:
 
 import os
 import uuid
+import shutil
+import subprocess
 
 
 # Chunk boyutu (çok uzun slayt için bölme, genelde gerekmez)
@@ -22,22 +24,117 @@ _CHUNK_SIZE = 3000
 _MIN_TEXT   = 20   # Bu karakterden kısaysa slaytı atla
 
 
+# ── PPT → PDF Dönüştürücü ────────────────────────────────────────────
+
+def convert_pptx_to_pdf(pptx_path: str, output_dir: str) -> str | None:
+    """
+    PPT/PPTX dosyasını PDF'e dönüştürür.
+    Strateji zinciri:
+      1. pywin32 (Windows + Office kuruluysa) — en yüksek kalite
+      2. LibreOffice soffice --headless       — cross-platform fallback
+    Döner: oluşturulan PDF'in tam yolu, başarısızsa None.
+    """
+    base_name   = os.path.splitext(os.path.basename(pptx_path))[0]
+    target_pdf  = os.path.join(output_dir, f"{base_name}.pdf")
+
+    # Zaten varsa tekrar çevirme
+    if os.path.exists(target_pdf) and os.path.getsize(target_pdf) > 0:
+        return target_pdf
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ── Strateji 1: pywin32 (Windows COM / PowerPoint) ─────────────────
+    try:
+        import comtypes.client
+        pptx_abs = os.path.abspath(pptx_path)
+        pdf_abs  = os.path.abspath(target_pdf)
+
+        powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
+        powerpoint.Visible = 1
+        deck = powerpoint.Presentations.Open(pptx_abs, ReadOnly=True, Untitled=True, WithWindow=False)
+        deck.SaveAs(pdf_abs, 32)   # 32 = ppSaveAsPDF
+        deck.Close()
+        powerpoint.Quit()
+        print(f"[PPTX→PDF] pywin32 (COM) başarılı: {pdf_abs}")
+        return pdf_abs
+    except Exception as e:
+        print(f"[PPTX→PDF] pywin32 kullanılamıyor ({e}), LibreOffice deneniyor...")
+
+    # ── Strateji 2: LibreOffice ─────────────────────────────────────────
+    soffice = shutil.which("soffice") or shutil.which("soffice.bin")
+    if soffice:
+        try:
+            result = subprocess.run(
+                [soffice, "--headless", "--convert-to", "pdf",
+                 "--outdir", output_dir, pptx_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            expected = os.path.join(output_dir, f"{base_name}.pdf")
+            if result.returncode == 0 and os.path.exists(expected):
+                print(f"[PPTX→PDF] LibreOffice başarılı: {expected}")
+                return expected
+            else:
+                print(f"[PPTX→PDF] LibreOffice dönüşüm başarısız: {result.stderr[:200]}")
+        except Exception as e:
+            print(f"[PPTX→PDF] LibreOffice hatası: {e}")
+    else:
+        print("[PPTX→PDF] LibreOffice bulunamadı. Yalnızca metin chunking kullanılacak.")
+
+    return None
+
+
+# ── Ana Parser ───────────────────────────────────────────────────────
+
 def parse_pptx(
     file_path: str,
     original_name: str | None = None,
+    use_vision: bool = False,
 ) -> list[dict]:
     """
     PPTX dosyasını parse edip chunk listesi döner.
-    Her slayt ayrı bir chunk olarak üretilir.
+
+    Önce PDF'e dönüştürmeyi dener (koordinat odaklı analiz için).
+    PDF dönüşümü başarılıysa → analyze_pdf_with_vision() kullanılır
+    (her chunk'a bbox + page koordinatı eklenir, pdf_path meta verisi set edilir).
+    Başarısızsa → _directly_parse_pptx() fallback mekanizmasına düşer.
     """
     file_basename = original_name or os.path.basename(file_path)
+    output_dir    = os.path.dirname(file_path)
+
+    pdf_path = convert_pptx_to_pdf(file_path, output_dir)
+
+    if pdf_path and os.path.exists(pdf_path):
+        # ── PDF başarıyla oluşturuldu → koordinatlı analiz ─────────────
+        from services.processor import analyze_pdf_with_vision
+        chunks = analyze_pdf_with_vision(
+            file_path=pdf_path,
+            use_vision=use_vision,
+            original_name=file_basename,
+        )
+        # Her chunk'a kaynak pptx ve pdf_path bilgisini ekle
+        for c in chunks:
+            meta = c.get("metadata", {})
+            meta["source"]       = file_basename
+            meta["pdf_path"]     = pdf_path
+            meta["source_pptx"]  = file_path
+            meta["file_type"]    = "pptx"
+            c["metadata"]        = meta
+        return chunks
+
+    # ── Fallback: Doğrudan PPTX okuma (koordinatsız) ───────────────────
+    print(f"[PPTX] PDF dönüşümü başarısız, doğrudan PPTX okunuyor: {file_basename}")
+    return _directly_parse_pptx(file_path, file_basename)
+
+
+def _directly_parse_pptx(file_path: str, file_basename: str) -> list[dict]:
+    """
+    PDF dönüşümü mümkün olmadığında python-pptx ile doğrudan okuma yapar.
+    Koordinat (bbox) bilgisi olmaz; slayt numarası korunur.
+    """
     chunks: list[dict] = []
 
     try:
         from pptx import Presentation
-        from pptx.util import Pt
-        from pptx.enum.text import PP_ALIGN
-        import pptx.enum.shapes as shape_types
     except ImportError:
         return [{
             "id":   f"error-{uuid.uuid4()}",
@@ -119,6 +216,7 @@ def parse_pptx(
                 "source":      file_basename,
                 "type":        "pptx_summary",
                 "total_pages": total_slides,
+                "file_type":   "pptx",
             }
         })
 
@@ -136,12 +234,6 @@ def parse_pptx(
 
 def _get_title(slide) -> str:
     """Slayttaki Placeholder TITLE şeklinden başlığı çeker."""
-    from pptx.util import Inches
-    try:
-        from pptx.enum.text import PP_ALIGN
-    except ImportError:
-        pass
-
     # Önce placeholder'lar arasında TITLE ara
     for ph in slide.placeholders:
         if ph.placeholder_format.idx == 0:  # idx=0 her zaman başlık
@@ -232,6 +324,7 @@ def _make_chunk(text: str, slide_idx: int, chunk_idx: int, source: str, total: i
             "source":      source,
             "type":        "pptx_slide",
             "total_pages": total,
+            "file_type":   "pptx",
         }
     }
 

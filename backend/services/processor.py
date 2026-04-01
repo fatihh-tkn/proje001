@@ -71,85 +71,131 @@ def _extract_slide_blocks(page) -> tuple[str, str, str]:
 
     return title, body, bbox_str
 
+# PDF içinde görsel analiz gerektiren eşikler
+_MIN_IMAGE_AREA_RATIO = 0.05   # sayfa alanının %5'inden büyük görüntü → Vision
+_MIN_TABLE_CELLS      = 6       # 6'dan fazla hücre içeren tablo → Vision
+_PAGE_OVERLAP_CHARS   = 200     # sayfa sonu sarkma önleme (önceki sayfadan alınan son N karakter)
+
+
+def _page_needs_vision(page) -> tuple[bool, str]:
+    """
+    Akıllı Yönlendirme (Smart Routing): Sayfada tablo veya büyük görüntü
+    varsa True döner; bu sayfalar Vision AI'a yönlendirilir.
+    Ayrıca tespit nedeni string olarak döner (log/debug için).
+    """
+    reasons = []
+
+    # 1. Görüntü kontrolü — alan oranına göre
+    page_area = page.rect.width * page.rect.height
+    images    = page.get_images(full=True)
+    for img_info in images:
+        # PyMuPDF image info: (xref, smask, w, h, bpc, cs, alt, name, filter, referencer)
+        if len(img_info) >= 4:
+            img_w, img_h = img_info[2], img_info[3]
+            if page_area > 0 and (img_w * img_h) / page_area > _MIN_IMAGE_AREA_RATIO:
+                reasons.append(f"görüntü ({img_w}x{img_h}px)")
+                break
+
+    # 2. Tablo kontrolü — metin bloklarının grid benzeri durumu
+    blocks = page.get_text("blocks")
+    text_blocks = [b for b in blocks if len(b) >= 7 and b[6] == 0 and b[4].strip()]
+    # Y ekseninde yakın gruplar tablo satırı işareti
+    if len(text_blocks) >= _MIN_TABLE_CELLS:
+        y_coords = sorted(set(round(b[1] / 10) * 10 for b in text_blocks))
+        if len(y_coords) >= 3:  # ≥3 farklı satır seviyesi
+            reasons.append(f"{len(text_blocks)} blok / tablo benzeri düzen")
+
+    needs = bool(reasons)
+    return needs, ", ".join(reasons) if reasons else "düz metin"
+
+
 def ask_gemini_vision(image_path: str, context: str = "") -> str:
-    """Gemini 1.5 Pro ile yüksek zekalı görsel okuma ve Dashboard entegrasyonu"""
+    """Gemini 1.5 Pro ile görsel okuma — Markdown formatında çıktı üretir (Faz 3)."""
     try:
         if not settings.GEMINI_API_KEY:
             return "[Uyarı: GEMINI_API_KEY yapılandırılmadığı için AI okuması yapılamadı.]"
-            
+
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-1.5-pro')
-        
+
         start_time = time.time()
-        
+
         from PIL import Image, ImageEnhance, ImageFilter
         img = Image.open(image_path)
-        
-        # 5. Görsel İyileştirme (Pre-processing)
         enhancer = ImageEnhance.Contrast(img)
         img = enhancer.enhance(1.2)
         img = img.filter(ImageFilter.SHARPEN)
-        
-        context_block = f"\nBAĞLAM (Önceki sayfa/slaytların özeti):\n{context}\nBu bağlamı anlam bütünlüğünü kurmak için kullan.\n" if context else ""
-        
-        prompt = f"""GÖREV:
-Aşağıdaki görseli detaylıca analiz et.{context_block}
 
-1. TÜR BELİRLEME (Dinamik Analiz):
-Görselin ne olduğunu tespit et (Örn: "Fatura", "Eğitim Slaytı", "SAP Ekranı", "Teknik Şartname", "Sözleşme", "Form", "Tablo" vb.).
-Tipine göre en uygun veri formatında değerleri çıkar. (Fatura ise IBAN/Tutar/Tarih; SAP veya bir yazılım ekranı ise sekme/menü/form etiketleri; Sözleşme ise maddeler).
+        context_block = (
+            f"\nÖNCEKİ SAYFA/SLAYT BAĞLAMI (Anlam bütünlüğü için kullan):\n{context}\n"
+            if context else ""
+        )
 
-2. KOORDİNAT (Bounding Box) ETİKETLEME:
-Çıkardığın her bir önemli metin bloğu, tablo satırı veya form alanı için, görsel üzerindeki yaklaşık 
-koordinatlarını [y_üst, x_sol, y_alt, x_sağ] formatında (0 ile 1000 arasında normalize edilmiş) belirt. Veremiyorsan "Belirsiz" yaz.
+        # ── Faz 3: Markdown yapılandırılmış çıktı prompt'u ─────────────────
+        prompt = f"""\
+GÖREV: Aşağıdaki belge sayfasını analiz et ve içeriği **Markdown formatında** yeniden yaz.
+{context_block}
+KURALLAR:
+1. TÜR BELİRLEME: İlk satırda belge türünü belirt: `**Belge Türü:** <Tür>`
+   (Örn: Eğitim Slaytı, Mimari Diyagram, Fatura, SAP Ekranı, Şartname, Form, Tablo...)
 
-YANIT FORMATI (Tam Olarak Bu Yapıya Uyun):
-[BELGE TÜRÜ]: <Tespit Edilen Tür>
+2. YAPI KURALLARI:
+   - Ana başlıklar için `## Başlık`
+   - Alt başlıklar için `### Alt Başlık`
+   - Madde listeleri için `- Madde`
+   - Tablolar için Markdown tablo formatı:
+     | Sütun 1 | Sütun 2 |
+     |---------|---------|
+     | Değer 1 | Değer 2 |
+   - Vurgulu terimler için `**terim**`
+   - Akış/diyagram ilişkileri: `Adım A → Adım B → Adım C`
 
-[ANALİZ VE KOORDİNATLAR]:
-- <Alan/Etiket Adı>: <Metin İçeriği> | Koordinat: [y1, x1, y2, x2]
-- <Alan/Etiket Adı>: <Metin İçeriği> | Koordinat: [y1, x1, y2, x2]
+3. KOORDİNAT ETİKETLEME: Her önemli element için (y_üst, x_sol, y_alt, x_sağ) koordinatını
+   (0-1000 arası normalize) şu formatta ekle: `<!-- bbox: y1,x1,y2,x2 -->`
+   Veremiyorsan ekleme.
 
-Mümkün olan en detaylı, hiyerarşik (örn. Tablo>Satır veya Menü>Alt Menü) yapıyı kullan ve sadece gördüğünü yaz. Yorum yapma."""
-        
-        response = model.generate_content([prompt, img])
-        text_out = response.text
-        
-        duration = int((time.time() - start_time) * 1000)
-        
-        p_tokens = 258 + int(len(prompt)/4)
-        c_tokens = int(len(text_out)/4)
-        cost = (p_tokens / 1000) * 0.00125 + (c_tokens / 1000) * 0.005
-        
+4. SADECE GÖRDÜĞÜNÜ YAZ: Çıkarım veya yorum yapma. Sayfa boşsa `[Görsel İçerik - Metin Yok]` yaz.
+
+5. BAĞLAM KÖPRÜSÜ: Önceki sayfa bağlamı verildiyse, bu sayfanın öncekiyle nasıl bağlandığını
+   tek cümle ile açıkla: `> 🔗 Önceki bağlantı: <açıklama>`"""
+
+        response   = model.generate_content([prompt, img])
+        text_out   = response.text
+        duration   = int((time.time() - start_time) * 1000)
+        p_tokens   = 258 + int(len(prompt) / 4)
+        c_tokens   = int(len(text_out) / 4)
+        cost       = (p_tokens / 1000) * 0.00125 + (c_tokens / 1000) * 0.005
+
         log_entry = {
-            "id": f"log_vis_{int(time.time()*1000)}_{uuid.uuid4().hex[:4]}",
-            "timestamp": datetime.utcnow().isoformat(),
-            "provider": "Google",
-            "model": "gemini-1.5-pro",
-            "promptTokens": p_tokens,
+            "id":               f"log_vis_{int(time.time()*1000)}_{uuid.uuid4().hex[:4]}",
+            "timestamp":        datetime.utcnow().isoformat(),
+            "provider":         "Google",
+            "model":            "gemini-1.5-pro",
+            "promptTokens":     p_tokens,
             "completionTokens": c_tokens,
-            "totalTokens": p_tokens + c_tokens,
-            "duration": duration,
-            "status": "success",
-            "cost": cost,
-            "projectId": "vision-chunker",
-            "sessionId": f"doc_{uuid.uuid4().hex[:6]}",
-            "role": "system",
-            "error": None,
-            "request": "Multimodal B-Yolu Görsel İşleme",
-            "response": text_out[:100] + "...(kısaltıldı)", 
-            "ip": "localhost",
-            "mac": "backend-engine"
+            "totalTokens":      p_tokens + c_tokens,
+            "duration":         duration,
+            "status":           "success",
+            "cost":             cost,
+            "projectId":        "vision-chunker",
+            "sessionId":        f"doc_{uuid.uuid4().hex[:6]}",
+            "role":             "system",
+            "error":            None,
+            "request":          "SmartRoute Markdown Vision",
+            "response":         text_out[:120] + "...(kısaltıldı)",
+            "ip":               "localhost",
+            "mac":              "backend-engine"
         }
         add_log_to_db(log_entry)
-        
         return text_out
+
     except Exception as e:
         print("ask_gemini_vision Error:", str(e))
         return f"[Yapay Zeka Okuma Hatası: {str(e)}]"
 
 def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_name: str | None = None) -> list[dict]:
+
     """
     PPT/PDF Slayt Analiz Motoru — Her slayt tek chunk.
 
@@ -234,28 +280,48 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             })
 
         # ── KATMAN 2: Slayt Chunk'ları ─────────────────────────────────────
-        # ── KATMAN 2: Slayt Chunk'ları ─────────────────────────────────────
-        vision_ai_results = {}
+        vision_ai_results : dict[int, str] = {}
+        vision_routing    : dict[int, str] = {}  # idx → routing_reason
+
         if use_vision:
+            # ── Akıllı Yönlendirme: sadece tablo/görüntülü sayfalar ────────
+            pages_needing_vision: list[tuple[int, dict]] = []
+            for idx, pdi in enumerate(page_data):
+                page_obj = doc.load_page(idx)
+                needs, reason = _page_needs_vision(page_obj)
+                vision_routing[idx] = reason
+                if needs:
+                    pages_needing_vision.append((idx, pdi))
+                else:
+                    # Düz metin sayfası → Vision AI atlanır, reason log'lanır
+                    print(f"  [SmartRoute] Sayfa {idx+1}: '{reason}' → metin okuyucu")
+
+            print(f"  [SmartRoute] Toplam {total_pages} sayfa, "
+                  f"{len(pages_needing_vision)} tanesi Vision AI'a yönlendi.")
+
             from concurrent.futures import ThreadPoolExecutor, as_completed
-            
+
             def fetch_vision(idx, pd_item):
                 prev_context = ""
                 if idx > 0:
-                    prev_pd = page_data[idx - 1]
+                    prev_pd      = page_data[idx - 1]
                     prev_context = f"Başlık: {prev_pd['title']}"
                     if prev_pd['body']:
-                        prev_context += f" | İçerik Özeti: {prev_pd['body'][:150]}"
+                        prev_context += f" | İçerik Özeti: {prev_pd['body'][:200]}"
                 return ask_gemini_vision(pd_item["image_path"], context=prev_context)
-                
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {executor.submit(fetch_vision, i, pd): i for i, pd in enumerate(page_data)}
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {
+                    executor.submit(fetch_vision, i, pd): i
+                    for i, pd in pages_needing_vision
+                }
                 for future in as_completed(futures):
                     idx = futures[future]
                     try:
                         vision_ai_results[idx] = future.result()
                     except Exception as e:
                         vision_ai_results[idx] = f"[Hata: {str(e)}]"
+
 
         for page_num, pd in enumerate(page_data):
             image_path     = pd["image_path"]
@@ -265,31 +331,40 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             title          = pd["title"]
             body           = pd["body"]
 
-            # Vision AI — SAP ekran görüntüsü gibi görselleri de okur
-            if use_vision:
-                ai_text = vision_ai_results.get(page_num, "")
+            # Vision AI — Markdown çıktısını chunk olarak ekle
+            if use_vision and page_num in vision_ai_results:
+                ai_text = vision_ai_results[page_num]
+                routing_note = vision_routing.get(page_num, "")
                 if ai_text and not ai_text.startswith("[Uyarı"):
                     chunks.append({
                         "id": str(uuid.uuid4()),
                         "text": (
-                            f"[{file_basename} | Slayt {page_num+1}/{total_pages} | AI Görsel Analizi]\n"
+                            f"## {file_basename} — Slayt {page_num+1}/{total_pages} (AI Görsel Analizi)\n"
+                            f"_Yönlendirme nedeni: {routing_note}_\n\n"
                             f"{ai_text}"
                         ),
                         "metadata": {
-                            "page":        page_num + 1,
-                            "chunk_index": 0,
-                            "source":      file_basename,
-                            "type":        "ai_vision_analysis",
-                            "image_path":  image_path,
-                            "zoom_factor": zoom_factor,
-                            "page_width":  float(page_w),
-                            "page_height": float(page_h),
-                            "bbox":        full_page_bbox,
-                            "total_pages": total_pages,
+                            "page":          page_num + 1,
+                            "chunk_index":   0,
+                            "source":        file_basename,
+                            "type":          "ai_vision_analysis",
+                            "routing":       routing_note,
+                            "image_path":    image_path,
+                            "zoom_factor":   zoom_factor,
+                            "page_width":    float(page_w),
+                            "page_height":   float(page_h),
+                            "bbox":          full_page_bbox,
+                            "total_pages":   total_pages,
                         }
                     })
 
             # Metin chunk'ı — başlık + gövde birleşimi
+            # Sayfa sonu sarkma önleme: bir önceki sayfanın son N karakterini öne ekle
+            overlap_prefix = ""
+            if page_num > 0 and page_data[page_num - 1]["body"]:
+                tail = page_data[page_num - 1]["body"][-_PAGE_OVERLAP_CHARS:]
+                overlap_prefix = f"<!-- önceki sayfa sonu → --> {tail.strip()} <!-- ← buraya kadar önceki sayfa -->\n\n"
+
             slide_header = f"[{file_basename} | Slayt {page_num+1}/{total_pages}]"
 
             if title or body:
@@ -301,15 +376,22 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                     full_text += f"\n\n{body}"
 
                 if len(full_text.strip()) < _MIN_SLIDE_CHARS and not title:
-                    # Gerçekten boş slayt (başlığı da yok) → atla
                     if not use_vision:
                         continue
 
-                # Slayt metni _CHUNK_SIZE'dan kısa ise direkt tek chunk (PPT için tipik)
+                # Markdown formatında başlık
+                slide_md_header = f"## {file_basename} — Slayt {page_num+1}/{total_pages}"
+
+                # Slayt metni _CHUNK_SIZE'dan kısa ise direkt tek chunk
                 if len(full_text) <= _CHUNK_SIZE:
                     chunks.append({
                         "id": str(uuid.uuid4()),
-                        "text": full_text,
+                        "text": (
+                            f"{slide_md_header}\n"
+                            f"{overlap_prefix}"
+                            f"{'### ' + title + chr(10) if title else ''}"
+                            f"{body}"
+                        ).strip(),
                         "metadata": {
                             "page":        page_num + 1,
                             "chunk_index": 1,
@@ -329,7 +411,11 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                     for idx, sub in enumerate(sub_chunks):
                         chunks.append({
                             "id": str(uuid.uuid4()),
-                            "text": f"{slide_header}\nBAŞLIK: {title}\n\n{sub}",
+                            "text": (
+                                f"{slide_md_header} (Parça {idx+1})\n"
+                                f"{'### ' + title + chr(10) if title else ''}"
+                                f"{sub}"
+                            ).strip(),
                             "metadata": {
                                 "page":        page_num + 1,
                                 "chunk_index": idx + 1,
@@ -343,6 +429,7 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                                 "total_pages": total_pages,
                             }
                         })
+
             elif not use_vision:
                 # Tamamen görsel slayt (başlık bile yok) — minimal placeholder
                 chunks.append({

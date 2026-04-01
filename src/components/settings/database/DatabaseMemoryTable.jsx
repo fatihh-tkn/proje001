@@ -1,7 +1,8 @@
 import React from 'react';
 import {
     Database, FileText, Search, Trash2, AlertTriangle, Layers,
-    ChevronDown, ChevronRight, X, Network, Share2, Box, CheckCircle2
+    ChevronDown, ChevronRight, X, Network, Share2, Box, CheckCircle2,
+    BarChart3, Zap, RefreshCw, ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -60,9 +61,41 @@ const DatabaseMemoryTable = ({
                     )}
                 </div>
 
-                <span className="ml-auto text-[11px] font-medium text-slate-400">
-                    <span className="font-bold text-slate-700">{filteredRecords.length}</span> kayıt
-                </span>
+                <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[11px] font-medium text-slate-400 mr-2">
+                        <span className="font-bold text-slate-700">{filteredRecords.length}</span> kayıt
+                    </span>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                        <BarChart3 size={12} className="text-[#A01B1B]" />
+                        <span className="text-[11px] font-bold text-slate-600">
+                            {records.reduce((acc, curr) => acc + (curr.chunks || 0), 0).toLocaleString('tr-TR')} Parça
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                        <Zap size={12} className="text-slate-400" />
+                        <span className="text-[11px] font-bold text-slate-600">
+                            {records.length} Döküman
+                        </span>
+                    </div>
+                    <button onClick={fetchRecords} className="p-1.5 flex items-center justify-center bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-colors text-slate-500 hover:text-[#A01B1B]" title="Yenile">
+                        <RefreshCw size={13} className={dbLoading ? 'animate-spin text-[#A01B1B]' : ''} />
+                    </button>
+                    <button
+                        onClick={async () => {
+                            try {
+                                const r = await fetch('/api/sql/repair-integrity', { method: 'POST' });
+                                const d = await r.json();
+                                alert(`✅ Onarım tamamlandı\\n${d.repaired_chunks} chunk onarıldı, ${d.created_belgeler} Belge oluşturuldu.`);
+                                fetchRecords();
+                            } catch (e) {
+                                alert('Onarım hatası: ' + e.message);
+                            }
+                        }}
+                        className="p-1.5 flex items-center justify-center bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-colors text-slate-500 hover:text-[#A01B1B]" title="Ağ Onarımı Yürüt"
+                    >
+                        <ShieldCheck size={13} />
+                    </button>
+                </div>
             </div>
 
             {/* ══ KOLON BAŞLIKLARI ══ */}

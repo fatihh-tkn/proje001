@@ -198,7 +198,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     );
                 },
                 // Stream bitti — isStreaming kapat, RAG kaynakları sekme olarak aç
-                onDone: ({ rag_used, rag_sources }) => {
+                onDone: ({ rag_used, rag_sources, ui_action }) => {
                     setMessages((prev) =>
                         prev.map((m) =>
                             m.id === aiMsgId
@@ -207,16 +207,38 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         )
                     );
 
-                    // RAG kullanıldıysa: yapay zekanın kullandığı her chunk'ı ayrı sekme olarak aç
-                    if (rag_used && rag_sources && rag_sources.length > 0 && onOpenFile) {
+                    // ── OPEN_PDF_AT komutu: koordinatlı PDF viewer ──────────────────
+                    if (ui_action?.command === 'OPEN_PDF_AT' && onOpenFile) {
+                        const { doc_id, pdf_url, source_file, page, bbox } = ui_action;
+                        const url = doc_id
+                            ? `/api/archive/file/${doc_id}`
+                            : pdf_url || '';
+
+                        if (url) {
+                            const nameMatch = (source_file || '').match(/[^/\\]+$/);
+                            const name = nameMatch ? nameMatch[0] : (source_file || 'Belge');
+                            const tabKey = `pdf-${doc_id || name}-p${page || 1}`;
+
+                            onOpenFile({
+                                id: tabKey,
+                                title: `📍 ${name}${page ? ` – Slayt ${page}` : ''}`,
+                                type: 'pdf',
+                                url,
+                                meta: {
+                                    page: page || 1,
+                                    highlightPage: page || 1,
+                                    bbox: bbox || null,
+                                },
+                            });
+                        }
+                    } else if (rag_used && rag_sources && rag_sources.length > 0 && onOpenFile) {
+                        // ── Fallback: koordinatsız kaynak açma (eski davranış) ──────
                         const openedKeys = new Set();
 
                         rag_sources.forEach(sourceObj => {
                             if (typeof sourceObj === 'string') return;
-                            // page=0 → belge özeti chunk'ı, sekme açma
                             if (!sourceObj.page || sourceObj.page === 0) return;
 
-                            // Her benzersiz (dosya + sayfa) için 1 sekme aç
                             const key = `${sourceObj.file}_p${sourceObj.page}`;
                             if (openedKeys.has(key)) return;
                             openedKeys.add(key);
@@ -226,15 +248,19 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             const extMatch = name.match(/\.([^.]+)$/);
                             const ext = extMatch ? extMatch[1].toLowerCase() : 'pdf';
 
-                            // PDF → doğrudan PDF viewer'da aç, o sayfaya scroll yap
+                            const url = sourceObj.doc_id
+                                ? `/api/archive/file/${sourceObj.doc_id}`
+                                : '';
+
                             onOpenFile({
                                 id: key,
-                                title: `${name} – Sayfa ${sourceObj.page}`,
-                                type: ext,
-                                url: `/api/files/download?path=${encodeURIComponent(sourceObj.file)}`,
+                                title: `${name} – Slayt ${sourceObj.page}`,
+                                type: ext === 'pptx' || ext === 'ppt' ? 'pdf' : ext,
+                                url,
                                 meta: {
                                     page: sourceObj.page,
-                                    bbox: sourceObj.bbox,
+                                    highlightPage: sourceObj.page,
+                                    bbox: sourceObj.bbox || null,
                                 }
                             });
                         });
@@ -243,6 +269,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     setIsTyping(false);
                     streamingMsgIdRef.current = null;
                 },
+
                 // Hata — mesaj güncelle
                 onError: (errText) => {
                     setMessages((prev) =>

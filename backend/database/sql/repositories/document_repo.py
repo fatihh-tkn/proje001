@@ -205,11 +205,18 @@ class DocumentRepository:
                 "node_id": node.kimlik,
                 "content": node.icerik,
                 "location_marker": node.konum_imi,
+                "page": node.sayfa_no,
+                "bbox": node.sinir_kutusu,
                 "document": {
                     "id": doc.kimlik if doc else None,
                     "filename": doc.dosya_adi if doc else None,
                     "file_path": doc.depolama_yolu if doc else None,
                     "file_type": doc.dosya_turu if doc else None,
+                    "pdf_path": (
+                        (doc.meta or {}).get("pdf_yolu")
+                        if doc and doc.meta
+                        else doc.depolama_yolu if doc else None
+                    ),
                 },
                 "related_nodes": related_nodes,
             })

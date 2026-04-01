@@ -516,6 +516,56 @@ class DenetimIzi(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 7. AI ORCHESTRATOR KATMANI
+#    ai_agents
+# ═══════════════════════════════════════════════════════════════════
+
+class AIAgent(Base):
+    """
+    Kullanıcı arayüzünde konfigüre edilen yapay zeka ajanları (Chatbot, Asistan vb.)
+    """
+    __tablename__ = "ai_agents"
+
+    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # Ajan türü: 'chatbot' | 'worker' vb.
+    agent_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="chatbot")
+    ad: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Ajanın sistem promptu (persona / rol)
+    persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    negative_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # Model ve Provider
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, default="openai")
+    model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-4o")
+    
+    # Parametreler
+    temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
+    
+    # Seçenekler
+    strict_fact_check: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    chat_history_length: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    can_ask_follow_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # UI Bilgileri
+    aktif_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    avatar_emoji: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    widget_color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+    guncelleme_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+    
+    # Hangi RAG koleksiyonlarına yetkili? JSON array (örn: ["rag_1", "rag_2"])
+    allowed_rags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index("ix_ai_agents_ad", "ad"),
+        Index("ix_ai_agents_aktif_mi", "aktif_mi"),
+    )
+
+# ═══════════════════════════════════════════════════════════════════
 # GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
 # Eski kod (bridge.py, monitor.py vb.) kısa İngilizce adlarla import eder.
 # Bu alias'lar mevcut kodu kırmadan çalışmaya devam etmesini sağlar.
@@ -529,3 +579,4 @@ Document   = Belge
 Node       = VektorParcasi
 Relation   = BilgiIliskisi
 UserModel  = AIModeli
+Agent      = AIAgent

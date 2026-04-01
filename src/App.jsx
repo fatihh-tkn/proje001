@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Sidebar from './components/sidebar/Sidebar';
 import Workspace from './components/workspace/Workspace';
 import ChatInput from './components/chatbar/ChatBar';
@@ -14,13 +14,58 @@ function App() {
     handleOpenFile, handleCloseTab, handleMaximizeTab,
     handleFocusTab, handleMinimize, handleAddWorkspace,
     handleCloseWorkspace, handleSwitchWorkspace, handleReopenTab,
-    handleCloseAllTabs
+    handleCloseAllTabs, isN8nBooting, setIsN8nBooting
   } = useWorkspaceStore();
 
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
   const tabs = activeWorkspace?.tabs || [];
   const activeTabId = activeWorkspace?.activeTabId || null;
   const maximizedTabId = activeWorkspace?.maximizedTabId || null;
+
+  // Global N8n Boot Logic (Tıklama sonrası)
+  useEffect(() => {
+    let pollInterval = null;
+
+    const handleOpenWorkspace = async () => {
+      // 1. Zaten çalışıyorsa anında aç
+      try {
+        const res = await fetch('/api/n8n/status');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'running') {
+            handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
+            return;
+          }
+        }
+      } catch { }
+
+      // 2. Çalışmıyorsa sidebarda logoyu döndürmeye başla
+      setIsN8nBooting(true);
+
+      try { await fetch('/api/n8n/start', { method: 'POST' }); } catch { }
+
+      // 3. Çalışana kadar bekle
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/n8n/status');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'running') {
+              clearInterval(pollInterval);
+              setIsN8nBooting(false);
+              handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
+            }
+          }
+        } catch { }
+      }, 2000);
+    };
+
+    window.addEventListener('open-n8n-workspace', handleOpenWorkspace);
+    return () => {
+      window.removeEventListener('open-n8n-workspace', handleOpenWorkspace);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [handleOpenFile, setIsN8nBooting]);
 
   return (
     <div className="flex h-screen w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800">

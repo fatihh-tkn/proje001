@@ -52,14 +52,21 @@ def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(Fal
         )
         isleme_suresi_ms = int((_time.time() - t0) * 1000)
 
+        # PPTX için dönüştürülen PDF yolunu response'a ekle
+        converted_pdf_path = None
+        if ext in ("pptx", "ppt"):
+            first_meta = next((c.get("metadata", {}) for c in chunks if c.get("metadata", {}).get("pdf_path")), {})
+            converted_pdf_path = first_meta.get("pdf_path")
+
         return {
-            "status":           "success",
-            "message":          "Dosya analiz edildi, onay bekliyor.",
-            "file_name":        safe_filename,
-            "temp_path":        file_path,
-            "total_chunks":     len(chunks),
-            "chunks":           chunks,
-            "isleme_suresi_ms": isleme_suresi_ms,
+            "status":              "success",
+            "message":             "Dosya analiz edildi, onay bekliyor.",
+            "file_name":           safe_filename,
+            "temp_path":           file_path,
+            "total_chunks":        len(chunks),
+            "chunks":              chunks,
+            "isleme_suresi_ms":    isleme_suresi_ms,
+            "converted_pdf_path": converted_pdf_path,
         }
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -67,8 +74,144 @@ def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(Fal
 
 
 
+# --- 1b. KÖPRÜ: TEKİL CHUNK SİLME (Atomik) ---
+@router.delete("/chunk/{chunk_id}")
+def delete_chunk(chunk_id: str):
+    """
+    Tek bir vektör parçasını (chunk) tüm tabakalardan atomik olarak siler:
+      1. ChromaDB  → vektör kaydını siler
+      2. SQL       → VektorParcasi + BilgiIliskisi (kenarlar) siler
+      3. Graf      → düğümü ve kenarlarını temizler
+      4. Kenar Re-linking → next_chunk zincirindeki boşluğu kapatır
+      5. Belge Meta → parca_sayisi 1 azaltır
+    """
+    from database.sql.models import VektorParcasi, BilgiIliskisi, Belge
+    from database.vector.chroma_db import vector_db
+    from database.graph.networkx_db import graph_db
+    from sqlalchemy import select, or_
+
+    try:
+        with UnitOfWork() as uow:
+            db = uow.session
+
+            # 1 — SQL'den parçayı bul
+            parca = db.scalar(
+                select(VektorParcasi).where(VektorParcasi.chromadb_kimlik == chunk_id)
+            )
+            if not parca:
+                # SQL'de yok ama Chroma'da olabilir → yine de sil
+                try:
+                    coll = _resolve_collection(db, chunk_id)
+                    vector_db.delete_documents(coll, [chunk_id])
+                except Exception:
+                    pass
+                raise HTTPException(status_code=404, detail="Parça bulunamadı.")
+
+            parca_pk        = parca.kimlik
+            belge_kimlik    = parca.belge_kimlik
+            chroma_coll     = _resolve_collection(db, chunk_id, parca)
+
+            # 2 — Bu parçanın kenarlarını al (re-linking için)
+            incoming_edges = db.scalars(
+                select(BilgiIliskisi).where(
+                    BilgiIliskisi.hedef_parca_kimlik == parca_pk,
+                    BilgiIliskisi.iliski_turu == "next_chunk"
+                )
+            ).all()
+            outgoing_edges = db.scalars(
+                select(BilgiIliskisi).where(
+                    BilgiIliskisi.kaynak_parca_kimlik == parca_pk,
+                    BilgiIliskisi.iliski_turu == "next_chunk"
+                )
+            ).all()
+
+            # 3 — Kenar Re-linking: A→B→C zincirinde B siliniyorsa A→C köprüsü kur
+            if incoming_edges and outgoing_edges:
+                for inc in incoming_edges:
+                    for out in outgoing_edges:
+                        # Zaten bu çift var mı?
+                        already = db.scalar(
+                            select(BilgiIliskisi).where(
+                                BilgiIliskisi.kaynak_parca_kimlik == inc.kaynak_parca_kimlik,
+                                BilgiIliskisi.hedef_parca_kimlik  == out.hedef_parca_kimlik,
+                                BilgiIliskisi.iliski_turu         == "next_chunk",
+                            )
+                        )
+                        if not already:
+                            db.add(BilgiIliskisi(
+                                kaynak_parca_kimlik=inc.kaynak_parca_kimlik,
+                                hedef_parca_kimlik=out.hedef_parca_kimlik,
+                                iliski_turu="next_chunk",
+                                agirlik=1.0,
+                            ))
+
+            # 4 — Tüm kenarları sil (gelen + giden, tüm türler)
+            all_edges = db.scalars(
+                select(BilgiIliskisi).where(
+                    or_(
+                        BilgiIliskisi.kaynak_parca_kimlik == parca_pk,
+                        BilgiIliskisi.hedef_parca_kimlik  == parca_pk,
+                    )
+                )
+            ).all()
+            for edge in all_edges:
+                db.delete(edge)
+            db.flush()
+
+            # 5 — SQL VektorParcasi kaydını sil
+            db.delete(parca)
+            db.flush()
+
+            # 6 — Belge parca_sayisi güncelle
+            belge = db.scalar(select(Belge).where(Belge.kimlik == belge_kimlik))
+            if belge:
+                belge.parca_sayisi = max(0, (belge.parca_sayisi or 1) - 1)
+                # Tüm parçalar bitti → belgeyi "işlenmemiş" moda al
+                if belge.parca_sayisi == 0:
+                    belge.vektorlestirildi_mi = False
+                db.flush()
+
+            # 7 — ChromaDB'den sil (UoW kaydından önce, hata varsa rollback için telafi)
+            def rb_chroma_add_back():
+                """ChromaDB silme başarılı ama SQL commit başarısız olursa geri ekle."""
+                pass  # ChromaDB partial state kabul edilebilir; log yeterli
+
+            try:
+                vector_db.delete_documents(chroma_coll, [chunk_id])
+                logger.info("ChromaDB chunk silindi: %s", chunk_id)
+            except Exception as chroma_err:
+                logger.warning("ChromaDB silme hatası (devam): %s", chroma_err)
+
+            # 8 — Graf düğümünü sil
+            try:
+                graph_db.remove_nodes([str(parca_pk)])
+                logger.info("Graf düğümü silindi: %s", parca_pk)
+            except Exception as graph_err:
+                logger.warning("Graf silme hatası (devam): %s", graph_err)
+
+        logger.info("Chunk atomik silme OK: chromadb_id=%s sql_pk=%s", chunk_id, parca_pk)
+        return {"status": "ok", "deleted_chunk_id": chunk_id, "belge_kimlik": belge_kimlik}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Chunk silme hatası: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Chunk silinirken hata: {str(e)}")
+
+
+def _resolve_collection(db, chunk_id: str, parca=None) -> str:
+    """Parçanın ait olduğu ChromaDB koleksiyon adını çözer."""
+    if parca and parca.belge_kimlik:
+        from database.sql.models import Belge
+        from sqlalchemy import select
+        belge = db.scalar(select(Belge).where(Belge.kimlik == parca.belge_kimlik))
+        if belge and belge.vektordb_koleksiyon:
+            return belge.vektordb_koleksiyon
+    return "yilgenci_collection"   # varsayılan koleksiyon adı
+
 
 # --- 2. KÖPRÜ: HAFIZAYA KAZIMA (OPTİMİZE) ---
+
 @router.post("/save-to-db")
 def save_to_db(data: dict):
     from database.sql.models import VektorParcasi, BilgiIliskisi, Belge
@@ -134,26 +277,47 @@ def save_to_db(data: dict):
                 resolved_belge_kimlik = yeni.kimlik
 
             # 2. ChromaDB'ye yaz (vektörleştirme)
-            # Metadata temizliği ve hazırlığı
-            texts, metadatas, ids = [], [], []
-            for chunk in chunks_raw:
-                text = chunk.get("text", "")
-                if not text.strip():
-                    continue
-                curr_id = chunk.get("id") or str(uuid.uuid4())
-                meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
+            # archive_only chunk'lar vektörleştirilmez → ChromaDB'ye gönderilmez
+            is_archive_only = all(
+                c.get("metadata", {}).get("type") == "archive_only"
+                for c in chunks_raw
+            )
 
-                clean_meta = {"sqlite_doc_id": resolved_belge_kimlik}
-                for k, v in meta.items():
-                    # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
-                    clean_meta[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+            if is_archive_only:
+                # Belgeyi "arşiv" modunda işaretle
+                if b:
+                    b.vektorlestirildi_mi = False
+                    b.durum              = "onaylandi"
+                    b.parca_sayisi       = 0
+                    db.flush()
+                logger.info("archive_only dosya — ChromaDB atlandı: %s", file_name)
+                texts, metadatas, ids = [], [], []
+            else:
+                # Metadata temizliği ve hazırlığı
+                texts, metadatas, ids = [], [], []
+                for chunk in chunks_raw:
+                    text = chunk.get("text", "")
+                    if not text.strip():
+                        continue
+                    # archive_only chunk'ı karışık bir dosyada bile atla
+                    if chunk.get("metadata", {}).get("type") == "archive_only":
+                        continue
+                    curr_id = chunk.get("id") or str(uuid.uuid4())
+                    meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
 
-                texts.append(text)
-                metadatas.append(clean_meta)
-                ids.append(curr_id)
+                    clean_meta = {"sqlite_doc_id": resolved_belge_kimlik}
+                    for k, v in meta.items():
+                        # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
+                        clean_meta[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+
+                    texts.append(text)
+                    metadatas.append(clean_meta)
+                    ids.append(curr_id)
+
+
 
             if texts:
-                # Adim 1: ChromaDB'ye yaz (Atomik degil, UoW kaydiyla korunacak)
+                # Adım 1: ChromaDB'ye yaz (Atomik değil, UoW kaydiyla korunacak)
                 vector_db.add_documents(
                     collection_name=coll_name,
                     documents=texts,
@@ -166,10 +330,10 @@ def save_to_db(data: dict):
                 def rb_chroma():
                     vector_db.delete_documents(coll_name, ids)
                     logger.info("ChromaDB rollback OK | %d vektor silindi", len(ids))
-                
+
                 uow.register_compensation(rb_chroma)
 
-                # Adim 2: SQL'i guncelle (UoW tarafindan otomatik commit edilecek, hata verirse rb_chroma cagirilir)
+                # Adım 2: SQL'i güncelle
                 if b:
                     b.vektorlestirildi_mi = True
                     b.vektordb_koleksiyon = coll_name
@@ -191,41 +355,50 @@ def save_to_db(data: dict):
                         if t_id != c_id and t_id not in q_id_set and dist < 1.5
                     ]
 
-            # 4. Yeni parçaları SQL'e kaydet
-            all_chroma_ids = [c.get("id", "") for c in chunks_raw if c.get("id")]
-            existing_rows = []
-            if all_chroma_ids:
-                for chunked_ids in chunk_list(all_chroma_ids):
-                    existing_rows.extend(db.scalars(
-                        select(VektorParcasi).where(VektorParcasi.chromadb_kimlik.in_(chunked_ids))
-                    ).all())
-            existing_map = {row.chromadb_kimlik: row for row in existing_rows}
-
+            # 4. Yeni parçaları SQL'e kaydet (archive_only dosyalar atlanır)
             new_parcalar = []
-            for chunk in chunks_raw:
-                chroma_id = chunk.get("id", "")
-                if not chroma_id or chroma_id in existing_map:
-                    continue
-                meta = chunk.get("metadata", {})
-                new_parcalar.append(VektorParcasi(
-                    belge_kimlik=resolved_belge_kimlik, chromadb_kimlik=chroma_id,
-                    icerik=chunk.get("text", "")[:1000], konum_imi=f"{meta.get('source', file_name)} | Sayfa {meta.get('page', 0)}",
-                    sayfa_no=meta.get("page", 0), sinir_kutusu=str(meta.get("bbox")) if meta.get("bbox") else None
-                ))
+            existing_map: dict = {}
+            if not is_archive_only:
+                all_chroma_ids = [c.get("id", "") for c in chunks_raw if c.get("id")]
+                existing_rows: list = []
+                if all_chroma_ids:
+                    for chunked_ids in chunk_list(all_chroma_ids):
+                        existing_rows.extend(db.scalars(
+                            select(VektorParcasi).where(VektorParcasi.chromadb_kimlik.in_(chunked_ids))
+                        ).all())
+                existing_map = {row.chromadb_kimlik: row for row in existing_rows}
 
-            if new_parcalar:
-                db.add_all(new_parcalar)
-                db.flush()
+                for chunk in chunks_raw:
+                    chroma_id = chunk.get("id", "")
+                    if not chroma_id or chroma_id in existing_map:
+                        continue
+                    if chunk.get("metadata", {}).get("type") == "archive_only":
+                        continue
+                    meta = chunk.get("metadata", {})
+                    new_parcalar.append(VektorParcasi(
+                        belge_kimlik=resolved_belge_kimlik, chromadb_kimlik=chroma_id,
+                        icerik=chunk.get("text", "")[:1000], konum_imi=f"{meta.get('source', file_name)} | Sayfa {meta.get('page', 0)}",
+                        sayfa_no=meta.get("page", 0), sinir_kutusu=str(meta.get("bbox")) if meta.get("bbox") else None
+                    ))
 
-            # 3d. Node sıralaması
-            id_to_pk = {r.chromadb_kimlik: r.kimlik for r in existing_rows}
-            id_to_pk.update({p.chromadb_kimlik: p.kimlik for p in new_parcalar})
-            
-            saved_nodes = []
-            for c in chunks_raw:
-                c_id = c.get("id")
-                n = existing_map.get(c_id) or next((p for p in new_parcalar if p.chromadb_kimlik == c_id), None)
-                if n: saved_nodes.append(n)
+                if new_parcalar:
+                    db.add_all(new_parcalar)
+                    db.flush()
+
+
+            # 3d. Node sıralaması (archive_only ise atlanır)
+            id_to_pk  : dict = {}
+            saved_nodes: list = []
+            if not is_archive_only:
+                _existing_rows = existing_rows if "existing_rows" in dir() else []
+                id_to_pk = {r.chromadb_kimlik: r.kimlik for r in _existing_rows}
+                id_to_pk.update({p.chromadb_kimlik: p.kimlik for p in new_parcalar})
+
+                for c in chunks_raw:
+                    c_id = c.get("id")
+                    n = existing_map.get(c_id) or next((p for p in new_parcalar if p.chromadb_kimlik == c_id), None)
+                    if n: saved_nodes.append(n)
+
 
             # 3e. Next Chunk kenarları (parametre limitinden korumalı)
             candidate_pairs = [(saved_nodes[i].kimlik, saved_nodes[i + 1].kimlik) for i in range(len(saved_nodes) - 1)]
@@ -332,26 +505,51 @@ def save_to_db(data: dict):
 # --- 3. KÖPRÜ: ARŞİVLEME VE SQL KAYDI ---
 @router.post("/archive-document")
 def archive_document(data: dict):
-    temp_path       = data.get("temp_path")
-    final_name      = data.get("final_name", "isim_yok")
-    chunk_count     = data.get("chunk_count", 0)
-    chroma_collection = data.get("chroma_collection", "yilgenci_collection")
-    
+    temp_path           = data.get("temp_path")
+    final_name          = data.get("final_name", "isim_yok")
+    chunk_count         = data.get("chunk_count", 0)
+    chroma_collection   = data.get("chroma_collection", "yilgenci_collection")
+    converted_pdf_path  = data.get("converted_pdf_path")  # PPTX→PDF dönüşüm yolu
+
     if not temp_path or not os.path.exists(temp_path):
         raise HTTPException(status_code=400, detail="Geçici dosya bulunamadı.")
-    
+
     ARCHIVE_DIR = "./archive_uploads"
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
-    
-    archive_filename = f"{uuid.uuid4().hex[:8]}_{final_name}"
+
+    uid_prefix       = uuid.uuid4().hex[:8]
+    archive_filename = f"{uid_prefix}_{final_name}"
     archive_path     = os.path.join(ARCHIVE_DIR, archive_filename)
     shutil.move(temp_path, archive_path)
-    
-    file_ext = final_name.rsplit(".", 1)[-1] if "." in final_name else "unknown"
-    
+
+    file_ext = final_name.rsplit(".", 1)[-1].lower() if "." in final_name else "unknown"
+
+    # PPTX: oluşturulan PDF'i de arşive kopyala
+    pdf_archive_path = None
+    if file_ext in ("pptx", "ppt") and converted_pdf_path and os.path.exists(converted_pdf_path):
+        base_pdf_name    = os.path.splitext(final_name)[0] + ".pdf"
+        pdf_archive_name = f"{uid_prefix}_{base_pdf_name}"
+        pdf_archive_path = os.path.join(ARCHIVE_DIR, pdf_archive_name)
+        try:
+            shutil.move(converted_pdf_path, pdf_archive_path)
+            logger.info("PPTX→PDF arşive taşındı: %s", pdf_archive_path)
+        except Exception as e:
+            logger.warning("PDF arşive taşınamadı: %s", e)
+            pdf_archive_path = None
+
+    # depolama_yolu: PDF varsa PDF'i göster, yoksa orijinali
+    primary_path = pdf_archive_path if pdf_archive_path else archive_path
+
+    # meta verisi
+    belge_meta = {}
+    if file_ext in ("pptx", "ppt"):
+        belge_meta["orijinal_format"] = file_ext
+        belge_meta["orijinal_yol"]    = archive_path
+        if pdf_archive_path:
+            belge_meta["pdf_yolu"] = pdf_archive_path
+
     try:
         with get_session() as db:
-            # Aynı adlı belge zaten save-to-db tarafından oluşturulmuş olabilir
             from sqlalchemy import select
             existing = db.scalar(
                 select(Belge).where(
@@ -360,10 +558,14 @@ def archive_document(data: dict):
                 )
             )
             if existing:
-                # Sadece fiziksel yolu ve boyutu güncelle
-                existing.depolama_yolu      = archive_path
-                existing.dosya_boyutu_bayt  = os.path.getsize(archive_path)
-                existing.durum              = "onaylandi"
+                existing.depolama_yolu     = primary_path
+                existing.dosya_boyutu_bayt = os.path.getsize(primary_path)
+                existing.durum             = "onaylandi"
+                # meta güncelle (varsa mevcut meta koru)
+                if belge_meta:
+                    mevcut_meta = dict(existing.meta or {})
+                    mevcut_meta.update(belge_meta)
+                    existing.meta = mevcut_meta
                 db.commit()
                 db.refresh(existing)
                 belge_id = existing.kimlik
@@ -371,12 +573,13 @@ def archive_document(data: dict):
                 yeni_belge = Belge(
                     dosya_adi=final_name,
                     dosya_turu=file_ext,
-                    dosya_boyutu_bayt=os.path.getsize(archive_path),
-                    depolama_yolu=archive_path,
+                    dosya_boyutu_bayt=os.path.getsize(primary_path),
+                    depolama_yolu=primary_path,
                     parca_sayisi=chunk_count,
                     vektordb_koleksiyon=chroma_collection,
                     vektorlestirildi_mi=True,
-                    durum="onaylandi"
+                    durum="onaylandi",
+                    meta=belge_meta if belge_meta else None,
                 )
                 db.add(yeni_belge)
                 db.commit()
@@ -384,10 +587,11 @@ def archive_document(data: dict):
                 belge_id = yeni_belge.kimlik
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Veritabanı kaydı hatası: {str(e)}")
-        
+
     return {
-        "status": "success",
-        "archive_path": archive_path,
-        "belge_kimlik": belge_id,
-        "message": "Dosya başarıyla arşive taşındı ve SQL veritabanına kaydedildi."
+        "status":        "success",
+        "archive_path":  primary_path,
+        "pdf_path":      pdf_archive_path,
+        "belge_kimlik":  belge_id,
+        "message":       "Dosya başarıyla arşive taşındı ve SQL veritabanına kaydedildi."
     }

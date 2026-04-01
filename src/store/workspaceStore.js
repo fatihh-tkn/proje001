@@ -16,16 +16,20 @@ export const useWorkspaceStore = create((set, get) => ({
   workspaces: [initialWorkspace],
   activeWorkspaceId: initialWorkspace.id,
   recentlyClosed: [],
-  
+
   // Layout states for App.jsx
   isLeftCollapsed: false,
   isRightOpen: true,
 
+  // N8n Booting State
+  isN8nBooting: false,
+
   // --- ACTIONS ---
-  
+
   // Layout Actions
   setIsLeftCollapsed: (value) => set({ isLeftCollapsed: value }),
   setIsRightOpen: (value) => set({ isRightOpen: value }),
+  setIsN8nBooting: (value) => set({ isN8nBooting: value }),
   handleBackgroundDoubleClick: () => set((state) => {
     const isAnyOpen = !state.isLeftCollapsed || state.isRightOpen;
     return {
@@ -42,7 +46,7 @@ export const useWorkspaceStore = create((set, get) => ({
 
   // Ortak Workspace Güncelleyici
   updateActiveWorkspace: (updater) => set((state) => ({
-    workspaces: state.workspaces.map(w => 
+    workspaces: state.workspaces.map(w =>
       w.id === state.activeWorkspaceId ? { ...w, ...updater(w) } : w
     )
   })),
@@ -61,7 +65,7 @@ export const useWorkspaceStore = create((set, get) => ({
 
   handleCloseTab: (id, e) => {
     if (e?.stopPropagation) e.stopPropagation();
-    
+
     // Son kapatılanlar listesine ekle
     const ws = get().getActiveWorkspace();
     const closingTab = ws.tabs.find(t => t.id === id);
@@ -94,7 +98,7 @@ export const useWorkspaceStore = create((set, get) => ({
         ].slice(0, 20)
       }));
     }
-    
+
     get().updateActiveWorkspace(() => ({
       tabs: [],
       activeTabId: null,
@@ -108,11 +112,11 @@ export const useWorkspaceStore = create((set, get) => ({
   })),
 
   handleFocusTab: (id) => get().updateActiveWorkspace(() => ({
-    activeTabId: id 
+    activeTabId: id
   })),
 
   handleMinimize: () => get().updateActiveWorkspace(() => ({
-    activeTabId: null 
+    activeTabId: null
   })),
 
   // Çalışma Alanı İşlemleri
@@ -127,7 +131,7 @@ export const useWorkspaceStore = create((set, get) => ({
   handleCloseWorkspace: (id) => set((state) => {
     const targetWs = state.workspaces.find(w => w.id === id);
     let newRecentlyClosed = state.recentlyClosed;
-    
+
     if (targetWs?.tabs?.length > 0) {
       newRecentlyClosed = [
         ...targetWs.tabs.map(t => ({ ...t, closedAt: Date.now() })),
@@ -138,8 +142,8 @@ export const useWorkspaceStore = create((set, get) => ({
     // Son alan kapatılıyorsa taze bir tane aç
     if (state.workspaces.length <= 1) {
       const freshWs = createWorkspace('Alan 1');
-      return { 
-        workspaces: [freshWs], 
+      return {
+        workspaces: [freshWs],
         activeWorkspaceId: freshWs.id,
         recentlyClosed: newRecentlyClosed
       };

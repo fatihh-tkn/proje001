@@ -87,9 +87,17 @@ const DatabaseQuarantine = ({
 
                                     return (
                                         <motion.div
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: idx * 0.05 > 0.5 ? 0 : idx * 0.05 }}
+                                            initial={{ opacity: 0, y: 10, x: 20 }}
+                                            animate={
+                                                phase === 'saving' && isApproved
+                                                    ? { x: -400, opacity: 0, scale: 0.95 }
+                                                    : { x: 0, opacity: 1, y: 0, scale: 1 }
+                                            }
+                                            transition={
+                                                phase === 'saving' && isApproved
+                                                    ? { duration: 0.5, ease: "anticipate", delay: (idx % 15) * 0.08 }
+                                                    : { duration: 0.3, ease: "easeOut", delay: idx * 0.05 > 0.5 ? 0 : idx * 0.05 }
+                                            }
                                             key={c.id}
                                             onClick={() => toggleApproval(c.id)}
                                             className={`relative bg-white border-y border-r border-l-4 rounded-r-xl rounded-l-md p-4 transition-all cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.02)]

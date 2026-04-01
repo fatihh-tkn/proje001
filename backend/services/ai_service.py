@@ -205,6 +205,10 @@ def _build_semantic_context(
 
                         marker = ctx["location_marker"]
                         content = ctx["content"]
+                        page    = ctx.get("page")
+                        bbox    = ctx.get("bbox")
+                        doc_info = ctx["document"]
+                        pdf_path = doc_info.get("pdf_path") or doc_info.get("file_path") or ""
 
                         # 1 Derece Derinlikte Graf Okuması (Relations)
                         graph_note = ""
@@ -220,16 +224,30 @@ def _build_semantic_context(
                         parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
 
                         # UI Action Belirleme (İlk ve en yakın sonuç)
-                        if marker and not best_ui_action:
+                        if not best_ui_action:
+                            # PDF URL oluştur (fiziksel yol → API endpoint)
+                            import urllib.parse
+                            pdf_url = (
+                                f"/api/archive/file/{doc_info.get('id')}"
+                                if doc_info.get("id")
+                                else ""
+                            )
                             best_ui_action = {
-                                "command": "OPEN_TAB",
-                                "url": f"http://localhost:8000/files/{src}#{marker}"
+                                "command":     "OPEN_PDF_AT",
+                                "pdf_url":     pdf_url,
+                                "source_file": src,
+                                "page":        page,
+                                "bbox":        bbox,
+                                "doc_id":      doc_info.get("id"),
                             }
 
                         sources.append({
-                            "file": src,
-                            "location_marker": marker,
-                            "chroma_id": ctx["chroma_id"],
+                            "file":             src,
+                            "location_marker":  marker,
+                            "chroma_id":        ctx["chroma_id"],
+                            "page":             page,
+                            "bbox":             bbox,
+                            "doc_id":           doc_info.get("id"),
                         })
 
             except Exception as ex:

@@ -123,7 +123,7 @@ export const sendMessageStream = async (
         try {
           const evt = JSON.parse(raw);
           if (evt.type === "chunk") onChunk?.(evt.text);
-          else if (evt.type === "done") onDone?.({ rag_used: evt.rag_used, rag_sources: evt.rag_sources ?? [] });
+          else if (evt.type === "done") onDone?.({ rag_used: evt.rag_used, rag_sources: evt.rag_sources ?? [], ui_action: evt.ui_action ?? null });
           else if (evt.type === "error") onError?.(evt.text);
         } catch (_) { /* JSON parse hatası — yoksay */ }
       }
