@@ -55,7 +55,7 @@ const DatabaseDropzone = ({
                                         : 'border-slate-200 hover:border-slate-300 shadow-[0_2px_15px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-1'
                                     }`}
                             >
-                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx" />
+                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.txt,.docx,.bpmn,.xlsx,audio/*,video/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.mp4,.avi,.mov,.webm" />
 
                                 <div className={`p-4 rounded-2xl mb-5 transition-all duration-300 ${dragOver || dragActive ? 'bg-[#A01B1B] text-white scale-110 shadow-lg' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-600'}`}>
                                     <Upload size={28} strokeWidth={2} className={dragOver || dragActive ? 'animate-bounce' : ''} />

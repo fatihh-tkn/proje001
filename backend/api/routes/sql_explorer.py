@@ -91,9 +91,13 @@ def get_table_data(table_name: str, limit: int = Query(100, le=500), offset: int
 
 @router.get("/graph", summary="Bilgi Grafiği - Parçalar ve İlişkiler")
 def get_graph_data():
+    from database.sql.models import Belge
     with get_session() as db:
         parcalar = db.scalars(select(VektorParcasi)).all()
         iliskiler = db.scalars(select(BilgiIliskisi)).all()
+        belgeler = db.scalars(select(Belge)).all()
+        
+        belge_tur_map = {b.kimlik: b.dosya_turu for b in belgeler}
         
         node_res = [{
             "id": p.kimlik,
@@ -101,7 +105,8 @@ def get_graph_data():
             "content": p.icerik or "",
             "location": p.konum_imi or "Bilinmiyor",
             "document_id": p.belge_kimlik,
-            "sayfa": p.sayfa_no
+            "sayfa": p.sayfa_no,
+            "file_type": belge_tur_map.get(p.belge_kimlik, "unknown")
         } for p in parcalar]
         
         rel_res = [{

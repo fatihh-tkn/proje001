@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DndContext, DragOverlay, closestCenter, pointerWithin, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { arraySwap, SortableContext, rectSwappingStrategy } from '@dnd-kit/sortable';
+import { arraySwap, SortableContext, rectSwappingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 
 import { SNAP_LAYOUTS, getGridLayout } from './layoutUtils';
@@ -9,11 +9,56 @@ import { TileWindow } from './TileWindow';
 import { TrashDropZone } from './TrashDropZone';
 import { BackgroundLogo } from './BackgroundLogo';
 
+const EmptySlot = ({ tab, idx, zoneClass, isMinimized, onOpenFile, targetDropZoneIndexRef, isNativeDragging }) => {
+    const { setNodeRef, isOver } = useSortable({
+        id: tab.id,
+        data: tab,
+    });
+
+    if (isMinimized) return null;
+
+    // Hap sekürükleniyor ise kendi kutu stilini gizle — cam overlay devralacak
+    const showBoxHighlight = isOver && !isNativeDragging;
+
+    return (
+        <div
+            ref={setNodeRef}
+            className={`pointer-events-auto relative border-2 transition-all rounded-[4px] ${zoneClass} 
+                ${showBoxHighlight ? 'border-[#A01B1B] bg-[#A01B1B]/10 z-50' : 'border-transparent'}
+            `}
+            onDragOver={(e) => {
+                if (e.dataTransfer?.types.includes('application/json')) {
+                    e.preventDefault();
+                    // stopPropagation KALDIRILDI — üst Workspace'in cam overlay'i çalışsın
+                }
+            }}
+            onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const data = e.dataTransfer.getData('application/json');
+                if (data) {
+                    try {
+                        const file = JSON.parse(data);
+                        if (file && file.id && onOpenFile) {
+                            targetDropZoneIndexRef.current = { id: file.id, index: idx };
+                            onOpenFile(file);
+                        }
+                    } catch (err) {
+                        console.error("Gözlemciye sürüklerken hata:", err);
+                    }
+                }
+            }}
+        />
+    );
+};
+
 const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onCloseTab, onFocusTab, onMaximizeTab, onOpenFile, onBackgroundDoubleClick }) => {
     const [minimizedTabs, setMinimizedTabs] = useState([]);
     const [localTabs, setLocalTabs] = useState([]);
-    const [activeDragId, setActiveDragId] = useState(null);
     const [customLayoutMode, setCustomLayoutMode] = useState(null);
+    const [activeDragId, setActiveDragId] = useState(null);
+    const [layoutHint, setLayoutHint] = useState(null);
+    const [isNativeDragging, setIsNativeDragging] = useState(false);
 
     // Her iki değer için ref — activeTabId effect'inde stale closure olmaması için
     const customLayoutModeRef = useRef(null);
@@ -166,57 +211,191 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
 
         setCustomLayoutMode(layoutId);
 
-        // Seçilen sekme dışındakileri minimize et
-        setMinimizedTabs(prev => {
-            const allOtherIds = localTabs
-                .filter(t => !t.isEmpty && t.id !== tabId)
-                .map(t => t.id);
-            return [...new Set([...prev, ...allOtherIds])];
+        setLocalTabs(prev => {
+            const theTab = prev.find(t => !t.isEmpty && t.id === tabId);
+            if (!theTab) return prev;
+
+            // Mevcut görünen sekmeler (minimize olmayan, boş olmayan)
+            const currentlyVisible = prev.filter(t => !t.isEmpty && !minimizedTabsRef.current.includes(t.id));
+
+            // Sekmeler zone sayısına sığabiliyorsa kapsamacı olmadan acık tut
+            if (currentlyVisible.length <= maxZones) {
+                // Sadece array'i tabId'yi zoneIndex'e taşıyacak şekilde yeniden düzenle
+                const others = currentlyVisible.filter(t => t.id !== tabId);
+                const ordered = Array.from({ length: maxZones }, (_, i) => {
+                    if (i === zoneIndex) return theTab;
+                    return others.shift() || { id: `empty-zone-${i}-${Date.now()}`, isEmpty: true };
+                });
+                const remaining = prev.filter(t => !t.isEmpty && minimizedTabsRef.current.includes(t.id));
+                return [...ordered, ...remaining];
+            }
+
+            // Sığmazsa taşan sekmeleri minimize et
+            const toMinimize = currentlyVisible.filter(t => t.id !== tabId).slice(maxZones - 1);
+            if (toMinimize.length > 0) {
+                setMinimizedTabs(prev => [...new Set([...prev, ...toMinimize.map(t => t.id)])]);
+            }
+
+            const fitsVisible = currentlyVisible.filter(t => t.id !== tabId).slice(0, maxZones - 1);
+            const ordered = Array.from({ length: maxZones }, (_, i) => {
+                if (i === zoneIndex) return theTab;
+                return fitsVisible.shift() || { id: `empty-zone-${i}-${Date.now()}`, isEmpty: true };
+            });
+            const remaining = prev.filter(t => !t.isEmpty && minimizedTabsRef.current.includes(t.id));
+            return [...ordered, ...remaining];
         });
+    };
+
+    const handleAddTabToGrid = (tabId, layoutId, zoneIndex) => {
+        const layout = SNAP_LAYOUTS.find(l => l.id === layoutId);
+        const maxZones = layout?.zones.length ?? 4;
+
+        setCustomLayoutMode(layoutId);
+
+        setMinimizedTabs(prev => prev.filter(id => id !== tabId));
 
         setLocalTabs(prev => {
             const theTab = prev.find(t => !t.isEmpty && t.id === tabId);
             if (!theTab) return prev;
 
-            // Tüm zone slotlarını oluştur (seçilen hariç boş)
-            const slots = Array.from({ length: maxZones }, (_, i) =>
-                i === zoneIndex
-                    ? theTab
-                    : { id: `empty-zone-${i}-${Date.now()}`, isEmpty: true }
-            );
+            const visibleOthers = prev.filter(t => !t.isEmpty && t.id !== tabId && !minimizedTabsRef.current.includes(t.id));
 
-            // Minimize edilen diğer sekmeleri slotların arkasına ekle
-            // (boş slot bulurlarsa oraya, bulamazlarsa layout reset ile normal moda girecekler)
-            const otherRealTabs = prev.filter(t => !t.isEmpty && t.id !== tabId);
-            return [...slots, ...otherRealTabs];
+            const slots = Array.from({ length: maxZones }, (_, i) => {
+                if (i === zoneIndex) return theTab;
+                if (visibleOthers.length > 0) return visibleOthers.shift();
+                return { id: `empty-zone-${i}-${Date.now()}`, isEmpty: true };
+            });
+
+            if (visibleOthers.length > 0) {
+                const toMinimize = visibleOthers.map(t => t.id);
+                setMinimizedTabs(m => [...new Set([...m, ...toMinimize])]);
+            }
+
+            const otherTabs = prev.filter(t => !t.isEmpty && t.id !== tabId && !slots.includes(t));
+            return [...slots, ...otherTabs];
         });
     };
 
     const activeDraggingTab = localTabs.find(t => t.id === activeDragId);
 
+    useEffect(() => {
+        const onDragStart = () => setIsNativeDragging(true);
+        const onDragEnd = () => { setIsNativeDragging(false); setLayoutHint(null); };
+        window.addEventListener('dragstart', onDragStart);
+        window.addEventListener('dragend', onDragEnd);
+        return () => {
+            window.removeEventListener('dragstart', onDragStart);
+            window.removeEventListener('dragend', onDragEnd);
+        };
+    }, []);
+
+    const getDropZoneConfig = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const rx = (e.clientX - rect.left) / rect.width;
+        const ry = (e.clientY - rect.top) / rect.height;
+
+        // Sensitivite Optimizasyonu (Yanlışlıkla bölünmeyi önlemek için daha dar ölü bölgeler: %15)
+        const isLeft = rx < 0.15;
+        const isRight = rx > 0.85;
+        const isTop = ry < 0.15;
+        const isBottom = ry > 0.85;
+
+        // Köşeler -> Dörtlü Dağılım (quad)
+        if (isTop && isLeft) return { type: 'tl', layoutId: 'quad', zoneIndex: 0 };
+        if (isTop && isRight) return { type: 'tr', layoutId: 'quad', zoneIndex: 1 };
+        if (isBottom && isLeft) return { type: 'bl', layoutId: 'quad', zoneIndex: 2 };
+        if (isBottom && isRight) return { type: 'br', layoutId: 'quad', zoneIndex: 3 };
+
+        // Kenarlar -> İkili Bölünme (split-2 / h-split-2)
+        if (isLeft) return { type: 'left', layoutId: 'split-2', zoneIndex: 0 };
+        if (isRight) return { type: 'right', layoutId: 'split-2', zoneIndex: 1 };
+        if (isTop) return { type: 'top', layoutId: 'h-split-2', zoneIndex: 0 };
+        if (isBottom) return { type: 'bottom', layoutId: 'h-split-2', zoneIndex: 1 };
+
+        return { type: null, layoutId: null, zoneIndex: -1 };
+    };
+
+    // Sadece ince detaylı kırmızı kenarlıklara sahip içi tamamen boş önizleme stili
+    const layoutHintStyle = React.useMemo(() => {
+        const m = 12; // Margin (12px)
+        const base = {
+            position: 'absolute',
+            pointerEvents: 'none',
+            zIndex: 70,
+            borderRadius: '8px',
+            border: '2px solid rgba(160, 27, 27, 0.9)',
+            backgroundColor: 'rgba(160, 27, 27, 0.08)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            transition: 'all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            opacity: layoutHint ? 1 : 0,
+            transform: layoutHint ? 'scale(1)' : 'scale(0.96)',
+        };
+
+        // Varsayılan olarak tam merkeze boyutsuz bir şekilde konumlanıp gizlenir, layoutHint geldiğinde hedefine süzülür.
+        let geo = { top: '35%', left: '35%', width: '30%', height: '30%' };
+
+        switch (layoutHint) {
+            case 'left': geo = { top: `${m}px`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(100% - ${m * 2}px)` }; break;
+            case 'right': geo = { top: `${m}px`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(100% - ${m * 2}px)` }; break;
+            case 'top': geo = { top: `${m}px`, left: `${m}px`, width: `calc(100% - ${m * 2}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            case 'bottom': geo = { top: `calc(50% + ${m / 2}px)`, left: `${m}px`, width: `calc(100% - ${m * 2}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            case 'tl': geo = { top: `${m}px`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            case 'tr': geo = { top: `${m}px`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            case 'bl': geo = { top: `calc(50% + ${m / 2}px)`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            case 'br': geo = { top: `calc(50% + ${m / 2}px)`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
+            default: break;
+        }
+
+        return { ...base, ...geo };
+    }, [layoutHint]);
+
     // ==========================================
-    // HARİCİDEN (Sidebar'dan) SÜRÜKLE BIRAK YÖNETİMİ
+    // HARİCİDEN (Sidebar veya Menüden) SÜRÜKLE BIRAK YÖNETİMİ
     // ==========================================
     const handleNativeDragOver = (e) => {
         if (e.dataTransfer.types.includes('application/json')) {
-            e.preventDefault(); // Sürüklemeye izin ver
+            e.preventDefault();
+            const config = getDropZoneConfig(e);
+            setLayoutHint(config.type);
         }
+    };
+
+    const handleNativeDragLeave = (e) => {
+        if (e.target === e.currentTarget) setLayoutHint(null);
     };
 
     const handleNativeDrop = (e) => {
         e.preventDefault();
+        setLayoutHint(null);
         const data = e.dataTransfer.getData('application/json');
         if (data) {
             try {
                 const file = JSON.parse(data);
                 if (file && file.id && onOpenFile) {
-                    onOpenFile(file); // App.jsx'teki onOpenFile'ı tetikler!
+                    const config = getDropZoneConfig(e);
+
+                    if (config.layoutId) {
+                        const exists = localTabs.find(t => t.id === file.id);
+                        if (exists) {
+                            handleAddTabToGrid(file.id, config.layoutId, config.zoneIndex);
+                            if (onFocusTab) onFocusTab(file.id);
+                            return;
+                        } else {
+                            setCustomLayoutMode(config.layoutId);
+                            targetDropZoneIndexRef.current = { id: file.id, index: config.zoneIndex };
+                        }
+                    }
+
+                    onOpenFile(file);
                 }
             } catch (err) {
-                console.error("Klasörden dosya sürüklerken hata oluştu", err);
+                console.error("Sürüklerken hata oluştu", err);
             }
         }
     };
+
+    const minimizedTabsData = localTabs.filter(t => minimizedTabs.includes(t.id) && !t.isEmpty);
 
     return (
         <DndContext
@@ -228,6 +407,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
         >
             <div
                 onDragOver={handleNativeDragOver}
+                onDragLeave={handleNativeDragLeave}
                 onDrop={handleNativeDrop}
                 onDoubleClick={(e) => {
                     // Yalnızca arka plana tıklandıysa menüleri küçült
@@ -240,9 +420,12 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
 
                 <BackgroundLogo />
 
+                {/* Modern, Tekil Cam (Glassmorphic) İşaretçi */}
+                <div style={layoutHintStyle} />
+
                 <div className="absolute inset-0 z-10 p-0 pointer-events-none">
                     <SortableContext
-                        items={visibleTabs.filter(t => !t.isEmpty).map(t => t.id)}
+                        items={visibleTabs.map(t => t.id)}
                         strategy={rectSwappingStrategy}
                     >
                         <div
@@ -251,42 +434,26 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                             {/* Mount/Unmount performans kaybını önlemek için tüm localTabs'i tarıyoruz. Minimizeleri 'hidden' yapıyoruz */}
                             {localTabs.map((tab, idx) => {
                                 const isMinimized = minimizedTabs.includes(tab.id);
+                                const isMaximizedTabHere = tab.id === maximizedTabId;
 
                                 const layoutConfig = customLayoutMode ? SNAP_LAYOUTS.find(l => l.id === customLayoutMode) : null;
                                 const zoneClass = layoutConfig && layoutConfig.zones[idx]
                                     ? layoutConfig.zones[idx].class.replace('w-full h-full', '').trim()
                                     : '';
 
-                                const displayClass = isMinimized ? 'hidden' : '';
+                                const displayClass = isMinimized ? 'hidden' : (isMaximizedTabHere ? 'opacity-0 pointer-events-none' : '');
 
                                 if (tab.isEmpty) {
-                                    if (isMinimized) return null; // Boş slot minimize edilemez ama görünmemeli
                                     return (
-                                        <div
+                                        <EmptySlot
                                             key={tab.id}
-                                            className={`pointer-events-auto relative border-2 border-transparent hover:border-slate-400/50 hover:bg-slate-500/5 transition-all rounded-[4px] ${zoneClass}`}
-                                            onDragOver={(e) => {
-                                                if (e.dataTransfer.types.includes('application/json')) {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                }
-                                            }}
-                                            onDrop={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                const data = e.dataTransfer.getData('application/json');
-                                                if (data) {
-                                                    try {
-                                                        const file = JSON.parse(data);
-                                                        if (file && file.id && onOpenFile) {
-                                                            targetDropZoneIndexRef.current = { id: file.id, index: idx };
-                                                            onOpenFile(file);
-                                                        }
-                                                    } catch (err) {
-                                                        console.error("Gözlemciye sürüklerken hata:", err);
-                                                    }
-                                                }
-                                            }}
+                                            tab={tab}
+                                            idx={idx}
+                                            zoneClass={zoneClass}
+                                            isMinimized={isMinimized}
+                                            onOpenFile={onOpenFile}
+                                            targetDropZoneIndexRef={targetDropZoneIndexRef}
+                                            isNativeDragging={isNativeDragging}
                                         />
                                     );
                                 }
@@ -300,6 +467,10 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                             isMaximized={false}
                                             customZoneClass={zoneClass}
                                             onMinimize={() => {
+                                                if (tab.id === 'n8n-viewer') {
+                                                    if (onCloseTab) onCloseTab(tab.id, null, { keepAlive: true });
+                                                    return;
+                                                }
                                                 setMinimizedTabs(prev => [...prev, tab.id]);
                                                 if (onMinimize) onMinimize();
                                             }}
@@ -311,6 +482,15 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                             }}
                                             onMaximize={() => onMaximizeTab && onMaximizeTab(tab.id)}
                                             onSelectLayout={(layoutId, zoneId) => handleSelectLayout(tab.id, layoutId, zoneId)}
+                                            minimizedTabsData={minimizedTabsData}
+                                            onSwapTab={(targetId) => {
+                                                setMinimizedTabs(prev => prev.filter(id => id !== targetId));
+                                                if (onFocusTab) onFocusTab(targetId);
+                                            }}
+                                            onCloseAllMinimized={() => {
+                                                minimizedTabsData.forEach(t => { if (onCloseTab) onCloseTab(t.id); });
+                                                setMinimizedTabs([]);
+                                            }}
                                         />
                                     </div>
                                 );
@@ -330,7 +510,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                 animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                                 exit={{ opacity: 0, scale: 0.1, y: -window.innerHeight * 0.4, filter: 'blur(4px)' }}
                                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                                className="absolute inset-0 z-[60] p-1 pointer-events-auto"
+                                className="absolute inset-0 z-[60] p-0 pointer-events-auto"
                             >
                                 <TileWindow
                                     tab={maxTab}
@@ -339,8 +519,12 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                     isDraggingGhost={false}
                                     onMinimize={() => {
                                         if (onMaximizeTab) onMaximizeTab(maxTab.id);
-                                        setMinimizedTabs(prev => [...prev, maxTab.id]);
-                                        if (onMinimize) onMinimize();
+                                        if (maxTab.id === 'n8n-viewer') {
+                                            if (onCloseTab) onCloseTab(maxTab.id, null, { keepAlive: true });
+                                        } else {
+                                            setMinimizedTabs(prev => [...prev, maxTab.id]);
+                                            if (onMinimize) onMinimize();
+                                        }
                                     }}
                                     onClose={() => {
                                         if (onMaximizeTab) onMaximizeTab(maxTab.id);
@@ -353,6 +537,16 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                     onSelectLayout={(layoutId, zoneId) => {
                                         if (onMaximizeTab) onMaximizeTab(maxTab.id);
                                         handleSelectLayout(maxTab.id, layoutId, zoneId);
+                                    }}
+                                    minimizedTabsData={minimizedTabsData}
+                                    onSwapTab={(targetId) => {
+                                        if (onMaximizeTab) onMaximizeTab(maxTab.id);
+                                        setMinimizedTabs(prev => prev.filter(id => id !== targetId));
+                                        if (onFocusTab) onFocusTab(targetId);
+                                    }}
+                                    onCloseAllMinimized={() => {
+                                        minimizedTabsData.forEach(t => { if (onCloseTab) onCloseTab(t.id); });
+                                        setMinimizedTabs([]);
                                     }}
                                 />
                             </motion.div>

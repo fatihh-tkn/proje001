@@ -9,6 +9,15 @@ export const SNAP_LAYOUTS = [
         ]
     },
     {
+        id: 'h-split-2',
+        name: 'Üst/Alt Eşit',
+        parentClass: 'grid-cols-1 grid-rows-2',
+        zones: [
+            { id: 0, class: 'col-span-1 row-span-1 w-full h-full' },
+            { id: 1, class: 'col-span-1 row-span-1 w-full h-full' }
+        ]
+    },
+    {
         id: 'split-2fr-1fr',
         name: 'Sol Geniş',
         parentClass: 'grid-cols-[2fr_1fr] grid-rows-1',

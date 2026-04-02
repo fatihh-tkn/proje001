@@ -70,6 +70,14 @@ def dispatch(
         from services.processors.text_processor import parse_text
         return parse_text(file_path, original_name=original_name)
 
+    # ── Ses ve Video → Whisper Transkripsiyon ──────────────────────
+    # Video dosyaları: orijinal video ARŞIVDE saklanır,
+    # sadece ses kanalı ayıklanarak transkripte çevrilir (görüntü işlenmez).
+    if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
+               "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
+        from services.processors.audio_processor import parse_audio
+        return parse_audio(file_path, original_name=original_name)
+
     # Bilinmeyen format
     basename = original_name or os.path.basename(file_path)
     return [{

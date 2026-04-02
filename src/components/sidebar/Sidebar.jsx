@@ -9,7 +9,6 @@ import FullLogoImage from '../../assets/logo-acik.png';
 import SymbolImage from '../../assets/logo-kapali.png';
 import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
-import WorkspacePanel from './WorkspacePanel';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
@@ -18,7 +17,6 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [sidebarTab, setSidebarTab] = useState('files');
 
     const fetchArchive = async () => {
         try {
@@ -148,47 +146,6 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     </div>
                 </div>
 
-                {/* ── SEKME NAVİGASYONU (SEGMENTED CONTROL) ── */}
-                {!isCollapsed && (
-                    <div className="px-3 pt-3 pb-2 w-full">
-                        <div className="flex relative bg-slate-800/60 p-[3px] rounded-sm border border-slate-700/50 w-full">
-                            {[
-                                { id: 'files', label: 'Dosyalar', icon: Files, badge: null },
-                                { id: 'workspace', label: 'Alan', icon: LayoutGrid, badge: null },
-                            ].map(tab => {
-                                const isActive = sidebarTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={(e) => { e.stopPropagation(); setSidebarTab(tab.id); }}
-                                        className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold tracking-widest uppercase transition-colors duration-200 z-10 rounded-[2px]
-                                            ${isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200'}
-                                        `}
-                                    >
-                                        {isActive && (
-                                            <motion.div
-                                                layoutId="sidebar-tab-indicator"
-                                                className="absolute inset-0 bg-slate-700/80 rounded-[2px] shadow-sm border border-slate-600/50"
-                                                initial={false}
-                                                transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                                            />
-                                        )}
-                                        <span className="relative z-20 flex items-center gap-1.5">
-                                            <tab.icon size={12} className={isActive ? 'text-[#A01B1B]' : ''} />
-                                            {tab.label}
-                                            {tab.badge !== null && (
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 min-w-[16px] flex items-center justify-center leading-none rounded-[3px] transition-colors ${isActive ? 'bg-[#A01B1B] text-white shadow-sm' : 'bg-slate-700 border border-slate-600 text-slate-300'}`}>
-                                                    {tab.badge}
-                                                </span>
-                                            )}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
                 {/* ── İÇERİK ALANI ── */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-3
                     [&::-webkit-scrollbar]:w-1
@@ -198,54 +155,37 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     hover:[&::-webkit-scrollbar-thumb]:bg-slate-600"
                 >
                     {/* DOSYALAR */}
-                    {(isCollapsed || sidebarTab === 'files') && (
-                        <>
-                            {(archiveData.length === 0) && !isCollapsed && (
-                                <div
-                                    onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
-                                    className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
-                                    style={{ borderRadius: 0 }}
-                                >
-                                    <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#A01B1B] transition-colors" />
-                                    <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
-                                        Sistemde hiç dosya bulunumadı.<br />
-                                        <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
-                                    </p>
-                                </div>
-                            )}
-                            <div className="flex flex-col space-y-0.5 w-full">
-                                {[getArchiveTree()].filter(Boolean).map((node) => (
-                                    <TreeNode
-                                        key={node.id}
-                                        node={node}
-                                        level={0}
-                                        openFolders={openFolders}
-                                        toggleFolder={toggleFolder}
-                                        activeFile={activeFile}
-                                        setActiveFile={setActiveFile}
-                                        isCollapsed={isCollapsed}
-                                        setIsCollapsed={setIsCollapsed}
-                                        setOpenFolders={setOpenFolders}
-                                        onOpenFile={onOpenFile}
-                                        tabs={tabs}
-                                    />
-                                ))}
-                            </div>
-                        </>
+                    {(archiveData.length === 0) && !isCollapsed && (
+                        <div
+                            onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
+                            className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
+                            style={{ borderRadius: 0 }}
+                        >
+                            <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#A01B1B] transition-colors" />
+                            <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
+                                Sistemde hiç dosya bulunumadı.<br />
+                                <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
+                            </p>
+                        </div>
                     )}
-
-                    {/* ÇALIŞMA ALANI */}
-                    {!isCollapsed && sidebarTab === 'workspace' && (
-                        <WorkspacePanel
-                            workspaces={workspaces}
-                            activeWorkspaceId={activeWorkspaceId}
-                            onSwitchWorkspace={onSwitchWorkspace}
-                            onAddWorkspace={onAddWorkspace}
-                            onCloseWorkspace={onCloseWorkspace}
-                            recentlyClosed={recentlyClosed}
-                            onReopenTab={onReopenTab}
-                        />
-                    )}
+                    <div className="flex flex-col space-y-0.5 w-full">
+                        {[getArchiveTree()].filter(Boolean).map((node) => (
+                            <TreeNode
+                                key={node.id}
+                                node={node}
+                                level={0}
+                                openFolders={openFolders}
+                                toggleFolder={toggleFolder}
+                                activeFile={activeFile}
+                                setActiveFile={setActiveFile}
+                                isCollapsed={isCollapsed}
+                                setIsCollapsed={setIsCollapsed}
+                                setOpenFolders={setOpenFolders}
+                                onOpenFile={onOpenFile}
+                                tabs={tabs}
+                            />
+                        ))}
+                    </div>
                 </div>
 
                 <div className={`shrink-0 flex items-center relative transition-all duration-300 px-3 py-4 gap-4

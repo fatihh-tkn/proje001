@@ -63,8 +63,13 @@ export const useWorkspaceStore = create((set, get) => ({
     };
   }),
 
-  handleCloseTab: (id, e) => {
+  handleCloseTab: (id, e, options = {}) => {
     if (e?.stopPropagation) e.stopPropagation();
+
+    // Özel Davranış: N8n sekmesi kapanırken motoru da kapat
+    if (id === 'n8n-viewer' && !options.keepAlive) {
+      try { fetch('/api/n8n/stop', { method: 'POST' }); } catch { }
+    }
 
     // Son kapatılanlar listesine ekle
     const ws = get().getActiveWorkspace();

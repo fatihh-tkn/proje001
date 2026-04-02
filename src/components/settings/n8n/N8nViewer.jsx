@@ -6,6 +6,7 @@ const N8nViewer = () => {
     const [iframeUrl, setIframeUrl] = useState(() => {
         return localStorage.getItem('n8n_target_url') || "http://localhost:5678";
     });
+    const [isIframeLoaded, setIsIframeLoaded] = useState(false);
 
     // Deep linking güncellemelerini yakala (Açıkken tetiklenirse)
     useEffect(() => {
@@ -22,12 +23,64 @@ const N8nViewer = () => {
     };
 
     return (
-        <div className="relative w-full h-full overflow-hidden bg-[#0f0f10] font-sans">
+        <div className="relative w-full h-full overflow-hidden bg-[#fafafa] font-sans">
+
+            {/* ── İskelet Ekran (Skeleton UI) ── */}
+            <AnimatePresence>
+                {!isIframeLoaded && (
+                    <motion.div
+                        key="skeleton"
+                        initial={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="absolute inset-0 z-0 flex"
+                    >
+                        {/* Sol Menü (Sidebar) Skeleton */}
+                        <div className="w-[60px] h-full bg-white border-r border-slate-200 flex flex-col items-center py-4 gap-6">
+                            <div className="w-8 h-8 rounded-md bg-slate-100 animate-pulse" />
+                            <div className="w-6 h-6 rounded-md bg-slate-100 animate-pulse mt-4" />
+                            <div className="w-6 h-6 rounded-md bg-slate-100 animate-pulse" />
+                            <div className="w-6 h-6 rounded-md bg-slate-100 animate-pulse" />
+                        </div>
+
+                        <div className="flex-1 flex flex-col">
+                            {/* Üst Bar (Header) Skeleton */}
+                            <div className="h-[60px] bg-white border-b border-slate-200 flex items-center px-6 justify-between shrink-0">
+                                <div className="flex gap-4 items-center">
+                                    <div className="w-8 h-8 rounded-md bg-slate-100 animate-pulse" />
+                                    <div className="w-32 h-5 rounded-md bg-slate-100 animate-pulse" />
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="w-24 h-8 rounded-full bg-slate-100 animate-pulse" />
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse" />
+                                </div>
+                            </div>
+
+                            {/* Tuval (Canvas / İçerik) Skeleton */}
+                            <div className="flex-1 p-8">
+                                <div className="max-w-4xl mx-auto space-y-6">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <div className="w-48 h-8 rounded-md bg-slate-200/60 animate-pulse" />
+                                        <div className="w-20 h-8 rounded-md bg-slate-200/60 animate-pulse" />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="h-32 rounded-xl bg-white border border-slate-200 shadow-sm animate-pulse" />
+                                        <div className="h-32 rounded-xl bg-white border border-slate-200 shadow-sm animate-pulse delay-75" />
+                                        <div className="h-32 rounded-xl bg-white border border-slate-200 shadow-sm animate-pulse delay-150" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ── Gerçek İframe ── */}
             <motion.div
                 key="ui"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
+                animate={{ opacity: isIframeLoaded ? 1 : 0 }}
+                transition={{ duration: 0.6 }}
                 className="absolute inset-0 z-10"
             >
                 <iframe
@@ -36,6 +89,8 @@ const N8nViewer = () => {
                     style={{ width: '100%', height: '100%', display: 'block' }}
                     title="n8n Engine Portal"
                     allow="clipboard-read; clipboard-write"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-presentation"
+                    onLoad={() => setIsIframeLoaded(true)}
                 />
             </motion.div>
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, n8n, orchestrator
+from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, n8n, orchestrator, meetings
 
 api_router = APIRouter()
 
@@ -13,3 +13,4 @@ api_router.include_router(sql_explorer.router, prefix="/sql", tags=["sql_explore
 api_router.include_router(archive.router, prefix="/archive", tags=["archive"])
 api_router.include_router(n8n.router, prefix="/n8n", tags=["n8n"])
 api_router.include_router(orchestrator.router, prefix="/orchestrator", tags=["orchestrator"])
+api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"])

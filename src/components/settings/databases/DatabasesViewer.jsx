@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Database, Network, Table, DatabaseZap, PackageOpen, BarChart3 } from 'lucide-react';
+import { Database, Network, Table, DatabaseZap, PackageOpen, BarChart3, Mic } from 'lucide-react';
 
-import DatabaseViewer from '../DatabaseViewer'; // Vektör (orijinal)
-import VectorDatabaseViewer from './VectorDatabaseViewer'; // Ağaç görünümlü vektörDB
-import SqlDatabaseViewer from '../SqlDatabaseViewer'; // SQL
-import SqlSchemaViewer from './SqlSchemaViewer'; // SQL Şema
-import GraphDatabaseViewer from './GraphDatabaseViewer'; // Graph
-import ArchiveDocsViewer from '../archive/ArchiveDocsViewer'; // Arşiv
+import DatabaseViewer from '../DatabaseViewer';
+import VectorDatabaseViewer from './VectorDatabaseViewer';
+import SqlDatabaseViewer from '../SqlDatabaseViewer';
+import SqlSchemaViewer from './SqlSchemaViewer';
+import GraphDatabaseViewer from './GraphDatabaseViewer';
+import ArchiveDocsViewer from '../archive/ArchiveDocsViewer';
+import AudioArchiveViewer from '../meetings/AudioArchiveViewer';
 
 export default function DatabasesViewer() {
     const [activeTab, setActiveTab] = useState('sql');
@@ -17,6 +18,7 @@ export default function DatabasesViewer() {
         { id: 'vector', label: 'Vektör', icon: Database },
         { id: 'graph', label: 'Graf', icon: BarChart3 },
         { id: 'archive', label: 'Arşiv', icon: PackageOpen },
+        { id: 'audio-archive', label: 'Ses Arşivi', icon: Mic },
     ];
 
     return (
@@ -66,6 +68,7 @@ export default function DatabasesViewer() {
                 {activeTab === 'vector' && <VectorDatabaseViewer />}
                 {activeTab === 'graph' && <GraphDatabaseViewer />}
                 {activeTab === 'archive' && <ArchiveDocsViewer />}
+                {activeTab === 'audio-archive' && <AudioArchiveViewer />}
             </div>
         </div>
     );

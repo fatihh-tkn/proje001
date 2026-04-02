@@ -8,7 +8,7 @@ import os
 import uuid
 import shutil
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -349,3 +349,229 @@ def dogrudan_yukle(
         db.refresh(yeni_belge)
 
     return {"status": "success", "id": yeni_belge.kimlik, "filename": file.filename}
+
+
+# ── SES / VİDEO TRANSKRİPSİYON ENDPOINT'İ ────────────────────────────────────
+
+AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma"}
+VIDEO_EXTS = {"mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
+AV_EXTS    = AUDIO_EXTS | VIDEO_EXTS
+
+
+def _run_transcription(doc_id: str):
+    """
+    Arka planda çalışan transkripsiyon işlevi.
+    - Belgeyi DB'den alır
+    - audio_processor ile Whisper transkripsiyon yapar
+    - Chunk'ları ChromaDB + SQL'e kaydeder
+    - meta.transcription_status = "done" günceller
+    - Video dosyaları: orijinal video arşivde kalır, sadece ses işlenir
+    """
+    import uuid as _uuid
+    from services.processors.audio_processor import parse_audio
+    from database.vector.chroma_db import vector_db
+    from database.sql.models import VektorParcasi, BilgiIliskisi
+    from sqlalchemy import select
+
+    logger.info("Transkripsiyon başlıyor: doc_id=%s", doc_id)
+
+    try:
+        with get_session() as db:
+            belge = db.get(Belge, doc_id)
+            if not belge:
+                logger.error("Belge bulunamadı: %s", doc_id)
+                return
+
+            if not belge.depolama_yolu or not os.path.exists(belge.depolama_yolu):
+                logger.error("Dosya diskde yok: %s", belge.depolama_yolu)
+                _set_transcription_status(doc_id, "failed", "Dosya diskde bulunamadı.")
+                return
+
+            # Durumu "processing" olarak işaretle
+            meta = dict(belge.meta or {})
+            meta["transcription_status"] = "processing"
+            belge.meta = meta
+            db.commit()
+
+        # Transkripsiyon (uzun sürebilir — session dışında)
+        chunks = parse_audio(
+            file_path=belge.depolama_yolu,
+            original_name=belge.dosya_adi,
+        )
+
+        if not chunks:
+            _set_transcription_status(doc_id, "failed", "Transkripsiyon boş döndü.")
+            return
+
+        # Hata chunk'ı mı?
+        if len(chunks) == 1 and chunks[0].get("metadata", {}).get("type") == "error":
+            err_text = chunks[0]["text"]
+            logger.error("Transkripsiyon hatası: %s", err_text)
+            _set_transcription_status(doc_id, "failed", err_text[:300])
+            return
+
+        # ChromaDB'ye kaydet
+        coll_name  = "yilgenci_collection"
+        texts      = [c["text"] for c in chunks]
+        metadatas  = []
+        ids        = []
+        for c in chunks:
+            cid  = c.get("id") or str(_uuid.uuid4())
+            meta = c.get("metadata", {})
+            clean = {"sqlite_doc_id": doc_id}
+            for k, v in meta.items():
+                clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+            metadatas.append(clean)
+            ids.append(cid)
+
+        vector_db.add_documents(
+            collection_name=coll_name,
+            documents=texts,
+            metadatas=metadatas,
+            ids=ids,
+        )
+        logger.info("ChromaDB'ye %d chunk yazıldı.", len(ids))
+
+        # SQL'e kaydet
+        with get_session() as db:
+            belge = db.get(Belge, doc_id)
+            if not belge:
+                return
+
+            # Eski parçaları temizle (yeniden transkripsiyon durumunda)
+            eski = list(db.scalars(
+                select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
+            ).all())
+            if eski:
+                for p in eski:
+                    db.delete(p)
+                db.flush()
+
+            # Yeni parçaları ekle
+            yeni_parcalar = []
+            for i, c in enumerate(chunks):
+                m = c.get("metadata", {})
+                p = VektorParcasi(
+                    belge_kimlik=doc_id,
+                    chromadb_kimlik=ids[i],
+                    icerik=c["text"][:1000],
+                    konum_imi=(
+                        f"{m.get('source', belge.dosya_adi)} | "
+                        f"{m.get('start_time_fmt', '')} - {m.get('end_time_fmt', '')}"
+                    ),
+                )
+                yeni_parcalar.append(p)
+
+            db.add_all(yeni_parcalar)
+            db.flush()
+
+            # next_chunk kenarları
+            db.flush()  # PK'leri al
+            for i in range(len(yeni_parcalar) - 1):
+                db.add(BilgiIliskisi(
+                    kaynak_parca_kimlik=yeni_parcalar[i].kimlik,
+                    hedef_parca_kimlik=yeni_parcalar[i + 1].kimlik,
+                    iliski_turu="next_chunk",
+                    agirlik=1.0,
+                ))
+
+            # Belge meta güncellemesi
+            meta = dict(belge.meta or {})
+            meta["transcription_status"]       = "done"
+            meta["transcription_chunk_count"]  = len(chunks)
+            meta["transcription_language"]     = (chunks[0].get("metadata", {}).get("language", "?") if chunks else "?")
+            meta.pop("transcription_error", None)
+
+            # Transkripsiyon önizlemesi (ilk 600 karakter)
+            preview_text = " ".join(c["text"] for c in chunks[:3])
+            meta["transcription_preview"] = preview_text[:600]
+
+            belge.meta              = meta
+            belge.vektorlestirildi_mi = True
+            belge.vektordb_koleksiyon = coll_name
+            belge.parca_sayisi        = len(chunks)
+            db.commit()
+
+        logger.info("Transkripsiyon tamamlandı: doc_id=%s, %d chunk", doc_id, len(chunks))
+
+    except Exception as e:
+        logger.exception("Transkripsiyon işlem hatası: %s", e)
+        _set_transcription_status(doc_id, "failed", str(e)[:300])
+
+
+def _set_transcription_status(doc_id: str, status: str, error_msg: str = ""):
+    """Transkripsiyon durumunu DB'de günceller."""
+    try:
+        with get_session() as db:
+            belge = db.get(Belge, doc_id)
+            if belge:
+                meta = dict(belge.meta or {})
+                meta["transcription_status"] = status
+                if error_msg:
+                    meta["transcription_error"] = error_msg
+                belge.meta = meta
+                db.commit()
+    except Exception as e:
+        logger.error("Durum güncelleme hatası: %s", e)
+
+
+@router.post("/transcribe/{doc_id}")
+async def transkripsiyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
+    """
+    Ses veya video dosyasını Whisper ile arka planda transkripte çevirir.
+
+    Video dosyaları için:
+      - Orijinal video arşivde saklanmaya devam eder (silinmez)
+      - Sadece ses kanalı geçici olarak ayıklanır
+      - Whisper transkripsiyon yapar
+      - Geçici ses dosyası temizlenir
+
+    Yanıt hemen döner (202 Accepted), işlem arka planda sürer.
+    Durumu polling ile kontrol etmek için: GET /api/archive/list
+    meta.transcription_status: "pending" | "processing" | "done" | "failed"
+    """
+    with get_session() as db:
+        belge = db.get(Belge, doc_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+
+        ext = (belge.dosya_turu or "").lower().lstrip(".")
+        if ext not in AV_EXTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu dosya türü ({ext}) transkripsiyon için desteklenmiyor. "
+                       f"Desteklenenler: {', '.join(sorted(AV_EXTS))}"
+            )
+
+        if not belge.depolama_yolu or not os.path.exists(belge.depolama_yolu):
+            raise HTTPException(status_code=404, detail="Dosya diskde bulunamadı.")
+
+        # Zaten işleniyor mu?
+        mevcut_durum = (belge.meta or {}).get("transcription_status")
+        if mevcut_durum == "processing":
+            return {
+                "status":  "already_running",
+                "message": "Transkripsiyon zaten devam etmekte.",
+                "doc_id":  doc_id,
+            }
+
+        # Durumu "pending" yap
+        meta = dict(belge.meta or {})
+        meta["transcription_status"] = "pending"
+        belge.meta = meta
+        db.commit()
+
+    # Arka planda başlat
+    background_tasks.add_task(_run_transcription, doc_id)
+
+    is_video = ext in VIDEO_EXTS
+    return {
+        "status":  "started",
+        "message": (
+            f"{'Video' if is_video else 'Ses'} transkripsiyon başlatıldı. "
+            "İşlem arka planda devam ediyor."
+        ),
+        "doc_id":  doc_id,
+        "is_video": is_video,
+        "note":    "Videolar için: orijinal video arşivde saklanır, sadece ses işlenir."
+    }
