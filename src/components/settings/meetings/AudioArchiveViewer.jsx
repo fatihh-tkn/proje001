@@ -118,11 +118,27 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe }) 
     const [descEditing, setDescEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [transcribing, setTranscribing] = useState(false);
+    const [txFullText, setTxFullText] = useState('');
+    const [txLoading, setTxLoading] = useState(false);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
         setDesc(doc?.aciklama || '');
         setDescEditing(false);
+        setTxFullText('');
+
+        // Transkripsiyon tamamlandıysa tam metni arka planda çek
+        const status = doc?.meta?.transcription_status;
+        if ((isAudio(doc?.file_type) || isVideo(doc?.file_type)) && status === 'done') {
+            setTxLoading(true);
+            fetch(`/api/archive/transcript/${doc.id}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (data?.full_text) setTxFullText(data.full_text);
+                })
+                .catch(() => { })
+                .finally(() => setTxLoading(false));
+        }
     }, [doc?.id]);
 
     if (!doc) return null;
@@ -237,115 +253,6 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe }) 
                             </div>
                         )}
 
-                        {/* Ses / Video transkripsiyon kutusu */}
-                        {(isAudio(doc.file_type) || isVideo(doc.file_type)) && (() => {
-                            const meta = doc.meta || {};
-                            const txStatus = meta.transcription_status;
-                            const txLang = meta.transcription_language;
-                            const txChunks = meta.transcription_chunk_count;
-                            const txPreview = meta.transcription_preview;
-                            const txError = meta.transcription_error;
-                            const isProcessing = txStatus === 'processing' || txStatus === 'pending' || transcribing;
-
-                            return (
-                                <div className="mt-2 rounded-lg border overflow-hidden">
-                                    {/* Başlık şeridi */}
-                                    <div className={`flex items-center justify-between px-3 py-2 ${txStatus === 'done' ? 'bg-teal-50 border-b border-teal-100' :
-                                        txStatus === 'failed' ? 'bg-red-50 border-b border-red-100' :
-                                            isProcessing ? 'bg-amber-50 border-b border-amber-100' :
-                                                'bg-slate-50 border-b border-slate-100'
-                                        }`}>
-                                        <div className="flex items-center gap-1.5">
-                                            {isProcessing ? (
-                                                <Loader2 size={13} className="animate-spin text-amber-500" />
-                                            ) : txStatus === 'done' ? (
-                                                <Mic size={13} className="text-teal-600" />
-                                            ) : txStatus === 'failed' ? (
-                                                <AlertCircle size={13} className="text-red-500" />
-                                            ) : (
-                                                <Mic size={13} className="text-slate-400" />
-                                            )}
-                                            <span className="text-[11px] font-semibold text-slate-700">
-                                                Transkripsiyon
-                                            </span>
-                                            {txStatus === 'done' && (
-                                                <span className="text-[9px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                                                    {txLang?.toUpperCase() || 'TAMAMLANDI'}
-                                                </span>
-                                            )}
-                                            {isProcessing && (
-                                                <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                                                    İŞLENİYOR
-                                                </span>
-                                            )}
-                                            {txStatus === 'failed' && (
-                                                <span className="text-[9px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                                                    HATA
-                                                </span>
-                                            )}
-                                        </div>
-                                        {/* Transkribe Et / Yeniden Dene butonu */}
-                                        {!isProcessing && (
-                                            <button
-                                                onClick={async () => {
-                                                    setTranscribing(true);
-                                                    try {
-                                                        await onTranscribe?.(doc.id);
-                                                    } finally {
-                                                        setTimeout(() => setTranscribing(false), 2000);
-                                                    }
-                                                }}
-                                                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${txStatus === 'done'
-                                                    ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                                    : 'bg-[#A01B1B] text-white hover:bg-[#8a1717]'
-                                                    }`}
-                                            >
-                                                <Mic size={10} />
-                                                {txStatus === 'done' ? 'Yenile' : txStatus === 'failed' ? 'Tekrar Dene' : 'Transkribe Et'}
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {/* İçerik */}
-                                    <div className="px-3 py-2.5 bg-white">
-                                        {txStatus === 'done' && txPreview ? (
-                                            <div>
-                                                <p className="text-[11px] text-slate-600 leading-relaxed line-clamp-4">
-                                                    {txPreview}
-                                                </p>
-                                                {txChunks > 0 && (
-                                                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
-                                                        <Clock size={9} />
-                                                        <span>{txChunks} segment</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : txStatus === 'failed' ? (
-                                            <p className="text-[11px] text-red-600 leading-relaxed">
-                                                {txError || 'Bilinmeyen hata.'}
-                                            </p>
-                                        ) : isProcessing ? (
-                                            <p className="text-[11px] text-amber-700">
-                                                {isVideo(doc.file_type)
-                                                    ? '🎬 Video ses kanalı ayıklanıyor ve transkripte çevriliyor...'
-                                                    : '🎙️ Ses transkripte çevriliyor...'}
-                                                <br />
-                                                <span className="text-[10px] text-amber-500">Bu işlem dosya süresine göre birkaç dakika sürebilir.</span>
-                                            </p>
-                                        ) : (
-                                            <p className="text-[11px] text-slate-400 italic">
-                                                {isVideo(doc.file_type)
-                                                    ? 'Video içeriği metne dönüştürülmedi. Transkribe Et ile ses kanalını işleyin.'
-                                                    : 'Ses dosyası henüz transkripte çevrilmedi.'}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })()}
-
-
-
                         {/* Etiketler */}
                         <div>
                             <div className="flex items-center gap-1 mb-2">
@@ -417,6 +324,118 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe }) 
                             )}
                         </div>
                     </div>
+
+                    {/* Ses / Video transkripsiyon satırı (Bilgi kutucuğunun altında) */}
+                    {(isAudio(doc.file_type) || isVideo(doc.file_type)) && (() => {
+                        const meta = doc.meta || {};
+                        const txStatus = meta.transcription_status;
+                        const txLang = meta.transcription_language;
+                        const txError = meta.transcription_error;
+                        const isProcessing = txStatus === 'processing' || txStatus === 'pending' || transcribing;
+                        const txFileName = `${doc.filename.replace(/\.[^/.]+$/, '')}_transkript.txt`;
+
+                        const handleDownloadTranscript = () => {
+                            const blob = new Blob([txFullText], { type: 'text/plain;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = txFileName;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        };
+
+                        return (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-1 mb-1">
+                                    <Mic size={12} className="text-slate-400" />
+                                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Metin Dökümü</span>
+                                </div>
+
+                                {/* Transkript Metin Kutusu (Sadece tamamlandıysa gösterilir) */}
+                                {txStatus === 'done' && txFullText && !txLoading && (
+                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-40 overflow-y-auto">
+                                        <p className="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                            {txFullText.slice(0, 500)}
+                                            {txFullText.length > 500 ? '...' : ''}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Transkript Dosya Kartı */}
+                                <div className={`mt-1 flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
+                                        txStatus === 'failed' ? 'bg-red-50 border-red-200' :
+                                            isProcessing ? 'bg-amber-50 border-amber-200' :
+                                                'bg-slate-50 border-slate-200'
+                                    }`}>
+                                    {/* Sol ikon */}
+                                    <div className={`shrink-0 p-1.5 rounded-lg ${txStatus === 'done' ? 'bg-teal-100' :
+                                            txStatus === 'failed' ? 'bg-red-100' :
+                                                isProcessing ? 'bg-amber-100' : 'bg-slate-100'
+                                        }`}>
+                                        {isProcessing || txLoading
+                                            ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                            : txStatus === 'done'
+                                                ? <Mic size={15} className="text-teal-600" />
+                                                : txStatus === 'failed'
+                                                    ? <AlertCircle size={15} className="text-red-500" />
+                                                    : <Mic size={15} className="text-slate-400" />
+                                        }
+                                    </div>
+
+                                    {/* Dosya adı + durum */}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-semibold text-slate-800 truncate">
+                                            {txStatus === 'done' ? txFileName : 'Transkript dosyası'}
+                                        </p>
+                                        <p className="text-[10px] mt-0.5 truncate">
+                                            {txLoading
+                                                ? <span className="text-teal-500">Transkript yükleniyor…</span>
+                                                : txStatus === 'done' && txFullText
+                                                    ? <span className="text-teal-600 font-medium">{txLang?.toUpperCase()} · {txFullText.length.toLocaleString('tr')} karakter · TXT</span>
+                                                    : txStatus === 'done' && !txFullText
+                                                        ? <span className="text-slate-400">Transkript metni bulunamadı</span>
+                                                        : txStatus === 'failed'
+                                                            ? <span className="text-red-500">{txError?.slice(0, 60) || 'Hata oluştu'}</span>
+                                                            : isProcessing
+                                                                ? <span className="text-amber-600">İşleniyor…</span>
+                                                                : <span className="text-slate-400">Hazır değil</span>
+                                            }
+                                        </p>
+                                    </div>
+
+                                    {/* Sağ butonlar */}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {txStatus === 'done' && txFullText && !txLoading && (
+                                            <button
+                                                onClick={handleDownloadTranscript}
+                                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-700 font-semibold transition-colors text-[10px]"
+                                                title="TXT olarak indir"
+                                            >
+                                                <Download size={11} /> İndir
+                                            </button>
+                                        )}
+                                        {!isProcessing && !txLoading && (
+                                            <button
+                                                onClick={async () => {
+                                                    setTranscribing(true);
+                                                    setTxFullText('');
+                                                    try { await onTranscribe?.(doc.id); }
+                                                    finally { setTimeout(() => setTranscribing(false), 2000); }
+                                                }}
+                                                className={`p-1.5 rounded-lg transition-colors ${txStatus === 'done'
+                                                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                                                        : 'bg-[#A01B1B] hover:bg-[#8a1717] text-white'
+                                                    }`}
+                                                title={txStatus === 'done' ? 'Yeniden başlat' : 'Transkribe et'}
+                                            >
+                                                <Mic size={13} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 {/* Footer / İndir Butonu */}
@@ -521,7 +540,14 @@ export default function AudioArchiveViewer() {
 
     const folders = currentItems.filter(i => i.file_type === 'folder');
     const documents = currentItems.filter(i => i.file_type !== 'folder');
-    const allDocs = items.filter(i => i.file_type !== 'folder');
+
+    // İstatistikleri SADECE ses ve video dosyalarına sınırla
+    const allDocs = items.filter(i => {
+        if (i.file_type === 'folder') return false;
+        const t = (i.file_type || '').toLowerCase();
+        return ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes(t);
+    });
+
     const allFolders = items.filter(i => i.file_type === 'folder');
     const totalSize = allDocs.reduce((s, d) => s + (d.file_size || 0), 0);
     const vectorCount = allDocs.filter(d => d.is_vectorized).length;
@@ -956,9 +982,21 @@ export default function AudioArchiveViewer() {
                                                     draggable
                                                     onDragStart={(e) => handleDragStart(e, doc)}
                                                     onDragOver={(e) => e.preventDefault()}
-                                                    onClick={(e) => {
+                                                    onClick={async (e) => {
                                                         if (selectedIds.size > 0) toggleSelect(doc.id, e);
-                                                        else setSelectedDoc(doc);
+                                                        else {
+                                                            // Önce hızlı göster (listeden), sonra tam detayı yükle
+                                                            setSelectedDoc(doc);
+                                                            try {
+                                                                const res = await fetch(`/api/archive/detail/${doc.id}`);
+                                                                if (res.ok) {
+                                                                    const detail = await res.json();
+                                                                    setSelectedDoc(prev => prev?.id === detail.id ? { ...prev, ...detail } : prev);
+                                                                }
+                                                            } catch (err) {
+                                                                console.warn('Detay yüklenemedi', err);
+                                                            }
+                                                        }
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: doc }); }}
                                                     className={`group relative flex flex-col p-3.5 bg-white border rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all select-none

@@ -24,6 +24,8 @@ def dispatch(
     ext: str,
     use_vision: bool = False,
     original_name: str | None = None,
+    task_id: str | None = None,
+    whisper_model: str = "large-v3"
 ) -> list[dict]:
     """
     Dosya uzantısına göre doğru parser'ı seçer ve chunk listesi döner.
@@ -71,12 +73,10 @@ def dispatch(
         return parse_text(file_path, original_name=original_name)
 
     # ── Ses ve Video → Whisper Transkripsiyon ──────────────────────
-    # Video dosyaları: orijinal video ARŞIVDE saklanır,
-    # sadece ses kanalı ayıklanarak transkripte çevrilir (görüntü işlenmez).
     if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
                "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
         from services.processors.audio_processor import parse_audio
-        return parse_audio(file_path, original_name=original_name)
+        return parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model)
 
     # Bilinmeyen format
     basename = original_name or os.path.basename(file_path)

@@ -105,9 +105,106 @@ def arsiv_listele():
                 "erisim_politikasi": b.erisim_politikasi,
                 "etiketler": meta.get("etiketler", []),
                 "aciklama": meta.get("aciklama", ""),
+                # Transkripsiyon verileri (ses/video için)
+                "meta": {
+                    "transcription_status": meta.get("transcription_status"),
+                    "transcription_language": meta.get("transcription_language"),
+                    "transcription_chunk_count": meta.get("transcription_chunk_count"),
+                    "transcription_preview": meta.get("transcription_preview"),
+                    "transcription_full_text": meta.get("transcription_full_text"),
+                    "transcription_error": meta.get("transcription_error"),
+                },
             })
 
         return {"items": sonuclar}
+
+
+@router.get("/detail/{doc_id}")
+def arsiv_detay(doc_id: str):
+    """Tek bir belgenin tüm meta verilerini (transkript dahil) döner."""
+    with get_session() as db:
+        b = db.get(Belge, doc_id)
+        if not b:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        meta = b.meta or {}
+        parcalar = db.scalars(
+            select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
+        ).all()
+        return {
+            "id": b.kimlik,
+            "filename": b.dosya_adi,
+            "file_type": b.dosya_turu,
+            "file_size": b.dosya_boyutu_bayt,
+            "created_at": b.olusturulma_tarihi,
+            "is_vectorized": b.vektorlestirildi_mi,
+            "durum": b.durum,
+            "storage_path": b.depolama_yolu,
+            "total_chunks": len(parcalar),
+            "etiketler": meta.get("etiketler", []),
+            "aciklama": meta.get("aciklama", ""),
+            "meta": {
+                "transcription_status": meta.get("transcription_status"),
+                "transcription_language": meta.get("transcription_language"),
+                "transcription_chunk_count": meta.get("transcription_chunk_count"),
+                "transcription_preview": meta.get("transcription_preview"),
+                "transcription_full_text": meta.get("transcription_full_text"),
+                "transcription_error": meta.get("transcription_error"),
+            },
+        }
+
+
+@router.get("/transcript/{doc_id}")
+def arsiv_transkript(doc_id: str):
+    """
+    Bir ses/video belgesinin tam transkript metnini döner.
+    - Önce meta['transcription_full_text'] alanına bakar (yeni dosyalar).
+    - Bulamazsa VektorParcasi.icerik sütunlarını sırayla birleştirerek metni yeniden oluşturur (eski dosyalar).
+    - transcription_status 'done' değilse henüz transkript yok hatası verir.
+    """
+    with get_session() as db:
+        b = db.get(Belge, doc_id)
+        if not b:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+
+        meta = b.meta or {}
+        status = meta.get("transcription_status")
+
+        if status != "done":
+            return {
+                "status": status or "none",
+                "full_text": None,
+                "language": meta.get("transcription_language"),
+                "chunk_count": 0,
+            }
+
+        # Önce meta'da kayıtlı tam metnin varlığını kontrol et
+        full_text = meta.get("transcription_full_text")
+
+        if not full_text:
+            # Eski dosyalar için: chunk'ların icerik alanlarından yeniden oluştur
+            from sqlalchemy import asc
+            parcalar = db.scalars(
+                select(VektorParcasi)
+                .where(VektorParcasi.belge_kimlik == doc_id)
+                .order_by(asc(VektorParcasi.kimlik))
+            ).all()
+
+            if parcalar:
+                full_text = " ".join(p.icerik for p in parcalar if p.icerik)
+                # Elde edilen metni meta'ya kaydet (bir dahaki seferde hızlı gelsin)
+                meta["transcription_full_text"] = full_text
+                b.meta = meta
+                db.commit()
+            else:
+                full_text = meta.get("transcription_preview", "")
+
+        return {
+            "status": "done",
+            "full_text": full_text,
+            "language": meta.get("transcription_language"),
+            "chunk_count": meta.get("transcription_chunk_count", 0),
+        }
+
 
 
 @router.post("/create-folder")
@@ -482,9 +579,11 @@ def _run_transcription(doc_id: str):
             meta["transcription_language"]     = (chunks[0].get("metadata", {}).get("language", "?") if chunks else "?")
             meta.pop("transcription_error", None)
 
-            # Transkripsiyon önizlemesi (ilk 600 karakter)
-            preview_text = " ".join(c["text"] for c in chunks[:3])
+            # Transkripsiyon önizlemesi ve tam metin
+            full_text = " ".join(c["text"] for c in chunks)
+            preview_text = full_text
             meta["transcription_preview"] = preview_text[:600]
+            meta["transcription_full_text"] = full_text  # Tam transkripsiyon
 
             belge.meta              = meta
             belge.vektorlestirildi_mi = True

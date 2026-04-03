@@ -379,6 +379,10 @@ export default function ArchiveDocsViewer() {
         })
         .filter(item => {
             if (item.file_type === 'folder') return true;
+            // Ses ve Video dosyalarını standart arşivden dışla (Ses Arşivi sekmesinde varlar)
+            const isMedia = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((item.file_type || '').toLowerCase());
+            if (isMedia) return false;
+
             if (filterType === 'all') return true;
             if (filterType === 'pdf') return item.file_type === 'pdf';
             if (filterType === 'excel') return ['xls', 'xlsx', 'csv'].includes(item.file_type);
@@ -398,7 +402,14 @@ export default function ArchiveDocsViewer() {
 
     const folders = currentItems.filter(i => i.file_type === 'folder');
     const documents = currentItems.filter(i => i.file_type !== 'folder');
-    const allDocs = items.filter(i => i.file_type !== 'folder');
+
+    // İstatistikler için medya harici dokümanları hesapla
+    const allDocs = items.filter(i => {
+        if (i.file_type === 'folder') return false;
+        const isMedia = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((i.file_type || '').toLowerCase());
+        return !isMedia;
+    });
+
     const allFolders = items.filter(i => i.file_type === 'folder');
     const totalSize = allDocs.reduce((s, d) => s + (d.file_size || 0), 0);
     const vectorCount = allDocs.filter(d => d.is_vectorized).length;

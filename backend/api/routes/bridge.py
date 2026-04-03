@@ -31,7 +31,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
-def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False)):
+def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3")):
     import time as _time
     try:
         unique_prefix = str(uuid.uuid4())[:8]
@@ -49,6 +49,8 @@ def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(Fal
             ext          = ext,
             use_vision   = use_vision,
             original_name = safe_filename,
+            task_id      = task_id,
+            whisper_model= whisper_model,
         )
         isleme_suresi_ms = int((_time.time() - t0) * 1000)
 
@@ -71,6 +73,11 @@ def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(Fal
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/progress/{task_id}")
+def get_progress(task_id: str):
+    from services.processors.audio_processor import GLOBAL_PROGRESS
+    return GLOBAL_PROGRESS.get(task_id, {"status": "idle", "percent": 0.0})
 
 
 

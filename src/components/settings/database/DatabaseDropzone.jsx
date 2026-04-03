@@ -127,6 +127,11 @@ const DatabaseDropzone = ({
                             className="w-full h-full flex flex-col p-6 max-w-sm mx-auto justify-center"
                         >
                             <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-[0_8px_30px_rgba(0,0,0,0.04)] flex flex-col items-center text-center relative overflow-hidden group">
+                                {/* İşlem İptal Edici Buton */}
+                                <button onClick={handleCancel} className="absolute top-4 right-4 z-20 text-slate-400 hover:text-white bg-slate-50 hover:bg-[#E11D48] p-1.5 rounded-lg border border-slate-100 hover:border-[#E11D48] transition-all shadow-sm hover:scale-105 active:scale-95" title="İşlemi İptal Et">
+                                    <X size={14} strokeWidth={3} />
+                                </button>
+
                                 {/* Scanning Laser Background (Subtle Pulsing) */}
                                 <motion.div
                                     className="absolute left-0 right-0 h-40 bg-gradient-to-b from-transparent via-[#A01B1B]/5 to-transparent blur-md pointer-events-none"

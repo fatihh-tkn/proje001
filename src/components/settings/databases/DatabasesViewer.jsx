@@ -4,7 +4,6 @@ import { Database, Network, Table, DatabaseZap, PackageOpen, BarChart3, Mic } fr
 import DatabaseViewer from '../DatabaseViewer';
 import VectorDatabaseViewer from './VectorDatabaseViewer';
 import SqlDatabaseViewer from '../SqlDatabaseViewer';
-import SqlSchemaViewer from './SqlSchemaViewer';
 import GraphDatabaseViewer from './GraphDatabaseViewer';
 import ArchiveDocsViewer from '../archive/ArchiveDocsViewer';
 import AudioArchiveViewer from '../meetings/AudioArchiveViewer';
@@ -14,7 +13,6 @@ export default function DatabasesViewer() {
 
     const tabs = [
         { id: 'sql', label: 'İlişkisel SQL', icon: Table },
-        { id: 'schema', label: 'ER Şema', icon: Network },
         { id: 'vector', label: 'Vektör', icon: Database },
         { id: 'graph', label: 'Graf', icon: BarChart3 },
         { id: 'archive', label: 'Arşiv', icon: PackageOpen },
@@ -64,7 +62,6 @@ export default function DatabasesViewer() {
             {/* ── CONTENT AREA ── */}
             <div className="flex-1 overflow-hidden relative">
                 {activeTab === 'sql' && <SqlDatabaseViewer />}
-                {activeTab === 'schema' && <SqlSchemaViewer />}
                 {activeTab === 'vector' && <VectorDatabaseViewer />}
                 {activeTab === 'graph' && <GraphDatabaseViewer />}
                 {activeTab === 'archive' && <ArchiveDocsViewer />}

@@ -19,8 +19,33 @@ const GraphDatabaseViewer = () => {
             if (res.ok) {
                 const data = await res.json();
 
+                // Bağlantı yoğunluğunu (degree) hesapla
+                const degreeMap = {};
+                data.edges.forEach(e => {
+                    degreeMap[e.source] = (degreeMap[e.source] || 0) + 1;
+                    degreeMap[e.target] = (degreeMap[e.target] || 0) + 1;
+                });
+
                 const gData = {
-                    nodes: data.nodes.map(n => ({ ...n, val: 1 })),
+                    nodes: data.nodes.map(n => {
+                        const len = n.content ? n.content.length : 0;
+                        const degree = degreeMap[n.id] || 0;
+
+                        // Optimize edilmiş yumuşak logaritmik ölçeklendirme
+                        let sizeVal = 1.0;
+                        if (len > 0) {
+                            // 1.0 ile 4.0 arasında zarif bir geçiş
+                            sizeVal = 1 + (Math.log2(len + 10) - 3.3) * 0.35;
+                            sizeVal = Math.max(1.0, Math.min(sizeVal, 4.0));
+                        }
+
+                        // Hub Effect: Kendisine çok bağlanan merkez nodlarını hafif şişirerek öne çıkar (max +1 birim)
+                        if (degree > 4) {
+                            sizeVal += Math.min(1.0, degree * 0.08);
+                        }
+
+                        return { ...n, val: sizeVal, degree: degree };
+                    }),
                     links: data.edges.map(e => ({
                         source: e.source,
                         target: e.target,
@@ -75,17 +100,38 @@ const GraphDatabaseViewer = () => {
 
     const handleNodeClick = (node) => {
         if (fgRef.current) {
-            const distance = 60;
-            const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+            const distance = 80 + (node.val * 5); // Büyük kürelere daha uzak zoom
+            const h = Math.hypot(node.x, node.y, node.z) || 0.1; // 0'a bölme hatasını (kamera sapmasını) engelle
+            const distRatio = 1 + distance / h;
 
             fgRef.current.cameraPosition(
                 { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
                 node,
-                2000
+                1500 // 2000'den 1500'e çekerek daha şık ve dinamik bir akış
             );
         }
         setSelectedNode(node);
     };
+
+    // ── Fizik Optimizasyonu: Bağlantı yoğunluğuna göre D3 Gravity Ayarları ──
+    useEffect(() => {
+        if (!fgRef.current || !graphData.nodes.length) return;
+
+        // 1. İtme/Çekme (Charge): Çok bağlı uçları daha uzağa it, nefes alsınlar
+        fgRef.current.d3Force('charge').strength(node => {
+            const degree = node.degree || 1;
+            return -120 - (degree * 15); // Kümelerin fazla sıkışmasını engeller
+        });
+
+        // 2. Çizgi (Link) Mesafesi: Akrabalığı yüksek olanları ideal mesafede tut
+        fgRef.current.d3Force('link').distance(link => {
+            const w = link.weight || 1;
+            return 80 / w; // Güçlü bağlar daha kısa, zayıf bağlar daha uzak
+        });
+
+        // Simülasyonu yeniden canlandır (ısıt)
+        fgRef.current.d3ReheatSimulation();
+    }, [graphData]);
 
     return (
         <div className="flex flex-col w-full h-full bg-white relative overflow-hidden font-sans">
@@ -142,19 +188,20 @@ const GraphDatabaseViewer = () => {
                             ref={fgRef}
                             graphData={graphData}
                             nodeLabel="content"
+                            nodeVal="val"
+                            nodeResolution={32}
+                            nodeOpacity={0.9}
                             nodeColor={node => {
-                                if (selectedNode && node.id === selectedNode.id) return '#ff3b3b';
+                                if (selectedNode && node.id === selectedNode.id) return '#ff1717';
                                 const isMedia = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((node.file_type || '').toLowerCase());
-                                return isMedia ? '#3b82f6' : '#A01B1B';
+                                return isMedia ? '#4F46E5' : '#E11D48'; // Daha canlı ve modern (Indigo & Rose) renk paleti
                             }}
-                            linkColor={() => '#fca5a5'}
-                            linkWidth={link => Math.max(0.5, link.weight * 0.5)}
+                            linkColor={() => '#64748b'} // Zarif ve net Mat Slate-500 Gri
                             onNodeClick={handleNodeClick}
                             backgroundColor="#ffffff"
                             nodeRelSize={4}
-                            linkDirectionalArrowLength={3.5}
-                            linkDirectionalArrowRelPos={1}
-                            linkDirectionalArrowColor={() => '#A01B1B'}
+                            warmupTicks={100} // Başlangıçtaki 'toplu halden patlama' animasyonunu arka planda yapıp bitmiş gösterir
+                            cooldownTicks={150} // Haritayı stabil hale dondurur
                         />
                     </Suspense>
                 )}

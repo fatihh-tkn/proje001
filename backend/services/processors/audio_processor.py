@@ -46,6 +46,8 @@ from pathlib import Path
 
 logger = logging.getLogger("audio_processor")
 
+GLOBAL_PROGRESS = {}
+
 # ── Desteklenen uzantılar ──────────────────────────────────────────
 AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma"}
 VIDEO_EXTS = {"mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
@@ -56,9 +58,11 @@ MAX_WORDS_PER_CHUNK = 400  # Bu kelimeden fazla segment → ikiye böl
 TARGET_WORDS        = 200  # İdeal chunk boyutu
 
 # ── Model önbellek dizini ──────────────────────────────────────────
-WHISPER_MODEL  = os.getenv("WHISPER_MODEL", "large-v3")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")      # Varsayılan CUDA (GPU)
 WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "float16") # GPU için optimize
+
+_CURRENT_MODEL_NAME = None
+_CURRENT_MODEL_INSTANCE = None
 
 
 def _fmt_seconds(seconds: float) -> str:
@@ -122,28 +126,38 @@ def _extract_audio_from_video(video_path: str) -> str:
     return tmp_path
 
 
-def _get_whisper_model():
+def _get_whisper_model(model_name: str):
     """
-    faster-whisper modelini yükler (singleton — tekrar çağrılınca önbellekten döner).
+    faster-whisper modelini yükler.
+    Daha önce yüklenmişse ve model aynıysa önbellekten döner, farklıysa temizleyip yenisini yükler.
     """
+    global _CURRENT_MODEL_NAME, _CURRENT_MODEL_INSTANCE
+
+    if _CURRENT_MODEL_NAME == model_name and _CURRENT_MODEL_INSTANCE is not None:
+        return _CURRENT_MODEL_INSTANCE
+
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        raise ImportError(
-            "faster-whisper paketi bulunamadı. "
-            "Kurmak için: pip install faster-whisper"
-        )
+        raise ImportError("faster-whisper paketi bulunamadı. Kurmak için: pip install faster-whisper")
+
+    # Bellek Temizliği (Eski modeli atıp yenisine yer açmak)
+    if _CURRENT_MODEL_INSTANCE is not None:
+        import gc
+        del _CURRENT_MODEL_INSTANCE
+        _CURRENT_MODEL_INSTANCE = None
+        gc.collect()
 
     cache_dir = os.getenv("WHISPER_CACHE_DIR", None)
 
     logger.info(
         "Whisper modeli yüklenme denemesi: model=%s device=%s compute=%s",
-        WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE,
+        model_name, WHISPER_DEVICE, WHISPER_COMPUTE,
     )
 
     try:
         model = WhisperModel(
-            WHISPER_MODEL,
+            model_name,
             device=WHISPER_DEVICE,
             compute_type=WHISPER_COMPUTE,
             download_root=cache_dir,
@@ -152,12 +166,14 @@ def _get_whisper_model():
         logger.warning(f"Cihaz ({WHISPER_DEVICE}) ile başlatılamadı. Hata: {str(e)[:150]}")
         logger.warning("Güvenlik önlemi (Fallback) devrede: CPU moduna geçiliyor.")
         model = WhisperModel(
-            WHISPER_MODEL,
+            model_name,
             device="cpu",
             compute_type="int8",
             download_root=cache_dir,
         )
 
+    _CURRENT_MODEL_NAME = model_name
+    _CURRENT_MODEL_INSTANCE = model
     return model
 
 
@@ -219,6 +235,8 @@ def _merge_segments(segments: list[dict]) -> list[dict]:
 def parse_audio(
     file_path: str,
     original_name: str | None = None,
+    task_id: str | None = None,
+    model_name: str = "large-v3",
 ) -> list[dict]:
     """
     Ana giriş noktası. dispatch() tarafından çağrılır.
@@ -239,6 +257,7 @@ def parse_audio(
     try:
         # 1. Video ise ses kanalını ayıkla
         if is_video:
+            if task_id: GLOBAL_PROGRESS[task_id] = {"status": "extracting_audio", "percent": 5.0}
             logger.info("Video dosyası algılandı, ses ayıklama başlıyor...")
             try:
                 temp_audio = _extract_audio_from_video(file_path)
@@ -263,8 +282,9 @@ def parse_audio(
                 }]
 
         # 2. Whisper modelini yükle
+        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "loading_model", "percent": 20.0}
         try:
-            model = _get_whisper_model()
+            model = _get_whisper_model(model_name)
         except ImportError as e:
             logger.error("faster-whisper eksik: %s", e)
             return [{
@@ -283,6 +303,7 @@ def parse_audio(
             }]
 
         # 3. Transkripsiyon
+        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "transcribing", "percent": 25.0}
         logger.info("Whisper transkripsiyon başlıyor: %s", audio_path)
         segments_gen, info = model.transcribe(
             audio_path,
@@ -304,12 +325,16 @@ def parse_audio(
 
         # Generator'ı listeye dönüştür
         raw_segments = []
+        duration = info.duration
         for seg in segments_gen:
             raw_segments.append({
                 "text":  seg.text.strip(),
                 "start": seg.start,
                 "end":   seg.end,
             })
+            if task_id and duration > 0:
+                p = 25.0 + ((seg.end / duration) * 65.0)
+                GLOBAL_PROGRESS[task_id] = {"status": "transcribing", "percent": min(90.0, p)}
 
         if not raw_segments:
             logger.warning("Transkripsiyon boş döndü: %s", basename)
@@ -326,6 +351,7 @@ def parse_audio(
             }]
 
         # 4. Segmentleri optimize et (birleştir / böl)
+        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "optimizing", "percent": 95.0}
         optimized = _merge_segments(raw_segments)
 
         # 5. Chunk listesi oluştur
@@ -359,6 +385,7 @@ def parse_audio(
             "Transkripsiyon tamamlandı: %s | %d segment | dil: %s",
             basename, len(chunks), detected_lang.upper()
         )
+        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "done", "percent": 100.0}
         return chunks
 
     finally:

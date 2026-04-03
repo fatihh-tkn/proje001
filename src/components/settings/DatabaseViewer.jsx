@@ -70,6 +70,9 @@ const DatabaseViewer = ({ readOnly }) => {
     const [dragOver, setDragOver] = useState(false);
     const [dragActive, setDragActive] = useState(false); // tüm ekran drag sinyali
     const [stagedFile, setStagedFile] = useState(null);
+    const [pendingMediaFile, setPendingMediaFile] = useState(null);
+    const [mediaDuration, setMediaDuration] = useState(null);
+    const [selectedModel, setSelectedModel] = useState('base');
     const [chunks, setChunks] = useState([]);
     const [approvedChunks, setApprovedChunks] = useState(new Set());
     const [skeletonChunks, setSkeletonChunks] = useState(0);
@@ -85,6 +88,15 @@ const DatabaseViewer = ({ readOnly }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const progressRef = useRef(null);
     const dropRef = useRef(null);
+    const xhrRef = useRef(null);
+    const pollIntervalRef = useRef(null);
+
+    useEffect(() => {
+        return () => {
+            if (xhrRef.current) xhrRef.current.abort();
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        };
+    }, []);
 
     /* ── kayıtları yükle ── */
     const fetchRecords = useCallback(async () => {
@@ -132,67 +144,130 @@ const DatabaseViewer = ({ readOnly }) => {
     }, []);
 
     /* ── analiz animasyonu ve dosya yükleme ── */
-    const startAnalysis = async (file) => {
+    const executeAnalysis = (file, whisperModel = "large-v3") => {
         setStagedFile(file);
         setPhase('analyzing');
-        setProgress(15);
+        setProgress(0);
         setChunks([]);
         setSkeletonChunks(Math.floor(Math.random() * 5) + 3);
-
-        // Pseudo progress until real fetch completes
-        let p = 15;
-        progressRef.current = setInterval(() => {
-            p += Math.random() * 10;
-            if (p > 90) p = 90;
-            setProgress(p);
-        }, 500);
 
         const formData = new FormData();
         formData.append('file', file);
         formData.append('use_vision', useVision ? 'true' : 'false');
+        formData.append('whisper_model', whisperModel);
 
-        try {
-            const res = await fetch('/api/upload-and-analyze', {
-                method: 'POST',
-                body: formData,
-            });
+        const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        formData.append('task_id', taskId);
 
-            clearInterval(progressRef.current);
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open('POST', '/api/upload-and-analyze', true);
+
+        const isMedia = file.type.startsWith('audio/') || file.type.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|mp4|avi|mov|webm)$/i);
+
+        // Upload progressini gercek zamanli goster (dosya aktarimi)
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const cap = isMedia ? 15 : 85;
+                const percent = (e.loaded / e.total) * cap;
+                setProgress(Math.round(percent) || 1);
+            }
+        };
+
+        let pollInterval = null;
+        if (isMedia) {
+            pollInterval = setInterval(async () => {
+                try {
+                    const r = await fetch(`/api/progress/${taskId}`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        if (d.status === 'transcribing') {
+                            setProgress(15 + (d.percent * 0.85));
+                        } else if (d.status === 'optimizing') {
+                            setProgress(98);
+                        } else if (d.percent > 0) {
+                            setProgress(15 + (d.percent * 0.85));
+                        }
+                    }
+                } catch (e) { }
+            }, 1000);
+            pollIntervalRef.current = pollInterval;
+        }
+
+        xhr.onload = () => {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             setProgress(100);
-
-            if (!res.ok) throw new Error("Sunucu okuma hatası verdi.");
-
-            const data = await res.json();
             setSkeletonChunks(0);
 
-            if (data.status === 'success' && data.chunks) {
-                // Backend'den gelen chunks verisini state'e ekle
-                // x,y verileri backend'deyken dict içindeki metadata.bbox
-                setChunks(data.chunks.map(c => ({
-                    id: c.id,
-                    text: c.text,
-                    page: c.metadata?.page || 1,
-                    // Bbox string parsing for frontend compatibility if needed
-                    x: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[0]).toFixed(1) : 0,
-                    y: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[1]).toFixed(1) : 0,
-                    metadata: c.metadata // Store the whole metadata
-                })));
-                if (data.temp_path) {
-                    setTempFilePath(data.temp_path);
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (data.status === 'success' && data.chunks) {
+                        setChunks(data.chunks.map(c => ({
+                            id: c.id,
+                            text: c.text,
+                            page: c.metadata?.page || 1,
+                            x: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[0]).toFixed(1) : 0,
+                            y: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[1]).toFixed(1) : 0,
+                            metadata: c.metadata
+                        })));
+                        if (data.temp_path) {
+                            setTempFilePath(data.temp_path);
+                        }
+                    } else {
+                        setChunks([]);
+                    }
+                    setApprovedChunks(new Set());
+                    setPhase('staged');
+                } catch (err) {
+                    setChunks([{ id: 'error-1', text: `Sunucu yanıtı okunamadı: ${err.message}`, page: 1, x: 0, y: 0 }]);
+                    setPhase('staged');
                 }
             } else {
-                setChunks([]);
+                setChunks([{ id: 'error-1', text: `Hata: Sunucu ${xhr.status} döndü.`, page: 1, x: 0, y: 0 }]);
+                setPhase('staged');
             }
-            setApprovedChunks(new Set());
-            setPhase('staged');
-        } catch (e) {
-            console.error("Upload Error:", e);
-            clearInterval(progressRef.current);
+        };
+
+        xhr.onerror = () => {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             setProgress(100);
             setSkeletonChunks(0);
-            setChunks([{ id: 'error-1', text: `Hata: ${e.message}`, page: 1, x: 0, y: 0 }]);
+            setChunks([{ id: 'error-1', text: `Ağ hatası veya bağlantı koptu.`, page: 1, x: 0, y: 0 }]);
             setPhase('staged');
+        };
+
+        xhr.send(formData);
+    };
+
+    const startAnalysis = (file) => {
+        const isMedia = file.type?.startsWith('audio/') || file.type?.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|mp4|avi|mov|webm)$/i);
+        if (isMedia) {
+            setPendingMediaFile(file);
+            setMediaDuration("Ölçülüyor...");
+            setSelectedModel('base');
+
+            // Medya süresini (duration) hesapla
+            const url = URL.createObjectURL(file);
+            const media = new Audio(url);
+            media.onloadedmetadata = () => {
+                const totalSeconds = media.duration;
+                if (!totalSeconds || isNaN(totalSeconds)) {
+                    setMediaDuration("Süre Bilinmiyor");
+                } else if (totalSeconds < 60) {
+                    setMediaDuration(`${Math.round(totalSeconds)} Sn`);
+                } else {
+                    const mins = Math.floor(totalSeconds / 60);
+                    const secs = Math.round(totalSeconds % 60);
+                    setMediaDuration(`${mins} Dk ${secs} Sn`);
+                }
+                URL.revokeObjectURL(url);
+            };
+            media.onerror = () => setMediaDuration("Bilinmiyor");
+
+            return;
         }
+        executeAnalysis(file, "large-v3");
     };
 
     const getArchiveFileBlob = async (id) => {
@@ -458,8 +533,10 @@ const DatabaseViewer = ({ readOnly }) => {
     };
 
     const handleCancel = () => {
+        if (xhrRef.current) xhrRef.current.abort();
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         clearInterval(progressRef.current);
-        setPhase('idle'); setStagedFile(null); setChunks([]); setApprovedChunks(new Set()); setProgress(0); setSkeletonChunks(0);
+        setPhase('idle'); setStagedFile(null); setChunks([]); setApprovedChunks(new Set()); setProgress(0); setSkeletonChunks(0); setPendingMediaFile(null);
     };
 
     const handleApproveAll = () => {
@@ -508,28 +585,98 @@ const DatabaseViewer = ({ readOnly }) => {
         <div className="w-full h-full flex flex-col bg-white text-slate-800 overflow-hidden font-sans">
 
 
+
+
             {/* ══ ÜST İKİLİ PANEL ══ */}
             {
                 !readOnly && (
                     <div className="flex border-b border-slate-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
 
-                        {/* ── PANEL 1: BESLEME ALANI ── */}
-                        <DatabaseDropzone
-                            phase={phase}
-                            useVision={useVision}
-                            setUseVision={setUseVision}
-                            dragOver={dragOver}
-                            setDragOver={setDragOver}
-                            dragActive={dragActive}
-                            handleDrop={handleDrop}
-                            handleFileInput={handleFileInput}
-                            dropRef={dropRef}
-                            progress={progress}
-                            stagedFile={stagedFile}
-                            handleCancel={handleCancel}
-                            chunksLength={chunks.length}
-                            approvedCount={approvedChunks.size}
-                        />
+                        {/* ── PANEL 1: BESLEME ALANI / MODEL SEÇİM ── */}
+                        {pendingMediaFile ? (
+                            <div className="flex-1 p-6 flex flex-col justify-center items-center bg-white border-r border-slate-200"
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                <div className="w-full max-w-[420px] rounded-2xl overflow-hidden border border-slate-200 shadow-sm animate-in fade-in zoom-in-95 duration-200 bg-white flex flex-col">
+                                    <div className="p-5 border-b border-slate-100 flex items-start gap-4 relative bg-slate-50/30">
+                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-slate-300 hover:text-[#E11D48] transition-colors p-1"><X size={16} /></button>
+
+                                        <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center shrink-0">
+                                            {pendingMediaFile.type?.startsWith('video/') ? (
+                                                <div className="w-6 h-6 rounded bg-[#4F46E5]/10 text-[#4F46E5] flex items-center justify-center">▶</div>
+                                            ) : (
+                                                <div className="w-6 h-6 rounded bg-amber-500/10 text-amber-500 flex items-center justify-center text-lg leading-none mt-[-2px]">♫</div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0 pr-6">
+                                            <h3 className="text-[14px] font-bold text-slate-800 truncate">{pendingMediaFile.name}</h3>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <span className="text-[11px] font-bold text-slate-500 border border-slate-200 bg-white px-2 py-0.5 rounded shadow-sm">
+                                                    {(pendingMediaFile.size / (1024 * 1024)).toFixed(2)} MB
+                                                </span>
+                                                <span className="text-[11px] font-bold text-[#4F46E5] bg-[#4F46E5]/10 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                                                    ⏱ {mediaDuration || "Ölçülüyor..."}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5 flex flex-col gap-3 bg-white">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Kullanılacak Yapay Zeka Modeli</div>
+                                        <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner">
+                                            <button
+                                                onClick={() => setSelectedModel('tiny')}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'tiny' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >Hızlı</button>
+                                            <button
+                                                onClick={() => setSelectedModel('base')}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'base' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >Dengeli</button>
+                                            <button
+                                                onClick={() => setSelectedModel('large-v3')}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'large-v3' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >Gelişmiş</button>
+                                        </div>
+
+                                        <div className="mt-1 min-h-[40px] flex items-center justify-center p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                            {selectedModel === 'tiny' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">İşlemcide şipşak sonuç verir. Kabataslak ve hızlı notlar içindir.</span>}
+                                            {selectedModel === 'base' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Hız ve doğruluk dengesi idealdir. Normal toplantı kayıtları için.</span>}
+                                            {selectedModel === 'large-v3' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Kusursuz harfiyen metin çıkarır. Güçlü GPU ekran kartı gerektirir.</span>}
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+                                        <button
+                                            onClick={() => {
+                                                executeAnalysis(pendingMediaFile, selectedModel);
+                                                setPendingMediaFile(null);
+                                            }}
+                                            className="w-full py-3 bg-[#E11D48] hover:bg-[#be123c] text-white text-[13px] font-bold rounded-xl shadow-lg shadow-[#E11D48]/30 transition-all hover:scale-[0.99] active:scale-95 flex items-center justify-center gap-2"
+                                        >
+                                            <svg className="w-4 h-4 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0-12l4 4m-4-4L8 8m-4 8v1a3 3 0 003 3h10a3 3 0 003-3v-1" /></svg>
+                                            Yükle
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <DatabaseDropzone
+                                phase={phase}
+                                useVision={useVision}
+                                setUseVision={setUseVision}
+                                dragOver={dragOver}
+                                setDragOver={setDragOver}
+                                dragActive={dragActive}
+                                handleDrop={handleDrop}
+                                handleFileInput={handleFileInput}
+                                dropRef={dropRef}
+                                progress={progress}
+                                stagedFile={stagedFile}
+                                handleCancel={handleCancel}
+                                chunksLength={chunks.length}
+                                approvedCount={approvedChunks.size}
+                            />
+                        )}
                         <DatabaseQuarantine
                             chunks={chunks}
                             phase={phase}
