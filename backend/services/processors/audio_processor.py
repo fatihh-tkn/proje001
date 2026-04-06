@@ -47,6 +47,7 @@ from pathlib import Path
 logger = logging.getLogger("audio_processor")
 
 GLOBAL_PROGRESS = {}
+CANCEL_FLAGS    = {}  # {task_id: True} — set etmek transkripsiyon iptal eder
 
 # ── Desteklenen uzantılar ──────────────────────────────────────────
 AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma"}
@@ -71,6 +72,49 @@ def _fmt_seconds(seconds: float) -> str:
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _format_transcript_with_timestamps(raw_segments: list[dict], source_name: str = "", language: str = "") -> str:
+    """
+    Ham segmentleri kullanarak okunabilir, zaman damgalı bir TXT döndürür.
+    Her dakika için ayrı bir blok oluşturur:
+
+        [00:00:00 - 00:01:00]
+        Bu aralıktaki konuşma metni...
+
+        [00:01:00 - 00:02:00]
+        Bir sonraki dakikadaki metin...
+    """
+    if not raw_segments:
+        return ""
+
+    lines = []
+    if source_name:
+        lines.append(f"Kaynak : {source_name}")
+    if language:
+        lines.append(f"Dil    : {language.upper()}")
+    lines.append("=" * 60)
+    lines.append("")
+
+    # Dakika bazlı gruplama
+    MINUTE = 60  # saniye
+    groups: dict[int, list[dict]] = {}  # anahtar: hangi dakika (0=0-60s, 1=60-120s ...)
+    for seg in raw_segments:
+        minute_key = int(seg["start"] // MINUTE)
+        groups.setdefault(minute_key, []).append(seg)
+
+    for minute_key in sorted(groups.keys()):
+        segs = groups[minute_key]
+        block_start = minute_key * MINUTE
+        # Bloğun bitiş zamanı: son segmentin bitişi veya bir sonraki dakikanın başı
+        block_end = max(seg["end"] for seg in segs)
+        label = f"[{_fmt_seconds(block_start)} - {_fmt_seconds(block_end)}]"
+        text_block = " ".join(seg["text"].strip() for seg in segs if seg["text"].strip())
+        lines.append(label)
+        lines.append(text_block)
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _get_ffmpeg_path() -> str:
@@ -237,7 +281,7 @@ def parse_audio(
     original_name: str | None = None,
     task_id: str | None = None,
     model_name: str = "large-v3",
-) -> list[dict]:
+) -> dict:
     """
     Ana giriş noktası. dispatch() tarafından çağrılır.
 
@@ -245,7 +289,13 @@ def parse_audio(
       - Video → önce ses ayıkla, sonra transkripsiyon yap
       - Ses   → direkt transkripsiyon
 
-    Döner: dispatch protokolüne uygun chunk listesi.
+    Döner:
+      {
+        "chunks": [...]           # dispatch protokolüne uygun chunk listesi
+        "formatted_text": str    # Chunk'lara bölünmeden önce zaman damgalı TXT
+        "raw_text": str          # Düz metin (zaman damgasız)
+      }
+    Hata durumunda eski davranışla uyumlu: tek hata chunk'ı içeren dict döner.
     """
     basename = original_name or os.path.basename(file_path)
     ext = Path(file_path).suffix.lstrip(".").lower()
@@ -327,6 +377,12 @@ def parse_audio(
         raw_segments = []
         duration = info.duration
         for seg in segments_gen:
+            # İptal kontrolü
+            if task_id and CANCEL_FLAGS.get(task_id):
+                logger.info("İptal istendi, transkripsiyon durduruluyor: %s", task_id)
+                CANCEL_FLAGS.pop(task_id, None)
+                GLOBAL_PROGRESS.pop(task_id, None)
+                raise RuntimeError("Kullanıcı tarafından iptal edildi.")
             raw_segments.append({
                 "text":  seg.text.strip(),
                 "start": seg.start,
@@ -338,17 +394,25 @@ def parse_audio(
 
         if not raw_segments:
             logger.warning("Transkripsiyon boş döndü: %s", basename)
-            return [{
-                "id":   f"empty-transcript-{uuid.uuid4()}",
-                "text": f"[{basename}] Dosyada konuşma bulunamadı veya ses çok sessiz.",
-                "metadata": {
-                    "source":   basename,
-                    "type":     "audio_transcript",
-                    "language": detected_lang,
-                    "is_video": is_video,
-                    "page":     0,
-                }
-            }]
+            return {
+                "chunks": [{
+                    "id":   f"empty-transcript-{uuid.uuid4()}",
+                    "text": f"[{basename}] Dosyada konuşma bulunamadı veya ses çok sessiz.",
+                    "metadata": {
+                        "source":   basename,
+                        "type":     "audio_transcript",
+                        "language": detected_lang,
+                        "is_video": is_video,
+                        "page":     0,
+                    }
+                }],
+                "formatted_text": "",
+                "raw_text": "",
+            }
+
+        # 3b. Chunk'lara bölmeden önce zaman damgalı TXT oluştur (ham metin)
+        formatted_text = _format_transcript_with_timestamps(raw_segments, basename, detected_lang)
+        raw_text = " ".join(seg["text"].strip() for seg in raw_segments)
 
         # 4. Segmentleri optimize et (birleştir / böl)
         if task_id: GLOBAL_PROGRESS[task_id] = {"status": "optimizing", "percent": 95.0}
@@ -386,7 +450,11 @@ def parse_audio(
             basename, len(chunks), detected_lang.upper()
         )
         if task_id: GLOBAL_PROGRESS[task_id] = {"status": "done", "percent": 100.0}
-        return chunks
+        return {
+            "chunks": chunks,
+            "formatted_text": formatted_text,
+            "raw_text": raw_text,
+        }
 
     finally:
         # Geçici ses dosyasını temizle (video'dan ayıklandıysa)

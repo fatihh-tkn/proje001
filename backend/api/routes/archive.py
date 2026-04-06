@@ -465,7 +465,7 @@ def _run_transcription(doc_id: str):
     - Video dosyaları: orijinal video arşivde kalır, sadece ses işlenir
     """
     import uuid as _uuid
-    from services.processors.audio_processor import parse_audio
+    from services.processors.audio_processor import parse_audio, GLOBAL_PROGRESS
     from database.vector.chroma_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
     from sqlalchemy import select
@@ -479,8 +479,12 @@ def _run_transcription(doc_id: str):
                 logger.error("Belge bulunamadı: %s", doc_id)
                 return
 
-            if not belge.depolama_yolu or not os.path.exists(belge.depolama_yolu):
-                logger.error("Dosya diskde yok: %s", belge.depolama_yolu)
+            # Orijinal bilgileri oturum kapanmadan önce çek
+            b_depo = belge.depolama_yolu
+            b_ad = belge.dosya_adi
+
+            if not b_depo or not os.path.exists(b_depo):
+                logger.error("Dosya diskde yok: %s", b_depo)
                 _set_transcription_status(doc_id, "failed", "Dosya diskde bulunamadı.")
                 return
 
@@ -491,10 +495,15 @@ def _run_transcription(doc_id: str):
             db.commit()
 
         # Transkripsiyon (uzun sürebilir — session dışında)
-        chunks = parse_audio(
-            file_path=belge.depolama_yolu,
-            original_name=belge.dosya_adi,
+        result = parse_audio(
+            file_path=b_depo,
+            original_name=b_ad,
+            task_id=doc_id,
         )
+
+        chunks         = result.get("chunks", [])
+        formatted_text = result.get("formatted_text", "")
+        raw_text       = result.get("raw_text", "")
 
         if not chunks:
             _set_transcription_status(doc_id, "failed", "Transkripsiyon boş döndü.")
@@ -544,17 +553,20 @@ def _run_transcription(doc_id: str):
                     db.delete(p)
                 db.flush()
 
-            # Yeni parçaları ekle
+            # Yeni parçaları ekle (icerik'e zaman damgası prefix eklenir)
             yeni_parcalar = []
             for i, c in enumerate(chunks):
                 m = c.get("metadata", {})
+                start_fmt = m.get("start_time_fmt", "")
+                end_fmt   = m.get("end_time_fmt", "")
+                ts_prefix = f"[{start_fmt} - {end_fmt}] " if start_fmt else ""
                 p = VektorParcasi(
                     belge_kimlik=doc_id,
                     chromadb_kimlik=ids[i],
-                    icerik=c["text"][:1000],
+                    icerik=(ts_prefix + c["text"])[:1000],
                     konum_imi=(
-                        f"{m.get('source', belge.dosya_adi)} | "
-                        f"{m.get('start_time_fmt', '')} - {m.get('end_time_fmt', '')}"
+                        f"{m.get('source', b_ad)} | "
+                        f"{start_fmt} - {end_fmt}"
                     ),
                 )
                 yeni_parcalar.append(p)
@@ -579,11 +591,11 @@ def _run_transcription(doc_id: str):
             meta["transcription_language"]     = (chunks[0].get("metadata", {}).get("language", "?") if chunks else "?")
             meta.pop("transcription_error", None)
 
-            # Transkripsiyon önizlemesi ve tam metin
-            full_text = " ".join(c["text"] for c in chunks)
-            preview_text = full_text
-            meta["transcription_preview"] = preview_text[:600]
-            meta["transcription_full_text"] = full_text  # Tam transkripsiyon
+            # Zaman damgalı tam metin (chunk'lara bölünmeden önceki format)
+            meta["transcription_full_text"] = formatted_text or raw_text
+            # Düz ham metin (zaman damgasız) — ayrıca saklanır
+            meta["transcription_raw_text"]  = raw_text
+            meta["transcription_preview"]   = raw_text[:600]
 
             belge.meta              = meta
             belge.vektorlestirildi_mi = True
@@ -674,3 +686,47 @@ async def transkripsiyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
         "is_video": is_video,
         "note":    "Videolar için: orijinal video arşivde saklanır, sadece ses işlenir."
     }
+
+
+@router.get("/progress/{doc_id}")
+def transkripsiyon_ilerleme(doc_id: str):
+    """
+    Transkripsiyon işleminin anlık ilerleme yüzdesini döner.
+    GLOBAL_PROGRESS[doc_id] = {"status": str, "percent": float}
+    İşlem bitmişse veya başlamamışsa percent=0 döner.
+    """
+    from services.processors.audio_processor import GLOBAL_PROGRESS
+    prog = GLOBAL_PROGRESS.get(doc_id, {})
+    return {
+        "doc_id":  doc_id,
+        "percent": round(prog.get("percent", 0.0), 1),
+        "label":   prog.get("status", "bekliyor"),
+    }
+
+
+@router.delete("/transcribe/{doc_id}")
+def transkripsiyon_iptal(doc_id: str):
+    """
+    Devam eden transkripsiyon işlemini iptal eder.
+    - CANCEL_FLAGS[doc_id] = True → audio_processor'daki döngü durur
+    - GLOBAL_PROGRESS temizlenir
+    - meta.transcription_status = 'failed' (iptal edildi mesajıyla)
+    """
+    from services.processors.audio_processor import CANCEL_FLAGS, GLOBAL_PROGRESS
+    with get_session() as db:
+        belge = db.get(Belge, doc_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        status = (belge.meta or {}).get("transcription_status")
+        if status not in ("processing", "pending"):
+            return {"status": "not_running", "message": "İşlenmekte olan bir transkripsiyon yok."}
+        # İptal bayrağını set et
+        CANCEL_FLAGS[doc_id] = True
+        GLOBAL_PROGRESS.pop(doc_id, None)
+        # DB'yi hemen güncelle
+        meta = dict(belge.meta or {})
+        meta["transcription_status"] = "failed"
+        meta["transcription_error"]  = "Kullanıcı tarafından iptal edildi."
+        belge.meta = meta
+        db.commit()
+    return {"status": "cancelled", "doc_id": doc_id}
