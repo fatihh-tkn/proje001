@@ -4,11 +4,13 @@ import Workspace from './components/workspace/Workspace';
 import ChatInput from './components/chatbar/ChatBar';
 import { BootLogs } from './components/workspace/BootLogs';
 import { useWorkspaceStore } from './store/workspaceStore';
+import Login from './components/auth/Login';
 
 function App() {
   const {
     isLeftCollapsed, setIsLeftCollapsed,
     isRightOpen, setIsRightOpen,
+    isLoggedIn, setIsLoggedIn,
     handleBackgroundDoubleClick,
     workspaces, activeWorkspaceId, recentlyClosed,
     handleOpenFile, handleCloseTab, handleMaximizeTab,
@@ -66,6 +68,10 @@ function App() {
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [handleOpenFile, setIsN8nBooting]);
+
+  if (!isLoggedIn) {
+    return <Login onLogin={() => setIsLoggedIn(true)} />;
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800">

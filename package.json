@@ -15,6 +15,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@react-three/fiber": "^8.17.6",
     "bpmn-js": "^18.13.1",
     "cors": "^2.8.6",
     "docx-preview": "^0.3.7",
@@ -33,7 +34,7 @@
     "react-force-graph-3d": "^1.29.1",
     "react-rnd": "^10.5.3",
     "recharts": "^3.8.0",
-    "three": "^0.183.2",
+    "three": "^0.160.0",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.12"
   },

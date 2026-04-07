@@ -1,6 +1,21 @@
 from typing import Any
 
 from chromadb import Collection
+from chromadb.utils import embedding_functions
+import torch
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Cihazı otomatik belirle: GPU (CUDA) varsa kullan, yoksa CPU
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+logger.info(f"Vektör Gömme (Embedding) Cihazı: {DEVICE}")
+
+# ChromaDB için varsayılan model ("all-MiniLM-L6-v2") ve seçilen cihaz
+embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2", 
+    device=DEVICE
+)
 
 from core.chroma import get_chroma_client
 from database.vector.provider import VectorDBProvider
@@ -15,7 +30,7 @@ class ChromaVectorDB(VectorDBProvider):
     def get_or_create_collection(self, name: str) -> Collection:
         """Koleksiyon yoksa oluşturur, varsa getirir."""
         client = get_chroma_client()
-        return client.get_or_create_collection(name=name)
+        return client.get_or_create_collection(name=name, embedding_function=embedding_function)
 
     def list_collections(self) -> list[str]:
         """Mevcut tüm koleksiyonların adlarını listeler."""

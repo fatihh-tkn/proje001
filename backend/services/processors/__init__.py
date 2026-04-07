@@ -76,7 +76,15 @@ def dispatch(
     if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
                "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
         from services.processors.audio_processor import parse_audio
-        return parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model)
+        res = parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model)
+        
+        # Sadece "Yükle ve Analiz Et" API'si dispatch'i çağırdığı için adaptör koyuyoruz.
+        # Böylece audio_processor.py'ın orijinal dönüş tipini (dict) bozmadan listeye çeviriyoruz.
+        if isinstance(res, dict) and "chunks" in res:
+            return res["chunks"]
+        if isinstance(res, list):
+            return res
+        return []
 
     # Bilinmeyen format
     basename = original_name or os.path.basename(file_path)

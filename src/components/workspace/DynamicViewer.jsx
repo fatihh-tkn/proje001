@@ -42,7 +42,7 @@ export const DynamicViewer = ({ tab }) => {
             {tab.type === 'archive-docs' && <ArchiveDocsViewer />}
             {tab.type === 'image-viewer' && <ImageViewer url={tab.url} title={tab.title} bbox={tab.meta?.bbox} />}
             {tab.type === 'n8n' && <N8nViewer />}
-            {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer />}
+            {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer defaultAgentId={tab.defaultAgentId} />}
             {tab.type === 'meetings' && <MeetingUploadViewer />}
 
             {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (

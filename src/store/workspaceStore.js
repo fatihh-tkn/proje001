@@ -21,6 +21,9 @@ export const useWorkspaceStore = create((set, get) => ({
   isLeftCollapsed: false,
   isRightOpen: true,
 
+  // Authentication State
+  isLoggedIn: false,
+
   // N8n Booting State
   isN8nBooting: false,
 
@@ -30,6 +33,7 @@ export const useWorkspaceStore = create((set, get) => ({
   setIsLeftCollapsed: (value) => set({ isLeftCollapsed: value }),
   setIsRightOpen: (value) => set({ isRightOpen: value }),
   setIsN8nBooting: (value) => set({ isN8nBooting: value }),
+  setIsLoggedIn: (value) => set({ isLoggedIn: value }),
   handleBackgroundDoubleClick: () => set((state) => {
     const isAnyOpen = !state.isLeftCollapsed || state.isRightOpen;
     return {

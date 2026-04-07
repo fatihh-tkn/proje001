@@ -58,3 +58,109 @@ export const DEFAULT_CHATBOT = {
     offlineMessage: '',
     errorMessage: 'Şu anda bilgiye ulaşamıyorum, lütfen daha sonra tekrar deneyin.'
 };
+
+export const DEFAULT_PROMPT_BOT = {
+    id: 'sys_agent_prompt_001',
+    type: 'agent',
+    agentKind: 'worker',
+    name: 'İstem Revize Botu',
+    active: true,
+    persona: 'Prompt Mühendisi',
+    tone: 'professional',
+    prompt: 'Sana verilen eksik veya kısa promptları (istemleri) daha kaliteli, detaylı ve yapay zeka modelleri için optimize edilmiş profesyonel bir promta çevir. Asla kendi başına metin üretme, sadece kullanıcının girdiği amacı alıp mükemmel bir talimat setine çevir.',
+    negativePrompt: 'Örnek cevap yazma, konuşmaya çalışma.',
+    provider: 'openai',
+    model: 'gpt-4o',
+    temp: 0.3,
+    maxTokens: 1024,
+    outputFormat: 'plain',
+    logicCondition: '',
+    allowedRags: [],
+    readMode: 'raw',
+    strictFactCheck: true,
+    excludedFiles: [],
+    welcomeMessage: '',
+    chatHistoryLength: 0,
+    canAskFollowUp: false,
+    followUpCount: 0,
+    avatarEmoji: '✍️',
+    widgetColor: '#eab308',
+    offlineMessage: '',
+    errorMessage: 'İstem revize edilemedi.'
+};
+
+export const DEFAULT_MSG_BOT = {
+    id: 'sys_agent_msg_001',
+    type: 'agent',
+    agentKind: 'worker',
+    name: 'Mesaj Revize Botu',
+    active: true,
+    persona: 'Kurumsal İletişim Uzmanı',
+    tone: 'professional',
+    prompt: 'Sana verilen kuralsız, hataly or kaba yazılmış mesajları al ve profesyonel, nazik, net ve kurumsal bir e-posta veya mesaj formatına dönüştür. Anlamı değiştirme, sadece üslubu profesyonelleştir.',
+    negativePrompt: 'Mesajın ana fikrini değiştirme, bilgi ekleme.',
+    provider: 'anthropic',
+    model: 'claude-3-haiku',
+    temp: 0.4,
+    maxTokens: 1024,
+    outputFormat: 'plain',
+    logicCondition: '',
+    allowedRags: [],
+    readMode: 'raw',
+    strictFactCheck: true,
+    excludedFiles: [],
+    welcomeMessage: '',
+    chatHistoryLength: 0,
+    canAskFollowUp: false,
+    followUpCount: 0,
+    avatarEmoji: '✉️',
+    widgetColor: '#3b82f6',
+    offlineMessage: '',
+    errorMessage: 'Mesaj revize edilemedi.'
+};
+
+export const DEFAULT_ACTION_BOT = {
+    id: 'sys_agent_action_001',
+    type: 'agent',
+    agentKind: 'router',
+    name: 'İşlem Botu',
+    active: true,
+    persona: 'Aksiyon Yönlendiricisi',
+    tone: 'professional',
+    prompt: `Sen bir aksiyon karar motorusun. Kullanıcının mesajını analiz ederek aşağıdaki kararlardan birini ver ve SADECE JSON döndür:
+
+1. Eğer kullanıcı bir n8n otomasyonu tetiklemek istiyorsa:
+{"action": "n8n", "webhook": "<webhook_adi>", "payload": {}}
+
+2. Eğer kullanıcı arayüzde bir sekme veya sayfa açmak istiyorsa:
+{"action": "ui_navigate", "target": "<sekme_kimlik>"}
+
+3. Eğer hiçbir aksiyon gerekmiyorsa:
+{"action": "none"}
+
+Mevcut n8n webhook’ları: toplantı_kaydet, rapor_gonder, gorev_olustur, bildirim_gonder
+Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor
+
+Kullanıcı mesajı: {{user_message}}`,
+    negativePrompt: 'JSON dışında hiçbir şey yazma. Açıklama yapma.',
+    provider: 'openai',
+    model: 'gpt-4o',
+    temp: 0.0,
+    maxTokens: 256,
+    outputFormat: 'json',
+    logicCondition: 'Her kullanıcı mesajından önce çalıştır. Yalnızca aksiyon gereken durumlarda tetikle.',
+    allowedRags: [],
+    readMode: 'raw',
+    strictFactCheck: false,
+    excludedFiles: [],
+    welcomeMessage: '',
+    chatHistoryLength: 0,
+    canAskFollowUp: false,
+    followUpCount: 0,
+    avatarEmoji: '⚡',
+    widgetColor: '#8b5cf6',
+    offlineMessage: '',
+    errorMessage: 'Aksiyon belirlenemedi.'
+};
+
+export const DEFAULT_AGENTS = [DEFAULT_CHATBOT, DEFAULT_PROMPT_BOT, DEFAULT_MSG_BOT, DEFAULT_ACTION_BOT];

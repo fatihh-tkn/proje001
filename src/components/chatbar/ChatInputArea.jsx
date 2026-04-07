@@ -109,39 +109,39 @@ const ChatInputArea = ({
                                 <button className="p-2 text-slate-400 hover:text-[#b91d2c] focus:outline-none transition-colors" title="Ayarlar"><Settings2 size={16} /></button>
                                 {isSideOpen && (
                                     <>
-                                        <button 
+                                        <button
                                             onClick={() => setIsCommandsOpen(!isCommandsOpen)}
                                             className={`p-2 transition-colors focus:outline-none ${isCommandsOpen ? 'text-[#b91d2c]' : 'text-slate-400 hover:text-[#b91d2c]'}`}
                                             title="Hızlı Komutlar"
                                         >
                                             <Sparkles size={16} />
                                         </button>
-                                        
+
                                         <AnimatePresence>
                                             {isCommandsOpen && (
-                                                <motion.div 
+                                                <motion.div
                                                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                                     className="absolute bottom-full left-8 mb-2 bg-white border border-slate-200/80 rounded-lg p-1 flex flex-col gap-0.5 z-50 shadow-[0_8px_30px_rgb(0,0,0,0.06)] min-w-[140px]"
                                                 >
-                                                    <button 
+                                                    <button
                                                         onClick={() => {
                                                             setInputValue(prev => prev ? prev + ' Bu dökümanın özetini çıkart.' : 'Lütfen bu dökümanın özetini çıkart.');
                                                             setIsCommandsOpen(false);
-                                                        }} 
+                                                        }}
                                                         className="px-3 py-2 text-[11px] font-semibold text-slate-600 hover:text-[#b91d2c] hover:bg-slate-50 flex items-center gap-2 rounded-md transition-colors text-left"
                                                     >
-                                                        <FileSearch size={14}/> PDF Özetle
+                                                        <FileSearch size={14} /> PDF Özetle
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={() => {
                                                             setInputValue(prev => prev ? prev + ' Bu dökümanın BPMN analizini yap.' : 'Lütfen bu dökümanın BPMN analizini yap.');
                                                             setIsCommandsOpen(false);
-                                                        }} 
+                                                        }}
                                                         className="px-3 py-2 text-[11px] font-semibold text-slate-600 hover:text-[#b91d2c] hover:bg-slate-50 flex items-center gap-2 rounded-md transition-colors text-left"
                                                     >
-                                                        <Zap size={14}/> BPMN Analizi
+                                                        <Zap size={14} /> BPMN Analizi
                                                     </button>
                                                 </motion.div>
                                             )}
@@ -149,12 +149,12 @@ const ChatInputArea = ({
                                     </>
                                 )}
                             </div>
-                            
+
                             <div className="flex items-center gap-1.5">
                                 {/* MODEL SEÇİCİ */}
                                 {isSideOpen && (
                                     <div className="relative">
-                                        <button 
+                                        <button
                                             onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
                                             className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors focus:outline-none px-2"
                                             title="Aktif Modeller"
@@ -166,14 +166,14 @@ const ChatInputArea = ({
 
                                         <AnimatePresence>
                                             {isModelMenuOpen && (
-                                                <motion.div 
+                                                <motion.div
                                                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                                     className="absolute bottom-full right-0 mb-2 bg-white border border-slate-200/80 rounded-lg py-1 flex flex-col z-50 shadow-[0_8px_30px_rgb(0,0,0,0.06)] min-w-[150px] max-w-[200px]"
                                                 >
                                                     {availableModels.map(m => (
-                                                        <button 
+                                                        <button
                                                             key={m}
                                                             onClick={() => { setActiveModel(m); setIsModelMenuOpen(false); }}
                                                             className={`px-3 py-2 text-[11px] font-semibold flex items-center justify-between transition-colors text-left truncate ${activeModel === m ? 'text-[#b91d2c] bg-red-50' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}

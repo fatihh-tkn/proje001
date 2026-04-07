@@ -11,10 +11,10 @@ import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import { AutomationTab } from './tabs/AutomationTab';
 
 // Constants
-import { DEFAULT_CHATBOT } from './orchestrator/constants';
+import { DEFAULT_AGENTS } from './orchestrator/constants';
 
 /* ─── MAIN ORCHESTRATOR HUB ──────────────────────────────────────── */
-const AiOrchestratorViewer = () => {
+const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
     // Top Navigation
     const [activeMainTab, setActiveMainTab] = useState('architecture');
 
@@ -23,7 +23,7 @@ const AiOrchestratorViewer = () => {
         { id: 'rag_2', type: 'rag', name: 'Canlı Toplantılar' }
     ]);
 
-    const [agents, setAgents] = useState([DEFAULT_CHATBOT]);
+    const [agents, setAgents] = useState(DEFAULT_AGENTS);
     const [isLoadingAgents, setIsLoadingAgents] = useState(true);
 
     // Initial Load (Backend Fetch)
@@ -47,7 +47,7 @@ const AiOrchestratorViewer = () => {
         fetchAgents();
     }, []);
 
-    const [selectedItemId, setSelectedItemId] = useState('sys_agent_chatbot_001');
+    const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_agent_chatbot_001');
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
 
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);

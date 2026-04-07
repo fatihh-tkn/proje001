@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -114,6 +114,25 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                         >
                             <Bot size={14} className="text-slate-500 shrink-0" />
                             <span>Yapay Zeka Merkezi</span>
+                        </button>
+
+                        {/* İŞLEM BOTU */}
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'ai-orchestrator-settings',
+                                        title: 'Yapay Zeka Merkezi',
+                                        type: 'ai-orchestrator',
+                                        defaultAgentId: 'sys_agent_action_001',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 pl-8 py-1.5 text-[11px] transition-colors cursor-pointer text-white/40 hover:bg-white/[0.03] hover:text-purple-400`}
+                        >
+                            <Zap size={12} className="text-purple-500/60 shrink-0" />
+                            <span>İşlem Botu</span>
                         </button>
 
                         {/* SİSTEM METRİKLERİ */}
