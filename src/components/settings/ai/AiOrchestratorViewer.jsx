@@ -18,10 +18,25 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
     // Top Navigation
     const [activeMainTab, setActiveMainTab] = useState('architecture');
 
-    const [rags] = useState([
-        { id: 'rag_1', type: 'rag', name: 'Resmi Belgeler Öz Havuzu' },
-        { id: 'rag_2', type: 'rag', name: 'Canlı Toplantılar' }
-    ]);
+    // RAG/Pool States
+    const [fetchedFiles, setFetchedFiles] = useState([]);
+    const AUDIO_EXTS = ["mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"];
+
+    const rags = React.useMemo(() => {
+        const rag1 = { id: 'rag_1', type: 'rag', name: 'Resmi Belgeler Öz Havuzu', files: [] };
+        const rag2 = { id: 'rag_2', type: 'rag', name: 'Canlı Toplantılar', files: [] };
+
+        fetchedFiles.forEach(f => {
+            if (f.file_type === 'folder') return;
+            const ext = (f.file_type || '').toLowerCase().replace('.', '');
+            if (AUDIO_EXTS.includes(ext)) {
+                rag2.files.push(f);
+            } else {
+                rag1.files.push(f);
+            }
+        });
+        return [rag1, rag2];
+    }, [fetchedFiles]);
 
     const [agents, setAgents] = useState(DEFAULT_AGENTS);
     const [isLoadingAgents, setIsLoadingAgents] = useState(true);
@@ -44,7 +59,21 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
                 setIsLoadingAgents(false);
             }
         };
+        const fetchSystemFiles = async () => {
+            try {
+                const res = await fetch('/api/archive/list');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.items) {
+                        setFetchedFiles(data.items);
+                    }
+                }
+            } catch (error) {
+                console.error('Dosya verileri alınamadı:', error);
+            }
+        };
         fetchAgents();
+        fetchSystemFiles();
     }, []);
 
     const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_agent_chatbot_001');
@@ -135,6 +164,7 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
                                     <div className="flex-1 flex items-center justify-center overflow-hidden transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] bg-white">
                                         <InlineTopologyOverview
                                             agent={selectedItem}
+                                            allAgents={agents}
                                             rags={rags}
                                             onOpenPayload={() => {
                                                 setIsFlowExpanded(true); // Popup açıldığında büyük haline otomatik geçsin

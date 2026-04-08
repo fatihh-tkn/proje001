@@ -1,8 +1,58 @@
-import React from 'react';
-import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles } from 'lucide-react';
-import { PROVIDERS, MODELS_BY_PROVIDER } from './constants';
+import React, { useState } from 'react';
+import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { API_BASE, fetchWithTimeout } from '../utils';
 
 const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) => {
+    const [fetchedModels, setFetchedModels] = React.useState([]);
+    const [loadingModels, setLoadingModels] = React.useState(false);
+    const [aliases, setAliases] = React.useState({});
+    const [expandedRags, setExpandedRags] = useState({});
+    const toggleRagAccordion = (e, ragId) => {
+        e.stopPropagation();
+        setExpandedRags(prev => ({
+            ...prev,
+            [ragId]: !prev[ragId]
+        }));
+    };
+
+    const toggleFileAccess = (e, fileId) => {
+        e.stopPropagation();
+        const disabledKey = `!${fileId}`;
+        const newAllowedRags = selectedItem.allowedRags.includes(disabledKey)
+            ? selectedItem.allowedRags.filter(id => id !== disabledKey)
+            : [...selectedItem.allowedRags, disabledKey];
+        updateAgent('allowedRags', newAllowedRags);
+    };
+
+    React.useEffect(() => {
+        setLoadingModels(true);
+        // localStorage'dan takma adları (alias) çek
+        try {
+            const savedAliases = JSON.parse(localStorage.getItem('model_aliases') || '{}');
+            setAliases(savedAliases);
+        } catch (e) { }
+
+        fetchWithTimeout(`${API_BASE}/catalog`)
+            .then(r => r.json())
+            .then(data => {
+                if (data?.models) {
+                    setFetchedModels(data.models);
+                }
+            })
+            .catch(err => console.error("Modeller alınamadı:", err))
+            .finally(() => setLoadingModels(false));
+    }, []);
+
+    const groupedModels = React.useMemo(() => {
+        const groups = {};
+        fetchedModels.forEach(m => {
+            const p = m.provider || 'Custom';
+            if (!groups[p]) groups[p] = [];
+            groups[p].push(m);
+        });
+        return groups;
+    }, [fetchedModels]);
+
     if (!selectedItem) return null;
 
     return (
@@ -23,16 +73,33 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2">Zekâ Modeli</label>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex justify-between items-center">
+                            <span>Zekâ Modeli</span>
+                            {loadingModels && <Loader2 size={10} className="animate-spin text-[var(--accent)]" />}
+                        </label>
                         <select
                             value={selectedItem.model} onChange={(e) => updateAgent('model', e.target.value)}
                             className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] cursor-pointer font-mono transition-all"
                         >
-                            {PROVIDERS.map(p => (
-                                <optgroup key={p.id} label={p.name}>
-                                    {MODELS_BY_PROVIDER[p.id]?.map(m => <option key={m} value={m}>{m}</option>)}
-                                </optgroup>
-                            ))}
+                            {/* Eğer gelen listede mevcut model yoksa, o modeli de kaybolmasın diye en üste ekleyelim */}
+                            {fetchedModels.length === 0 ? (
+                                <option value={selectedItem.model}>{selectedItem.model} (Yükleniyor...)</option>
+                            ) : (
+                                <>
+                                    {!fetchedModels.find(m => m.name === selectedItem.model) && (
+                                        <option value={selectedItem.model}>{selectedItem.model} (Bilinmeyen)</option>
+                                    )}
+                                    {Object.entries(groupedModels).map(([providerName, mList]) => (
+                                        <optgroup key={providerName} label={providerName}>
+                                            {mList.map(m => (
+                                                <option key={m.id} value={m.name}>
+                                                    {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
+                                </>
+                            )}
                         </select>
                     </div>
                     {selectedItem.agentKind === 'chatbot' && (
@@ -120,19 +187,56 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                         <div className="space-y-1.5">
                             {rags.map(rag => {
                                 const hasAccess = selectedItem.allowedRags.includes(rag.id);
+                                const isExpanded = expandedRags[rag.id];
                                 return (
-                                    <div
-                                        key={rag.id}
-                                        onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
-                                        className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
-                                            ? 'bg-white border-[var(--accent)] text-[var(--workspace-text)] font-semibold shadow-sm'
-                                            : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'
-                                            }`}
-                                    >
-                                        {hasAccess
-                                            ? <CheckCircle2 size={14} className="text-[var(--accent)] shrink-0" />
-                                            : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 shrink-0" />}
-                                        {rag.name}
+                                    <div key={rag.id} className="flex flex-col gap-1">
+                                        <div
+                                            onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
+                                            className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
+                                                ? 'bg-white border-[var(--accent)] text-[var(--workspace-text)] font-semibold shadow-sm'
+                                                : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'
+                                                }`}
+                                        >
+                                            {hasAccess
+                                                ? <CheckCircle2 size={14} className="text-[var(--accent)] shrink-0" />
+                                                : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 shrink-0" />}
+                                            <span className="flex-1">{rag.name}</span>
+
+                                            {rag.files && rag.files.length > 0 && (
+                                                <button
+                                                    onClick={(e) => toggleRagAccordion(e, rag.id)}
+                                                    className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                                                    title="Dosyaları Göster/Gizle"
+                                                >
+                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Akordeon İçeriği (Dosyalar) */}
+                                        {isExpanded && rag.files && (
+                                            <div className="pl-9 pr-3 py-1 space-y-1 mt-1 mb-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                {rag.files.map((file) => {
+                                                    const isFileDisabled = selectedItem.allowedRags.includes(`!${file.id}`);
+                                                    return (
+                                                        <div
+                                                            key={file.id}
+                                                            onClick={(e) => toggleFileAccess(e, file.id)}
+                                                            className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded border cursor-pointer transition-colors ${isFileDisabled ? 'bg-rose-50/50 border-rose-100 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100'}`}
+                                                            title={isFileDisabled ? "Yapay zeka erişimine kapalı. Açmak için tıklayın." : "Yapay zeka erişimine açık. Kapatmak için tıklayın."}
+                                                        >
+                                                            <div className="flex-1 flex items-center gap-2 truncate">
+                                                                <FileText size={10} className={isFileDisabled ? "text-rose-300" : "text-emerald-400"} />
+                                                                <span className={`truncate ${isFileDisabled ? 'line-through' : ''}`}>{file.filename}</span>
+                                                            </div>
+                                                            <div className="shrink-0">
+                                                                {isFileDisabled ? <ToggleLeft size={14} className="text-rose-400" /> : <ToggleRight size={14} className="text-emerald-500" />}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}

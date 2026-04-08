@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from typing import AsyncGenerator
 from fastapi.concurrency import run_in_threadpool
-from core.db_bridge import get_user_models, add_log_to_db
+from core.db_bridge import get_user_models, add_log_to_db, get_ai_agent
 from core.prompts import (
     get_file_qa_prompt,
     get_general_rag_prompt,
@@ -129,12 +129,16 @@ def _build_file_context(
     collection_name: str | None,
     top_k_candidates: int = 40,
     max_pages: int = 8,
+    excluded_file_ids: list[str] = None,
+    allowed_pools: list[str] = None
 ) -> tuple[str, list[dict], dict | None]:
     return _build_semantic_context(
         user_message=user_message,
         file_name=file_name,
         collection_name=collection_name,
-        top_k=max_pages
+        top_k=max_pages,
+        excluded_file_ids=excluded_file_ids,
+        allowed_pools=allowed_pools
     )
 
 
@@ -143,6 +147,8 @@ def _build_semantic_context(
     file_name: str | None = None,
     collection_name: str | None = None,
     top_k: int = None,
+    excluded_file_ids: list[str] = None,
+    allowed_pools: list[str] = None
 ) -> tuple[str, list[dict], dict | None]:
     """
     RAG Pipeline Optimizasyonu:
@@ -202,6 +208,21 @@ def _build_semantic_context(
                         
                         if file_name and src != file_name:
                             continue
+                            
+                        # Dosya ajan ayarlarında yasaklanmışsa (erişim kapatılmışsa) bu sonucu yoksay
+                        if excluded_file_ids and doc_info.get("id") in excluded_file_ids:
+                            continue
+
+                        # Havuz yetki kontrolü (Beyaz liste - Inclusion)
+                        if allowed_pools:
+                            f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
+                            AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
+                            
+                            # Mantık: UI tarafında Ses/Video "rag_2", diğer belgeler "rag_1" havuzuna atandı.
+                            pool_id = "rag_2" if f_type in AUDIO_EXTS else "rag_1"
+                            
+                            if pool_id not in allowed_pools:
+                                continue
 
                         marker = ctx["location_marker"]
                         content = ctx["content"]
@@ -292,13 +313,27 @@ class AIService:
         start_time        = time.time()
         ui_action         = None
 
+        # Ajan Ayarlarını SQL'den Çek
+        agent_config = await run_in_threadpool(get_ai_agent, "chatbot")
+        temperature = 0.7
+        excluded_files = []
+        allowed_pools = []
+        if agent_config:
+            allowed_rags = agent_config.get("allowed_rags") or []
+            excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
+            allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
+            temperature = agent_config.get("temperature", 0.7)
+
         # ── RAG bağlamı ──────────────────────────────────────────────────────
         if file_name:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_file_qa_prompt(file_name)
         else:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_general_rag_prompt()
+
+        if agent_config and agent_config.get("prompt"):
+            system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -329,6 +364,9 @@ class AIService:
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
                         "contents": build_gemini_contents(history, full_prompt),
+                        "generationConfig": {
+                            "temperature": temperature
+                        }
                     }
                     response = await client.post(
                         url, headers={"Content-Type": "application/json"}, json=payload
@@ -357,6 +395,7 @@ class AIService:
                         json={
                             "model": actual_model_name,
                             "messages": build_openai_messages(history, system_intro, full_prompt),
+                            "temperature": temperature
                         },
                     )
                     response.raise_for_status()
@@ -469,14 +508,28 @@ class AIService:
         api_key      = active_model["api_key"]
         start_time   = time.time()
 
+        # Ajan Ayarlarını SQL'den Çek
+        agent_config = await run_in_threadpool(get_ai_agent, "chatbot")
+        temperature = 0.7
+        excluded_files = []
+        allowed_pools = []
+        if agent_config:
+            allowed_rags = agent_config.get("allowed_rags") or []
+            excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
+            allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
+            temperature = agent_config.get("temperature", 0.7)
+
         # RAG bağlamı
         ui_action = None
         if file_name:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_file_qa_prompt(file_name)
         else:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_general_rag_prompt()
+            
+        if agent_config and agent_config.get("prompt"):
+            system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -512,6 +565,9 @@ class AIService:
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
                         "contents": build_gemini_contents(history, full_prompt),
+                        "generationConfig": {
+                            "temperature": temperature
+                        }
                     }
 
                     async with client.stream(
@@ -560,6 +616,7 @@ class AIService:
                             "model": actual_model_name,
                             "messages": build_openai_messages(history, system_intro, full_prompt),
                             "stream": True,
+                            "temperature": temperature
                         },
                     ) as response:
                         response.raise_for_status()
@@ -664,6 +721,64 @@ class AIService:
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'text': f'❌ Sistemsel hata: {str(e)}'})}\n\n"
     # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def revise_prompt(user_prompt: str) -> str:
+        """İstem Revize Botu'nu kullanarak prompt'u iyileştirir."""
+        agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_prompt_001")
+        if not agent_config:
+            # Fallback olarak varsayılan bir iyileştirme isteği gönder
+            system_prompt = "Kullanıcının girdiği istemi (prompt) yapay zeka tarafından çok daha iyi anlaşılabilecek, net ve profesyonel bir talimata dönüştür. Asla kendi başına cevap verme, sadece revize et."
+            temperature = 0.3
+        else:
+            system_prompt = agent_config.get("prompt", "Kullanıcının girdiği istemi profesyonelleştir.")
+            temperature = agent_config.get("temperature", 0.3)
+
+        models = await run_in_threadpool(get_user_models)
+        if not models:
+            raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
+
+        active_model = models[0]
+        model_name = active_model["name"]
+        api_key = active_model["api_key"]
+
+        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        actual_model_name = model_name
+        if is_gemini:
+            invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
+            if model_name.lower().strip() in invalid_names or "1.5" in model_name:
+                actual_model_name = "gemini-1.5-pro" if "pro" in model_name.lower() else "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if is_gemini:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                payload = {
+                    "systemInstruction": {"parts": [{"text": system_prompt}]},
+                    "contents": [{"parts": [{"text": user_prompt}]}],
+                    "generationConfig": {"temperature": temperature}
+                }
+                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                try:
+                    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                except (KeyError, IndexError):
+                    return user_prompt
+            else:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model": actual_model_name, "messages": messages, "temperature": temperature},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"].strip()
 
 
 ai_service = AIService()

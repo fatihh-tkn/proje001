@@ -163,7 +163,7 @@ const DatabaseViewer = ({ readOnly }) => {
         xhrRef.current = xhr;
         xhr.open('POST', '/api/upload-and-analyze', true);
 
-        const isMedia = file.type.startsWith('audio/') || file.type.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|mp4|avi|mov|webm)$/i);
+        const isMedia = file.type.startsWith('audio/') || file.type.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|opus|wma|mp4|avi|mov|mkv|webm|m4v|wmv)$/i);
 
         // Upload progressini gercek zamanli goster (dosya aktarimi)
         xhr.upload.onprogress = (e) => {
@@ -192,6 +192,15 @@ const DatabaseViewer = ({ readOnly }) => {
                 } catch (e) { }
             }, 1000);
             pollIntervalRef.current = pollInterval;
+        } else {
+            let currentProg = 85;
+            pollInterval = setInterval(() => {
+                if (currentProg < 98) {
+                    currentProg += (98 - currentProg) * 0.05;
+                    setProgress(Math.round(currentProg));
+                }
+            }, 800);
+            pollIntervalRef.current = pollInterval;
         }
 
         xhr.onload = () => {
@@ -202,29 +211,34 @@ const DatabaseViewer = ({ readOnly }) => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {
                     const data = JSON.parse(xhr.responseText);
-                    if (data.status === 'success' && data.chunks) {
-                        setChunks(data.chunks.map(c => ({
+                    if (data.status === 'success' && data.chunks && data.chunks.length > 0) {
+                        const mapped = data.chunks.map(c => ({
                             id: c.id,
                             text: c.text,
                             page: c.metadata?.page || 1,
                             x: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[0]).toFixed(1) : 0,
                             y: c.metadata?.bbox ? parseFloat(c.metadata.bbox.split(',')[1]).toFixed(1) : 0,
                             metadata: c.metadata
-                        })));
+                        }));
+                        setChunks(mapped);
+                        setApprovedChunks(new Set()); // Chunklar Karantina mantigina uygun olarak kullanici tarafindan incelenip secilmeli
                         if (data.temp_path) {
                             setTempFilePath(data.temp_path);
                         }
+                    } else if (data.chunks && data.chunks.length === 0) {
+                        setChunks([{ id: 'warn-empty', text: 'Dosyadan hiç chunk çıkarılamadı. Dosyanın metin içerdiğinden emin olun.', page: 1, x: 0, y: 0 }]);
                     } else {
-                        setChunks([]);
+                        setChunks([{ id: 'warn-1', text: data.message || 'Sunucu geçerli chunk döndermedi.', page: 1, x: 0, y: 0 }]);
                     }
-                    setApprovedChunks(new Set());
                     setPhase('staged');
                 } catch (err) {
                     setChunks([{ id: 'error-1', text: `Sunucu yanıtı okunamadı: ${err.message}`, page: 1, x: 0, y: 0 }]);
                     setPhase('staged');
                 }
             } else {
-                setChunks([{ id: 'error-1', text: `Hata: Sunucu ${xhr.status} döndü.`, page: 1, x: 0, y: 0 }]);
+                let errMsg = `Hata: Sunucu ${xhr.status} döndü.`;
+                try { const errData = JSON.parse(xhr.responseText); errMsg = errData.detail || errMsg; } catch (_) { }
+                setChunks([{ id: 'error-1', text: errMsg, page: 1, x: 0, y: 0 }]);
                 setPhase('staged');
             }
         };
@@ -241,7 +255,7 @@ const DatabaseViewer = ({ readOnly }) => {
     };
 
     const startAnalysis = (file) => {
-        const isMedia = file.type?.startsWith('audio/') || file.type?.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|mp4|avi|mov|webm)$/i);
+        const isMedia = file.type?.startsWith('audio/') || file.type?.startsWith('video/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac|opus|wma|mp4|avi|mov|mkv|webm|m4v|wmv)$/i);
         if (isMedia) {
             setPendingMediaFile(file);
             setMediaDuration("Ölçülüyor...");
@@ -272,17 +286,33 @@ const DatabaseViewer = ({ readOnly }) => {
 
     const getArchiveFileBlob = async (id) => {
         try {
+            let realFileName = `arsiv_dosyasi_${id}`;
+            // Liste üzerinden orijinal isme erişmeyi deneyelim
+            const metaRes = await fetch('/api/archive/list');
+            if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const found = (metaData.items || []).find(i => i.id === id);
+                if (found) realFileName = found.filename;
+            }
+
             const res = await fetch(`/api/archive/file/${id}`);
             if (!res.ok) throw new Error('Arşiv dosyası alınamadı');
-            // Dosyanın adını header'dan (Content-Disposition) okumaya çalış, yoksa varsayılan
+            // Dosyanın adını header'dan (Content-Disposition) okumaya çalış, yoksa meta veriyi, yoksa fallback kullan
             const contentDisposition = res.headers.get('Content-Disposition');
-            let filename = `arsiv_dosyasi_${id}.pdf`; // Fallback extension
+            let hasExtensionFromHeader = false;
             if (contentDisposition && contentDisposition.includes('filename=')) {
                 const matches = contentDisposition.match(/filename="?([^"]+)"?/);
-                if (matches && matches[1]) filename = matches[1];
+                if (matches && matches[1]) {
+                    realFileName = matches[1];
+                    hasExtensionFromHeader = true;
+                }
             }
+            if (!hasExtensionFromHeader && !realFileName.includes('.')) {
+                realFileName += '.pdf'; // Son çare fallback
+            }
+
             const blob = await res.blob();
-            return new File([blob], filename, { type: blob.type });
+            return new File([blob], realFileName, { type: blob.type });
         } catch (err) {
             console.error('Arşivden dosya okuma hatası:', err);
             return null;
@@ -323,6 +353,7 @@ const DatabaseViewer = ({ readOnly }) => {
             const firstId = archiveIds[0];
             const archiveFile = await getArchiveFileBlob(firstId);
             if (archiveFile) {
+                archiveFile.sourceArchiveId = firstId;
                 startAnalysis(archiveFile);
             } else {
                 alert("Arşiv dosyası aktarılamadı.");
@@ -347,9 +378,10 @@ const DatabaseViewer = ({ readOnly }) => {
 
         try {
             // ── ADIM 1: Arşivleme (fiziksel dosya + belgeler tablosu) ──────────────
-            let belgeKimlik = null;
+            let belgeKimlik = stagedFile.sourceArchiveId || null;
             let archiveWarning = null;
 
+            // temp_path varsa her zaman arşivle (arXivden düşürme durumunda da backend yeni temp_path üretir)
             if (tempFilePath) {
                 const archiveRes = await fetch('/api/archive-document', {
                     method: 'POST',
@@ -364,14 +396,13 @@ const DatabaseViewer = ({ readOnly }) => {
 
                 if (archiveRes.ok) {
                     const archiveData = await archiveRes.json();
-                    belgeKimlik = archiveData.belge_kimlik ?? null;
+                    // Arşivden gelen dosyalarda sourceArchiveId tercih edilir, yoksa sunucudan al
+                    belgeKimlik = belgeKimlik || archiveData.belge_kimlik || null;
                     if (!belgeKimlik) {
-                        // Sunucu 200 döndürdü ama belge_kimlik yoksa beklenmedik durum
                         archiveWarning = 'Dosya arşivlendi ancak belge kimliği alınamadı. Depolama yolu boş kalabilir.';
                         console.warn('[handleSave] archive-document 200 ama belge_kimlik yok:', archiveData);
                     }
                 } else {
-                    // HTTP hata kodu → sessizce geçme, kullanıcıya uyar ama işlemi durdurma
                     let detail = '';
                     try { const errData = await archiveRes.json(); detail = errData.detail || ''; } catch (_) { }
                     archiveWarning = `Fiziksel arşivleme başarısız (${archiveRes.status}${detail ? ': ' + detail : ''}). Vektör kaydı yine de yapılacak ancak depolama yolu boş kalacak.`;

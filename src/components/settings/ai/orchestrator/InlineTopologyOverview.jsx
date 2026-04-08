@@ -2,16 +2,23 @@ import React, { useState } from 'react';
 import { User, Database, Bot, Brain, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson } from 'lucide-react';
 import ApiPayloadPreview from './ApiPayloadPreview';
 
-const InlineTopologyOverview = ({ agent, rags, onOpenPayload }) => {
-    const [showPopup, setShowPopup] = useState(false);
+const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload }) => {
+    // Popup state: 'user', 'prompt', 'chat', 'msg', 'action'
+    const [activePopupNode, setActivePopupNode] = useState(null);
+
+    // Helpers to get specific agent configs
+    const getAgent = (kind) => {
+        if (!allAgents) return agent;
+        return allAgents.find(a => a.agentKind === kind) || agent;
+    };
 
     // Helpers to check if current agent is the one in the graph
     const isNodeActive = (nodeId) => agent?.id === nodeId || (agent?.agentKind === nodeId);
     const isChatbot = agent?.agentKind === 'chatbot';
     const hasRags = Array.isArray(agent?.allowedRags) && agent.allowedRags.length > 0;
 
-    const handlePayloadClick = () => {
-        setShowPopup(prev => !prev);
+    const handleNodeClick = (nodeName) => {
+        setActivePopupNode(prev => prev === nodeName ? null : nodeName);
         if (onOpenPayload) onOpenPayload();
     };
 
@@ -89,27 +96,43 @@ const InlineTopologyOverview = ({ agent, rags, onOpenPayload }) => {
                 {/* --- 1. Kullanıcı İstemi (Giriş) --- - Center: x=60, y=250 */}
                 <div className="absolute z-10 flex flex-col items-center group pointer-events-auto" style={{ left: 60, top: 250, transform: 'translate(-50%, -50%)' }}>
                     <div
-                        onClick={handlePayloadClick}
+                        onClick={() => handleNodeClick('user')}
                         className="w-14 h-14 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center cursor-pointer hover:border-indigo-400 hover:ring-4 hover:ring-indigo-100 transition-all z-20">
                         <User size={20} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
                     </div>
                     <span className="absolute top-16 text-[10px] font-bold text-slate-600 uppercase tracking-widest bg-white/80 px-2 rounded-lg backdrop-blur-sm shadow-sm whitespace-nowrap">Kullanıcı İstemi</span>
 
                     {/* Payload Popup */}
-                    {showPopup && (
-                        <div className="absolute top-[80px] left-0 mt-2 z-50 w-[340px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-top-left -translate-x-[20%]">
-                            <ApiPayloadPreview agent={agent} rags={rags} />
+                    {activePopupNode === 'user' && (
+                        <div className="absolute top-1/2 left-[70px] -translate-y-1/2 z-50 w-[340px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
+                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-indigo-50/50 rounded-t-2xl">
+                                <FileJson size={14} className="text-indigo-500" />
+                                <span className="text-xs font-bold text-indigo-700">Ham Kullanıcı İstemi</span>
+                            </div>
+                            <ApiPayloadPreview agent={{ persona: "Kullanıcının yazdığı ham metin", model: "N/A" }} rags={[]} isUser={true} />
                         </div>
                     )}
                 </div>
 
                 {/* --- 2. İstem Revize Botu --- - Center: x=230, y=250 */}
                 <div className="absolute z-10 pointer-events-auto group" style={{ left: 230, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_8px_30px_rgba(251,191,36,0.15)] relative">
+                    <div
+                        onClick={() => handleNodeClick('prompt')}
+                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_8px_30px_rgba(251,191,36,0.15)] relative">
                         {isNodeActive('sys_agent_prompt_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-amber-500 rounded-full border-2 border-white animate-pulse"></div>}
                         <PencilLine size={20} className="text-amber-500" />
                         <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">İstem Revize<br />Botu</span>
                     </div>
+
+                    {activePopupNode === 'prompt' && (
+                        <div className="absolute top-1/2 left-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
+                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-amber-50/50 rounded-t-2xl">
+                                <FileJson size={14} className="text-amber-500" />
+                                <span className="text-xs font-bold text-amber-700">API İsteği - İstem Revize Botu</span>
+                            </div>
+                            <ApiPayloadPreview agent={getAgent('prompt_reviser') || getAgent('sys_agent_prompt_001')} rags={[]} />
+                        </div>
+                    )}
                 </div>
 
                 {/* --- 3. Sohbet Asistanı Katmanı (Merkez) --- - Center: x=470, y=250 */}
@@ -131,29 +154,65 @@ const InlineTopologyOverview = ({ agent, rags, onOpenPayload }) => {
                         </div>
                     </div>
 
-                    <div className="w-[140px] h-[90px] rounded-[1.5rem] bg-white backdrop-blur-md border-[2.5px] border-emerald-100 shadow-[0_12px_40px_rgba(16,185,129,0.15)] flex flex-col items-center justify-center gap-1.5 transition-all hover:scale-105 hover:border-emerald-300 relative z-20 pointer-events-auto cursor-pointer">
+                    <div
+                        onClick={() => handleNodeClick('chat')}
+                        className="w-[140px] h-[90px] rounded-[1.5rem] bg-white backdrop-blur-md border-[2.5px] border-emerald-100 shadow-[0_12px_40px_rgba(16,185,129,0.15)] flex flex-col items-center justify-center gap-1.5 transition-all hover:scale-105 hover:border-emerald-300 relative z-20 pointer-events-auto cursor-pointer">
                         {isNodeActive('sys_agent_chatbot_001') && <div className="absolute -top-2 -right-2 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm ring-4 ring-emerald-500/20"></div>}
                         <Bot size={26} className="text-emerald-600" />
                         <span className="text-[13px] font-bold text-slate-800 text-center uppercase tracking-wide">Sohbet<br />Asistanı</span>
                     </div>
+
+                    {activePopupNode === 'chat' && (
+                        <div className="absolute top-1/2 left-[150px] -translate-y-1/2 z-50 w-[380px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
+                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-emerald-50/50 rounded-t-2xl">
+                                <FileJson size={14} className="text-emerald-500" />
+                                <span className="text-xs font-bold text-emerald-700">API İsteği - Sohbet Asistanı</span>
+                            </div>
+                            <ApiPayloadPreview agent={getAgent('chatbot')} rags={rags} />
+                        </div>
+                    )}
                 </div>
 
                 {/* --- 4. Mesaj Revize Botu --- - Center: x=670, y=250 */}
                 <div className="absolute z-10 pointer-events-auto group" style={{ left: 670, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_8px_30px_rgba(59,130,246,0.15)] relative">
+                    <div
+                        onClick={() => handleNodeClick('msg')}
+                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_8px_30px_rgba(59,130,246,0.15)] relative">
                         {isNodeActive('sys_agent_msg_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-white animate-pulse"></div>}
                         <MessageSquareText size={20} className="text-blue-500" />
                         <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">Mesaj Revize<br />Botu</span>
                     </div>
+
+                    {activePopupNode === 'msg' && (
+                        <div className="absolute top-1/2 right-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-right">
+                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-blue-50/50 rounded-t-2xl">
+                                <FileJson size={14} className="text-blue-500" />
+                                <span className="text-xs font-bold text-blue-700">API İsteği - Mesaj Revize Botu</span>
+                            </div>
+                            <ApiPayloadPreview agent={getAgent('message_reviser') || getAgent('sys_agent_msg_001')} rags={[]} />
+                        </div>
+                    )}
                 </div>
 
                 {/* --- 5. İşlem Botu --- - Center: x=840, y=250 */}
                 <div className="absolute z-10 pointer-events-auto group" style={{ left: 840, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all hover:-translate-y-1 hover:border-purple-300 hover:shadow-[0_8px_30px_rgba(139,92,246,0.15)] relative">
+                    <div
+                        onClick={() => handleNodeClick('action')}
+                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-purple-300 hover:shadow-[0_8px_30px_rgba(139,92,246,0.15)] relative">
                         {isNodeActive('sys_agent_action_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-purple-500 rounded-full border-2 border-white animate-pulse"></div>}
                         <Zap size={20} className="text-purple-500" />
                         <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">İşlem<br />Botu</span>
                     </div>
+
+                    {activePopupNode === 'action' && (
+                        <div className="absolute top-1/2 right-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-right">
+                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-purple-50/50 rounded-t-2xl">
+                                <FileJson size={14} className="text-purple-500" />
+                                <span className="text-xs font-bold text-purple-700">API İsteği - İşlem Botu</span>
+                            </div>
+                            <ApiPayloadPreview agent={getAgent('action_router') || getAgent('sys_agent_action_001')} rags={[]} />
+                        </div>
+                    )}
                 </div>
 
                 {/* --- 6. Kullanıcı Yanıtı (Çıkış) --- - Center: x=960, y=250 */}

@@ -31,20 +31,30 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
-def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3")):
+async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3")):
     import time as _time
+    import asyncio
+    from fastapi.concurrency import run_in_threadpool
     try:
         unique_prefix = str(uuid.uuid4())[:8]
         safe_filename = file.filename.replace(" ", "_")
         file_path     = f"{UPLOAD_DIR}/{unique_prefix}_{safe_filename}"
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+
+        # Dosyayı diske yaz (blocking I/O → threadpool)
+        contents = await file.read()
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: open(file_path, "wb").write(contents)
+        )
 
         ext = safe_filename.rsplit(".", 1)[-1].lower() if "." in safe_filename else ""
 
         t0 = _time.time()
+
+        # Ağır işlemi (dispatch) thread pool'da çalıştır — event loop bloklanmasın
         from services.processors import dispatch
-        chunks = dispatch(
+        chunks = await run_in_threadpool(
+            dispatch,
             file_path    = file_path,
             ext          = ext,
             use_vision   = use_vision,
@@ -246,6 +256,8 @@ def save_to_db(data: dict):
             db = uow.session
             # 1. Belge kaydını çöz / oluştur & Varsa ESKİ kayıtları temizle (Re-upload durumunda üst üste binmeyi/orphan'ı engeller)
             resolved_belge_kimlik = None
+            b = None  # DÜZELTME: NameError'ı önlemek için başlangıç değeri None
+
             if belge_kimlik_istek:
                 b = db.scalar(select(Belge).where(Belge.kimlik == belge_kimlik_istek))
                 if b: resolved_belge_kimlik = b.kimlik
@@ -274,14 +286,14 @@ def save_to_db(data: dict):
 
             if not resolved_belge_kimlik:
                 file_ext = file_name.rsplit(".", 1)[-1] if "." in file_name else "unknown"
-                yeni = Belge(
+                b = Belge(
                     dosya_adi=file_name, dosya_turu=file_ext, parca_sayisi=len(chunks_raw),
                     vektordb_koleksiyon=coll_name, vektorlestirildi_mi=True, durum="karantina",
                     isleme_suresi_ms=data.get("isleme_suresi_ms"),
                 )
-                db.add(yeni)
+                db.add(b)
                 db.flush()
-                resolved_belge_kimlik = yeni.kimlik
+                resolved_belge_kimlik = b.kimlik
 
             # 2. ChromaDB'ye yaz (vektörleştirme)
             # archive_only chunk'lar vektörleştirilmez → ChromaDB'ye gönderilmez
@@ -292,7 +304,7 @@ def save_to_db(data: dict):
 
             if is_archive_only:
                 # Belgeyi "arşiv" modunda işaretle
-                if b:
+                if b is not None:
                     b.vektorlestirildi_mi = False
                     b.durum              = "onaylandi"
                     b.parca_sayisi       = 0
@@ -341,7 +353,7 @@ def save_to_db(data: dict):
                 uow.register_compensation(rb_chroma)
 
                 # Adım 2: SQL'i güncelle
-                if b:
+                if b is not None:
                     b.vektorlestirildi_mi = True
                     b.vektordb_koleksiyon = coll_name
                     b.parca_sayisi        = len(texts)
@@ -516,7 +528,7 @@ def archive_document(data: dict):
     final_name          = data.get("final_name", "isim_yok")
     chunk_count         = data.get("chunk_count", 0)
     chroma_collection   = data.get("chroma_collection", "yilgenci_collection")
-    converted_pdf_path  = data.get("converted_pdf_path")  # PPTX→PDF dönüşüm yolu
+    converted_pdf_path  = data.get("converted_pdf_path")  # PPTX->PDF donusum yolu
 
     if not temp_path or not os.path.exists(temp_path):
         raise HTTPException(status_code=400, detail="Geçici dosya bulunamadı.")
@@ -527,7 +539,9 @@ def archive_document(data: dict):
     uid_prefix       = uuid.uuid4().hex[:8]
     archive_filename = f"{uid_prefix}_{final_name}"
     archive_path     = os.path.join(ARCHIVE_DIR, archive_filename)
-    shutil.move(temp_path, archive_path)
+    # copy2 kullan: temp dosya hâlâ gerekebilir (save-to-db'de path ref var),
+    # caller cleanup eder. move yerine copy daha güvenli.
+    shutil.copy2(temp_path, archive_path)
 
     file_ext = final_name.rsplit(".", 1)[-1].lower() if "." in final_name else "unknown"
 
@@ -538,10 +552,10 @@ def archive_document(data: dict):
         pdf_archive_name = f"{uid_prefix}_{base_pdf_name}"
         pdf_archive_path = os.path.join(ARCHIVE_DIR, pdf_archive_name)
         try:
-            shutil.move(converted_pdf_path, pdf_archive_path)
-            logger.info("PPTX→PDF arşive taşındı: %s", pdf_archive_path)
+            shutil.copy2(converted_pdf_path, pdf_archive_path)
+            logger.info("PPTX->PDF arsive tasindi: %s", pdf_archive_path)
         except Exception as e:
-            logger.warning("PDF arşive taşınamadı: %s", e)
+            logger.warning("PDF arsive tasinamadi: %s", e)
             pdf_archive_path = None
 
     # depolama_yolu: PDF varsa PDF'i göster, yoksa orijinali

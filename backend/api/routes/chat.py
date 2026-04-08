@@ -2,7 +2,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from schemas.chat_schema import ChatMessage, ChatResponse
+from pydantic import BaseModel
 from services.ai_service import AIService
+
+class RevisePromptRequest(BaseModel):
+    message: str
 
 router = APIRouter()
 
@@ -55,4 +59,18 @@ async def send_message_stream(request: Request, payload: ChatMessage):
             "X-Accel-Buffering": "no",
         },
     )
+
+@router.post("/revise-prompt")
+async def revise_prompt_endpoint(payload: RevisePromptRequest):
+    """
+    İstem Revize Botu'nu çağırır. 
+    Kullanıcının yazdığı cümleyi, veritabanındaki ajan ayarlarına göre düzeltip geri yollar.
+    """
+    try:
+        revised = await AIService.revise_prompt(payload.message)
+        return {"success": True, "revised_prompt": revised}
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": f"Beklenmeyen bir hata oluştu: {str(e)}"}
 

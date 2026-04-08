@@ -55,10 +55,10 @@ def convert_pptx_to_pdf(pptx_path: str, output_dir: str) -> str | None:
         deck.SaveAs(pdf_abs, 32)   # 32 = ppSaveAsPDF
         deck.Close()
         powerpoint.Quit()
-        print(f"[PPTX→PDF] pywin32 (COM) başarılı: {pdf_abs}")
+        print(f"[PPTX->PDF] pywin32 (COM) başarılı: {pdf_abs}")
         return pdf_abs
     except Exception as e:
-        print(f"[PPTX→PDF] pywin32 kullanılamıyor ({e}), LibreOffice deneniyor...")
+        print(f"[PPTX->PDF] pywin32 kullanılamıyor ({e}), LibreOffice deneniyor...")
 
     # ── Strateji 2: LibreOffice ─────────────────────────────────────────
     soffice = shutil.which("soffice") or shutil.which("soffice.bin")
@@ -71,14 +71,14 @@ def convert_pptx_to_pdf(pptx_path: str, output_dir: str) -> str | None:
             )
             expected = os.path.join(output_dir, f"{base_name}.pdf")
             if result.returncode == 0 and os.path.exists(expected):
-                print(f"[PPTX→PDF] LibreOffice başarılı: {expected}")
+                print(f"[PPTX->PDF] LibreOffice başarılı: {expected}")
                 return expected
             else:
-                print(f"[PPTX→PDF] LibreOffice dönüşüm başarısız: {result.stderr[:200]}")
+                print(f"[PPTX->PDF] LibreOffice dönüşüm başarısız: {result.stderr[:200]}")
         except Exception as e:
-            print(f"[PPTX→PDF] LibreOffice hatası: {e}")
+            print(f"[PPTX->PDF] LibreOffice hatası: {e}")
     else:
-        print("[PPTX→PDF] LibreOffice bulunamadı. Yalnızca metin chunking kullanılacak.")
+        print("[PPTX->PDF] LibreOffice bulunamadı. Yalnızca metin chunking kullanılacak.")
 
     return None
 

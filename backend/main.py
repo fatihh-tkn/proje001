@@ -1,3 +1,10 @@
+import sys
+# Windows terminali varsayılan olarak cp1252/charmap kullanır.
+# Unicode karakterleri (→, ≤, vb.) print() ile yazılınca crash verir.
+# main.py'nin en tepesinde stdout/stderr'i UTF-8'e zorla.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI

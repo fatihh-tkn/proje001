@@ -15,6 +15,7 @@ const getFileVisual = (fileType) => {
     if (['xls', 'xlsx', 'csv'].includes(t)) return { Icon: FileSpreadsheet, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' };
     if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(t)) return { Icon: FileImage, color: 'text-violet-500', bg: 'bg-violet-50', border: 'border-violet-100' };
     if (['doc', 'docx', 'txt', 'md'].includes(t)) return { Icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' };
+    if (['ppt', 'pptx'].includes(t)) return { Icon: FileText, color: 'text-orange-500', bg: 'bg-orange-50', border: 'border-orange-100' };
     if (['mp4', 'avi', 'mov'].includes(t)) return { Icon: Film, color: 'text-pink-500', bg: 'bg-pink-50', border: 'border-pink-100' };
     if (['mp3', 'wav', 'ogg'].includes(t)) return { Icon: Music, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
     if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
@@ -386,6 +387,7 @@ export default function ArchiveDocsViewer() {
             if (filterType === 'all') return true;
             if (filterType === 'pdf') return item.file_type === 'pdf';
             if (filterType === 'excel') return ['xls', 'xlsx', 'csv'].includes(item.file_type);
+            if (filterType === 'ppt') return ['ppt', 'pptx'].includes(item.file_type);
             if (filterType === 'image') return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(item.file_type);
             if (filterType === 'vectorized') return item.is_vectorized;
             return true;
@@ -425,13 +427,8 @@ export default function ArchiveDocsViewer() {
     };
 
     const handleUploadClick = () => {
-        const { handleOpenFile } = useWorkspaceStore.getState();
-        if (handleOpenFile) {
-            handleOpenFile({
-                id: 'database-settings',
-                title: 'Dosya İşleme',
-                type: 'database',
-            });
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
         }
     };
     const handleFileChange = async (e) => {
@@ -652,6 +649,7 @@ export default function ArchiveDocsViewer() {
                                 <option value="all">Tüm Dosyalar</option>
                                 <option value="pdf">PDF</option>
                                 <option value="excel">Excel / CSV</option>
+                                <option value="ppt">Sunum (PPTX)</option>
                                 <option value="image">Görseller</option>
                                 <option value="vectorized">Vektörleşmiş</option>
                             </select>
@@ -676,7 +674,7 @@ export default function ArchiveDocsViewer() {
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#A01B1B] hover:bg-[#8a1717] text-white text-[11px] font-medium rounded-md transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
-                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv" />
                     </div>
                 </div>
 

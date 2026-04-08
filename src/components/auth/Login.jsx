@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import logo from '../../assets/logo-acik.png';
+import logo from '../../assets/sap yılgenci logo.png';
 
 const Login = ({ onLogin }) => {
     const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -63,31 +63,29 @@ const Login = ({ onLogin }) => {
 
     return (
         <div className="w-full max-w-[420px] animate-fade-in-up mx-auto">
-            {/* Premium Enterprise Workspace Kartı (Koyu Zemin Üzerinde Elmas Gibi Parlayan) */}
-            <div className="relative bg-white/85 backdrop-blur-[40px] px-9 py-10 rounded-[2rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_2px_rgba(255,255,255,0.9)] border border-white/40 overflow-hidden">
+            {/* Premium Enterprise Workspace Kartı */}
+            <div className="relative bg-white/85 backdrop-blur-[40px] px-9 pt-0 pb-6 rounded-[2rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_2px_rgba(255,255,255,0.9)] border border-white/40 overflow-hidden">
 
                 {/* Header Alanı */}
-                <div className="flex flex-col items-center justify-center mb-8">
-                    {/* Logo */}
-                    <div className="w-16 h-16 bg-white/60 shadow-[inset_0_1px_3px_rgba(255,255,255,1),0_4px_10px_rgba(0,0,0,0.05)] rounded-2xl flex items-center justify-center mb-5 border border-white/80">
-                        <img src={logo} alt="Proje Logo" className="w-10 object-contain drop-shadow-sm" onError={(e) => { e.target.style.display = 'none'; }} />
+                <div className="flex flex-col items-center justify-center mb-3">
+                    {/* Logo (SAP Yılgenci) */}
+                    <div className="flex items-center justify-center w-auto -mx-10 -mt-16 -mb-12 pointer-events-none">
+                        <img src={logo} alt="SAP Yılgenci Logo" className="w-full h-auto object-contain mix-blend-multiply scale-[1.10]" onError={(e) => { e.target.style.display = 'none'; }} />
                     </div>
 
                     <h2 className="text-[22px] font-black tracking-tight text-slate-800">
-                        {isRegisterMode ? "Hesap Oluşturun" : "Workspace Platform"}
+                        {isRegisterMode ? "Hesap Oluşturun" : "Akıllı Çalışma Alanı"}
                     </h2>
-                    <p className="text-[13px] text-slate-500 font-medium mt-1">
-                        {isRegisterMode ? "Platforma katılmak için bilgilerinizi girin" : "Aygıtları ve verileri akıllıca yönetin"}
-                    </p>
+
                 </div>
 
                 {error && (
-                    <div className="relative mb-6 p-3 bg-red-50/90 border border-red-200 text-red-600 rounded-xl text-sm text-center font-semibold animate-pulse shadow-sm">
+                    <div className="relative mb-5 p-3 bg-red-50/90 border border-red-200 text-red-600 rounded-xl text-sm text-center font-semibold animate-pulse shadow-sm">
                         {error}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="relative flex flex-col gap-5">
+                <form onSubmit={handleSubmit} className="relative flex flex-col gap-4">
                     {/* İsim Alanı (Sadece Kayıt Modunda) */}
                     {isRegisterMode && (
                         <div className="group relative">
@@ -107,7 +105,7 @@ const Login = ({ onLogin }) => {
                             />
                             <label
                                 htmlFor="name"
-                                className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
+                                className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-autofill:scale-[0.80] peer-autofill:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
                             >
                                 Ad Soyad
                             </label>
@@ -132,7 +130,7 @@ const Login = ({ onLogin }) => {
                         />
                         <label
                             htmlFor="email"
-                            className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
+                            className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-autofill:scale-[0.80] peer-autofill:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
                         >
                             Geçerli E-posta
                         </label>
@@ -156,7 +154,7 @@ const Login = ({ onLogin }) => {
                         />
                         <label
                             htmlFor="password"
-                            className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
+                            className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-autofill:scale-[0.80] peer-autofill:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
                         >
                             Şifre
                         </label>
@@ -199,7 +197,7 @@ const Login = ({ onLogin }) => {
                             />
                             <label
                                 htmlFor="passwordConfirm"
-                                className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
+                                className="absolute text-slate-500 duration-300 transform -translate-y-2 scale-[0.80] top-4 z-10 origin-[0] left-11 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0.5 peer-focus:scale-[0.80] peer-focus:-translate-y-2 peer-autofill:scale-[0.80] peer-autofill:-translate-y-2 peer-focus:text-blue-600 font-bold uppercase tracking-wider pointer-events-none"
                             >
                                 Şifre Tekrar
                             </label>
@@ -216,7 +214,7 @@ const Login = ({ onLogin }) => {
                     )}
 
                     {/* Butonlar Grubu (Kurumsal) */}
-                    <div className="flex gap-3 mt-4">
+                    <div className="flex gap-3 mt-1">
                         {/* İkincil Buton / Moda Geçiş */}
                         <button
                             type="button"

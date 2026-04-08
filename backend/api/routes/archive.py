@@ -609,6 +609,124 @@ def _run_transcription(doc_id: str):
         logger.exception("Transkripsiyon işlem hatası: %s", e)
         _set_transcription_status(doc_id, "failed", str(e)[:300])
 
+# ── METİN/PDF/DOCX VEKTÖRİZASYON ENDPOINT'İ ──────────────────────────────────
+def _run_vectorization(doc_id: str):
+    import uuid as _uuid
+    from services.processors.text_processor import parse_text
+    from database.vector.chroma_db import vector_db
+    from database.sql.models import VektorParcasi, BilgiIliskisi
+    from sqlalchemy import select
+
+    logger.info("Vektörizasyon başlıyor: doc_id=%s", doc_id)
+
+    try:
+        with get_session() as db:
+            belge = db.get(Belge, doc_id)
+            if not belge:
+                logger.error("Belge bulunamadı: %s", doc_id)
+                return
+
+            b_depo = belge.depolama_yolu
+            b_ad = belge.dosya_adi
+
+            if not b_depo or not os.path.exists(b_depo):
+                logger.error("Dosya diskde yok: %s", b_depo)
+                _set_transcription_status(doc_id, "failed", "Dosya diskde bulunamadı.")
+                return
+
+            meta = dict(belge.meta or {})
+            meta["transcription_status"] = "processing"
+            belge.meta = meta
+            db.commit()
+
+        # Metin parçalama (Text/PDF/Docx)
+        chunks = parse_text(file_path=b_depo, original_name=b_ad)
+
+        if not chunks:
+            _set_transcription_status(doc_id, "failed", "Vektörizasyon boş döndü.")
+            return
+
+        # Hata kontrolü
+        if len(chunks) == 1 and "error" in chunks[0].get("metadata", {}):
+            err_text = chunks[0]["text"]
+            logger.error("Vektörizasyon hatası: %s", err_text)
+            _set_transcription_status(doc_id, "failed", err_text[:300])
+            return
+
+        # ChromaDB'ye kaydet
+        coll_name  = "yilgenci_collection"
+        texts      = [c["text"] for c in chunks]
+        metadatas  = []
+        ids        = []
+        for c in chunks:
+            cid  = c.get("id") or str(_uuid.uuid4())
+            meta_data = c.get("metadata", {})
+            clean = {"sqlite_doc_id": doc_id}
+            for k, v in meta_data.items():
+                clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+            metadatas.append(clean)
+            ids.append(cid)
+
+        vector_db.add_documents(
+            collection_name=coll_name,
+            documents=texts,
+            metadatas=metadatas,
+            ids=ids,
+        )
+        logger.info("ChromaDB'ye %d text chunk yazıldı.", len(ids))
+
+        # SQL'e kaydet
+        with get_session() as db:
+            belge = db.get(Belge, doc_id)
+            if not belge:
+                return
+
+            eski = list(db.scalars(
+                select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
+            ).all())
+            if eski:
+                for p in eski:
+                    db.delete(p)
+                db.flush()
+
+            yeni_parcalar = []
+            for i, c in enumerate(chunks):
+                p = VektorParcasi(
+                    belge_kimlik=doc_id,
+                    chromadb_kimlik=ids[i],
+                    icerik=c["text"][:1000],
+                    konum_imi=f"Sayfa/Parça {c.get('metadata', {}).get('page', i+1)}",
+                )
+                yeni_parcalar.append(p)
+
+            db.add_all(yeni_parcalar)
+            db.flush()
+
+            for i in range(len(yeni_parcalar) - 1):
+                db.add(BilgiIliskisi(
+                    kaynak_parca_kimlik=yeni_parcalar[i].kimlik,
+                    hedef_parca_kimlik=yeni_parcalar[i + 1].kimlik,
+                    iliski_turu="next_chunk",
+                    agirlik=1.0,
+                ))
+
+            meta = dict(belge.meta or {})
+            meta["transcription_status"] = "done"
+            meta["transcription_chunk_count"] = len(chunks)
+            meta.pop("transcription_error", None)
+
+            belge.meta              = meta
+            belge.vektorlestirildi_mi = True
+            belge.vektordb_koleksiyon = coll_name
+            belge.parca_sayisi        = len(chunks)
+            db.commit()
+
+        logger.info("Vektörizasyon tamamlandı: doc_id=%s, %d chunk", doc_id, len(chunks))
+
+    except Exception as e:
+        logger.exception("Vektörizasyon işlem hatası: %s", e)
+        _set_transcription_status(doc_id, "failed", str(e)[:300])
+
 
 def _set_transcription_status(doc_id: str, status: str, error_msg: str = ""):
     """Transkripsiyon durumunu DB'de günceller."""
@@ -686,6 +804,33 @@ async def transkripsiyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
         "is_video": is_video,
         "note":    "Videolar için: orijinal video arşivde saklanır, sadece ses işlenir."
     }
+
+@router.post("/vectorize/{doc_id}")
+async def vektorizasyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
+    """
+    Belgeleri (PDF, DOCX, txt) arka planda vektörize eder.
+    """
+    with get_session() as db:
+        belge = db.get(Belge, doc_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+            
+        ext = (belge.dosya_turu or "").lower().lstrip(".")
+        if ext in AV_EXTS:
+            raise HTTPException(status_code=400, detail="Ses ve video dosyaları için /transcribe uç noktasını kullanın.")
+            
+        mevcut_durum = (belge.meta or {}).get("transcription_status")
+        if mevcut_durum == "processing":
+            return {"status": "already_running"}
+
+        # Durumu "pending" yap
+        meta = dict(belge.meta or {})
+        meta["transcription_status"] = "pending"
+        belge.meta = meta
+        db.commit()
+
+    background_tasks.add_task(_run_vectorization, doc_id)
+    return {"status": "started", "message": "Belge vektörizasyonu başlatıldı.", "doc_id": doc_id}
 
 
 @router.get("/progress/{doc_id}")

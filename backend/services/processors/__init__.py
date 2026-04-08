@@ -77,14 +77,24 @@ def dispatch(
                "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
         from services.processors.audio_processor import parse_audio
         res = parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model)
-        
-        # Sadece "Yükle ve Analiz Et" API'si dispatch'i çağırdığı için adaptör koyuyoruz.
-        # Böylece audio_processor.py'ın orijinal dönüş tipini (dict) bozmadan listeye çeviriyoruz.
-        if isinstance(res, dict) and "chunks" in res:
-            return res["chunks"]
-        if isinstance(res, list):
-            return res
-        return []
+
+        # parse_audio bazen dict {"chunks": [...]}, bazen düz list döndürür.
+        # Her iki durumu da güvenle işle:
+        if isinstance(res, dict):
+            chunks_out = res.get("chunks", [])
+        elif isinstance(res, list):
+            chunks_out = res
+        else:
+            chunks_out = []
+
+        # Chunk listesi tamamen boşsa tek bir hata chunk'ı ekle (UI'da boş ekran yerine mesaj görünsün)
+        if not chunks_out:
+            chunks_out = [{
+                "id":   f"empty-audio-{uuid.uuid4()}",
+                "text": f"[{original_name or os.path.basename(file_path)}] Ses/video dosyasından içerik çıkarılamadı.",
+                "metadata": {"source": original_name or os.path.basename(file_path), "type": "error", "ext": ext, "page": 0}
+            }]
+        return chunks_out
 
     # Bilinmeyen format
     basename = original_name or os.path.basename(file_path)

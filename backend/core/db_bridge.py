@@ -138,6 +138,32 @@ def add_user_model(model_id: str, name: str, api_key: str) -> None:
         db.add(model)
         db.commit()
 
+# -- get_ai_agent -------------------------------------------------------------
+def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]:
+    """DB'den belirtilen ajanın güncel ayarlarını (prompt, temperature, vb.) çeker."""
+    from database.sql.models import AIAgent
+    from sqlalchemy import select
+    with get_session() as db:
+        stmt = select(AIAgent).where(AIAgent.aktif_mi == True)
+        if agent_id:
+            stmt = stmt.where(AIAgent.kimlik == agent_id)
+        elif agent_kind:
+            stmt = stmt.where(AIAgent.agent_kind == agent_kind)
+            
+        agent = db.scalars(stmt).first()
+        if not agent:
+            return None
+            
+        return {
+            "id": agent.kimlik,
+            "agent_kind": agent.agent_kind,
+            "name": agent.ad,
+            "prompt": agent.prompt,
+            "persona": agent.persona,
+            "temperature": agent.temperature,
+            "max_tokens": agent.max_tokens,
+        }
+
 
 # -- delete_user_model --------------------------------------------------------
 def delete_user_model(model_id: str) -> None:

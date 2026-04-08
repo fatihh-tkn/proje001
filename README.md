@@ -1,18 +1,25 @@
-## Getting Started
+# Kurumsal Yapay Zeka Orkestrasyon Platformu
 
-Welcome to the VS Code Java world. Here is a guideline to help you get started to write Java code in Visual Studio Code.
+Bu proje, işletmelerin verilerini (belge, ses, görüntü, Excel vb.) merkezi bir sistemde toplamak, bu verileri yapay zeka ile anlamlandırmak ve iş akışlarını otomatize etmek için geliştirilmiş bir **Yapay Zeka Orkestrasyon Platformudur**.
 
-## Folder Structure
+## 📚 Dokümantasyon
 
-The workspace contains two folders by default, where:
+Projenin teknik detayları, mimarisi ve kurulumu hakkında kapsamlı bilgi için aşağıdaki dokümanları inceleyebilirsiniz:
 
-- `src`: the folder to maintain sources
-- `lib`: the folder to maintain dependencies
+### Proje Geneli
+* [Mimarisi ve Tasarım (ARCHITECTURE)](./ARCHITECTURE.md)
+* [Kurulum Rehberi (SETUP_GUIDE)](./SETUP_GUIDE.md)
 
-Meanwhile, the compiled output files will be generated in the `bin` folder by default.
+### Ayrıntılı Kılavuzlar (Tez ve Araştırma İçin)
+* [Yapay Zeka Agent'ları ve Modelleri](./docs/AI_MODELS_AND_AGENTS.md)
+* [Veritabanı Şeması ve Hafıza Yönetimi](./docs/DATABASE_SCHEMA.md)
+* [API Referans Dokümanı](./docs/API_REFERENCE.md)
+* [N8N Otomasyon Entegrasyonu](./docs/N8N_INTEGRATION.md)
 
-> If you want to customize the folder structure, open `.vscode/settings.json` and update the related settings there.
+### Katmanlara Özel Dokümanlar
+* **Backend:** [Veri İşlemcileri (Processors)](./backend/PROCESSORS.md)
+* **Frontend:** [Kullanıcı Arayüzü Bileşenleri](./src/UI_COMPONENTS.md)
+* **Frontend:** [Yönlendirme ve Navigasyon](./src/ROUTING_AND_NAVIGATION.md)
 
-## Dependency Management
-
-The `JAVA PROJECTS` view allows you to manage your dependencies. More details can be found [here](https://github.com/microsoft/vscode-java-dependency#manage-dependencies).
+---
+*Not: Bu sistem modern React tabanlı bir frontend ve FastAPI tabanlı, yapay zeka modelleriyle entegre çalışan bir backend'den oluşmaktadır.*

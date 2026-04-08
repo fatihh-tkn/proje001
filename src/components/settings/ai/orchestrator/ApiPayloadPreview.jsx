@@ -1,9 +1,35 @@
 import React from 'react';
 import { FileJson } from 'lucide-react';
 
-const ApiPayloadPreview = ({ agent, rags }) => {
+const ApiPayloadPreview = ({ agent, rags = [], isUser = false }) => {
+    if (!agent) return null;
+
     const isChatbot = agent.agentKind === 'chatbot';
-    const ragNames = agent.allowedRags.map(id => rags.find(r => r.id === id)?.name || id);
+    const ragNames = agent.allowedRags ? agent.allowedRags.map(id => rags.find(r => r.id === id)?.name || id) : [];
+
+    if (isUser) {
+        return (
+            <div className="relative flex flex-col h-full bg-white rounded-b-2xl">
+                <div className="p-5 overflow-y-auto font-mono text-[11px] leading-relaxed text-slate-600">
+                    <span className="text-slate-400">{"{"}</span>
+                    <div className="pl-4">
+                        <div className="flex transition-colors duration-300">
+                            <span className="text-indigo-600">"role"</span>
+                            <span className="text-slate-400 mx-1">:</span>
+                            <span className="text-emerald-600">"user"</span>
+                            <span className="text-slate-400">,</span>
+                        </div>
+                        <div className="flex transition-colors duration-300">
+                            <span className="text-indigo-600">"content"</span>
+                            <span className="text-slate-400 mx-1">:</span>
+                            <span className="text-emerald-600">"Bana 2024 Ciro Raporu'nu analiz et."</span>
+                        </div>
+                    </div>
+                    <span className="text-slate-400">{"}"}</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="relative flex flex-col h-full bg-white">
@@ -21,17 +47,30 @@ const ApiPayloadPreview = ({ agent, rags }) => {
                         </div>
 
                         <div className="flex transition-colors duration-300">
-                            <span className="text-indigo-600">"system_role"</span>
+                            <span className="text-indigo-600">"system_instruction"</span>
                             <span className="text-slate-400 mx-1">:</span>
-                            <span className="text-emerald-600 truncate max-w-[150px] inline-block align-bottom" title={agent.persona}>"{agent.persona || 'Bilinmiyor'}"</span>
+                            <span className="text-emerald-600 truncate max-w-[150px] inline-block align-bottom" title={agent.prompt || agent.persona || ''}>
+                                "{agent.prompt || agent.persona || 'Tanımlı Değil'}"
+                            </span>
                             <span className="text-slate-400">,</span>
                         </div>
+
+                        {agent.negativePrompt && (
+                            <div className="flex transition-colors duration-300">
+                                <span className="text-rose-500">"negative_prompt"</span>
+                                <span className="text-slate-400 mx-1">:</span>
+                                <span className="text-rose-400 truncate max-w-[150px] inline-block align-bottom" title={agent.negativePrompt}>
+                                    "{agent.negativePrompt}"
+                                </span>
+                                <span className="text-slate-400">,</span>
+                            </div>
+                        )}
 
                         {isChatbot && (
                             <div className="flex transition-colors duration-300">
                                 <span className="text-indigo-600">"memory_window"</span>
                                 <span className="text-slate-400 mx-1">:</span>
-                                <span className="text-amber-600">{agent.chatHistoryLength}</span>
+                                <span className="text-amber-600">{agent.chatHistoryLength || 10}</span>
                                 <span className="text-slate-400">,</span>
                             </div>
                         )}
@@ -94,7 +133,7 @@ const ApiPayloadPreview = ({ agent, rags }) => {
             {/* Alt Bilgi */}
             <div className="absolute bottom-3 right-4 flex items-center gap-1.5 opacity-50 z-20">
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span className="text-[9.5px] font-mono text-emerald-600 font-semibold">Canlı Senkron</span>
+                <span className="text-[9.5px] font-mono text-emerald-600 font-semibold">{agent.name || 'Bot'} Ayarları İle Eşleşti</span>
             </div>
         </div>
     );

@@ -220,8 +220,14 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
         doc = fitz.open(file_path)
         total_pages = len(doc)
         base_name   = os.path.splitext(file_basename)[0]
+        # PNG klasörünü temp_uploads yanına koy (izin sorununu azaltır)
         image_dir   = os.path.join(os.path.dirname(file_path), f"images_{base_name}")
-        os.makedirs(image_dir, exist_ok=True)
+        try:
+            os.makedirs(image_dir, exist_ok=True)
+        except OSError as e:
+            print(f"[processor] PNG klasörü oluşturulamadı ({e}), geçici dizine düşülüyor.")
+            import tempfile
+            image_dir = tempfile.mkdtemp(prefix="pdfimg_")
 
         # ── 1. GEÇİŞ: Her sayfayı tara ────────────────────────────────────
         slide_titles: list[str] = []   # Özet için başlık listesi
@@ -232,10 +238,15 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
 
             # Sayfa görseli (ön izleme ve Vision AI için)
             zoom_factor    = 2
-            pix            = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
-            image_filename = f"page_{page_num + 1}.png"
-            image_path     = os.path.join(image_dir, image_filename)
-            pix.save(image_path)
+            image_path     = ""
+            try:
+                pix            = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
+                image_filename = f"page_{page_num + 1}.png"
+                image_path     = os.path.join(image_dir, image_filename)
+                pix.save(image_path)
+            except Exception as img_err:
+                print(f"[processor] Sayfa {page_num+1} PNG kaydedilemedi: {img_err}")
+                image_path = ""
 
             page_rect      = page.rect
             page_w, page_h = page_rect.width, page_rect.height

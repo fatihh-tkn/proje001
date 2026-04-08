@@ -43,6 +43,8 @@ def parse_text(
     try:
         if ext in ("docx", "doc"):
             return _parse_docx_hierarchical(file_path, file_basename, ext)
+        elif ext == "pdf":
+            return _parse_pdf(file_path, file_basename)
         else:
             raw_text = _read_plain(file_path)
             return _chunks_from_text(raw_text, file_basename, ext)
@@ -52,6 +54,23 @@ def parse_text(
             "text": f"[{file_basename}] Dosya okunamadı: {e}",
             "metadata": {"source": file_basename, "error": str(e)}
         }]
+
+# ── PDF ayrıştırıcı (PyMuPDF) ────────────────────────────────────────
+def _parse_pdf(file_path: str, file_basename: str) -> list[dict]:
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise ImportError("PyMuPDF kurulu değil. pip install PyMuPDF")
+
+    doc = fitz.open(file_path)
+    raw_text = ""
+    for page in doc:
+        text = page.get_text()
+        if text:
+            raw_text += text + "\n\n"
+    
+    doc.close()
+    return _chunks_from_text(raw_text, file_basename, "pdf")
 
 
 # ── Hiyerarşik DOCX ayrıştırıcı ──────────────────────────────────────

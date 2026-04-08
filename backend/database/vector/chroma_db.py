@@ -7,15 +7,32 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Cihazı otomatik belirle: GPU (CUDA) varsa kullan, yoksa CPU
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-logger.info(f"Vektör Gömme (Embedding) Cihazı: {DEVICE}")
+# Cihazi otomatik belirle: GPU (CUDA) varsa kullan, yoksa CPU
+# Modeli baslangicta degil, ilk ihtiyac duyuldugunda yukle (Lazy Loading)
+_embedding_function_instance = None
 
-# ChromaDB için varsayılan model ("all-MiniLM-L6-v2") ve seçilen cihaz
-embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="all-MiniLM-L6-v2", 
-    device=DEVICE
-)
+def get_embedding_function():
+    global _embedding_function_instance
+    if _embedding_function_instance is not None:
+        return _embedding_function_instance
+    
+    logger.info("Yapay Zeka (Embedding) Modeli RAM'e yukleniyor (Lazy Load)...")
+    try:
+        _initial_device = "cuda" if torch.cuda.is_available() else "cpu"
+        _embedding_function_instance = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2", 
+            device=_initial_device
+        )
+        logger.info(f"Vektor Gomme (Embedding) cihazi basariyla ayarlandi: {_initial_device}")
+    except Exception as e:
+        logger.warning(f"CUDA baslatilamadi (DLL eksik olabilir). CPU'ya dusuluyor. Hata: {e}")
+        _embedding_function_instance = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2", 
+            device="cpu"
+        )
+        logger.info(f"Vektor Gomme Cihazi Fallback olarak ayarlandi: cpu")
+    
+    return _embedding_function_instance
 
 from core.chroma import get_chroma_client
 from database.vector.provider import VectorDBProvider
@@ -28,9 +45,9 @@ class ChromaVectorDB(VectorDBProvider):
     """
 
     def get_or_create_collection(self, name: str) -> Collection:
-        """Koleksiyon yoksa oluşturur, varsa getirir."""
+        """Koleksiyon yoksa olusturur, varsa getirir."""
         client = get_chroma_client()
-        return client.get_or_create_collection(name=name, embedding_function=embedding_function)
+        return client.get_or_create_collection(name=name, embedding_function=get_embedding_function())
 
     def list_collections(self) -> list[str]:
         """Mevcut tüm koleksiyonların adlarını listeler."""
