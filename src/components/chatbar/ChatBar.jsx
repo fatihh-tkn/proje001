@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronsRight, ChevronsLeft } from 'lucide-react';
 import { sendMessageStream } from '../../api/chatService';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 
 import RecentChats from './RecentChats';
 import MessageList from './MessageList';
 import ChatInputArea from './ChatInputArea';
 
 const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const [isChatsOpen, setIsChatsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [messages, setMessages] = useState([]);
@@ -59,9 +61,9 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         if (!isSideOpen) {
             setIsSideOpen(true);
         } else {
-            // Açıkken sadece boşluklara tıklandığında kapansın
-            const isInteractive = e.target.closest('button, input, textarea, a, summary, .interactive, .message-bubble');
-            if (!isInteractive) {
+            // Mesaj balonlarına veya interaktif elemanlara tıklanınca kapanma
+            const isNoToggle = e.target.closest('.no-toggle, button, input, textarea, a, summary');
+            if (!isNoToggle) {
                 setIsSideOpen(false);
             }
         }
@@ -71,6 +73,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         setIsChatScrolling(true);
         if (chatScrollTimeout.current) clearTimeout(chatScrollTimeout.current);
         chatScrollTimeout.current = setTimeout(() => setIsChatScrolling(false), 3000);
+        if (isChatsOpen) setIsChatsOpen(false);
     };
 
     const handleTextareaScroll = () => {
@@ -186,6 +189,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         await sendMessageStream(
             textPayload,
             currentSessionId,
+            currentUser?.id,
             {
                 // Her gelen chunk'ı streaming mesajına ekle
                 onChunk: (chunk) => {
@@ -331,33 +335,40 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     currentSessionId={currentSessionId}
                 />
 
-                {/* ORTA KISIM (Mesajlar Alanı) */}
-                <MessageList
-                    messages={messages}
-                    isTyping={isTyping}
-                    isSideOpen={isSideOpen}
-                    handleChatScroll={handleChatScroll}
-                    isChatScrolling={isChatScrolling}
-                    messagesEndRef={messagesEndRef}
-                    handleNewChat={handleNewChat}
-                />
+                {/* İÇERİK ALANLARI (Tıklanması veya Odaklanılması geçmişi kapatır) */}
+                <div
+                    className="flex-1 flex flex-col min-w-0 overflow-hidden"
+                    onClickCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
+                    onFocusCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
+                >
+                    {/* ORTA KISIM (Mesajlar Alanı) */}
+                    <MessageList
+                        messages={messages}
+                        isTyping={isTyping}
+                        isSideOpen={isSideOpen}
+                        handleChatScroll={handleChatScroll}
+                        isChatScrolling={isChatScrolling}
+                        messagesEndRef={messagesEndRef}
+                        handleNewChat={handleNewChat}
+                    />
 
-                {/* ALT KISIM (Input ve Hızlı Aksiyonlar) */}
-                <ChatInputArea
-                    isSideOpen={isSideOpen}
-                    inputValue={inputValue}
-                    setInputValue={setInputValue}
-                    isExpanded={isExpanded}
-                    setIsExpanded={setIsExpanded}
-                    handleSendMessage={handleSendMessage}
-                    handleKeyDown={handleKeyDown}
-                    handleTextareaScroll={handleTextareaScroll}
-                    isTextareaScrolling={isTextareaScrolling}
-                    textareaRef={textareaRef}
-                    droppedFile={droppedFile}
-                    onClearFile={() => setDroppedFile(null)}
-                    isTyping={isTyping}
-                />
+                    {/* ALT KISIM (Input ve Hızlı Aksiyonlar) */}
+                    <ChatInputArea
+                        isSideOpen={isSideOpen}
+                        inputValue={inputValue}
+                        setInputValue={setInputValue}
+                        isExpanded={isExpanded}
+                        setIsExpanded={setIsExpanded}
+                        handleSendMessage={handleSendMessage}
+                        handleKeyDown={handleKeyDown}
+                        handleTextareaScroll={handleTextareaScroll}
+                        isTextareaScrolling={isTextareaScrolling}
+                        textareaRef={textareaRef}
+                        droppedFile={droppedFile}
+                        onClearFile={() => setDroppedFile(null)}
+                        isTyping={isTyping}
+                    />
+                </div>
             </div>
         </aside>
     );

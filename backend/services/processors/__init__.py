@@ -25,7 +25,8 @@ def dispatch(
     use_vision: bool = False,
     original_name: str | None = None,
     task_id: str | None = None,
-    whisper_model: str = "large-v3"
+    whisper_model: str = "large-v3",
+    whisper_device: str = "cuda"
 ) -> list[dict]:
     """
     Dosya uzantısına göre doğru parser'ı seçer ve chunk listesi döner.
@@ -76,7 +77,7 @@ def dispatch(
     if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
                "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
         from services.processors.audio_processor import parse_audio
-        res = parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model)
+        res = parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model, whisper_device=whisper_device)
 
         # parse_audio bazen dict {"chunks": [...]}, bazen düz list döndürür.
         # Her iki durumu da güvenle işle:

@@ -13,17 +13,38 @@ import { useWorkspaceStore } from '../../store/workspaceStore';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
     const isN8nBooting = useWorkspaceStore(state => state.isN8nBooting);
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
 
+    const hasPermission = (key, defaultVal = true) => {
+        if (!currentUser) return defaultVal;
+        return currentUser.meta?.[key] !== undefined ? currentUser.meta[key] : defaultVal;
+    };
+
     const fetchArchive = async () => {
         try {
-            const res = await fetch('/api/archive/list');
+            const res = await fetch('/api/archive/list', {
+                headers: {
+                    'User-Id': currentUser?.id || ''
+                }
+            });
             if (res.ok) {
                 const data = await res.json();
-                setArchiveData(data.items || []);
+
+                // Frontend-side archive policy filtering based on explicit file/folder toggles
+                let items = data.items || [];
+                if (currentUser && currentUser.meta) {
+                    items = items.filter(item => {
+                        const typePrefix = item.file_type === 'folder' ? 'folder' : 'file';
+                        const key = `archive_${typePrefix}_${item.id}`;
+                        // If specifically set to false, hide it
+                        return currentUser.meta[key] !== false;
+                    });
+                }
+                setArchiveData(items);
             }
         } catch (err) {
             console.error("Archive fetch error:", err);
@@ -31,11 +52,13 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     };
 
     useEffect(() => {
-        fetchArchive();
-    }, []);
+        if (currentUser) {
+            fetchArchive();
+        }
+    }, [currentUser]);
 
     const getArchiveTree = () => {
-        if (!archiveData || archiveData.length === 0) return null;
+        if (!archiveData || archiveData.length === 0) return [];
 
         const map = {};
         const rootNodes = [];
@@ -60,12 +83,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
             }
         });
 
-        return {
-            id: 'archive_root_folder',
-            name: 'Arşiv',
-            type: 'folder',
-            children: rootNodes
-        };
+        return rootNodes;
     };
 
     useEffect(() => {
@@ -103,6 +121,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
                 isCollapsed={isCollapsed}
                 onOpenFile={onOpenFile}
+                currentUser={currentUser}
             />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
@@ -169,7 +188,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         </div>
                     )}
                     <div className="flex flex-col space-y-0.5 w-full">
-                        {[getArchiveTree()].filter(Boolean).map((node) => (
+                        {getArchiveTree().map((node) => (
                             <TreeNode
                                 key={node.id}
                                 node={node}
@@ -194,39 +213,54 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
 
                     {/* Ayarlar Butonu */}
-                    <button
-                        data-settings-trigger
-                        onClick={(e) => { e.stopPropagation(); setSettingsOpen(s => !s); }}
-                        className={`flex items-center justify-center transition-all duration-200 group
-                            ${settingsOpen ? 'text-white' : 'text-slate-500 hover:text-slate-200'}
-                        `}
-                        title="Ayarlar"
-                    >
-                        <Settings
-                            size={isCollapsed ? 24 : 20}
-                            className={`${settingsOpen ? 'rotate-45' : 'group-hover:rotate-12'} transition-transform duration-300`}
-                        />
-                    </button>
+                    {hasPermission('ui_settings') && (
+                        <button
+                            data-settings-trigger
+                            onClick={(e) => { e.stopPropagation(); setSettingsOpen(s => !s); }}
+                            className={`flex items-center justify-center transition-all duration-200 group
+                                ${settingsOpen ? 'text-white' : 'text-slate-500 hover:text-slate-200'}
+                            `}
+                            title="Ayarlar"
+                        >
+                            <Settings
+                                size={isCollapsed ? 24 : 20}
+                                className={`${settingsOpen ? 'rotate-45' : 'group-hover:rotate-12'} transition-transform duration-300`}
+                            />
+                        </button>
+                    )}
 
                     {/* Otomasyon (n8n) Butonu */}
-                    <button
+                    {hasPermission('ui_agent', false) && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (isN8nBooting) return;
+                                window.dispatchEvent(new CustomEvent('open-n8n-workspace'));
+                            }}
+                            className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57] ${isN8nBooting ? 'cursor-wait opacity-80' : ''}`}
+                            title={isN8nBooting ? "Otomasyon (Motor Hazırlanıyor...)" : "Otomasyon (n8n)"}
+                        >
+                            <Webhook
+                                size={isCollapsed ? 24 : 20}
+                                className={`${isN8nBooting ? 'animate-spin text-[#f06e57]' : 'group-hover:scale-110 shadow-sm'} transition-transform duration-300`}
+                            />
+                        </button>
+                    )}
+
+                    <div
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (isN8nBooting) return;
-                            window.dispatchEvent(new CustomEvent('open-n8n-workspace'));
+                            if (window.confirm('Oturumu kapatmak istediğinize emin misiniz?')) {
+                                fetch('/api/auth/audit/event', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ kullanici_kimlik: currentUser.id, islem_turu: 'LOGOUT' })
+                                }).finally(() => {
+                                    useWorkspaceStore.getState().setIsLoggedIn(false);
+                                    useWorkspaceStore.getState().setCurrentUser(null);
+                                });
+                            }
                         }}
-                        className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57] ${isN8nBooting ? 'cursor-wait opacity-80' : ''}`}
-                        title={isN8nBooting ? "Otomasyon (Motor Hazırlanıyor...)" : "Otomasyon (n8n)"}
-                    >
-                        <Webhook
-                            size={isCollapsed ? 24 : 20}
-                            className={`${isN8nBooting ? 'animate-spin text-[#f06e57]' : 'group-hover:scale-110 shadow-sm'} transition-transform duration-300`}
-                        />
-                    </button>
-
-                    {/* Kullanıcı */}
-                    <div
-                        onClick={(e) => e.stopPropagation()}
                         className={`flex items-center justify-center bg-slate-800/60 border border-slate-700/50 rounded-sm cursor-pointer hover:border-[#A01B1B]/60 hover:bg-slate-800 transition-all duration-200
                             ${isCollapsed ? 'w-11 h-11' : 'w-9 h-9'}
                         `}

@@ -14,6 +14,30 @@ from core.prompts import (
     build_gemini_contents,
     build_openai_messages
 )
+def _get_user_excluded_files(user_id: str | None) -> list[str]:
+    """Kullanıcının meta verisinden erişimi kapalı dosyaların SQL ID'lerini döner."""
+    if not user_id:
+        return []
+    try:
+        from database.sql.session import get_session
+        from database.sql.models import Kullanici, Belge
+        from sqlalchemy import select
+        with get_session() as db:
+            user = db.scalar(select(Kullanici).where(Kullanici.kimlik == user_id))
+            if not user or not user.meta:
+                return []
+            meta = user.meta
+            # archive_file_<belge_kimlik> = false olan dosyaların kimliklerini topla
+            excluded_ids = [
+                key[len("archive_file_"):]
+                for key, val in meta.items()
+                if key.startswith("archive_file_") and val is False
+            ]
+            return excluded_ids
+    except Exception:
+        return []
+
+
 # ── Sabitler (SQL Veritabanı Sistem Ayarları) ──────────────────────────────────────────
 class AppSettings:
     @staticmethod
@@ -293,6 +317,7 @@ class AIService:
         session_id: str = "default_chat",
         ip: str = "127.0.0.1",
         mac: str = "00:00:00:00",
+        user_id: str | None = None,
     ) -> tuple[str, bool, list[dict], dict | None]:
         """
         Döner: (yanıt_metni, rag_kullanıldı_mı, kaynak_listesi, ui_action)
@@ -323,6 +348,11 @@ class AIService:
             excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
             allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
             temperature = agent_config.get("temperature", 0.7)
+
+        # Kullanıcı bazlı belge kısıtlaması
+        user_excluded = await run_in_threadpool(_get_user_excluded_files, user_id)
+        if user_excluded:
+            excluded_files = list(set(excluded_files) | set(user_excluded))
 
         # ── RAG bağlamı ──────────────────────────────────────────────────────
         if file_name:
@@ -493,6 +523,7 @@ class AIService:
         session_id: str = "default_chat",
         ip: str = "127.0.0.1",
         mac: str = "00:00:00:00",
+        user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         SSE formatında text chunk'ları yield eder.
@@ -518,6 +549,11 @@ class AIService:
             excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
             allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
             temperature = agent_config.get("temperature", 0.7)
+
+        # Kullanıcı bazlı belge kısıtlaması
+        user_excluded = await run_in_threadpool(_get_user_excluded_files, user_id)
+        if user_excluded:
+            excluded_files = list(set(excluded_files) | set(user_excluded))
 
         # RAG bağlamı
         ui_action = None

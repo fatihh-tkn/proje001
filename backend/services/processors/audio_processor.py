@@ -238,14 +238,14 @@ def _preprocess_audio(raw_audio_path: str) -> str:
     return clean_path
 
 
-def _get_whisper_model(model_name: str):
+def _get_whisper_model(model_name: str, device: str = "cuda"):
     """
     faster-whisper modelini yükler.
     Daha önce yüklenmişse ve model aynıysa önbellekten döner, farklıysa temizleyip yenisini yükler.
     """
     global _CURRENT_MODEL_NAME, _CURRENT_MODEL_INSTANCE
 
-    if _CURRENT_MODEL_NAME == model_name and _CURRENT_MODEL_INSTANCE is not None:
+    if _CURRENT_MODEL_NAME == model_name and getattr(_CURRENT_MODEL_INSTANCE, "device", "") == device:
         return _CURRENT_MODEL_INSTANCE
 
     try:
@@ -261,28 +261,29 @@ def _get_whisper_model(model_name: str):
         gc.collect()
 
     cache_dir = os.getenv("WHISPER_CACHE_DIR", None)
+    
+    # Int8 on CPU is required. On GPU fallback to float16
+    compute_type = "int8" if device == "cpu" else WHISPER_COMPUTE
 
     logger.info(
         "Whisper modeli yüklenme denemesi: model=%s device=%s compute=%s",
-        model_name, WHISPER_DEVICE, WHISPER_COMPUTE,
+        model_name, device, compute_type,
     )
+
+    # İşlemci kanal tahsisi: Çekirdek sayısının tamamını sömürmemek için 1 bırak
+    optimal_threads = max(1, os.cpu_count() - 1) if os.cpu_count() else 4
 
     try:
         model = WhisperModel(
             model_name,
-            device=WHISPER_DEVICE,
-            compute_type=WHISPER_COMPUTE,
+            device=device,
+            compute_type=compute_type,
             download_root=cache_dir,
+            cpu_threads=optimal_threads
         )
     except Exception as e:
-        logger.warning(f"Cihaz ({WHISPER_DEVICE}) ile başlatılamadı. Hata: {str(e)[:150]}")
-        logger.warning("Güvenlik önlemi (Fallback) devrede: CPU moduna geçiliyor.")
-        model = WhisperModel(
-            model_name,
-            device="cpu",
-            compute_type="int8",
-            download_root=cache_dir,
-        )
+        logger.error("Cihaz (%s) ile başlatılamadı. Hata: %s", device, str(e)[:250])
+        raise e
 
     _CURRENT_MODEL_NAME = model_name
     _CURRENT_MODEL_INSTANCE = model
@@ -349,6 +350,7 @@ def parse_audio(
     original_name: str | None = None,
     task_id: str | None = None,
     model_name: str = "large-v3",
+    whisper_device: str = "cuda",
 ) -> dict:
     """
     Ana giriş noktası. dispatch() tarafından çağrılır.
@@ -371,11 +373,12 @@ def parse_audio(
 
     audio_path   = file_path  # varsayılan: ses dosyası
     temp_audio   = None       # video'dan ayıklanan geçici ses
+    clean_audio  = None       # ön-işlemeden çıkan geçici temiz ses (denoised & VAD)
 
     try:
         # 1. Video ise ses kanalını ayıkla
         if is_video:
-            if task_id: GLOBAL_PROGRESS[task_id] = {"status": "extracting_audio", "percent": 5.0}
+            if task_id: GLOBAL_PROGRESS[task_id] = {"status": "extracting_audio", "percent": 15.0}
             logger.info("Video dosyası algılandı, ses ayıklama başlıyor...")
             try:
                 temp_audio = _extract_audio_from_video(file_path)
@@ -399,10 +402,13 @@ def parse_audio(
                     }
                 }]
 
+        # 1.5. Ses On-Isleme (Denoising + VAD) - İptal Edildi (Darboğaz yaptığı için Faster-Whisper'ın VAD'ı kullanılacak)
+        logger.info("FFmpeg ön-işleme atlandı, modelin dahili VAD filtresi kullanılacak.")
+
         # 2. Whisper modelini yükle
-        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "loading_model", "percent": 20.0}
+        if task_id: GLOBAL_PROGRESS[task_id] = {"status": "loading_model", "percent": 15.0} # İlk network upload kısmı yüzde 15 sayıldı
         try:
-            model = _get_whisper_model(model_name)
+            model = _get_whisper_model(model_name, whisper_device)
         except ImportError as e:
             logger.error("faster-whisper eksik: %s", e)
             return [{
@@ -423,16 +429,20 @@ def parse_audio(
         # 3. Transkripsiyon
         if task_id: GLOBAL_PROGRESS[task_id] = {"status": "transcribing", "percent": 25.0}
         logger.info("Whisper transkripsiyon başlıyor: %s", audio_path)
-        segments_gen, info = model.transcribe(
-            audio_path,
-            beam_size=5,
-            language=None,        # Otomatik dil algılama
-            word_timestamps=True, # Kelime bazlı zaman damgaları
-            vad_filter=True,      # Sessiz kısımları atla
-            vad_parameters={
-                "min_silence_duration_ms": 500,
-            },
-        )
+        try:
+            segments_gen, info = model.transcribe(
+                audio_path,
+                beam_size=5,
+                language=None,        # Otomatik dil algılama
+                word_timestamps=True, # Kelime bazlı zaman damgaları
+                vad_filter=True,      # Sessiz kısımları atla
+                vad_parameters={
+                    "min_silence_duration_ms": 500,
+                },
+            )
+        except Exception as e:
+            logger.error("Transkripsiyon / CUDA Hatası: %s", e)
+            raise e
 
         detected_lang = info.language
         lang_prob     = round(info.language_probability, 3)
@@ -457,8 +467,8 @@ def parse_audio(
                 "end":   seg.end,
             })
             if task_id and duration > 0:
-                p = 25.0 + ((seg.end / duration) * 65.0)
-                GLOBAL_PROGRESS[task_id] = {"status": "transcribing", "percent": min(90.0, p)}
+                p = 25.0 + ((seg.end / duration) * 70.0)
+                GLOBAL_PROGRESS[task_id] = {"status": "transcribing", "percent": min(95.0, p)}
 
         if not raw_segments:
             logger.warning("Transkripsiyon boş döndü: %s", basename)
@@ -525,10 +535,31 @@ def parse_audio(
         }
 
     finally:
-        # Geçici ses dosyasını temizle (video'dan ayıklandıysa)
+        # Geçici ses dosyasını temizle (video'dan ayıklanan)
         if temp_audio and os.path.exists(temp_audio):
             try:
                 os.remove(temp_audio)
                 logger.debug("Geçici ses dosyası silindi: %s", temp_audio)
             except Exception as e:
                 logger.warning("Geçici ses silinemedi: %s", e)
+                
+        # Ön-işlem geçici ses dosyasını temizle
+        if clean_audio and os.path.exists(clean_audio):
+            try:
+                os.remove(clean_audio)
+                logger.debug("Ön-işlem geçici ses dosyası silindi: %s", clean_audio)
+            except Exception as e:
+                logger.warning("Ön-işlem geçici ses silinemedi: %s", e)
+                
+        # RAM Tahliyesi (Zorunlu)
+        try:
+            global _CURRENT_MODEL_INSTANCE, _CURRENT_MODEL_NAME
+            _CURRENT_MODEL_INSTANCE = None
+            _CURRENT_MODEL_NAME = None
+            import gc
+            if 'model' in locals():
+                del model
+            gc.collect()
+            logger.info("Zorunlu Python bellek tahliyesi (gc) tamamlandı.")
+        except Exception as e:
+            logger.error("Bellek tahliyesi sırasında hata: %s", e)

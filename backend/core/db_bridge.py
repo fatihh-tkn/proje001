@@ -49,8 +49,8 @@ def add_log_to_db(log_entry: dict) -> None:
             duration_ms=log_entry.get("duration") or log_entry.get("duration_ms"),
             ip=log_entry.get("ip"),
             mac=log_entry.get("mac"),
-            request_preview=(log_entry.get("request") or "")[:2000] or None,
-            response_preview=(log_entry.get("response") or "")[:2000] or None,
+            request_preview=(log_entry.get("request") or "") or None,
+            response_preview=(log_entry.get("response") or "") or None,
             rag_kullanildi_mi=bool(log_entry.get("rag_used", False)),
             rag_dosya_adi=log_entry.get("rag_file") or None,
         )

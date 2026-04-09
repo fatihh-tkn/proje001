@@ -91,7 +91,7 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
             {isSideOpen && (
                 <div className="flex items-center justify-between mb-2 w-full shrink-0">
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 cursor-pointer group no-toggle" onClick={() => setIsChatsOpen(!isChatsOpen)}>
+                        <div className="flex items-center gap-1.5 cursor-pointer group no-toggle interactive" onClick={() => setIsChatsOpen(!isChatsOpen)}>
                             <h3 className="text-[10px] font-medium text-slate-400 tracking-wide group-hover:text-slate-600">Son Sohbetler</h3>
                             <ChevronDown size={12} className={`text-slate-300 group-hover:text-slate-500 transition-transform duration-300 ${isChatsOpen ? 'rotate-180' : ''}`} />
                         </div>
@@ -125,16 +125,16 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
                                     exit={{ opacity: 0, x: -10, height: 0, marginBottom: 0 }}
                                     transition={{ duration: 0.18 }}
                                     onClick={() => handleLoadSession && handleLoadSession(session)}
-                                    className={`cursor-pointer group transition-colors duration-200 flex items-center no-toggle relative
+                                    className={`cursor-pointer group transition-colors duration-200 flex items-center no-toggle interactive relative
                                         ${session.sessionId === currentSessionId ? 'text-red-600' : 'text-slate-600 hover:text-slate-900'}
                                         ${isSideOpen ? 'py-1 w-full' : 'w-7 h-7 justify-center mx-auto'}`}
                                     title="İsmini değiştirmek için çift tıkla"
                                 >
                                     <div className={`flex items-center gap-1.5 font-medium text-[12px] w-full h-full min-w-0 ${session.sessionId === currentSessionId ? 'font-bold' : ''}`}>
                                         <MessageSquare size={13} className={`shrink-0 transition-colors ${session.sessionId === currentSessionId ? 'text-red-500' : 'text-slate-400 group-hover:text-red-400'}`} />
-                                        
+
                                         {isSideOpen && (
-                                            <div 
+                                            <div
                                                 className="flex flex-row items-center justify-between w-full min-w-0 pr-6"
                                                 onDoubleClick={(e) => handleDoubleClick(e, session)}
                                             >

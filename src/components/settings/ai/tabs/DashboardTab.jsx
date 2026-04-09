@@ -35,15 +35,15 @@ export const DashboardTab = React.memo(({ data }) => {
         '503': { label: 'Servis Çok Yoğun', desc: 'Model yanıt veremiyor', color: '#6366f1' },
         'timeout': { label: 'Zaman Aşımı', desc: 'Cevap süresi aşıldı', color: '#f97316' },
     };
-    
+
     const getErrorMeta = (name) => ERROR_CATALOG[String(name).toLowerCase()] || { label: `Tanımsız Kod (${name})`, desc: 'Sistemsel Kesinti', color: '#64748b' };
 
     const chartData = React.useMemo(() => {
         const source = d.costs || [];
         if (source.length === 0) return [];
-        
+
         let sliceLength = source.length;
-        if (timeRange === '12h') sliceLength = Math.max(1, Math.floor(source.length / 30)); 
+        if (timeRange === '12h') sliceLength = Math.max(1, Math.floor(source.length / 30));
         if (timeRange === '1d') sliceLength = Math.max(1, Math.floor(source.length / 15));
         if (timeRange === '7d') sliceLength = Math.min(7, source.length);
         if (timeRange === '15d') sliceLength = Math.min(15, source.length);
@@ -87,8 +87,8 @@ export const DashboardTab = React.memo(({ data }) => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                 {/* 1. Harcama Trendi */}
-                <div className="lg:col-span-8 bg-white rounded-sm ring-1 ring-black/[0.04] shadow-sm flex flex-col overflow-hidden">
-                    <div className="px-5 py-2.5 border-b border-black/[0.04] bg-gray-50 flex justify-between items-center">
+                <div className="lg:col-span-8 bg-white rounded-sm ring-1 ring-black/[0.04] shadow-sm flex flex-col">
+                    <div className="px-5 py-2.5 border-b border-black/[0.04] bg-gray-50 flex justify-between items-center rounded-t-sm">
                         <h3 className="text-[10px] font-medium text-[var(--workspace-text)] uppercase tracking-widest flex items-center gap-2.5">
                             <div className="p-1 bg-red-500/10 text-red-500 rounded flex items-center justify-center">
                                 <LineChartIcon size={12} strokeWidth={2.5} />
@@ -112,7 +112,7 @@ export const DashboardTab = React.memo(({ data }) => {
                             <LineChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} opacity={0.5} />
                                 <XAxis dataKey="date" tick={{ fontSize: 9, fill: axisColor, fontWeight: 700 }} axisLine={false} tickLine={false} dy={10} />
-                                <RechartsTooltip content={<CustomTooltip />} />
+                                <RechartsTooltip content={<CustomTooltip />} isAnimationActive={false} cursor={{ stroke: 'rgba(0,0,0,0.05)', strokeWidth: 1 }} allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 9999 }} />
                                 <Line type="monotone" dataKey="amount" name={`Maliyet (USD)`} stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: "#ef4444", stroke: "var(--window-bg)", strokeWidth: 2 }} animationDuration={600} />
                             </LineChart>
                         </ResponsiveContainer>
@@ -149,7 +149,7 @@ export const DashboardTab = React.memo(({ data }) => {
                                                 <Pie data={processedErrors} innerRadius={40} outerRadius={55} paddingAngle={3} dataKey="value" stroke="none" animationDuration={600}>
                                                     {processedErrors.map((e, i) => <Cell key={i} fill={e.color} />)}
                                                 </Pie>
-                                                <RechartsTooltip content={<CustomTooltip />} />
+                                                <RechartsTooltip content={<CustomTooltip />} isAnimationActive={false} allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 9999 }} />
                                             </PieChart>
                                         </ResponsiveContainer>
                                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -187,14 +187,14 @@ export const DashboardTab = React.memo(({ data }) => {
                         </h3>
                         <button className="text-[var(--sidebar-text-muted)] hover:text-[var(--workspace-text)] transition-colors"><MoreHorizontal size={14} /></button>
                     </div>
-                    
+
                     {/* Bütçe Payı (Stacked Bar) */}
                     <div className="h-2 w-full rounded-sm overflow-hidden flex ring-1 ring-black/[0.04] mb-5">
                         {(d.modelCosts || []).slice(0, 6).map((model, idx) => (
-                            <div 
-                                key={idx} 
+                            <div
+                                key={idx}
                                 className="h-full transition-all duration-1000 hover:opacity-80 cursor-default"
-                                style={{ width: `${model.percent}%`, backgroundColor: getModelColor(model.name) }} 
+                                style={{ width: `${model.percent}%`, backgroundColor: getModelColor(model.name) }}
                                 title={`${model.name}: ${fmtCost(model.cost)}`}
                             />
                         ))}
@@ -247,7 +247,7 @@ export const DashboardTab = React.memo(({ data }) => {
             </div>
 
             {/* ── TRAFİK ANALİZİ (Alt Kısım) ── */}
-            <div className="bg-white rounded-sm ring-1 ring-black/[0.06] shadow-sm p-5 overflow-hidden">
+            <div className="bg-white rounded-sm ring-1 ring-black/[0.06] shadow-sm p-5 relative">
                 <div className="flex sm:items-center justify-between mb-6 flex-col sm:flex-row gap-3">
                     <h3 className="text-[10px] font-medium text-[var(--workspace-text)] uppercase tracking-widest flex items-center gap-2.5">
                         <div className="p-1 bg-cyan-500/10 text-cyan-600 rounded flex items-center justify-center">
@@ -282,7 +282,7 @@ export const DashboardTab = React.memo(({ data }) => {
                                 >
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--window-border)" vertical={false} opacity={0.5} />
                                     <XAxis dataKey="date" tick={{ fontSize: 9, fill: axisColor, fontWeight: 700 }} axisLine={false} tickLine={false} dy={10} />
-                                    <RechartsTooltip content={<CustomTooltip />} cursor={false} />
+                                    <RechartsTooltip content={<CustomTooltip />} cursor={false} isAnimationActive={false} allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 9999 }} />
 
                                     {/* Barlar */}
                                     <Bar dataKey="success" name="Başarılı" fill="#10b981" radius={[2, 2, 0, 0]} maxBarSize={40} animationDuration={600} />

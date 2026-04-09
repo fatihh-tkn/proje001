@@ -73,6 +73,7 @@ const DatabaseViewer = ({ readOnly }) => {
     const [pendingMediaFile, setPendingMediaFile] = useState(null);
     const [mediaDuration, setMediaDuration] = useState(null);
     const [selectedModel, setSelectedModel] = useState('base');
+    const [computeDevice, setComputeDevice] = useState('cuda');
     const [chunks, setChunks] = useState([]);
     const [approvedChunks, setApprovedChunks] = useState(new Set());
     const [skeletonChunks, setSkeletonChunks] = useState(0);
@@ -144,7 +145,7 @@ const DatabaseViewer = ({ readOnly }) => {
     }, []);
 
     /* ── analiz animasyonu ve dosya yükleme ── */
-    const executeAnalysis = (file, whisperModel = "large-v3") => {
+    const executeAnalysis = (file, whisperModel = "large-v3", whisperDevice = "cuda") => {
         setStagedFile(file);
         setPhase('analyzing');
         setProgress(0);
@@ -155,6 +156,7 @@ const DatabaseViewer = ({ readOnly }) => {
         formData.append('file', file);
         formData.append('use_vision', useVision ? 'true' : 'false');
         formData.append('whisper_model', whisperModel);
+        formData.append('whisper_device', whisperDevice);
 
         const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         formData.append('task_id', taskId);
@@ -181,13 +183,26 @@ const DatabaseViewer = ({ readOnly }) => {
                     const r = await fetch(`/api/progress/${taskId}`);
                     if (r.ok) {
                         const d = await r.json();
-                        if (d.status === 'transcribing') {
-                            setProgress(15 + (d.percent * 0.85));
-                        } else if (d.status === 'optimizing') {
-                            setProgress(98);
-                        } else if (d.percent > 0) {
-                            setProgress(15 + (d.percent * 0.85));
-                        }
+                        let realPercent = d.percent > 0 ? Math.round(d.percent) : 0;
+
+                        setProgress(prev => {
+                            // "Simulated Progress" / Hayalet ilerleme
+                            // Model yükleniyor aşamasında 15'ten başlayıp ağır ağır 24'e kadar doldur (Sistem dondu zannedilmesin)
+                            if (d.status === 'loading_model' && prev >= 15 && prev < 24) {
+                                return prev + 1;
+                            }
+                            // VAD (ses analizi fırtınası) sırasında 25'ten 35'e kadar hayalet ilerleme yap
+                            if (d.status === 'transcribing' && prev >= 25 && prev < 35 && realPercent <= prev) {
+                                return prev + 1;
+                            }
+
+                            // Normal backend senkronizasyonu
+                            if (realPercent > prev) {
+                                return realPercent;
+                            }
+
+                            return prev;
+                        });
                     }
                 } catch (e) { }
             }, 1000);
@@ -211,6 +226,7 @@ const DatabaseViewer = ({ readOnly }) => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {
                     const data = JSON.parse(xhr.responseText);
+
                     if (data.status === 'success' && data.chunks && data.chunks.length > 0) {
                         const mapped = data.chunks.map(c => ({
                             id: c.id,
@@ -669,6 +685,17 @@ const DatabaseViewer = ({ readOnly }) => {
                                             >Gelişmiş</button>
                                         </div>
 
+                                        <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner mt-1">
+                                            <button
+                                                onClick={() => setComputeDevice('cpu')}
+                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cpu' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >İşlemci (CPU)</button>
+                                            <button
+                                                onClick={() => setComputeDevice('cuda')}
+                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cuda' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >Ekran Kartı (GPU)</button>
+                                        </div>
+
                                         <div className="mt-1 min-h-[40px] flex items-center justify-center p-3 bg-slate-50 rounded-lg border border-slate-100">
                                             {selectedModel === 'tiny' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">İşlemcide şipşak sonuç verir. Kabataslak ve hızlı notlar içindir.</span>}
                                             {selectedModel === 'base' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Hız ve doğruluk dengesi idealdir. Normal toplantı kayıtları için.</span>}
@@ -679,7 +706,7 @@ const DatabaseViewer = ({ readOnly }) => {
                                     <div className="p-4 border-t border-slate-100 bg-slate-50/50">
                                         <button
                                             onClick={() => {
-                                                executeAnalysis(pendingMediaFile, selectedModel);
+                                                executeAnalysis(pendingMediaFile, selectedModel, computeDevice);
                                                 setPendingMediaFile(null);
                                             }}
                                             className="w-full py-3 bg-[#E11D48] hover:bg-[#be123c] text-white text-[13px] font-bold rounded-xl shadow-lg shadow-[#E11D48]/30 transition-all hover:scale-[0.99] active:scale-95 flex items-center justify-center gap-2"

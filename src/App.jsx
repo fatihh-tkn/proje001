@@ -11,6 +11,7 @@ function App() {
     isLeftCollapsed, setIsLeftCollapsed,
     isRightOpen, setIsRightOpen,
     isLoggedIn, setIsLoggedIn,
+    currentUser, setCurrentUser,
     handleBackgroundDoubleClick,
     workspaces, activeWorkspaceId, recentlyClosed,
     handleOpenFile, handleCloseTab, handleMaximizeTab,
@@ -23,6 +24,21 @@ function App() {
   const tabs = activeWorkspace?.tabs || [];
   const activeTabId = activeWorkspace?.activeTabId || null;
   const maximizedTabId = activeWorkspace?.maximizedTabId || null;
+
+  // Audit: Sekme Görüntüleme Loglayıcı
+  useEffect(() => {
+    if (activeTabId && currentUser) {
+      fetch('/api/auth/audit/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kullanici_kimlik: currentUser.id,
+          islem_turu: 'TAB_VIEW',
+          tablo_adi: String(activeTabId).substring(0, 100)
+        })
+      }).catch(() => { });
+    }
+  }, [activeTabId, currentUser]);
 
   // Global N8n Boot Logic (Tıklama sonrası)
   useEffect(() => {
@@ -70,7 +86,10 @@ function App() {
   }, [handleOpenFile, setIsN8nBooting]);
 
   if (!isLoggedIn) {
-    return <Login onLogin={() => setIsLoggedIn(true)} />;
+    return <Login onLogin={(user) => {
+      setIsLoggedIn(true);
+      setCurrentUser(user);
+    }} />;
   }
 
   return (

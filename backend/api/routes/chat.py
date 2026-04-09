@@ -25,7 +25,8 @@ async def send_message(request: Request, payload: ChatMessage):
         collection_name=payload.collection_name,
         session_id=payload.session_id,
         ip=payload.ip or client_ip,
-        mac=payload.mac or "00:00:00:00"
+        mac=payload.mac or "00:00:00:00",
+        user_id=payload.user_id,
     )
     return ChatResponse(
         reply=reply_text, 
@@ -52,6 +53,7 @@ async def send_message_stream(request: Request, payload: ChatMessage):
             session_id=payload.session_id,
             ip=payload.ip or client_ip,
             mac=payload.mac or "00:00:00:00",
+            user_id=payload.user_id,
         ),
         media_type="text/event-stream",
         headers={

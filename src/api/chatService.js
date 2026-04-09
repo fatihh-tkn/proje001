@@ -77,6 +77,7 @@ export const sendMessageWithFile = async (message, fileName, collectionName = nu
 export const sendMessageStream = async (
   message,
   sessionId = "default_chat",
+  userId = null,
   { onChunk, onDone, onError } = {},
   fileOpts = null,
 ) => {
@@ -86,6 +87,7 @@ export const sendMessageStream = async (
       session_id: sessionId,
       mac: getDeviceId(),
     };
+    if (userId) body.user_id = userId;
     if (fileOpts?.fileName) body.file_name = fileOpts.fileName;
     if (fileOpts?.collectionName) body.collection_name = fileOpts.collectionName;
 

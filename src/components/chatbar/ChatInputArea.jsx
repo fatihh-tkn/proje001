@@ -57,7 +57,7 @@ const ChatInputArea = ({
                         className="relative flex flex-col w-full bg-white/80 backdrop-blur-xl border-2 border-white/60 rounded-md focus-within:border-[#b91d2c] transition-all shadow-[0_4px_20px_rgb(0,0,0,0.04)] no-toggle"
                     >
                         {/* Genişlet/Daralt düğmesi */}
-                        <div onClick={() => setIsExpanded(!isExpanded)} className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center justify-center cursor-pointer z-30 group px-4 py-0.5" title={isExpanded ? 'Daralt' : 'Genişlet'}>
+                        <div onClick={() => setIsExpanded(!isExpanded)} className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center justify-center cursor-pointer z-30 group px-4 py-0.5 interactive" title={isExpanded ? 'Daralt' : 'Genişlet'}>
                             <ChevronsUp size={13} className={`text-slate-300 group-hover:text-[#b91d2c] transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`} />
                         </div>
 
@@ -95,6 +95,7 @@ const ChatInputArea = ({
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onScroll={handleTextareaScroll}
+                            onDoubleClick={() => setIsExpanded(!isExpanded)}
                             data-scrolling={isTextareaScrolling}
                             placeholder={droppedFile ? `"${droppedFile.name}" hakkında bir soru sor...` : "Asistana bir soru sor..."}
                             className={`w-full bg-transparent text-[15px] text-slate-800 px-4 pb-2 resize-none border-none outline-none focus:ring-0 placeholder:text-slate-400/80 leading-relaxed transition-all duration-300

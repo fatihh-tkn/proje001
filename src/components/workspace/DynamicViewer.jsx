@@ -14,6 +14,7 @@ const ImageViewer = lazy(() => import('../viewers/ImageViewer'));
 const N8nViewer = lazy(() => import('../settings/n8n/N8nViewer'));
 const AiOrchestratorViewer = lazy(() => import('../settings/ai/AiOrchestratorViewer'));
 const MeetingUploadViewer = lazy(() => import('../settings/meetings/MeetingUploadViewer'));
+const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
 
 export const DynamicViewer = ({ tab }) => {
     return (
@@ -44,6 +45,7 @@ export const DynamicViewer = ({ tab }) => {
             {tab.type === 'n8n' && <N8nViewer />}
             {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer defaultAgentId={tab.defaultAgentId} />}
             {tab.type === 'meetings' && <MeetingUploadViewer />}
+            {tab.type === 'auth' && <AuthViewer />}
 
             {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">

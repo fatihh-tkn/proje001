@@ -11,10 +11,15 @@ const THEMES = [
     { id: 'rose', name: 'Pembe', colors: ['#1a0a14', '#2e1b24', '#f43f5e'] },
 ];
 
-const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed, onOpenFile }) => {
+const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed, onOpenFile, currentUser }) => {
     const [activeSection, setActiveSection] = useState(null);
     const [basePath, setBasePath] = useState(currentBasePath);
     const menuRef = useRef(null);
+
+    const canSeeTab = (key) => {
+        if (!currentUser?.meta) return true;
+        return currentUser.meta[key] !== false;
+    };
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -60,98 +65,100 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                     {/* Menü Listesi */}
                     <div className="py-1">
 
+                        {canSeeTab('ui_file_processing') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'database-settings',
+                                            title: 'Dosya İşleme',
+                                            type: 'database',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                            >
+                                <FileCog size={14} className="text-slate-500 shrink-0" />
+                                <span>Dosya İşleme</span>
+                            </button>
+                        )}
 
+                        {canSeeTab('ui_database') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'databases-viewer',
+                                            title: 'Veritabanı',
+                                            type: 'databases-viewer',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                            >
+                                <Database size={14} className="text-slate-500 shrink-0" />
+                                <span>Veritabanı</span>
+                            </button>
+                        )}
 
-                        {/* DOSYA YOLU KALDIRILDI */}
+                        {canSeeTab('ui_ai_orchestrator') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'ai-orchestrator-settings',
+                                            title: 'Yapay Zeka Merkezi',
+                                            type: 'ai-orchestrator',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                            >
+                                <Bot size={14} className="text-slate-500 shrink-0" />
+                                <span>Yapay Zeka Merkezi</span>
+                            </button>
+                        )}
 
-                        {/* VERİTABANI */}
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'database-settings',
-                                        title: 'Dosya İşleme',
-                                        type: 'database',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
-                        >
-                            <FileCog size={14} className="text-slate-500 shrink-0" />
-                            <span>Dosya İşleme</span>
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'databases-viewer',
-                                        title: 'Veritabanı',
-                                        type: 'databases-viewer',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
-                        >
-                            <Database size={14} className="text-slate-500 shrink-0" />
-                            <span>Veritabanı</span>
-                        </button>
+                        {canSeeTab('ui_metrics') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'api-usage-settings',
+                                            title: 'Sistem Metrikleri',
+                                            type: 'api-usage',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                            >
+                                <Cpu size={14} className="text-slate-500 shrink-0" />
+                                <span>Sistem Metrikleri</span>
+                            </button>
+                        )}
 
-                        {/* YAPAY ZEKA MERKEZİ */}
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'ai-orchestrator-settings',
-                                        title: 'Yapay Zeka Merkezi',
-                                        type: 'ai-orchestrator',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
-                        >
-                            <Bot size={14} className="text-slate-500 shrink-0" />
-                            <span>Yapay Zeka Merkezi</span>
-                        </button>
-
-                        {/* İŞLEM BOTU */}
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'ai-orchestrator-settings',
-                                        title: 'Yapay Zeka Merkezi',
-                                        type: 'ai-orchestrator',
-                                        defaultAgentId: 'sys_agent_action_001',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 pl-8 py-1.5 text-[11px] transition-colors cursor-pointer text-white/40 hover:bg-white/[0.03] hover:text-purple-400`}
-                        >
-                            <Zap size={12} className="text-purple-500/60 shrink-0" />
-                            <span>İşlem Botu</span>
-                        </button>
-
-                        {/* SİSTEM METRİKLERİ */}
-                        <button
-                            onClick={() => {
-                                if (onOpenFile) {
-                                    onOpenFile({
-                                        id: 'api-usage-settings',
-                                        title: 'Sistem Metrikleri',
-                                        type: 'api-usage',
-                                    });
-                                }
-                                onClose();
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
-                        >
-                            <Cpu size={14} className="text-slate-500 shrink-0" />
-                            <span>Sistem Metrikleri</span>
-                        </button>
+                        {canSeeTab('ui_auth') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'auth-settings',
+                                            title: 'Kullanıcı ve Rol Yönetimi',
+                                            type: 'auth',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
+                            >
+                                <Users size={14} className="text-slate-500 shrink-0" />
+                                <span>Kullanıcı ve Rol Yönetimi</span>
+                            </button>
+                        )}
 
 
 

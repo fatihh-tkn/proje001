@@ -19,6 +19,12 @@ function Badge({ children, color = 'default' }) {
 
 /* ─── Expanded detail row ─────────────────────────────────────────── */
 function LogDetail({ log }) {
+    const [expandReq, setExpandReq] = useState(false);
+    const [expandRes, setExpandRes] = useState(false);
+
+    const isReqLong = (log.request && log.request.length > 300) || (log.request && log.request.split('\n').length > 5);
+    const isResLong = (log.response && log.response.length > 300) || (log.response && log.response.split('\n').length > 5);
+
     return (
         <div className="bg-gray-50/60 px-6 py-5 border-t border-black/[0.04] animate-in slide-in-from-top-2 duration-300 shadow-inner">
             {/* Metadata Tek Satır Haritası */}
@@ -59,9 +65,19 @@ function LogDetail({ log }) {
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
                         <span className="text-[10px] font-medium tracking-widest text-[var(--sidebar-text-muted)] uppercase">İstek (Prompt)</span>
+                        {isReqLong && (
+                            <button onClick={() => setExpandReq(!expandReq)} className="ml-auto text-[var(--sidebar-text-muted)] hover:text-[var(--accent)] focus:outline-none transition-colors group cursor-pointer" title="Genişlet/Daralt">
+                                <ChevronDown size={14} className={`transition-transform duration-300 ${expandReq ? 'rotate-180 text-[var(--accent)]' : 'group-hover:scale-110'}`} />
+                            </button>
+                        )}
                     </div>
-                    <div className="text-[11px] font-mono text-gray-700 leading-relaxed whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto mac-horizontal-scrollbar selection:bg-[var(--accent)]/10">
-                        {log.request || '—'}
+                    <div className="relative">
+                        <div className={`text-[11px] font-mono text-gray-700 leading-relaxed whitespace-pre-wrap break-words transition-all duration-300 ${expandReq ? 'max-h-none overflow-visible' : 'max-h-[160px] overflow-hidden'} selection:bg-[var(--accent)]/10`}>
+                            {log.request || '—'}
+                        </div>
+                        {isReqLong && !expandReq && (
+                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f1f4f9] via-[#f1f4f9]/80 to-transparent pointer-events-none" />
+                        )}
                     </div>
                 </div>
 
@@ -70,9 +86,19 @@ function LogDetail({ log }) {
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         <span className="text-[10px] font-medium tracking-widest text-[var(--sidebar-text-muted)] uppercase">Yanıt (Response)</span>
+                        {isResLong && (
+                            <button onClick={() => setExpandRes(!expandRes)} className="ml-auto text-[var(--sidebar-text-muted)] hover:text-emerald-500 focus:outline-none transition-colors group cursor-pointer" title="Genişlet/Daralt">
+                                <ChevronDown size={14} className={`transition-transform duration-300 ${expandRes ? 'rotate-180 text-emerald-500' : 'group-hover:scale-110'}`} />
+                            </button>
+                        )}
                     </div>
-                    <div className="text-[11px] font-mono text-[var(--workspace-text)] leading-relaxed whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto mac-horizontal-scrollbar selection:bg-emerald-500/10">
-                        {log.response || '—'}
+                    <div className="relative">
+                        <div className={`text-[11px] font-mono text-[var(--workspace-text)] leading-relaxed whitespace-pre-wrap break-words transition-all duration-300 ${expandRes ? 'max-h-none overflow-visible' : 'max-h-[160px] overflow-hidden'} selection:bg-emerald-500/10`}>
+                            {log.response || '—'}
+                        </div>
+                        {isResLong && !expandRes && (
+                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f1f4f9] via-[#f1f4f9]/80 to-transparent pointer-events-none" />
+                        )}
                     </div>
                 </div>
             </div>

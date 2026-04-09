@@ -9,6 +9,7 @@ const Login = ({ onLogin }) => {
     const [passwordConfirm, setPasswordConfirm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    const [errorType, setErrorType] = useState(''); // 'not_found' | 'suspended' | 'wrong_password'
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -34,7 +35,7 @@ const Login = ({ onLogin }) => {
         setIsLoading(true);
 
         try {
-            const endpoint = isRegisterMode ? 'http://localhost:8000/api/auth/register' : 'http://localhost:8000/api/auth/login';
+            const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
             const payload = isRegisterMode
                 ? { tam_ad: name, eposta: email, sifre: password }
                 : { eposta: email, sifre: password };
@@ -48,7 +49,13 @@ const Login = ({ onLogin }) => {
             const data = await response.json();
 
             if (!response.ok) {
-                setError(data.detail || 'Bir hata oluştu.');
+                const status = response.status;
+                const msg = data.detail || 'Bir hata oluştu.';
+                setError(msg);
+                if (status === 404) setErrorType('not_found');
+                else if (status === 403) setErrorType('suspended');
+                else if (status === 401) setErrorType('wrong_password');
+                else setErrorType('generic');
                 return;
             }
 
@@ -80,8 +87,28 @@ const Login = ({ onLogin }) => {
                 </div>
 
                 {error && (
-                    <div className="relative mb-5 p-3 bg-red-50/90 border border-red-200 text-red-600 rounded-xl text-sm text-center font-semibold animate-pulse shadow-sm">
-                        {error}
+                    <div className={`relative mb-4 rounded-xl text-sm font-semibold shadow-sm border overflow-hidden ${errorType === 'suspended'
+                            ? 'bg-amber-50 border-amber-300'
+                            : errorType === 'not_found'
+                                ? 'bg-blue-50 border-blue-200'
+                                : 'bg-red-50 border-red-200'
+                        }`}>
+                        {/* Renk şeridi */}
+                        <div className={`h-1 w-full ${errorType === 'suspended' ? 'bg-amber-400'
+                                : errorType === 'not_found' ? 'bg-blue-400'
+                                    : 'bg-red-400'
+                            }`} />
+                        <div className="flex items-start gap-3 p-3">
+                            <span className="text-xl shrink-0 mt-0.5">
+                                {errorType === 'suspended' ? '⚠️' : errorType === 'not_found' ? '🔍' : '🔐'}
+                            </span>
+                            <span className={`leading-snug text-[12px] ${errorType === 'suspended' ? 'text-amber-800'
+                                    : errorType === 'not_found' ? 'text-blue-700'
+                                        : 'text-red-600'
+                                }`}>
+                                {error}
+                            </span>
+                        </div>
                     </div>
                 )}
 

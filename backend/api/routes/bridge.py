@@ -31,7 +31,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
-async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3")):
+async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3"), whisper_device: str = Form("cuda")):
     import time as _time
     import asyncio
     from fastapi.concurrency import run_in_threadpool
@@ -61,6 +61,7 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
             original_name = safe_filename,
             task_id      = task_id,
             whisper_model= whisper_model,
+            whisper_device= whisper_device,
         )
         isleme_suresi_ms = int((_time.time() - t0) * 1000)
 

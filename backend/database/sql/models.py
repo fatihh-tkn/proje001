@@ -57,25 +57,6 @@ def _simdi() -> str:
 #    kullanicilar, roller, kullanici_roller
 # ═══════════════════════════════════════════════════════════════════
 
-class Rol(Base):
-    """
-    Sistem rolleri: yonetici, analist, kullanici, misafir, vb.
-    İzin listesi JSON dizisi olarak tutulur.
-    Örnek izinler: ["veritabani:okuma", "model:yazma", "yonetici:tam"]
-    """
-    __tablename__ = "roller"
-
-    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    ad: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    aciklama: Mapped[str | None] = mapped_column(Text, nullable=True)
-    izinler: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
-
-    # İlişkiler
-    kullanici_roller: Mapped[list["KullaniciRol"]] = relationship(
-        "KullaniciRol", back_populates="rol", cascade="all, delete-orphan"
-    )
-
 
 class Kullanici(Base):
     """
@@ -98,9 +79,7 @@ class Kullanici(Base):
     son_giris_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # İlişkiler
-    kullanici_roller: Mapped[list["KullaniciRol"]] = relationship(
-        "KullaniciRol", back_populates="kullanici", cascade="all, delete-orphan"
-    )
+
     sohbet_oturumlari: Mapped[list["SohbetOturumu"]] = relationship(
         "SohbetOturumu", back_populates="kullanici"
     )
@@ -115,25 +94,6 @@ class Kullanici(Base):
         Index("ix_kullanicilar_eposta", "eposta"),
     )
 
-
-class KullaniciRol(Base):
-    """
-    Kullanıcı ↔ Rol köprü tablosu (çoktan-çoğa).
-    Aynı kullanıcıya birden fazla rol atanabilir.
-    """
-    __tablename__ = "kullanici_roller"
-
-    kullanici_kimlik: Mapped[str] = mapped_column(
-        String(36), ForeignKey("kullanicilar.kimlik", ondelete="CASCADE"), primary_key=True
-    )
-    rol_kimlik: Mapped[str] = mapped_column(
-        String(36), ForeignKey("roller.kimlik", ondelete="CASCADE"), primary_key=True
-    )
-    atanma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
-
-    # İlişkiler
-    kullanici: Mapped["Kullanici"] = relationship("Kullanici", back_populates="kullanici_roller")
-    rol: Mapped["Rol"] = relationship("Rol", back_populates="kullanici_roller")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -571,8 +531,6 @@ class AIAgent(Base):
 # Bu alias'lar mevcut kodu kırmadan çalışmaya devam etmesini sağlar.
 # ═══════════════════════════════════════════════════════════════════
 User       = Kullanici
-Role       = Rol
-UserRole   = KullaniciRol
 ChatSession   = SohbetOturumu
 ChatMessage   = SohbetMesaji
 Document   = Belge
