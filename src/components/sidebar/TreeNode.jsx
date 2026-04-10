@@ -120,6 +120,14 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                     url: node.url
                 }));
 
+                // Dışarıya Sürükleme (Native OS Drag-out) Desteği
+                // Sol panelden tutarak Outlook/masaüstü gibi yerlere dosyayı kopyala
+                if (node.url && node.extension && node.extension !== 'folder') {
+                    const origin = window.location.origin;
+                    const downloadUrl = node.url.startsWith('http') ? node.url : `${origin}${node.url}`;
+                    e.dataTransfer.setData('DownloadURL', `application/octet-stream:${node.name}:${downloadUrl}`);
+                }
+
                 // 2) Kendi özel Sürükleme Hayaletimizi ('Drag Ghost') Oluşturuyoruz
                 // DOM'da geçici bir kopya öğe (klon) yarat
                 const dragGhost = document.createElement('div');

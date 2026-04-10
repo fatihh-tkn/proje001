@@ -242,7 +242,7 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             try:
                 pix            = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
                 image_filename = f"page_{page_num + 1}.png"
-                image_path     = os.path.join(image_dir, image_filename)
+                image_path     = os.path.abspath(os.path.join(image_dir, image_filename))
                 pix.save(image_path)
             except Exception as img_err:
                 print(f"[processor] Sayfa {page_num+1} PNG kaydedilemedi: {img_err}")

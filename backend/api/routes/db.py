@@ -77,7 +77,7 @@ def delete_documents(body: DeleteDocumentsRequest) -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.get("/collections/{name}/documents", summary="Koleksiyondaki vektör/dokümanları getir")
+@router.get("/collections/{name}/content", summary="Koleksiyondaki vektör/dokümanları getir")
 def get_documents_in_collection(name: str, limit: int = 100) -> dict[str, Any]:
     """Belirtilen koleksiyondaki vektör ve doküman içeriklerini döndürür."""
     try:

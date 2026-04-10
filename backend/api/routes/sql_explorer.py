@@ -583,3 +583,27 @@ def integrity_report():
         ) else "sorunlu",
     }
     return rapor
+
+@router.get("/documents/{doc_id}/chunks", summary="Belirli bir belgenin tüm vektör parçacıklarını getir")
+def get_document_chunks(doc_id: str):
+    """
+    Belirli bir dosyaya (Belgeye) ait tüm vektör parçacıklarını 
+    hızlıca SQL üzerinden (vektor_parcalari tablosundan) döner.
+    Bu, frontend'de tüm vektörleri ChromaDB'den çekmeyi engeller.
+    """
+    with get_session() as db:
+        parcalar = db.scalars(
+            select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
+        ).all()
+        
+        results = []
+        for p in parcalar:
+            results.append({
+                "id": p.chromadb_kimlik,
+                "text": p.icerik,
+                "page": p.sayfa_no or 1,
+                "x": 0,
+                "y": 0,
+            })
+            
+    return {"chunks": results, "total": len(results)}

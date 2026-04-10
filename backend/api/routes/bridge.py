@@ -328,7 +328,17 @@ def save_to_db(data: dict):
                     clean_meta = {"sqlite_doc_id": resolved_belge_kimlik}
                     for k, v in meta.items():
                         # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
-                        clean_meta[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+                        # Emu/subclass gibi türevleri de str/int/float'a zorunlu dönüştür
+                        if isinstance(v, bool):
+                            clean_meta[k] = v
+                        elif isinstance(v, int):
+                            clean_meta[k] = int(v)
+                        elif isinstance(v, float):
+                            clean_meta[k] = float(v)
+                        elif isinstance(v, str):
+                            clean_meta[k] = v
+                        else:
+                            clean_meta[k] = str(v)
 
                     texts.append(text)
                     metadatas.append(clean_meta)

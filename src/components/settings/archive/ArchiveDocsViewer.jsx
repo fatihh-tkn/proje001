@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    PackageOpen, Folder, File, ChevronRight, Upload, Plus, Search,
-    FileText, FileImage, FileSpreadsheet, FileCode, Film, Music,
-    Database, Trash2, FolderInput, Cpu, X, CheckSquare, Square,
-    ArrowUpDown, SlidersHorizontal, Edit2, Check, Tag, MessageSquare,
-    ExternalLink, Download
+    PackageOpen, Folder, File, ChevronRight, Upload, Search,
+    FileText, Plus, Database, Trash2, FolderInput, Cpu, X,
+    CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
+    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 
@@ -500,11 +499,20 @@ export default function ArchiveDocsViewer() {
             dragIds = Array.from(selectedIds);
         }
 
-        e.dataTransfer.setData('application/json', JSON.stringify({
+        e.dataTransfer.setData('application/x-archive-item', JSON.stringify({
             type: 'archive_items',
             ids: dragIds
         }));
         e.dataTransfer.setData('itemId', item.id); // Geriye dönük uyumluluk (Fallback)
+
+        // Dışarıya Sürükleme (Native OS Drag-out) Desteği
+        // Sadece tekil fiziksel dosya kopyalamasına izin ver (klasörler hariç)
+        if (item.file_type && item.file_type !== 'folder') {
+            const origin = window.location.origin;
+            const downloadUrl = `${origin}/api/archive/file/${item.id}`;
+            // Tarayıcı dışına (masaüstü/mail vb.) fiziksel dosya kopyalaması sağlar
+            e.dataTransfer.setData('DownloadURL', `application/octet-stream:${item.filename}:${downloadUrl}`);
+        }
 
         if (dragIds.length > 1) {
             // Sürüklenen diğer öğelerin "toplanma (stack)" hissi veren Animasyonlu Ghost (Hayalet) resmi
@@ -554,7 +562,7 @@ export default function ArchiveDocsViewer() {
         e.preventDefault();
         setDragOverFolder(null);
 
-        const payloadStr = e.dataTransfer.getData('application/json');
+        const payloadStr = e.dataTransfer.getData('application/x-archive-item');
         if (payloadStr) {
             try {
                 const payload = JSON.parse(payloadStr);
@@ -612,6 +620,14 @@ export default function ArchiveDocsViewer() {
                 <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-slate-200 bg-white gap-3">
                     {/* Breadcrumb */}
                     <div className="flex items-center gap-1.5 text-[12px] overflow-hidden">
+                        {currentFolderId && (
+                            <button onClick={() => {
+                                const parent = breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null;
+                                setCurrentFolderId(parent);
+                            }} title="Üst Klasör" className="p-1 hover:bg-slate-100 text-slate-500 rounded transition-colors mr-1">
+                                <CornerLeftUp size={14} />
+                            </button>
+                        )}
                         <button onClick={() => { setCurrentFolderId(null); setSearchQuery(''); }}
                             className={`flex items-center gap-1 hover:text-[#A01B1B] transition-colors shrink-0 ${!currentFolderId && !searchQuery ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
                             <Folder size={13} className={!currentFolderId && !searchQuery ? 'text-[#b91d2c]' : ''} />
@@ -711,35 +727,7 @@ export default function ArchiveDocsViewer() {
                 </div>
 
                 {/* ── CONTENT ── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50/50">
-
-                    {/* Yeniden Adlandır */}
-                    {renameItem && (
-                        <div className="flex gap-2 items-center mb-5 p-3.5 bg-white border border-slate-200 rounded-lg shadow-sm">
-                            <Edit2 size={16} className="text-slate-400 shrink-0" />
-                            <input autoFocus type="text" value={renameValue}
-                                onChange={e => setRenameValue(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameItem(null); }}
-                                className="flex-1 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5 text-[12px] outline-none focus:border-[#A01B1B]"
-                            />
-                            <button onClick={handleRename} className="px-3 py-1.5 bg-slate-800 text-white rounded-md text-[11px] font-medium">Kaydet</button>
-                            <button onClick={() => setRenameItem(null)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-[11px] font-medium">İptal</button>
-                        </div>
-                    )}
-
-                    {/* Yeni Klasör */}
-                    {isCreatingFolder && (
-                        <div className="flex gap-2 items-center mb-5 p-3.5 bg-white border border-slate-200 rounded-lg shadow-sm">
-                            <Folder size={18} className="text-amber-500 shrink-0" />
-                            <input autoFocus type="text" placeholder="Klasör Adı..."
-                                value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setIsCreatingFolder(false); }}
-                                className="flex-1 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5 text-[12px] outline-none focus:border-[#A01B1B]"
-                            />
-                            <button onClick={handleCreateFolder} className="px-3 py-1.5 bg-slate-800 text-white rounded-md text-[11px] font-medium">Oluştur</button>
-                            <button onClick={() => setIsCreatingFolder(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-[11px] font-medium">İptal</button>
-                        </div>
-                    )}
+                <div className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50/50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
 
                     {loading ? (
                         <div className="flex items-center justify-center h-40">
@@ -758,6 +746,20 @@ export default function ArchiveDocsViewer() {
                                 <div className="mb-6">
                                     <h3 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">Klasörler</h3>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                                        {isCreatingFolder && (
+                                            <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
+                                                <Folder size={64} strokeWidth={1} className="text-amber-500 fill-amber-200 mb-2 drop-shadow-md shrink-0" />
+                                                <input
+                                                    autoFocus
+                                                    value={newFolderName}
+                                                    onChange={e => setNewFolderName(e.target.value)}
+                                                    onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setIsCreatingFolder(false); }}
+                                                    onBlur={() => { if (newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}
+                                                    className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B]"
+                                                    placeholder="Yeni Klasör"
+                                                />
+                                            </div>
+                                        )}
                                         {folders.map(folder => {
                                             const isSelected = selectedIds.has(folder.id);
                                             const isDragOver = dragOverFolder === folder.id;
@@ -769,26 +771,42 @@ export default function ArchiveDocsViewer() {
                                                     onDragLeave={() => setDragOverFolder(null)}
                                                     onDrop={(e) => handleDrop(e, folder.id)}
                                                     onDoubleClick={() => {
-                                                        if (selectedIds.size === 0) {
+                                                        if (selectedIds.size === 0 && renameItem?.id !== folder.id) {
                                                             setCurrentFolderId(folder.id); setSearchQuery('');
                                                         }
                                                     }}
                                                     onClick={(e) => {
+                                                        e.stopPropagation();
                                                         if (selectedIds.size > 0) toggleSelect(folder.id, e);
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: folder }); }}
-                                                    className={`group relative flex flex-col p-3.5 bg-white border rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all select-none
-                                                        ${isSelected ? 'border-[#A01B1B] ring-1 ring-[#A01B1B]/20' : isDragOver ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-400/30' : 'border-slate-200 hover:border-slate-300'}`}
+                                                    className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
+                                                        ${isSelected ? 'bg-red-50/80 ring-1 ring-[#A01B1B]/20' : isDragOver ? 'bg-amber-50 ring-1 ring-amber-400/30' : 'hover:bg-slate-200/50 border border-transparent'}`}
                                                 >
                                                     <div onClick={(e) => toggleSelect(folder.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
                                                     </div>
-                                                    <div className="p-2 bg-amber-50 border border-amber-100 rounded-lg w-fit mb-2">
-                                                        <Folder size={22} className="text-amber-500 fill-amber-200" />
-                                                    </div>
-                                                    <h4 className="text-[11px] font-semibold text-slate-800 truncate" title={folder.filename}>{folder.filename}</h4>
-                                                    <p className="text-[10px] text-slate-400 mt-0.5">{new Date(folder.created_at).toLocaleDateString('tr')}</p>
+                                                    <Folder size={64} strokeWidth={1} className="text-amber-500 fill-amber-200 mb-2 drop-shadow-md shrink-0" />
+                                                    {renameItem?.id === folder.id ? (
+                                                        <input
+                                                            autoFocus
+                                                            value={renameValue}
+                                                            onChange={e => setRenameValue(e.target.value)}
+                                                            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameItem(null); }}
+                                                            onBlur={handleRename}
+                                                            onClick={e => e.stopPropagation()}
+                                                            onDoubleClick={e => e.stopPropagation()}
+                                                            className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B] mt-0.5"
+                                                        />
+                                                    ) : (
+                                                        <h4
+                                                            onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(folder); setRenameValue(folder.filename); }}
+                                                            className="text-[11px] font-semibold text-slate-800 line-clamp-2 select-text mt-0.5 max-w-full leading-tight" title={folder.filename}>
+                                                            {folder.filename}
+                                                        </h4>
+                                                    )}
+                                                    <p className="text-[10px] text-slate-400 mt-1 truncate">{new Date(folder.created_at).toLocaleDateString('tr')}</p>
                                                 </div>
                                             );
                                         })}
@@ -814,10 +832,10 @@ export default function ArchiveDocsViewer() {
                                                         else setSelectedDoc(doc);
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: doc }); }}
-                                                    className={`group relative flex flex-col p-3.5 bg-white border rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-all select-none
-                                                        ${selectedDoc?.id === doc.id ? 'border-[#A01B1B] ring-1 ring-[#A01B1B]/20'
-                                                            : isSelected ? 'border-[#A01B1B]/50 ring-1 ring-[#A01B1B]/10'
-                                                                : 'border-slate-200 hover:border-slate-300'}`}
+                                                    className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
+                                                        ${selectedDoc?.id === doc.id ? 'bg-red-50/80 ring-1 ring-[#A01B1B]/30'
+                                                            : isSelected ? 'bg-red-50/40 ring-1 ring-[#A01B1B]/20'
+                                                                : 'hover:bg-slate-200/50 border border-transparent'}`}
                                                 >
                                                     <div onClick={(e) => toggleSelect(doc.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -827,7 +845,6 @@ export default function ArchiveDocsViewer() {
                                                     {doc.is_vectorized && !isArchiveOnly(doc.file_type) && (
                                                         <span className="absolute top-2 right-2 bg-teal-50 text-teal-700 border border-teal-100 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none">VEK</span>
                                                     )}
-                                                    {/* Archive-only badge */}
                                                     {isArchiveOnly(doc.file_type) && (
                                                         <span className="absolute top-2 right-2 bg-amber-50 text-amber-700 border border-amber-200 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none" title="Yapay zeka ile işlenmedi">
                                                             ARŞİV
@@ -835,17 +852,32 @@ export default function ArchiveDocsViewer() {
                                                     )}
 
                                                     {(doc.etiketler?.length > 0) && (
-                                                        <span className="absolute bottom-8 right-2 flex items-center gap-0.5 text-slate-400">
+                                                        <span className="absolute top-8 right-2 flex items-center gap-0.5 text-slate-400">
                                                             <Tag size={9} /><span className="text-[9px]">{doc.etiketler.length}</span>
                                                         </span>
                                                     )}
-                                                    <div className={`p-2 ${bg} border ${border} rounded-lg w-fit mb-2`}>
-                                                        <Icon size={22} className={color} />
-                                                    </div>
-                                                    <h4 className="text-[11px] font-semibold text-slate-800 truncate" title={doc.filename}>{doc.filename}</h4>
-                                                    <div className="flex items-center justify-between mt-0.5">
-                                                        <span className="text-[9px] text-slate-400 uppercase font-medium">{doc.file_type}</span>
-                                                        <span className="text-[9px] text-slate-400">{formatBytes(doc.file_size)}</span>
+                                                    <Icon size={58} strokeWidth={1.2} className={`${color} mb-3 drop-shadow-md shrink-0`} />
+                                                    {renameItem?.id === doc.id ? (
+                                                        <input
+                                                            autoFocus
+                                                            value={renameValue}
+                                                            onChange={e => setRenameValue(e.target.value)}
+                                                            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameItem(null); }}
+                                                            onBlur={handleRename}
+                                                            onClick={e => e.stopPropagation()}
+                                                            onDoubleClick={e => e.stopPropagation()}
+                                                            className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B] mt-2 mb-1"
+                                                        />
+                                                    ) : (
+                                                        <h4
+                                                            onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(doc); setRenameValue(doc.filename); }}
+                                                            className="text-[11px] font-semibold text-slate-800 line-clamp-2 select-text mt-auto leading-tight" title={doc.filename}>
+                                                            {doc.filename}
+                                                        </h4>
+                                                    )}
+                                                    <div className="flex flex-col items-center mt-1">
+                                                        <span className="text-[10px] text-slate-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">{formatBytes(doc.file_size)}</span>
                                                     </div>
                                                 </div>
                                             );

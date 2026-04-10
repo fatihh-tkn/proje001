@@ -542,29 +542,13 @@ const DatabaseViewer = ({ readOnly }) => {
             }
         }
 
-        // Fetch actual vectors from Chroma DB mapping to this file if we havent yet
+        // Sadece bu belgeye ait parcalari hizlica SQL uzerinden cek (Step 3)
         if (!recordVectors[rec.id]) {
             try {
-                const res = await fetch(`${BASE}/collections/${COLLECTION}/documents?limit=50000`);
+                const res = await fetch(`/api/sql/documents/${encodeURIComponent(rec.id)}/chunks`);
                 if (res.ok) {
                     const data = await res.json();
-
-                    const vectors = [];
-                    if (data && Array.isArray(data.ids)) {
-                        for (let i = 0; i < data.ids.length; i++) {
-                            const meta = data.metadatas ? data.metadatas[i] : null;
-                            if (meta && (meta.file === rec.file || meta.source === rec.file)) {
-                                vectors.push({
-                                    id: data.ids[i],
-                                    text: data.documents ? data.documents[i] : '',
-                                    page: meta.page || 1,
-                                    x: meta.x || 0,
-                                    y: meta.y || 0
-                                });
-                            }
-                        }
-                    }
-                    setRecordVectors(prev => ({ ...prev, [rec.id]: vectors }));
+                    setRecordVectors(prev => ({ ...prev, [rec.id]: data.chunks || [] }));
                 } else {
                     setRecordVectors(prev => ({ ...prev, [rec.id]: [] }));
                 }

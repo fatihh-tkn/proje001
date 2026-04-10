@@ -44,7 +44,14 @@ export default function VectorDatabaseViewer() {
         try {
             await fetchWithTimeout(`${BASE}/collections/${COLLECTION}`, {}, 5000);
             setBackendReady(true);
-            const res = await fetch(`${BASE}/collections/${COLLECTION}/documents?limit=50000`);
+            // Dosya tablosunu (sol panel) SQL'den daha verimli sekilde cek
+            const sqlRes = await fetch('/api/sql/documents');
+            const sqlData = sqlRes.ok ? await sqlRes.json() : { records: [] };
+            const sqlFiles = (sqlData.records || []).map(r => ({ id: r.id, file: r.file }));
+            setFiles(sqlFiles);
+
+            // Vektorleri 'limit=50000' ile bir anda cekmeyi onluyoruz, performans icin sadece sinirli donduruyoruz.
+            const res = await fetch(`${BASE}/collections/${COLLECTION}/content?limit=500`);
             if (res.ok) {
                 const data = await res.json();
                 const vectors = [];
@@ -52,20 +59,32 @@ export default function VectorDatabaseViewer() {
                     for (let i = 0; i < data.ids.length; i++) {
                         const meta = data.metadatas ? data.metadatas[i] : {};
                         // ChromaDB metadatası `source` anahtarında tutulur, eski veriler için `file` fallback'i bırakılır.
+                        // PPTX chunks store coords in bbox (EMU), PDF in x/y (points)
+                        let x = meta.x || 0;
+                        let y = meta.y || 0;
+                        if ((!x || !y) && meta.bbox && meta.bbox !== '0,0,0,0') {
+                            const parts = meta.bbox.split(',');
+                            if (parts.length >= 2) {
+                                x = x || Math.round(parseFloat(parts[0]));
+                                y = y || Math.round(parseFloat(parts[1]));
+                            }
+                        }
                         vectors.push({
                             id: data.ids[i],
                             text: data.documents ? data.documents[i] : '',
                             file: meta.source || meta.file || 'Bilinmeyen Dosya',
                             page: meta.page || 1,
-                            x: meta.x || 0,
-                            y: meta.y || 0,
+                            x,
+                            y,
                             rawMeta: meta
                         });
                     }
                 }
                 setAllVectors(vectors);
-                const uniqueFiles = new Set(vectors.map(v => v.file));
-                setFiles(Array.from(uniqueFiles).map((fileName, idx) => ({ id: `gen_file_${idx}`, file: fileName })));
+                if (sqlFiles.length === 0) {
+                    const uniqueFiles = new Set(vectors.map(v => v.file));
+                    setFiles(Array.from(uniqueFiles).map((fileName, idx) => ({ id: `gen_file_${idx}`, file: fileName })));
+                }
             }
         } catch {
             setBackendReady(false);
@@ -127,8 +146,8 @@ export default function VectorDatabaseViewer() {
 
     const filteredVectors = React.useMemo(() => {
         if (!searchTerm) return [];
-        const lower = searchTerm.toLowerCase();
-        return allVectors.filter(v => v.text.toLowerCase().includes(lower));
+        const lower = searchTerm.toLocaleLowerCase('tr-TR');
+        return allVectors.filter(v => v.text.toLocaleLowerCase('tr-TR').includes(lower));
     }, [allVectors, searchTerm]);
 
     const handleSearchItemClick = (vector) => {

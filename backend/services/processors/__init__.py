@@ -43,7 +43,7 @@ def dispatch(
 
     if ext in ("pptx", "ppt"):
         from services.processors.pptx_processor import parse_pptx
-        return parse_pptx(file_path, original_name=original_name)
+        return parse_pptx(file_path, original_name=original_name, use_vision=use_vision)
 
     if ext in ("png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"):
         from services.processors.image_processor import parse_image

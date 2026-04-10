@@ -61,11 +61,21 @@ export default function DatabasesViewer() {
 
             {/* ── CONTENT AREA ── */}
             <div className="flex-1 overflow-hidden relative">
-                {activeTab === 'sql' && <SqlDatabaseViewer />}
-                {activeTab === 'vector' && <VectorDatabaseViewer />}
-                {activeTab === 'graph' && <GraphDatabaseViewer />}
-                {activeTab === 'archive' && <ArchiveDocsViewer />}
-                {activeTab === 'audio-archive' && <AudioArchiveViewer />}
+                <div className={`w-full h-full ${activeTab === 'sql' ? 'block' : 'hidden'}`}>
+                    <SqlDatabaseViewer />
+                </div>
+                <div className={`w-full h-full ${activeTab === 'vector' ? 'block' : 'hidden'}`}>
+                    <VectorDatabaseViewer />
+                </div>
+                <div className={`w-full h-full ${activeTab === 'graph' ? 'block' : 'hidden'}`}>
+                    <GraphDatabaseViewer />
+                </div>
+                <div className={`w-full h-full ${activeTab === 'archive' ? 'block' : 'hidden'}`}>
+                    <ArchiveDocsViewer />
+                </div>
+                <div className={`w-full h-full ${activeTab === 'audio-archive' ? 'block' : 'hidden'}`}>
+                    <AudioArchiveViewer />
+                </div>
             </div>
         </div>
     );
