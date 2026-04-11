@@ -3,7 +3,8 @@ import {
     PackageOpen, Folder, File, ChevronRight, Upload, Search,
     FileText, Plus, Database, Trash2, FolderInput, Cpu, X,
     CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
-    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp
+    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
+    Mic, Loader2, AlertCircle
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 
@@ -28,6 +29,8 @@ const isArchiveOnly = (fileType) => ARCHIVE_ONLY_TYPES.includes((fileType || '')
 
 const isImage = (t) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((t || '').toLowerCase());
 const isPdf = (t) => (t || '').toLowerCase() === 'pdf';
+const isAudio = (t) => ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma'].includes((t || '').toLowerCase());
+const isVideo = (t) => ['mp4', 'avi', 'mov', 'mkv', 'webm', 'm4v', 'wmv'].includes((t || '').toLowerCase());
 
 const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
@@ -116,12 +119,32 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     const [desc, setDesc] = useState(doc?.aciklama || '');
     const [descEditing, setDescEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [txFullText, setTxFullText] = useState('');
+    const [txLoading, setTxLoading] = useState(false);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
         setDesc(doc?.aciklama || '');
         setDescEditing(false);
     }, [doc?.id]);
+
+    useEffect(() => {
+        const metaFullText = doc?.meta?.transcription_full_text || '';
+        if (metaFullText) {
+            setTxFullText(metaFullText);
+        } else {
+            setTxFullText('');
+            const status = doc?.meta?.transcription_status;
+            if ((isAudio(doc?.file_type) || isVideo(doc?.file_type)) && status === 'done') {
+                setTxLoading(true);
+                fetch(`/api/archive/transcript/${doc.id}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => { if (data?.full_text) setTxFullText(data.full_text); })
+                    .catch(() => {})
+                    .finally(() => setTxLoading(false));
+            }
+        }
+    }, [doc?.id, doc?.meta?.transcription_status, doc?.meta?.transcription_full_text, doc?.file_type]);
 
     if (!doc) return null;
 
@@ -301,6 +324,105 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                             </div>
                         )}
                     </div>
+
+                    {/* Transkripsiyon Bölümü — ses/video dosyaları için */}
+                    {(isAudio(doc.file_type) || isVideo(doc.file_type)) && (() => {
+                        const meta = doc.meta || {};
+                        const txStatus = meta.transcription_status;
+                        const txLang = meta.transcription_language;
+                        const txChunkCount = meta.transcription_chunk_count;
+
+                        const handleDownload = () => {
+                            const content = txFullText || meta.transcription_raw_text || '';
+                            if (!content) return;
+                            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${doc.filename.replace(/\.[^.]+$/, '')}_transkript.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        };
+
+                        return (
+                            <div className="flex flex-col gap-2">
+                                {/* Başlık + İndir Butonu */}
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-1">
+                                        <Mic size={12} className="text-slate-400" />
+                                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Metin Dökümü</span>
+                                    </div>
+                                    {txStatus === 'done' && (txFullText || meta.transcription_raw_text) && (
+                                        <button
+                                            onClick={handleDownload}
+                                            title="Transkripti TXT olarak indir"
+                                            className="flex items-center gap-1 px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-md text-[10px] font-medium transition-colors"
+                                        >
+                                            <Download size={11} /> TXT İndir
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Tam metin kutusu */}
+                                {txStatus === 'done' && txFullText && !txLoading && (
+                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto">
+                                        <p className="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed font-mono">
+                                            {txFullText}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Durum kartı */}
+                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${
+                                    txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
+                                    txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-50 border-amber-200' :
+                                    txStatus === 'failed' ? 'bg-red-50 border-red-200' :
+                                    'bg-slate-50 border-slate-200'
+                                }`}>
+                                    <div className={`shrink-0 p-1.5 rounded-lg ${
+                                        txStatus === 'done' ? 'bg-teal-100' :
+                                        txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-100' :
+                                        txStatus === 'failed' ? 'bg-red-100' : 'bg-slate-100'
+                                    }`}>
+                                        {txLoading
+                                            ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                            : txStatus === 'done'
+                                                ? <Mic size={15} className="text-teal-600" />
+                                                : txStatus === 'processing' || txStatus === 'pending'
+                                                    ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                                    : txStatus === 'failed'
+                                                        ? <AlertCircle size={15} className="text-red-500" />
+                                                        : <Mic size={15} className="text-slate-400" />
+                                        }
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-semibold text-slate-800 truncate">
+                                            {txStatus === 'done' ? 'Transkript hazır' :
+                                             txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
+                                             txStatus === 'failed' ? 'Transkripsiyon başarısız' :
+                                             'Transkript yok'}
+                                        </p>
+                                        <p className="text-[10px] mt-0.5 truncate">
+                                            {txLoading
+                                                ? <span className="text-teal-500">Transkript yükleniyor…</span>
+                                                : txStatus === 'done' && txFullText
+                                                    ? <span className="text-teal-600 font-medium">
+                                                        {txLang?.toUpperCase()}{txChunkCount ? ` · ${txChunkCount} parça` : ''} · {txFullText.length.toLocaleString('tr')} karakter
+                                                      </span>
+                                                    : txStatus === 'done' && !txFullText
+                                                        ? <span className="text-slate-400">Transkript metni bulunamadı</span>
+                                                        : txStatus === 'failed'
+                                                            ? <span className="text-red-500">İşlem sırasında hata oluştu</span>
+                                                            : txStatus === 'processing' || txStatus === 'pending'
+                                                                ? <span className="text-amber-600">İşleniyor…</span>
+                                                                : <span className="text-slate-400">Henüz transkript oluşturulmadı</span>
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
@@ -879,6 +1001,31 @@ export default function ArchiveDocsViewer() {
                                                         <span className="text-[10px] text-slate-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
                                                         <span className="text-[10px] text-slate-400 font-medium">{formatBytes(doc.file_size)}</span>
                                                     </div>
+                                                    {doc.meta?.transcription_preview && (
+                                                        <div className="mt-1.5 w-full flex items-start justify-between gap-1 border-t border-slate-100 pt-1.5">
+                                                            <p className="flex-1 text-[10px] text-slate-500 leading-snug line-clamp-2 text-left">
+                                                                {doc.meta.transcription_preview}
+                                                            </p>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const content = doc.meta.transcription_full_text || doc.meta.transcription_raw_text || doc.meta.transcription_preview || '';
+                                                                    if (!content) return;
+                                                                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                                                                    const url = URL.createObjectURL(blob);
+                                                                    const a = document.createElement('a');
+                                                                    a.href = url;
+                                                                    a.download = `${doc.filename.replace(/\.[^.]+$/, '')}_transkript.txt`;
+                                                                    a.click();
+                                                                    URL.revokeObjectURL(url);
+                                                                }}
+                                                                title="Transkripti TXT olarak indir"
+                                                                className="shrink-0 p-1 rounded hover:bg-teal-100 text-teal-600 transition-colors"
+                                                            >
+                                                                <Download size={11} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}
