@@ -3,7 +3,8 @@ import {
     PackageOpen, Folder, File, ChevronRight, Upload, Search,
     FileText, Plus, Database, Trash2, FolderInput, Cpu, X,
     CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
-    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp
+    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
+    Mic, Loader2, AlertCircle, GripVertical
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 
@@ -28,6 +29,8 @@ const isArchiveOnly = (fileType) => ARCHIVE_ONLY_TYPES.includes((fileType || '')
 
 const isImage = (t) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((t || '').toLowerCase());
 const isPdf = (t) => (t || '').toLowerCase() === 'pdf';
+const isAudio = (t) => ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma'].includes((t || '').toLowerCase());
+const isVideo = (t) => ['mp4', 'avi', 'mov', 'mkv', 'webm', 'm4v', 'wmv'].includes((t || '').toLowerCase());
 
 const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
@@ -116,12 +119,32 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     const [desc, setDesc] = useState(doc?.aciklama || '');
     const [descEditing, setDescEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [txFullText, setTxFullText] = useState('');
+    const [txLoading, setTxLoading] = useState(false);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
         setDesc(doc?.aciklama || '');
         setDescEditing(false);
     }, [doc?.id]);
+
+    useEffect(() => {
+        const metaFullText = doc?.meta?.transcription_full_text || '';
+        if (metaFullText) {
+            setTxFullText(metaFullText);
+        } else {
+            setTxFullText('');
+            const status = doc?.meta?.transcription_status;
+            if ((isAudio(doc?.file_type) || isVideo(doc?.file_type)) && status === 'done') {
+                setTxLoading(true);
+                fetch(`/api/archive/transcript/${doc.id}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => { if (data?.full_text) setTxFullText(data.full_text); })
+                    .catch(() => {})
+                    .finally(() => setTxLoading(false));
+            }
+        }
+    }, [doc?.id, doc?.meta?.transcription_status, doc?.meta?.transcription_full_text, doc?.file_type]);
 
     if (!doc) return null;
 
@@ -301,6 +324,105 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                             </div>
                         )}
                     </div>
+
+                    {/* Transkripsiyon Bölümü — ses/video dosyaları için */}
+                    {(isAudio(doc.file_type) || isVideo(doc.file_type)) && (() => {
+                        const meta = doc.meta || {};
+                        const txStatus = meta.transcription_status;
+                        const txLang = meta.transcription_language;
+                        const txChunkCount = meta.transcription_chunk_count;
+
+                        const handleDownload = () => {
+                            const content = txFullText || meta.transcription_raw_text || '';
+                            if (!content) return;
+                            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${doc.filename.replace(/\.[^.]+$/, '')}_transkript.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        };
+
+                        return (
+                            <div className="flex flex-col gap-2">
+                                {/* Başlık + İndir Butonu */}
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-1">
+                                        <Mic size={12} className="text-slate-400" />
+                                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Metin Dökümü</span>
+                                    </div>
+                                    {txStatus === 'done' && (txFullText || meta.transcription_raw_text) && (
+                                        <button
+                                            onClick={handleDownload}
+                                            title="Transkripti TXT olarak indir"
+                                            className="flex items-center gap-1 px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-md text-[10px] font-medium transition-colors"
+                                        >
+                                            <Download size={11} /> TXT İndir
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Tam metin kutusu */}
+                                {txStatus === 'done' && txFullText && !txLoading && (
+                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto">
+                                        <p className="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed font-mono">
+                                            {txFullText}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Durum kartı */}
+                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${
+                                    txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
+                                    txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-50 border-amber-200' :
+                                    txStatus === 'failed' ? 'bg-red-50 border-red-200' :
+                                    'bg-slate-50 border-slate-200'
+                                }`}>
+                                    <div className={`shrink-0 p-1.5 rounded-lg ${
+                                        txStatus === 'done' ? 'bg-teal-100' :
+                                        txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-100' :
+                                        txStatus === 'failed' ? 'bg-red-100' : 'bg-slate-100'
+                                    }`}>
+                                        {txLoading
+                                            ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                            : txStatus === 'done'
+                                                ? <Mic size={15} className="text-teal-600" />
+                                                : txStatus === 'processing' || txStatus === 'pending'
+                                                    ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                                    : txStatus === 'failed'
+                                                        ? <AlertCircle size={15} className="text-red-500" />
+                                                        : <Mic size={15} className="text-slate-400" />
+                                        }
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-semibold text-slate-800 truncate">
+                                            {txStatus === 'done' ? 'Transkript hazır' :
+                                             txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
+                                             txStatus === 'failed' ? 'Transkripsiyon başarısız' :
+                                             'Transkript yok'}
+                                        </p>
+                                        <p className="text-[10px] mt-0.5 truncate">
+                                            {txLoading
+                                                ? <span className="text-teal-500">Transkript yükleniyor…</span>
+                                                : txStatus === 'done' && txFullText
+                                                    ? <span className="text-teal-600 font-medium">
+                                                        {txLang?.toUpperCase()}{txChunkCount ? ` · ${txChunkCount} parça` : ''} · {txFullText.length.toLocaleString('tr')} karakter
+                                                      </span>
+                                                    : txStatus === 'done' && !txFullText
+                                                        ? <span className="text-slate-400">Transkript metni bulunamadı</span>
+                                                        : txStatus === 'failed'
+                                                            ? <span className="text-red-500">İşlem sırasında hata oluştu</span>
+                                                            : txStatus === 'processing' || txStatus === 'pending'
+                                                                ? <span className="text-amber-600">İşleniyor…</span>
+                                                                : <span className="text-slate-400">Henüz transkript oluşturulmadı</span>
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
@@ -505,52 +627,66 @@ export default function ArchiveDocsViewer() {
         }));
         e.dataTransfer.setData('itemId', item.id); // Geriye dönük uyumluluk (Fallback)
 
-        // Dışarıya Sürükleme (Native OS Drag-out) Desteği
+        // Dışarıya Sürükleme (Native OS Drag-out) Desteği — Chrome/Edge
         // Sadece tekil fiziksel dosya kopyalamasına izin ver (klasörler hariç)
         if (item.file_type && item.file_type !== 'folder') {
             const origin = window.location.origin;
-            const downloadUrl = `${origin}/api/archive/file/${item.id}`;
-            // Tarayıcı dışına (masaüstü/mail vb.) fiziksel dosya kopyalaması sağlar
+            // /download/ endpoint'i Content-Disposition: attachment döndürür
+            // Bu sayede OS dosyayı masaüstüne / mail ekine / WA'ya kopyalayabilir
+            const downloadUrl = `${origin}/api/archive/download/${item.id}`;
             e.dataTransfer.setData('DownloadURL', `application/octet-stream:${item.filename}:${downloadUrl}`);
         }
 
-        if (dragIds.length > 1) {
-            // Sürüklenen diğer öğelerin "toplanma (stack)" hissi veren Animasyonlu Ghost (Hayalet) resmi
-            const ghost = document.createElement('div');
-            ghost.style.position = 'absolute';
-            ghost.style.top = '-1000px';
-            ghost.style.left = '-1000px';
-            ghost.style.display = 'flex';
-            ghost.style.alignItems = 'center';
-            ghost.style.justifyContent = 'center';
-            ghost.style.pointerEvents = 'none';
+        // copyLink: hem içeri taşıma (copy) hem dışarı sürükleme (link) sinyali verir
+        e.dataTransfer.effectAllowed = 'copyLink';
 
-            let stackHtml = `<div style="position:relative; width:120px; height:120px;">`;
+        // Ghost (Hayalet) görsel — çok dosyada stack, tek dosyada basit kart
+        const ghost = document.createElement('div');
+        ghost.style.position = 'absolute';
+        ghost.style.top = '-1000px';
+        ghost.style.left = '-1000px';
+        ghost.style.pointerEvents = 'none';
+
+        if (dragIds.length > 1) {
+            // Stack animasyonu
+            let stackHtml = `<div style="position:relative; width:130px; height:130px;">`;
             const displayCount = Math.min(dragIds.length, 4);
             for (let i = 0; i < displayCount; i++) {
                 const rotation = i * 6 - 5;
                 const offset = i * 4;
                 const zIndex = 10 - i;
                 stackHtml += `
-                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
-                        ${i === 0 ? `<div style="font-size:10px; font-weight:bold; color:#334155; text-align:center; padding:0 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;">${item.filename}</div>` : `<div style="width:30px; height:3px; background:#e2e8f0; border-radius:2px; margin-bottom:4px;"></div><div style="width:20px; height:3px; background:#e2e8f0; border-radius:2px;"></div>`}
-                    </div>
-                `;
+                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        ${i === 0
+                            ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>`
+                            : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
+                    </div>`;
             }
             stackHtml += `
-                <div style="position:absolute; bottom:0px; right:0px; background:#A01B1B; color:white; font-size:11px; font-weight:bold; border-radius:999px; padding:3px 10px; z-index:20; box-shadow:0 2px 5px rgba(160,27,27,0.4); border:2px solid white;">
+                <div style="position:absolute;bottom:0;right:0;background:#A01B1B;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(160,27,27,0.4);border:2px solid white;">
                     ${dragIds.length} Dosya
                 </div>
             </div>`;
             ghost.innerHTML = stackHtml;
-
             document.body.appendChild(ghost);
-            e.dataTransfer.setDragImage(ghost, 60, 60);
-
-            setTimeout(() => {
-                if (document.body.contains(ghost)) document.body.removeChild(ghost);
-            }, 0);
+            e.dataTransfer.setDragImage(ghost, 65, 65);
+        } else if (item.file_type && item.file_type !== 'folder') {
+            // Tek dosya — dışarı sürükleme göstergeli kart
+            ghost.innerHTML = `
+                <div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;box-shadow:0 8px 20px rgba(0,0,0,0.15);min-width:160px;max-width:220px;">
+                    <div style="font-size:22px;flex-shrink:0;">📄</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:11px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.filename}</div>
+                        <div style="font-size:10px;color:#10b981;font-weight:500;margin-top:2px;">↗ Dışarıya bırak</div>
+                    </div>
+                </div>`;
+            document.body.appendChild(ghost);
+            e.dataTransfer.setDragImage(ghost, 20, 20);
         }
+
+        setTimeout(() => {
+            if (document.body.contains(ghost)) document.body.removeChild(ghost);
+        }, 0);
     };
 
     const handleDragOver = (e, folderId) => {
@@ -841,6 +977,14 @@ export default function ArchiveDocsViewer() {
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
                                                     </div>
+                                                    {/* Dışarı sürükleme tutamacı — hover'da görünür */}
+                                                    <div
+                                                        title="Sürükleyerek masaüstüne, maile veya WhatsApp'a kopyala"
+                                                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-slate-400 cursor-grab active:cursor-grabbing"
+                                                    >
+                                                        <GripVertical size={11} />
+                                                        <span className="text-[9px] leading-none">sürükle</span>
+                                                    </div>
                                                     {/* Vectorized badge — Excel dosyalarında gösterme */}
                                                     {doc.is_vectorized && !isArchiveOnly(doc.file_type) && (
                                                         <span className="absolute top-2 right-2 bg-teal-50 text-teal-700 border border-teal-100 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none">VEK</span>
@@ -879,6 +1023,31 @@ export default function ArchiveDocsViewer() {
                                                         <span className="text-[10px] text-slate-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
                                                         <span className="text-[10px] text-slate-400 font-medium">{formatBytes(doc.file_size)}</span>
                                                     </div>
+                                                    {doc.meta?.transcription_preview && (
+                                                        <div className="mt-1.5 w-full flex items-start justify-between gap-1 border-t border-slate-100 pt-1.5">
+                                                            <p className="flex-1 text-[10px] text-slate-500 leading-snug line-clamp-2 text-left">
+                                                                {doc.meta.transcription_preview}
+                                                            </p>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const content = doc.meta.transcription_full_text || doc.meta.transcription_raw_text || doc.meta.transcription_preview || '';
+                                                                    if (!content) return;
+                                                                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                                                                    const url = URL.createObjectURL(blob);
+                                                                    const a = document.createElement('a');
+                                                                    a.href = url;
+                                                                    a.download = `${doc.filename.replace(/\.[^.]+$/, '')}_transkript.txt`;
+                                                                    a.click();
+                                                                    URL.revokeObjectURL(url);
+                                                                }}
+                                                                title="Transkripti TXT olarak indir"
+                                                                className="shrink-0 p-1 rounded hover:bg-teal-100 text-teal-600 transition-colors"
+                                                            >
+                                                                <Download size={11} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}

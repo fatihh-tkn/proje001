@@ -121,11 +121,14 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                 }));
 
                 // Dışarıya Sürükleme (Native OS Drag-out) Desteği
-                // Sol panelden tutarak Outlook/masaüstü gibi yerlere dosyayı kopyala
+                // Sol panelden tutarak Outlook/masaüstü/WhatsApp gibi yerlere dosyayı kopyala
                 if (node.url && node.extension && node.extension !== 'folder') {
                     const origin = window.location.origin;
-                    const downloadUrl = node.url.startsWith('http') ? node.url : `${origin}${node.url}`;
+                    // /download/ endpoint'i Content-Disposition: attachment döner — OS dosya olarak tanır
+                    const rawUrl = node.url.startsWith('http') ? node.url : `${origin}${node.url}`;
+                    const downloadUrl = rawUrl.replace('/api/archive/file/', '/api/archive/download/');
                     e.dataTransfer.setData('DownloadURL', `application/octet-stream:${node.name}:${downloadUrl}`);
+                    e.dataTransfer.effectAllowed = 'copyLink';
                 }
 
                 // 2) Kendi özel Sürükleme Hayaletimizi ('Drag Ghost') Oluşturuyoruz
