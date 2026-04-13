@@ -405,13 +405,40 @@ def dosya_getir(kimlik: str):
         mime_type, _ = mimetypes.guess_type(belge.dosya_adi)
         if not mime_type:
             mime_type = "application/octet-stream"
-            
+
         encoded_filename = urllib.parse.quote(belge.dosya_adi)
 
         return FileResponse(
             path=belge.depolama_yolu,
             media_type=mime_type,
             headers={"Content-Disposition": f"inline; filename*=utf-8''{encoded_filename}"}
+        )
+
+
+@router.get("/download/{kimlik}")
+def dosya_indir(kimlik: str):
+    """Dosyayı zorla indirme modunda (attachment) sunar.
+    DownloadURL drag-out ve doğrudan indirme butonları bu endpoint'i kullanır."""
+    with get_session() as db:
+        belge = db.get(Belge, kimlik)
+        if not belge or not belge.depolama_yolu:
+            raise HTTPException(status_code=404, detail="Dosya bulunamadı.")
+        if not os.path.exists(belge.depolama_yolu):
+            raise HTTPException(status_code=404, detail="Fiziksel dosya eksik.")
+
+        import mimetypes
+        import urllib.parse
+
+        mime_type, _ = mimetypes.guess_type(belge.dosya_adi)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        encoded_filename = urllib.parse.quote(belge.dosya_adi)
+
+        return FileResponse(
+            path=belge.depolama_yolu,
+            media_type=mime_type,
+            headers={"Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}"}
         )
 
 

@@ -4,7 +4,7 @@ import {
     FileText, Plus, Database, Trash2, FolderInput, Cpu, X,
     CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
     Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
-    Mic, Loader2, AlertCircle
+    Mic, Loader2, AlertCircle, GripVertical
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 
@@ -627,52 +627,66 @@ export default function ArchiveDocsViewer() {
         }));
         e.dataTransfer.setData('itemId', item.id); // Geriye dönük uyumluluk (Fallback)
 
-        // Dışarıya Sürükleme (Native OS Drag-out) Desteği
+        // Dışarıya Sürükleme (Native OS Drag-out) Desteği — Chrome/Edge
         // Sadece tekil fiziksel dosya kopyalamasına izin ver (klasörler hariç)
         if (item.file_type && item.file_type !== 'folder') {
             const origin = window.location.origin;
-            const downloadUrl = `${origin}/api/archive/file/${item.id}`;
-            // Tarayıcı dışına (masaüstü/mail vb.) fiziksel dosya kopyalaması sağlar
+            // /download/ endpoint'i Content-Disposition: attachment döndürür
+            // Bu sayede OS dosyayı masaüstüne / mail ekine / WA'ya kopyalayabilir
+            const downloadUrl = `${origin}/api/archive/download/${item.id}`;
             e.dataTransfer.setData('DownloadURL', `application/octet-stream:${item.filename}:${downloadUrl}`);
         }
 
-        if (dragIds.length > 1) {
-            // Sürüklenen diğer öğelerin "toplanma (stack)" hissi veren Animasyonlu Ghost (Hayalet) resmi
-            const ghost = document.createElement('div');
-            ghost.style.position = 'absolute';
-            ghost.style.top = '-1000px';
-            ghost.style.left = '-1000px';
-            ghost.style.display = 'flex';
-            ghost.style.alignItems = 'center';
-            ghost.style.justifyContent = 'center';
-            ghost.style.pointerEvents = 'none';
+        // copyLink: hem içeri taşıma (copy) hem dışarı sürükleme (link) sinyali verir
+        e.dataTransfer.effectAllowed = 'copyLink';
 
-            let stackHtml = `<div style="position:relative; width:120px; height:120px;">`;
+        // Ghost (Hayalet) görsel — çok dosyada stack, tek dosyada basit kart
+        const ghost = document.createElement('div');
+        ghost.style.position = 'absolute';
+        ghost.style.top = '-1000px';
+        ghost.style.left = '-1000px';
+        ghost.style.pointerEvents = 'none';
+
+        if (dragIds.length > 1) {
+            // Stack animasyonu
+            let stackHtml = `<div style="position:relative; width:130px; height:130px;">`;
             const displayCount = Math.min(dragIds.length, 4);
             for (let i = 0; i < displayCount; i++) {
                 const rotation = i * 6 - 5;
                 const offset = i * 4;
                 const zIndex = 10 - i;
                 stackHtml += `
-                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
-                        ${i === 0 ? `<div style="font-size:10px; font-weight:bold; color:#334155; text-align:center; padding:0 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;">${item.filename}</div>` : `<div style="width:30px; height:3px; background:#e2e8f0; border-radius:2px; margin-bottom:4px;"></div><div style="width:20px; height:3px; background:#e2e8f0; border-radius:2px;"></div>`}
-                    </div>
-                `;
+                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        ${i === 0
+                            ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>`
+                            : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
+                    </div>`;
             }
             stackHtml += `
-                <div style="position:absolute; bottom:0px; right:0px; background:#A01B1B; color:white; font-size:11px; font-weight:bold; border-radius:999px; padding:3px 10px; z-index:20; box-shadow:0 2px 5px rgba(160,27,27,0.4); border:2px solid white;">
+                <div style="position:absolute;bottom:0;right:0;background:#A01B1B;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(160,27,27,0.4);border:2px solid white;">
                     ${dragIds.length} Dosya
                 </div>
             </div>`;
             ghost.innerHTML = stackHtml;
-
             document.body.appendChild(ghost);
-            e.dataTransfer.setDragImage(ghost, 60, 60);
-
-            setTimeout(() => {
-                if (document.body.contains(ghost)) document.body.removeChild(ghost);
-            }, 0);
+            e.dataTransfer.setDragImage(ghost, 65, 65);
+        } else if (item.file_type && item.file_type !== 'folder') {
+            // Tek dosya — dışarı sürükleme göstergeli kart
+            ghost.innerHTML = `
+                <div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;box-shadow:0 8px 20px rgba(0,0,0,0.15);min-width:160px;max-width:220px;">
+                    <div style="font-size:22px;flex-shrink:0;">📄</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:11px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.filename}</div>
+                        <div style="font-size:10px;color:#10b981;font-weight:500;margin-top:2px;">↗ Dışarıya bırak</div>
+                    </div>
+                </div>`;
+            document.body.appendChild(ghost);
+            e.dataTransfer.setDragImage(ghost, 20, 20);
         }
+
+        setTimeout(() => {
+            if (document.body.contains(ghost)) document.body.removeChild(ghost);
+        }, 0);
     };
 
     const handleDragOver = (e, folderId) => {
@@ -962,6 +976,14 @@ export default function ArchiveDocsViewer() {
                                                     <div onClick={(e) => toggleSelect(doc.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
+                                                    </div>
+                                                    {/* Dışarı sürükleme tutamacı — hover'da görünür */}
+                                                    <div
+                                                        title="Sürükleyerek masaüstüne, maile veya WhatsApp'a kopyala"
+                                                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-slate-400 cursor-grab active:cursor-grabbing"
+                                                    >
+                                                        <GripVertical size={11} />
+                                                        <span className="text-[9px] leading-none">sürükle</span>
                                                     </div>
                                                     {/* Vectorized badge — Excel dosyalarında gösterme */}
                                                     {doc.is_vectorized && !isArchiveOnly(doc.file_type) && (
