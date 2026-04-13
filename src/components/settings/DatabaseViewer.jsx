@@ -146,6 +146,16 @@ const DatabaseViewer = ({ readOnly }) => {
 
     /* ── analiz animasyonu ve dosya yükleme ── */
     const executeAnalysis = (file, whisperModel = "large-v3", whisperDevice = "cuda") => {
+        // Önceki yüklemeden kalan interval'ı temizle (üzerine yazılıp kaybolmasın)
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+        }
+        if (xhrRef.current) {
+            xhrRef.current.abort();
+            xhrRef.current = null;
+        }
+
         setStagedFile(file);
         setPhase('analyzing');
         setProgress(0);
@@ -176,35 +186,37 @@ const DatabaseViewer = ({ readOnly }) => {
             }
         };
 
+        const stopPolling = () => {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+        };
+
         let pollInterval = null;
         if (isMedia) {
             pollInterval = setInterval(async () => {
                 try {
                     const r = await fetch(`/api/progress/${taskId}`);
-                    if (r.ok) {
-                        const d = await r.json();
-                        let realPercent = d.percent > 0 ? Math.round(d.percent) : 0;
+                    if (!r.ok) { stopPolling(); return; }
 
-                        setProgress(prev => {
-                            // "Simulated Progress" / Hayalet ilerleme
-                            // Model yükleniyor aşamasında 15'ten başlayıp ağır ağır 24'e kadar doldur (Sistem dondu zannedilmesin)
-                            if (d.status === 'loading_model' && prev >= 15 && prev < 24) {
-                                return prev + 1;
-                            }
-                            // VAD (ses analizi fırtınası) sırasında 25'ten 35'e kadar hayalet ilerleme yap
-                            if (d.status === 'transcribing' && prev >= 25 && prev < 35 && realPercent <= prev) {
-                                return prev + 1;
-                            }
+                    const d = await r.json();
 
-                            // Normal backend senkronizasyonu
-                            if (realPercent > prev) {
-                                return realPercent;
-                            }
-
-                            return prev;
-                        });
+                    // İş bitti veya bilinmiyor → interval'ı durdur
+                    if (d.status === 'done' || d.status === 'idle') {
+                        stopPolling();
+                        return;
                     }
-                } catch (e) { }
+
+                    const realPercent = d.percent > 0 ? Math.round(d.percent) : 0;
+
+                    setProgress(prev => {
+                        if (d.status === 'loading_model' && prev >= 15 && prev < 24) return prev + 1;
+                        if (d.status === 'transcribing' && prev >= 25 && prev < 35 && realPercent <= prev) return prev + 1;
+                        if (realPercent > prev) return realPercent;
+                        return prev;
+                    });
+                } catch (_) { }
             }, 1000);
             pollIntervalRef.current = pollInterval;
         } else {
@@ -542,13 +554,22 @@ const DatabaseViewer = ({ readOnly }) => {
             }
         }
 
-        // Sadece bu belgeye ait parcalari hizlica SQL uzerinden cek (Step 3)
         if (!recordVectors[rec.id]) {
             try {
                 const res = await fetch(`/api/sql/documents/${encodeURIComponent(rec.id)}/chunks`);
                 if (res.ok) {
                     const data = await res.json();
                     setRecordVectors(prev => ({ ...prev, [rec.id]: data.chunks || [] }));
+
+                    // UX İyileştirmesi: Chunk'lar geldiğinde tüm sayfaları otomatik olarak açık yap
+                    if (data.chunks && data.chunks.length > 0) {
+                        const allPages = {};
+                        data.chunks.forEach(v => {
+                            const p = v.page || 'Genel';
+                            allPages[p] = true;
+                        });
+                        setExpandedPages(allPages);
+                    }
                 } else {
                     setRecordVectors(prev => ({ ...prev, [rec.id]: [] }));
                 }
@@ -556,6 +577,14 @@ const DatabaseViewer = ({ readOnly }) => {
                 console.error("Fetch vector list failed", e);
                 setRecordVectors(prev => ({ ...prev, [rec.id]: [] }));
             }
+        } else {
+            // Zaten yüklüyse yine tüm sayfaları açık (expanded) duruma getir
+            const allPages = {};
+            recordVectors[rec.id].forEach(v => {
+                const p = v.page || 'Genel';
+                allPages[p] = true;
+            });
+            setExpandedPages(allPages);
         }
     };
 

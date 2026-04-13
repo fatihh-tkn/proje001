@@ -5,8 +5,8 @@ SQLAlchemy engine + session factory.
 
 Tasarim Kurallari:
   - Tek engine, tek SessionLocal, her request yeni session alir.
-  - SQLite icin FK zorunlulugu event listener ile aktif edilir.
-  - DATABASE_URL env var ile PostgreSQL'e gecmek tek satir degisiklik.
+  - DATABASE_URL her zaman PostgreSQL bağlantısıdır.
+  - Bağlantı .env dosyasından okunur: DATABASE_URL=postgresql://...
 """
 
 from __future__ import annotations
@@ -15,36 +15,23 @@ import os
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-# -- Baglanti URL'i -----------------------------------------------------------
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_DEFAULT_SQLITE_URL = f"sqlite:///{os.path.join(_BASE_DIR, 'app.db')}"
-
-DATABASE_URL: str = os.getenv("DATABASE_URL", _DEFAULT_SQLITE_URL)
-
-# -- Engine -------------------------------------------------------------------
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-
-engine = create_engine(
-    DATABASE_URL,
-    connect_args=_connect_args,
-    pool_pre_ping=True,
-    echo=False,
+# -- Bağlantı URL'i (her zaman PostgreSQL) ------------------------------------
+DATABASE_URL: str = os.getenv(
+    "DATABASE_URL",
+    "postgresql://proje001:proje001pass@localhost:5432/proje001db"
 )
 
-# -- SQLite FK Zorunlulugu ----------------------------------------------------
-if DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_conn, _connection_record):
-        cursor = dbapi_conn.cursor()
-        # Yabanci anahtar kisitlamalarini zorunlu hale getir
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        # WAL modu: es zamanli okuma/yazma icin performansi arttirir
-        # (logs.db ile ayni politika)
-        cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.close()
+# -- Engine -------------------------------------------------------------------
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,   # Kopuk bağlantıları otomatik yeniler
+    pool_size=10,         # Bağlantı havuzu
+    max_overflow=20,
+    echo=False,
+)
 
 # -- Session Factory ----------------------------------------------------------
 SessionLocal = sessionmaker(

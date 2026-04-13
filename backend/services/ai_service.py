@@ -98,7 +98,7 @@ def _save_to_history(
         )
 
     try:
-        from database.vector.chroma_db import vector_db
+        from database.vector.pgvector_db import vector_db
         safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
         doc_text = f"Kullanıcı dedi ki: {user_text}\nAI Cevap Verdi: {ai_text}"
         vector_db.add_documents(
@@ -118,7 +118,7 @@ def clear_session_history(session_id: str) -> None:
         repo.delete_session(session_id)
         
     try:
-        from database.vector.chroma_db import vector_db
+        from database.vector.pgvector_db import vector_db
         safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
         vector_db.delete_collection(safe_col_name)
     except Exception:
@@ -126,7 +126,7 @@ def clear_session_history(session_id: str) -> None:
 
 def _fetch_chat_memory(session_id: str, query: str) -> str:
     try:
-        from database.vector.chroma_db import vector_db
+        from database.vector.pgvector_db import vector_db
         safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
         if safe_col_name in vector_db.list_collections():
             results = vector_db.query(collection_name=safe_col_name, query_texts=[query], n_results=2)
@@ -182,7 +182,7 @@ def _build_semantic_context(
     """
     top_k = top_k or SETTINGS.GENERAL_RAG_TOP_K
     try:
-        from database.vector.chroma_db import vector_db
+        from database.vector.pgvector_db import vector_db
         from database.sql.session import get_session
         from database.sql.repositories.document_repo import DocumentRepository
 
@@ -221,10 +221,17 @@ def _build_semantic_context(
                 if not filtered_ids:
                     continue
 
-                # Aşama 2 & 3: Graf Genişletmesi ve SQLite JOIN
+                # Aşama 2: ChunkGraph ile komşu genişletmesi (NEXT/PREV/SEMANTIC)
+                try:
+                    from database.graph.networkx_db import chunk_graph
+                    expanded_ids = chunk_graph.expand(filtered_ids)
+                except Exception:
+                    expanded_ids = filtered_ids
+
+                # Aşama 3: Graf Genişletmesi ve SQLite JOIN
                 with get_session() as db:
                     repo = DocumentRepository(db)
-                    rich_contexts = repo.node_ids_to_context(filtered_ids[:top_k])
+                    rich_contexts = repo.node_ids_to_context(expanded_ids[:top_k])
 
                     for ctx in rich_contexts:
                         doc_info = ctx["document"]

@@ -4,6 +4,12 @@ from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, 
 
 api_router = APIRouter()
 
+# ── Hafif sağlık kontrolü — DB veya ağır servis bağımlılığı yok ─────────────
+@api_router.get("/health", tags=["system"])
+def health_check():
+    """Frontend boot monitörü için hafif sağlık endpoint'i."""
+    return {"status": "ok"}
+
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(files.router, prefix="/files", tags=["files"])
 api_router.include_router(db.router, prefix="/db", tags=["database"])

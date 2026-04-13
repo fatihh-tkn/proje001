@@ -94,12 +94,16 @@ class DocumentRepository:
         chroma_id: str,
         content: Optional[str] = None,
         location_marker: Optional[str] = None,
+        sayfa_no: Optional[int] = None,
+        sinir_kutusu: Optional[str] = None
     ) -> VektorParcasi:
         node = VektorParcasi(
             belge_kimlik=document_id,
             chromadb_kimlik=chroma_id,
             icerik=content,
             konum_imi=location_marker,
+            sayfa_no=sayfa_no,
+            sinir_kutusu=sinir_kutusu
         )
         self.db.add(node)
         self.db.commit()
@@ -118,7 +122,9 @@ class DocumentRepository:
                 belge_kimlik=n.get("document_id") or n.get("belge_kimlik"),
                 chromadb_kimlik=n.get("chroma_id") or n.get("chromadb_kimlik"),
                 icerik=n.get("content") or n.get("icerik"),
-                konum_imi=n.get("location_marker") or n.get("konum_imi")
+                konum_imi=n.get("location_marker") or n.get("konum_imi"),
+                sayfa_no=n.get("sayfa_no") or n.get("page"),
+                sinir_kutusu=n.get("sinir_kutusu") or n.get("bbox")
             ))
         self.db.add_all(objects)
         self.db.commit()
@@ -162,7 +168,7 @@ class DocumentRepository:
         if missing_ids:
             try:
                 # Ghost vektorleri ChromaDB'den kalıcı olarak temizleyerek veri hatasını canlı onarıyoruz.
-                from database.vector.chroma_db import vector_db
+                from database.vector.pgvector_db import vector_db
                 vector_db.delete_documents("yilgenci_collection", missing_ids)
                 print(f"[RAG HEALER] {len(missing_ids)} adet hayalet vektör ChromaDB'den silindi: {missing_ids[:2]}...")
             except Exception as e:

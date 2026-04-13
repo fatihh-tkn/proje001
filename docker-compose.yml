@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  # 1. Veritabanı
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: proje001-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: proje001
+      POSTGRES_PASSWORD: proje001pass
+      POSTGRES_DB: proje001db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - proje001-network
+
+  # 2. Python Backend Modülü
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: proje001-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://proje001:proje001pass@postgres:5432/proje001db
+      # .env dosyasındakiler de okunacaktır
+    env_file:
+      - ./backend/.env
+    # Eğer belgeler / vektör içerikleri varsa host makineden kalıcı alan bağlanabilir:
+    volumes:
+      - ./backend/data:/app/data
+    depends_on:
+      - postgres
+    # NGINX arkaya bağlayacağı (reverse proxy) için dışarı açmaya gerek yok. Sadece içeriden erişilecek.
+    networks:
+      - proje001-network
+
+  # 3. React/Vite Frontend Modülü (Nginx Sunucusu)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proje001-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80" # Sunucunun 80 (HTTP) portunu dinler
+    depends_on:
+      - backend
+    networks:
+      - proje001-network
+
+volumes:
+  pg_data:
+
+
+networks:
+  proje001-network:
+    driver: bridge

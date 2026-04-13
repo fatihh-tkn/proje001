@@ -195,6 +195,11 @@ def _parse_docx_hierarchical(file_path: str, file_basename: str, ext: str) -> li
             "metadata": {"source": file_basename, "type": "text_empty"}
         }]
 
+    # prev_id / next_id bağlantıları
+    for i, chunk in enumerate(chunks):
+        chunk["metadata"]["prev_id"] = chunks[i - 1]["id"] if i > 0 else ""
+        chunk["metadata"]["next_id"] = chunks[i + 1]["id"] if i < len(chunks) - 1 else ""
+
     return chunks
 
 
@@ -236,10 +241,11 @@ def _chunks_from_text(raw_text: str, file_basename: str, ext: str) -> list[dict]
 
     sub_chunks = _chunk_text(raw_text)
     total = len(sub_chunks)
+    ids = [str(uuid.uuid4()) for _ in sub_chunks]
     chunks = []
     for idx, part in enumerate(sub_chunks):
         chunks.append({
-            "id":   str(uuid.uuid4()),
+            "id":   ids[idx],
             "text": f"[{file_basename} | Parça {idx+1}/{total}]\n\n{part}",
             "metadata": {
                 "page":        idx + 1,
@@ -247,6 +253,8 @@ def _chunks_from_text(raw_text: str, file_basename: str, ext: str) -> list[dict]
                 "source":      file_basename,
                 "type":        f"text_{ext}",
                 "total_pages": total,
+                "prev_id":     ids[idx - 1] if idx > 0 else "",
+                "next_id":     ids[idx + 1] if idx < total - 1 else "",
             }
         })
     return chunks

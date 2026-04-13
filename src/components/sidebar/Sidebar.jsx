@@ -11,6 +11,7 @@ import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
 import UserPanel from './UserPanel';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
     const isN8nBooting = useWorkspaceStore(state => state.isN8nBooting);
@@ -140,6 +141,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         }).finally(() => {
                             useWorkspaceStore.getState().setIsLoggedIn(false);
                             useWorkspaceStore.getState().setCurrentUser(null);
+                            resetBackendMonitoring();
                         });
                     }
                 }}

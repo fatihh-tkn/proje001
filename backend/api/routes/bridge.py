@@ -88,7 +88,11 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
 @router.get("/progress/{task_id}")
 def get_progress(task_id: str):
     from services.processors.audio_processor import GLOBAL_PROGRESS
-    return GLOBAL_PROGRESS.get(task_id, {"status": "idle", "percent": 0.0})
+    data = GLOBAL_PROGRESS.get(task_id, {"status": "idle", "percent": 0.0})
+    # Tamamlanmış görevleri bir kez okuyup sil — frontend durduktan sonra bellekte birikmez
+    if data.get("status") in ("done", "error"):
+        GLOBAL_PROGRESS.pop(task_id, None)
+    return data
 
 
 
@@ -104,7 +108,7 @@ def delete_chunk(chunk_id: str):
       5. Belge Meta → parca_sayisi 1 azaltır
     """
     from database.sql.models import VektorParcasi, BilgiIliskisi, Belge
-    from database.vector.chroma_db import vector_db
+    from database.vector.pgvector_db import vector_db
     from database.graph.networkx_db import graph_db
     from sqlalchemy import select, or_
 
@@ -233,7 +237,7 @@ def _resolve_collection(db, chunk_id: str, parca=None) -> str:
 @router.post("/save-to-db")
 def save_to_db(data: dict):
     from database.sql.models import VektorParcasi, BilgiIliskisi, Belge
-    from database.vector.chroma_db import vector_db
+    from database.vector.pgvector_db import vector_db
     from sqlalchemy import select, tuple_
     from database.graph.networkx_db import graph_db
 
@@ -325,7 +329,7 @@ def save_to_db(data: dict):
                     curr_id = chunk.get("id") or str(uuid.uuid4())
                     meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
 
-                    clean_meta = {"sqlite_doc_id": resolved_belge_kimlik}
+                    clean_meta = {"sql_doc_id": resolved_belge_kimlik, "sqlite_doc_id": resolved_belge_kimlik}
                     for k, v in meta.items():
                         # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
                         # Emu/subclass gibi türevleri de str/int/float'a zorunlu dönüştür

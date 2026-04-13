@@ -28,54 +28,46 @@ TABLO_ACIKLAMALARI = {
     "denetim_izleri":       "Denetim İzleri (Audit Log)",
 }
 
-@router.get("/tables", summary="Tüm SQL tablolarını listele (App.db + Logs.db birleşik)")
+@router.get("/tables", summary="Tüm SQL tablolarını listele")
 def get_tables():
     from database.sql.session import engine
-    from database.logs.session import logs_engine
 
-    # app.db
     metadata_app = MetaData()
     metadata_app.reflect(bind=engine)
-    tables_app = list(metadata_app.tables.keys())
+    all_tables = sorted(metadata_app.tables.keys())
 
-    # logs.db
-    metadata_logs = MetaData()
-    metadata_logs.reflect(bind=logs_engine)
-    tables_logs = list(metadata_logs.tables.keys())
-
-    all_tables = sorted(tables_app + tables_logs)
     enriched = [{"name": t, "aciklama": TABLO_ACIKLAMALARI.get(t, t)} for t in all_tables]
     return {"tables": all_tables, "tablo_bilgileri": enriched}
 
 @router.get("/tables/{table_name}", summary="Belirtilen SQL tablosunun verilerini getir")
 def get_table_data(table_name: str, limit: int = Query(100, le=500), offset: int = 0):
     from database.sql.session import engine
-    from database.logs.session import logs_engine
 
     metadata_app = MetaData()
     metadata_app.reflect(bind=engine)
 
-    metadata_logs = MetaData()
-    metadata_logs.reflect(bind=logs_engine)
-
-    db_engine = None
-    table_obj = None
-
-    if table_name in metadata_app.tables:
-        db_engine = engine
-        table_obj = metadata_app.tables[table_name]
-    elif table_name in metadata_logs.tables:
-        db_engine = logs_engine
-        table_obj = metadata_logs.tables[table_name]
-    else:
+    if table_name not in metadata_app.tables:
         raise HTTPException(status_code=404, detail="Tablo bulunamadı")
-        
-    with db_engine.connect() as conn:
+
+    table_obj = metadata_app.tables[table_name]
+    with engine.connect() as conn:
         stmt = select(table_obj).limit(limit).offset(offset)
         result = conn.execute(stmt)
         columns = [col for col in result.keys()]
-        rows = [dict(zip(columns, row)) for row in result.fetchall()]
         
+        rows = []
+        for row in result.fetchall():
+            row_dict = {}
+            for col, val in zip(columns, row):
+                if val is None:
+                    row_dict[col] = None
+                elif isinstance(val, (dict, list, int, float, bool, str)):
+                    row_dict[col] = val
+                else:
+                    # PostgreSQL vector/UUID veya datetime objelerini string'e cast et
+                    row_dict[col] = str(val)
+            rows.append(row_dict)
+            
         count_stmt = select(func.count()).select_from(table_obj)
         total = conn.execute(count_stmt).scalar()
         
@@ -256,7 +248,6 @@ def get_schema():
       }
     """
     from database.sql.session import engine as app_engine
-    from database.logs.session import logs_engine
     from sqlalchemy import text
 
     def _reflect_db(eng, db_label: str) -> list[dict]:
@@ -308,11 +299,10 @@ def get_schema():
                 )
         return results
 
-    app_tables  = _reflect_db(app_engine,  db_label="app")
-    logs_tables = _reflect_db(logs_engine, db_label="logs")
+    app_tables = _reflect_db(app_engine, db_label="app")
 
-    # Tablolari birlestir; isme gore sort et (UI'da deterministic siralama)
-    all_tables = sorted(app_tables + logs_tables, key=lambda t: t["name"])
+    # Tablolari isme gore sort et (UI'da deterministic siralama)
+    all_tables = sorted(app_tables, key=lambda t: t["name"])
 
     return {"tables": all_tables, "total": len(all_tables)}
 
@@ -614,6 +604,49 @@ def get_document_chunks(doc_id: str):
                 "page": p.sayfa_no or 1,
                 "x": 0,
                 "y": 0,
+            })
+            
+    return {"chunks": results, "total": len(results)}
+
+
+@router.get("/chunks", summary="Sistemdeki tüm parçacıkları limitli getir (Vektör Ayarları UI için)")
+def get_all_global_chunks(limit: int = 1000):
+    with get_session() as db:
+        # join with Belge to get filename
+        from database.sql.models import Belge
+        # query chunks
+        stmt = select(VektorParcasi, Belge.dosya_adi).outerjoin(
+            Belge, VektorParcasi.belge_kimlik == Belge.kimlik
+        ).limit(limit)
+        
+        rows = db.execute(stmt).all()
+        
+        results = []
+        for p, d_name in rows:
+            # Koordinat çıkarma (sinir_kutusu genelde "x,y,w,h" formatındadır)
+            x_val, y_val = 0, 0
+            bbox_str = p.sinir_kutusu if p.sinir_kutusu else ""
+            if bbox_str and bbox_str != "0,0,0,0":
+                parts = bbox_str.split(',')
+                if len(parts) >= 2:
+                    try:
+                        x_val = int(float(parts[0]))
+                        y_val = int(float(parts[1]))
+                    except ValueError:
+                        pass
+                        
+            results.append({
+                "id": p.chromadb_kimlik,
+                "text": p.icerik,
+                "file": d_name or "Bilinmeyen Dosya",
+                "page": p.sayfa_no or 1,
+                "x": x_val,
+                "y": y_val,
+                "rawMeta": {
+                    "source": d_name or "Bilinmeyen Dosya",
+                    "page": p.sayfa_no or 1,
+                    "bbox": bbox_str
+                }
             })
             
     return {"chunks": results, "total": len(results)}

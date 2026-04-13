@@ -274,7 +274,7 @@ def toplu_sil(istek: TopluSilRequest):
       - Dis depo silme basarisiz olsa return objesi 'uyarilar' listesiyle
         durumu raporlar; SQL kaydi SILINMEZ, veri kaybi olusmaz.
     """
-    from database.vector.chroma_db import vector_db
+    from database.vector.pgvector_db import vector_db
     from database.graph.networkx_db import graph_db
 
     silinen   = 0
@@ -493,7 +493,7 @@ def _run_transcription(doc_id: str):
     """
     import uuid as _uuid
     from services.processors.audio_processor import parse_audio, GLOBAL_PROGRESS
-    from database.vector.chroma_db import vector_db
+    from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
     from sqlalchemy import select
 
@@ -551,7 +551,7 @@ def _run_transcription(doc_id: str):
         for c in chunks:
             cid  = c.get("id") or str(_uuid.uuid4())
             meta = c.get("metadata", {})
-            clean = {"sqlite_doc_id": doc_id}
+            clean = {"sql_doc_id": doc_id, "sqlite_doc_id": doc_id}
             for k, v in meta.items():
                 clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
             metadatas.append(clean)
@@ -640,7 +640,7 @@ def _run_transcription(doc_id: str):
 def _run_vectorization(doc_id: str):
     import uuid as _uuid
     from services.processors.text_processor import parse_text
-    from database.vector.chroma_db import vector_db
+    from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
     from sqlalchemy import select
 
@@ -688,7 +688,7 @@ def _run_vectorization(doc_id: str):
         for c in chunks:
             cid  = c.get("id") or str(_uuid.uuid4())
             meta_data = c.get("metadata", {})
-            clean = {"sqlite_doc_id": doc_id}
+            clean = {"sql_doc_id": doc_id, "sqlite_doc_id": doc_id}
             for k, v in meta_data.items():
                 clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
             metadatas.append(clean)

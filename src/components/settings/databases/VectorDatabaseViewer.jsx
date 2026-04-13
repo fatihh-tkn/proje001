@@ -42,7 +42,6 @@ export default function VectorDatabaseViewer() {
     const fetchRecords = useCallback(async () => {
         setDbLoading(true);
         try {
-            await fetchWithTimeout(`${BASE}/collections/${COLLECTION}`, {}, 5000);
             setBackendReady(true);
             // Dosya tablosunu (sol panel) SQL'den daha verimli sekilde cek
             const sqlRes = await fetch('/api/sql/documents');
@@ -50,32 +49,22 @@ export default function VectorDatabaseViewer() {
             const sqlFiles = (sqlData.records || []).map(r => ({ id: r.id, file: r.file }));
             setFiles(sqlFiles);
 
-            // Vektorleri 'limit=50000' ile bir anda cekmeyi onluyoruz, performans icin sadece sinirli donduruyoruz.
-            const res = await fetch(`${BASE}/collections/${COLLECTION}/content?limit=500`);
+            // Vektörleri tamamen PostgreSQL (pgvector) özel endpoint'inden çekiyoruz
+            const res = await fetch(`/api/sql/chunks?limit=1000`);
             if (res.ok) {
                 const data = await res.json();
                 const vectors = [];
-                if (data && Array.isArray(data.ids)) {
-                    for (let i = 0; i < data.ids.length; i++) {
-                        const meta = data.metadatas ? data.metadatas[i] : {};
-                        // ChromaDB metadatası `source` anahtarında tutulur, eski veriler için `file` fallback'i bırakılır.
-                        // PPTX chunks store coords in bbox (EMU), PDF in x/y (points)
-                        let x = meta.x || 0;
-                        let y = meta.y || 0;
-                        if ((!x || !y) && meta.bbox && meta.bbox !== '0,0,0,0') {
-                            const parts = meta.bbox.split(',');
-                            if (parts.length >= 2) {
-                                x = x || Math.round(parseFloat(parts[0]));
-                                y = y || Math.round(parseFloat(parts[1]));
-                            }
-                        }
+                if (data && Array.isArray(data.chunks)) {
+                    for (let i = 0; i < data.chunks.length; i++) {
+                        const chunkObj = data.chunks[i];
+                        const meta = chunkObj.rawMeta || {};
                         vectors.push({
-                            id: data.ids[i],
-                            text: data.documents ? data.documents[i] : '',
-                            file: meta.source || meta.file || 'Bilinmeyen Dosya',
-                            page: meta.page || 1,
-                            x,
-                            y,
+                            id: chunkObj.id,
+                            text: chunkObj.text,
+                            file: chunkObj.file,
+                            page: chunkObj.page,
+                            x: chunkObj.x || 0,
+                            y: chunkObj.y || 0,
                             rawMeta: meta
                         });
                     }

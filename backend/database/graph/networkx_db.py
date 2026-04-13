@@ -173,3 +173,110 @@ class NetworkXGraphDB(GraphDBProvider):
 
 # Tüm uygulamanın kullanacağı tek noktadan servis bağlamı
 graph_db = NetworkXGraphDB()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CHUNK GRAPH — chromadb_kimlik tabanlı in-memory bağ grafiği
+#
+# Düğümler : chromadb_kimlik (UUID string)
+# Kenarlar :
+#   NEXT     → aynı belge, sıralı akış
+#   PREV     → NEXT'in tersi (otomatik)
+#   SEMANTIC → belgeler arası semantik yakınlık
+#
+# Retrieval sonrası expand() çağrısı komşu chunk ID'lerini döner.
+# Bu ID'ler ChromaDB'den fetch edilip LLM bağlamına eklenir.
+# ═══════════════════════════════════════════════════════════════════
+
+class ChunkGraph:
+    """
+    ChromaDB chunk ID'leri (UUID) üzerinde in-memory bağ grafiği.
+    memory.py her belge yüklendiğinde NEXT/PREV/SEMANTIC kenarlarını ekler.
+    """
+
+    def __init__(self) -> None:
+        self._g: nx.DiGraph = nx.DiGraph()
+
+    # ── Kenar ekleme ─────────────────────────────────────────────────
+
+    def add_next(self, src: str, tgt: str) -> None:
+        """NEXT + otomatik PREV."""
+        self._g.add_edge(src, tgt, relation="NEXT")
+        self._g.add_edge(tgt, src, relation="PREV")
+
+    def add_semantic(self, src: str, tgt: str, weight: float = 1.0) -> None:
+        """Belgeler arası semantik kenar (çift yönlü)."""
+        self._g.add_edge(src, tgt, relation="SEMANTIC", weight=weight)
+        self._g.add_edge(tgt, src, relation="SEMANTIC", weight=weight)
+
+    def add_edges_batch(
+        self,
+        next_pairs: list[tuple[str, str]],
+        semantic_pairs: list[tuple[str, str, float]],
+    ) -> None:
+        """Toplu ekleme — memory.py tarafından kullanılır."""
+        for src, tgt in next_pairs:
+            self.add_next(src, tgt)
+        for src, tgt, w in semantic_pairs:
+            self.add_semantic(src, tgt, w)
+
+    # ── Komşu sorgulama ──────────────────────────────────────────────
+
+    def get_neighbors(
+        self,
+        chunk_id: str,
+        relations: list[str] | None = None,
+    ) -> list[str]:
+        if chunk_id not in self._g:
+            return []
+        result = []
+        for _, neighbor, data in self._g.out_edges(chunk_id, data=True):
+            if relations is None or data.get("relation") in relations:
+                result.append(neighbor)
+        return result
+
+    def expand(
+        self,
+        chunk_ids: list[str],
+        include_next_prev: bool = True,
+        include_semantic: bool = True,
+    ) -> list[str]:
+        """
+        Retrieval sonucu chunk listesini komşularla genişletir.
+        Orijinal sıra korunur, tekrar yoktur.
+        """
+        relations: list[str] = []
+        if include_next_prev:
+            relations += ["NEXT", "PREV"]
+        if include_semantic:
+            relations.append("SEMANTIC")
+
+        seen: set[str] = set(chunk_ids)
+        expanded: list[str] = list(chunk_ids)
+
+        for cid in chunk_ids:
+            for neighbor in self.get_neighbors(cid, relations):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    expanded.append(neighbor)
+
+        return expanded
+
+    # ── Temizleme ────────────────────────────────────────────────────
+
+    def remove_document(self, chunk_ids: list[str]) -> None:
+        """Belge silindiğinde ilgili düğümleri ve kenarlarını temizle."""
+        for cid in chunk_ids:
+            if cid in self._g:
+                self._g.remove_node(cid)
+
+    @property
+    def stats(self) -> dict:
+        return {
+            "nodes": self._g.number_of_nodes(),
+            "edges": self._g.number_of_edges(),
+        }
+
+
+# Singleton — memory.py ve retrieval katmanı bu nesneyi kullanır
+chunk_graph = ChunkGraph()

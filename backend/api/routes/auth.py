@@ -6,9 +6,8 @@ from datetime import datetime, timezone
 import bcrypt
 
 from database.sql.session import get_db
-from database.sql.models import Kullanici, Belge, AIModeli, DenetimIzi
-from database.logs.session import get_logs_session
-from database.logs.models import ApiLog
+from database.sql.models import Kullanici, Belge, AIModeli, DenetimIzi, ApiLogu as ApiLog
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -52,6 +51,9 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
+    from database.sql.init_db import is_db_ready
+    if not is_db_ready():
+        raise HTTPException(status_code=503, detail="Sistem henüz hazırlanıyor, lütfen birkaç saniye sonra tekrar deneyin.")
     # E-postaya gore kullaniciyi bul (aktif filtresi yok - durumu biz kontrol ederiz)
     kullanici = db.query(Kullanici).filter(
         Kullanici.eposta == req.eposta
@@ -344,8 +346,12 @@ def get_live_dashboard(db: Session = Depends(get_db)):
     failed_logins = 0
     total_signals = 0
     
-    with get_logs_session() as logs_db:
-        api_logs = logs_db.query(ApiLog).filter(ApiLog.olusturulma_tarihi.like(f"{today}%")).all()
+    from database.sql.session import get_session
+    with get_session() as logs_db:
+        from sqlalchemy import select
+        api_logs = list(logs_db.scalars(
+            select(ApiLog).where(ApiLog.olusturulma_tarihi.like(f"{today}%"))
+        ).all())
         total_signals = len(api_logs)
         for al in api_logs:
             if al.kullanici_kimlik in stats_map:

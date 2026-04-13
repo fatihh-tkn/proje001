@@ -19,8 +19,10 @@ import asyncio
 from fastapi.concurrency import run_in_threadpool
 
 def _graph_ready_hint():
-    """Lazy Graf Modu: startup'ta yükleme yok. Düğümler sorgu anında SQL'den çekilir."""
+    """Lazy Graf Modu: DB hazır olunca kenar sayısını logla."""
     try:
+        from database.sql.init_db import wait_for_db
+        wait_for_db(timeout=30.0)
         from database.sql.session import get_session
         from database.sql.models import BilgiIliskisi
         from sqlalchemy import func, select
@@ -31,28 +33,15 @@ def _graph_ready_hint():
         print(f"[GRAPH] Kenar sayısı okunamadı: {e}")
 
 
-def _init_logs():
-    """logs.db şemasını kur ve eski logları sil (TTL rotation)."""
-    try:
-        from database.logs.init_logs_db import init_logs_db, rotate_old_logs
-        init_logs_db()
-        # Varsayılan: 30 günden eski logları sil (sistem_ayarlari'ndan okunabilir)
-        try:
-            from core.db_bridge import get_system_settings
-            days = int(get_system_settings().get("LOG_RETENTION_DAYS", 30))
-        except Exception:
-            days = 30
-        rotate_old_logs(retention_days=days)
-    except Exception as e:
-        print(f"[LOGS-INIT] logs.db başlatılamadı: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Uygulama başladığında DB tablolarını oluştur."""
-    init_db()
+    """
+    Sunucu anında ayağa kalkar (yield hemen).
+    DB init ve diğer ağır işler background thread'de çalışır.
+    Login endpoint, DB hazır olduğu anda (genellikle <1s) çalışmaya başlar.
+    """
+    asyncio.create_task(run_in_threadpool(init_db))
     asyncio.create_task(run_in_threadpool(_graph_ready_hint))
-    asyncio.create_task(run_in_threadpool(_init_logs))
 
     yield
 

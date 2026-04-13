@@ -472,4 +472,10 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
         if 'doc' in locals() and hasattr(doc, 'close'):
             doc.close()
 
+    # prev_id / next_id — özet chunk (index 0) hariç, slayt chunk'ları arasında bağ
+    slide_chunks = [c for c in chunks if c.get("metadata", {}).get("type") != "document_summary"]
+    for i, chunk in enumerate(slide_chunks):
+        chunk["metadata"]["prev_id"] = slide_chunks[i - 1]["id"] if i > 0 else ""
+        chunk["metadata"]["next_id"] = slide_chunks[i + 1]["id"] if i < len(slide_chunks) - 1 else ""
+
     return chunks

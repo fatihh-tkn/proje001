@@ -292,56 +292,48 @@ const DatabaseMemoryTable = ({
                                                                 </div>
 
                                                                 {/* Düğümler */}
-                                                                <AnimatePresence>
-                                                                    {open && (
-                                                                        <motion.div
-                                                                            initial={{ height: 0, opacity: 0 }}
-                                                                            animate={{ height: 'auto', opacity: 1 }}
-                                                                            exit={{ height: 0, opacity: 0 }}
-                                                                            transition={{ duration: 0.15 }}
-                                                                            className="overflow-hidden"
-                                                                        >
-                                                                            {pVecs.map((vector, vIdx) => (
-                                                                                <div
-                                                                                    key={vector.id}
-                                                                                    className={`relative group/v flex items-start gap-3 pl-12 pr-5 py-2.5 border-b border-slate-50 transition-colors
+                                                                {open && (
+                                                                    <div className="overflow-hidden border-t border-slate-50 transition-all duration-300">
+                                                                        {pVecs.map((vector, vIdx) => (
+                                                                            <div
+                                                                                key={vector.id}
+                                                                                className={`relative group/v flex items-start gap-3 pl-12 pr-5 py-2.5 border-b border-slate-50 transition-colors
                                                                                         ${deleteConfirm?.id === vector.id ? 'bg-red-50/50' : 'hover:bg-slate-50/80'}`}
-                                                                                >
-                                                                                    {/* Numara */}
-                                                                                    <div className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border border-slate-200 bg-white text-[9px] font-bold text-slate-400 flex items-center justify-center group-hover/v:border-[#A01B1B]/40 group-hover/v:text-[#A01B1B] transition-colors">
-                                                                                        {vIdx + 1}
-                                                                                    </div>
-
-                                                                                    {/* İçerik */}
-                                                                                    <div className="flex-1 min-w-0">
-                                                                                        <div className="flex items-center gap-2 mb-1">
-                                                                                            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Parça</span>
-                                                                                            <span className="font-mono text-[9px] text-slate-300 bg-slate-100 px-1 py-0.5 rounded">#{vector.id.substring(vector.id.length - 6)}</span>
-                                                                                        </div>
-                                                                                        <p className="text-[12px] text-slate-700 leading-relaxed line-clamp-2">{vector.text}</p>
-                                                                                    </div>
-
-                                                                                    {/* Sil */}
-                                                                                    <div className="shrink-0 self-center relative">
-                                                                                        <button
-                                                                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'vector', id: vector.id, recId: rec.id }); }}
-                                                                                            className={`p-1 rounded transition-all ${deleteConfirm?.id === vector.id ? 'opacity-100 text-red-500' : 'opacity-0 group-hover/v:opacity-100 text-slate-300 hover:text-red-400'}`}
-                                                                                        >
-                                                                                            <Trash2 size={12} />
-                                                                                        </button>
-                                                                                        {deleteConfirm?.type === 'vector' && deleteConfirm?.id === vector.id && (
-                                                                                            <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 bg-white border border-red-200 shadow-lg rounded-lg p-2 min-w-max" onClick={e => e.stopPropagation()}>
-                                                                                                <span className="text-[11px] text-slate-700 font-medium">Kes?</span>
-                                                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteVector(rec.id, vector.id); }} className="px-2.5 py-1 bg-[#A01B1B] text-white rounded text-[10px] font-bold">Evet</button>
-                                                                                                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded text-[10px]">İptal</button>
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
+                                                                            >
+                                                                                {/* Numara */}
+                                                                                <div className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border border-slate-200 bg-white text-[9px] font-bold text-slate-400 flex items-center justify-center group-hover/v:border-[#A01B1B]/40 group-hover/v:text-[#A01B1B] transition-colors">
+                                                                                    {vIdx + 1}
                                                                                 </div>
-                                                                            ))}
-                                                                        </motion.div>
-                                                                    )}
-                                                                </AnimatePresence>
+
+                                                                                {/* İçerik */}
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                                        <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Parça</span>
+                                                                                        <span className="font-mono text-[9px] text-slate-300 bg-slate-100 px-1 py-0.5 rounded">#{vector.id.substring(vector.id.length - 6)}</span>
+                                                                                    </div>
+                                                                                    <p className="text-[12px] text-slate-700 leading-relaxed line-clamp-2">{vector.text}</p>
+                                                                                </div>
+
+                                                                                {/* Sil */}
+                                                                                <div className="shrink-0 self-center relative">
+                                                                                    <button
+                                                                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'vector', id: vector.id, recId: rec.id }); }}
+                                                                                        className={`p-1 rounded transition-all ${deleteConfirm?.id === vector.id ? 'opacity-100 text-red-500' : 'opacity-0 group-hover/v:opacity-100 text-slate-300 hover:text-red-400'}`}
+                                                                                    >
+                                                                                        <Trash2 size={12} />
+                                                                                    </button>
+                                                                                    {deleteConfirm?.type === 'vector' && deleteConfirm?.id === vector.id && (
+                                                                                        <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 bg-white border border-red-200 shadow-lg rounded-lg p-2 min-w-max" onClick={e => e.stopPropagation()}>
+                                                                                            <span className="text-[11px] text-slate-700 font-medium">Kes?</span>
+                                                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteVector(rec.id, vector.id); }} className="px-2.5 py-1 bg-[#A01B1B] text-white rounded text-[10px] font-bold">Evet</button>
+                                                                                            <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded text-[10px]">İptal</button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     });

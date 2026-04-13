@@ -28,7 +28,17 @@ const MeetingUploadViewer = () => {
     const fetchMeetings = async () => {
         try {
             const res = await fetch(`${API}/list`);
-            if (res.ok) setMeetings(await res.json());
+            if (res.ok) {
+                const data = await res.json();
+                // API bazen array, bazen {value:[...]} döner
+                const list = Array.isArray(data) ? data : (data.value || []);
+                // status normalize et: "karantina" → "done", null/undefined → "done"
+                const normalized = list.map(m => ({
+                    ...m,
+                    status: (m.status === 'karantina' || !m.status) ? 'done' : m.status
+                }));
+                setMeetings(normalized);
+            }
         } catch { /* backend henüz hazır değilse sessizce geç */ }
     };
 
@@ -179,7 +189,7 @@ const MeetingUploadViewer = () => {
                                     </div>
                                     <StatusBadge status={m.status} />
                                     <a
-                                        href={`${API}/${m.id}/audio`}
+                                        href={m.source === 'archive' ? `/api/archive/file/${m.id}` : `${API}/${m.id}/audio`}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:text-violet-500 hover:bg-violet-50 transition-all opacity-0 group-hover:opacity-100"

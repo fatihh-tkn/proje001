@@ -8,7 +8,7 @@ from schemas.chroma_schema import (
     DeleteDocumentsRequest,
     QueryRequest,
 )
-from database.vector.chroma_db import vector_db
+from database.vector.pgvector_db import vector_db
 
 router = APIRouter()
 

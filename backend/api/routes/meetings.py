@@ -4,18 +4,16 @@ from pathlib import Path
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 
-from database.meetings.init_meetings_db import init_meetings_db, get_meetings_db, AUDIO_DIR, MEETINGS_DB_PATH
+from database.sql.session import get_session
+from database.sql.models import Toplanti, ToplantiSegmenti, ToplantiOzeti
 
 router = APIRouter()
 
 ALLOWED_AUDIO = {".mp3", ".mp4", ".m4a", ".wav", ".ogg", ".webm", ".flac", ".aac"}
-
-
-def _ensure_db():
-    """meetings.db yoksa otomatik kur."""
-    if not MEETINGS_DB_PATH.exists():
-        init_meetings_db()
+AUDIO_DIR = Path(__file__).parent.parent.parent / "database" / "meetings" / "audio"
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ──────────────────────────────────────────
@@ -23,7 +21,6 @@ def _ensure_db():
 # ──────────────────────────────────────────
 @router.post("/upload")
 async def upload_meeting(file: UploadFile = File(...)):
-    _ensure_db()
 
     if not file.filename:
         raise HTTPException(400, "Dosya adı boş.")
@@ -45,16 +42,18 @@ async def upload_meeting(file: UploadFile = File(...)):
     content = await file.read()
     dest.write_bytes(content)
 
-    # DB'ye toplantı kaydı ekle
-    conn = get_meetings_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO meetings (title, filename, audio_path, status) VALUES (?, ?, ?, 'processing')",
-        (Path(file.filename).stem, dest.name, str(dest))
-    )
-    meeting_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+    # DB'ye toplantı kaydı ekle (SQLAlchemy PostgreSQL üzerinden)
+    with get_session() as db:
+        yeni_toplanti = Toplanti(
+            baslik=Path(file.filename).stem,
+            dosya_adi=dest.name,
+            ses_yolu=str(dest),
+            durum="processing"
+        )
+        db.add(yeni_toplanti)
+        db.commit()
+        db.refresh(yeni_toplanti)
+        meeting_id = yeni_toplanti.kimlik
 
     # Asenkron transkripsiyon başlat (arka planda, stub — Whisper entegrasyonu sonraki adım)
     # asyncio.create_task(_transcribe(meeting_id, dest))
@@ -73,14 +72,55 @@ async def upload_meeting(file: UploadFile = File(...)):
 # ──────────────────────────────────────────
 @router.get("/list")
 def list_meetings():
-    _ensure_db()
-    conn = get_meetings_db()
-    cur = conn.cursor()
-    rows = cur.execute(
-        "SELECT id, title, filename, duration_s, status, created_at FROM meetings ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    from database.sql.models import Belge
+    
+    AUDIO_TYPES = {"mp3", "wav", "ogg", "m4a", "flac", "aac"}
+    VIDEO_TYPES = {"mp4", "avi", "mov", "webm"}
+    SES_VIDEO_TYPES = AUDIO_TYPES | VIDEO_TYPES
+
+    with get_session() as db:
+        # 1) Toplantılar tablosundan kayıtlı olanlar
+        toplantilar = db.scalars(
+            select(Toplanti).order_by(Toplanti.olusturulma_tarihi.desc())
+        ).all()
+        
+        results = [
+            {
+                "id": t.kimlik,
+                "title": t.baslik,
+                "filename": t.dosya_adi,
+                "duration_s": t.sure_saniye,
+                "status": t.durum,
+                "created_at": t.olusturulma_tarihi,
+                "source": "meetings"
+            } for t in toplantilar
+        ]
+        
+        # 2) belgeler tablosundaki ses/video dosyalarını da ekle
+        #    (Toplantılar tablosunda henüz kayıt yoksa buradan beslenecek)
+        belgeler = db.scalars(
+            select(Belge)
+            .where(Belge.dosya_turu.in_(list(SES_VIDEO_TYPES)))
+            .order_by(Belge.olusturulma_tarihi.desc())
+        ).all()
+        
+        # Belge ID setini oluştur (çakışma önleme)
+        mevcut_dosyalar = {t.dosya_adi for t in toplantilar}
+        
+        for b in belgeler:
+            if b.dosya_adi not in mevcut_dosyalar:
+                meta = b.meta or {}
+                results.append({
+                    "id": b.kimlik,          # UUID string
+                    "title": b.dosya_adi,
+                    "filename": b.dosya_adi,
+                    "duration_s": 0,
+                    "status": meta.get("transcription_status") or b.durum or "done",
+                    "created_at": b.olusturulma_tarihi,
+                    "source": "archive"
+                })
+        
+        return results
 
 
 # ──────────────────────────────────────────
@@ -88,79 +128,74 @@ def list_meetings():
 # ──────────────────────────────────────────
 @router.get("/{meeting_id}")
 def get_meeting(meeting_id: int):
-    _ensure_db()
-    conn = get_meetings_db()
-    cur = conn.cursor()
+    with get_session() as db:
+        toplanti = db.scalar(select(Toplanti).where(Toplanti.kimlik == meeting_id))
+        
+        if not toplanti:
+            raise HTTPException(404, "Toplantı bulunamadı.")
 
-    meeting = cur.execute("SELECT * FROM meetings WHERE id=?", (meeting_id,)).fetchone()
-    if not meeting:
-        conn.close()
-        raise HTTPException(404, "Toplantı bulunamadı.")
+        segments = db.scalars(
+            select(ToplantiSegmenti)
+            .where(ToplantiSegmenti.toplanti_kimlik == meeting_id)
+            .order_by(ToplantiSegmenti.baslangic_ms)
+        ).all()
 
-    segments = cur.execute(
-        "SELECT * FROM meeting_segments WHERE meeting_id=? ORDER BY start_ms", (meeting_id,)
-    ).fetchall()
+        summary_row = db.scalar(select(ToplantiOzeti).where(ToplantiOzeti.toplanti_kimlik == meeting_id))
 
-    summary_row = cur.execute(
-        "SELECT * FROM meeting_summaries WHERE meeting_id=?", (meeting_id,)
-    ).fetchone()
-
-    conn.close()
-
-    summary = None
-    if summary_row:
-        summary = dict(summary_row)
-        summary["action_items"] = json.loads(summary.get("action_items") or "[]")
-        summary["keywords"] = json.loads(summary.get("keywords") or "[]")
-
-    return {
-        "meeting": dict(meeting),
-        "segments": [dict(s) for s in segments],
-        "summary": summary
-    }
+        return {
+            "id": toplanti.kimlik,
+            "title": toplanti.baslik,
+            "filename": toplanti.dosya_adi,
+            "duration_s": toplanti.sure_saniye,
+            "status": toplanti.durum,
+            "created_at": toplanti.olusturulma_tarihi,
+            "segments": [
+                {
+                    "id": s.kimlik,
+                    "speaker": s.konusmaci,
+                    "start_ms": s.baslangic_ms,
+                    "end_ms": s.bitis_ms,
+                    "text": s.metin
+                } for s in segments
+            ],
+            "summary": summary_row.ozet if summary_row else "",
+            "action_items": summary_row.aksiyon_maddeleri if summary_row and summary_row.aksiyon_maddeleri else [],
+            "keywords": summary_row.anahtar_kelimeler if summary_row and summary_row.anahtar_kelimeler else []
+        }
 
 
 # ──────────────────────────────────────────
-# 4) Toplantı sil (ses + kayıt)
+# 4) Ses tabanlı silme
 # ──────────────────────────────────────────
 @router.delete("/{meeting_id}")
 def delete_meeting(meeting_id: int):
-    _ensure_db()
-    conn = get_meetings_db()
-    cur = conn.cursor()
+    with get_session() as db:
+        toplanti = db.scalar(select(Toplanti).where(Toplanti.kimlik == meeting_id))
+        if not toplanti:
+            raise HTTPException(404, "Bulunamadı.")
 
-    row = cur.execute("SELECT audio_path FROM meetings WHERE id=?", (meeting_id,)).fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(404, "Toplantı bulunamadı.")
+        import os
+        if toplanti.ses_yolu and os.path.exists(toplanti.ses_yolu):
+            try:
+                os.remove(toplanti.ses_yolu)
+            except Exception as e:
+                print(f"Ses dosyası silinemedi: {e}")
 
-    # Ses dosyasını sil
-    audio_path = Path(row["audio_path"])
-    if audio_path.exists():
-        audio_path.unlink()
+        # Cascade sildiği için segmentler ve summary'ler de silinecek
+        db.delete(toplanti)
+        db.commit()
 
-    cur.execute("DELETE FROM meetings WHERE id=?", (meeting_id,))
-    conn.commit()
-    conn.close()
-
-    return {"message": "Toplantı ve ses dosyası silindi."}
+        return {"status": "ok", "message": "Toplantı (ve ses dosyası) silindi."}
 
 
 # ──────────────────────────────────────────
-# 5) Ses dosyasını stream et
+# 5) Player için medya yayını
 # ──────────────────────────────────────────
-@router.get("/{meeting_id}/audio")
+@router.get("/audio/{meeting_id}")
 def stream_audio(meeting_id: int):
-    _ensure_db()
-    conn = get_meetings_db()
-    row = conn.execute("SELECT audio_path, filename FROM meetings WHERE id=?", (meeting_id,)).fetchone()
-    conn.close()
-
-    if not row:
-        raise HTTPException(404, "Toplantı bulunamadı.")
-
-    path = Path(row["audio_path"])
-    if not path.exists():
-        raise HTTPException(404, "Ses dosyası bulunamadı.")
-
-    return FileResponse(path, media_type="audio/mpeg", filename=row["filename"])
+    with get_session() as db:
+        toplanti = db.scalar(select(Toplanti).where(Toplanti.kimlik == meeting_id))
+        if not toplanti:
+            raise HTTPException(404, "Kayıt yok.")
+            
+        return FileResponse(toplanti.ses_yolu, media_type="audio/mpeg")

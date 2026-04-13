@@ -1,23 +1,25 @@
 """
 database/sql/models.py
 ──────────────────────────────────────────────────────────────────────
-Yılgenci Platformu — Tam ORM Şeması (SQLAlchemy 2.x, SQLite / PostgreSQL)
+Yılgenci Platformu — Tam ORM Şeması (SQLAlchemy 2.x, PostgreSQL + pgvector)
 
 Mimari Katmanlar:
   1. Kimlik & Yetki         → Kullanici, Rol, KullaniciRol
   2. Sohbet & Hafıza        → SohbetOturumu, SohbetMesaji
-  3. Belge & Arşiv          → Belge, VektorParcasi
+  2.5 Ses & Toplantılar     → Toplanti, ToplantiSegmenti, ToplantiOzeti
+  3. Belge & Arşiv          → Belge, VektorParcasi (pgvector tabanlı)
   4. Bilgi Grafiği          → BilgiIliskisi (Optimized Indexes)
-  5. Yapay Zeka İzleme      → AIModeli, BilgisayarOturumu (Logs moved to logs.db)
-  6. Sistem & Güvenlik      → Kullanici, Rol, KullaniciRol, SistemAyarlari
+  5. Yapay Zeka İzleme      → AIModeli, BilgisayarOturumu
+  6. Sistem & Güvenlik      → SistemAyarlari
   7. Denetim & İzleme       → DenetimIzleri
 
 Tasarım Kuralları:
-  - Tüm PK alanlar UUID string (36 karakter).
+  - Tüm PK alanlar UUID string (36 karakter) veya Integer (autoincrement).
   - Tüm tarih alanlar UTC ISO 8601 string olarak saklanır.
   - Yabancı anahtarlar ForeignKey ile tanımlanır; ondelete davranışı belirtilir.
   - İndeksler sorgu performansı için kritik alanlara eklenmiştir.
   - JSON alanlar esnek meta veri için kullanılır.
+  - Vektör alanlar pgvector Vector(384) ile saklanır.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -116,7 +119,7 @@ class SohbetOturumu(Base):
     baslik: Mapped[str | None] = mapped_column(String(256), nullable=True)
     # Bu oturumda kullanılan son AI modeli
     kullanilan_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    # Oturumun bağlı olduğu ChromaDB koleksiyonu (RAG filtresi)
+    # Oturumun bağlı olduğu pgvector koleksiyonu / RAG belge filtresi
     koleksiyon_adi: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Oturumun bağlı olduğu açık belge (dosya adı)
     aktif_dosya: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -181,6 +184,40 @@ class SohbetMesaji(Base):
         Index("ix_sohbet_mesajlari_oturum_kimlik", "oturum_kimlik"),
         Index("ix_sohbet_mesajlari_rol", "rol"),
     )
+
+# ═══════════════════════════════════════════════════════════════════
+# 2.5 TOPLANTILAR & SES KAYITLARI (Eski SQLite Meetings DB Alternatifi)
+# ═══════════════════════════════════════════════════════════════════
+
+class Toplanti(Base):
+    __tablename__ = "toplantilar"
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    baslik: Mapped[str] = mapped_column(String(256), nullable=False)
+    dosya_adi: Mapped[str] = mapped_column(String(512), nullable=False)
+    ses_yolu: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sure_saniye: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    durum: Mapped[str] = mapped_column(String(32), nullable=False, default="processing")
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+class ToplantiSegmenti(Base):
+    __tablename__ = "toplanti_segmentleri"
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    toplanti_kimlik: Mapped[int] = mapped_column(Integer, ForeignKey("toplantilar.kimlik", ondelete="CASCADE"), nullable=False)
+    konusmaci: Mapped[str] = mapped_column(String(64), nullable=False, default="Konuşmacı")
+    baslangic_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    bitis_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    metin: Mapped[str] = mapped_column(Text, nullable=False)
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+class ToplantiOzeti(Base):
+    __tablename__ = "toplanti_ozetleri"
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    toplanti_kimlik: Mapped[int] = mapped_column(Integer, ForeignKey("toplantilar.kimlik", ondelete="CASCADE"), nullable=False)
+    ozet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aksiyon_maddeleri: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    anahtar_kelimeler: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -250,9 +287,9 @@ class Belge(Base):
 
 class VektorParcasi(Base):
     """
-    Bir belgenin ChromaDB'ye yazılmış semantik parçası (chunk).
-    Her parçanın ChromaDB'deki tekil ID'si ve yer imi burada tutulur.
-    RAG sorgularında bu tablo üzerinden belgeye geri dönülür.
+    Bir belgenin pgvector tabanlı semantic parçası (chunk).
+    Hem metin içeriği hem de 384 boyutlu vektör embedding'i bu tabloda saklanır.
+    RAG sorgularında cosine distance ile bu tablo üzerinden arama yapılır.
     """
     __tablename__ = "vektor_parcalari"
 
@@ -274,6 +311,7 @@ class VektorParcasi(Base):
     embedding_modeli: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Bu parçanın RAG sorgularında kaç kez getirildiği
     tiklanma_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    vektor_verisi: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
     # En son hangi sorguda kullanıldığı
     son_sorgulanma_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
@@ -526,15 +564,56 @@ class AIAgent(Base):
     )
 
 # ═══════════════════════════════════════════════════════════════════
-# GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
-# Eski kod (bridge.py, monitor.py vb.) kısa İngilizce adlarla import eder.
-# Bu alias'lar mevcut kodu kırmadan çalışmaya devam etmesini sağlar.
+# 8. API LOG KATMANI (Eski logs.db → PostgreSQL)
 # ═══════════════════════════════════════════════════════════════════
-User       = Kullanici
-ChatSession   = SohbetOturumu
-ChatMessage   = SohbetMesaji
-Document   = Belge
-Node       = VektorParcasi
-Relation   = BilgiIliskisi
-UserModel  = AIModeli
-Agent      = AIAgent
+
+class ApiLogu(Base):
+    """
+    Her yapay zeka API çağrısının detaylı log kaydı.
+    Daha önce ayrı logs.db dosyasında tutulurdu; artık PostgreSQL'de.
+    """
+    __tablename__ = "api_loglari"
+
+    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    oturum_kimlik: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    kullanici_kimlik: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    tedarikci: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    durum: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
+    hata_kodu: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hata_mesaji: Mapped[str | None] = mapped_column(Text, nullable=True)
+    istek_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    yanit_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    toplam_token: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    maliyet_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sure_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ip_adresi: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mac_adresi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    istek_onizleme: Mapped[str | None] = mapped_column(Text, nullable=True)
+    yanit_onizleme: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rag_kullanildi_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    rag_dosya_adi: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+    __table_args__ = (
+        Index("ix_api_loglari_durum", "durum"),
+        Index("ix_api_loglari_kullanici_kimlik", "kullanici_kimlik"),
+        Index("ix_api_loglari_model", "model"),
+        Index("ix_api_loglari_oturum_kimlik", "oturum_kimlik"),
+        Index("ix_api_loglari_tarih", "olusturulma_tarihi"),
+        Index("ix_api_loglari_tedarikci", "tedarikci"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
+# ═══════════════════════════════════════════════════════════════════
+User        = Kullanici
+ChatSession = SohbetOturumu
+ChatMessage = SohbetMesaji
+Document    = Belge
+Node        = VektorParcasi
+Relation    = BilgiIliskisi
+UserModel   = AIModeli
+Agent       = AIAgent
+ApiLog      = ApiLogu

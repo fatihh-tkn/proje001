@@ -24,7 +24,7 @@ const EmptySlot = ({ tab, idx, zoneClass, isMinimized, onOpenFile, targetDropZon
         <div
             ref={setNodeRef}
             className={`pointer-events-auto relative border-2 transition-all rounded-[4px] ${zoneClass} 
-                ${showBoxHighlight ? 'border-[#A01B1B] bg-[#A01B1B]/10 z-50' : 'border-transparent'}
+                ${showBoxHighlight ? 'border-[#4F8CFF] bg-[#4F8CFF]/10 z-50' : 'border-transparent'}
             `}
             onDragOver={(e) => {
                 if (e.dataTransfer?.types.includes('application/json')) {
@@ -49,6 +49,50 @@ const EmptySlot = ({ tab, idx, zoneClass, isMinimized, onOpenFile, targetDropZon
                 }
             }}
         />
+    );
+};
+
+// Tüm layout zone'larını gösterir: aktif zone mavi highlight, diğerleri ghost outline
+const LayoutHintOverlay = ({ hint }) => {
+    const layout = SNAP_LAYOUTS.find(l => l.id === hint.layoutId);
+    if (!layout) return null;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: 'easeOut' }}
+            className="absolute inset-[12px] z-[70] pointer-events-none"
+        >
+            <div className={`w-full h-full grid gap-[6px] ${layout.parentClass}`}>
+                {layout.zones.map((zone, i) => {
+                    const isTarget = i === hint.zoneIndex;
+                    const gridClasses = zone.class
+                        .split(' ')
+                        .filter(c => c.startsWith('col-') || c.startsWith('row-'))
+                        .join(' ');
+                    return (
+                        <div
+                            key={i}
+                            className={`rounded-[6px] w-full h-full ${gridClasses}`}
+                            style={isTarget ? {
+                                border: '2px solid rgba(79, 140, 255, 0.85)',
+                                background: 'rgba(79, 140, 255, 0.12)',
+                                backdropFilter: 'blur(6px)',
+                                WebkitBackdropFilter: 'blur(6px)',
+                                boxShadow: 'inset 0 0 0 1px rgba(79, 140, 255, 0.2)',
+                                transition: 'all 0.15s ease',
+                            } : {
+                                border: '1.5px solid rgba(255, 255, 255, 0.1)',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                transition: 'all 0.15s ease',
+                            }}
+                        />
+                    );
+                })}
+            </div>
+        </motion.div>
     );
 };
 
@@ -315,40 +359,6 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
         return { type: null, layoutId: null, zoneIndex: -1 };
     };
 
-    // Sadece ince detaylı kırmızı kenarlıklara sahip içi tamamen boş önizleme stili
-    const layoutHintStyle = React.useMemo(() => {
-        const m = 12; // Margin (12px)
-        const base = {
-            position: 'absolute',
-            pointerEvents: 'none',
-            zIndex: 70,
-            borderRadius: '8px',
-            border: '2px solid rgba(160, 27, 27, 0.9)',
-            backgroundColor: 'rgba(160, 27, 27, 0.08)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-            transition: 'all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1)',
-            opacity: layoutHint ? 1 : 0,
-            transform: layoutHint ? 'scale(1)' : 'scale(0.96)',
-        };
-
-        // Varsayılan olarak tam merkeze boyutsuz bir şekilde konumlanıp gizlenir, layoutHint geldiğinde hedefine süzülür.
-        let geo = { top: '35%', left: '35%', width: '30%', height: '30%' };
-
-        switch (layoutHint) {
-            case 'left': geo = { top: `${m}px`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(100% - ${m * 2}px)` }; break;
-            case 'right': geo = { top: `${m}px`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(100% - ${m * 2}px)` }; break;
-            case 'top': geo = { top: `${m}px`, left: `${m}px`, width: `calc(100% - ${m * 2}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            case 'bottom': geo = { top: `calc(50% + ${m / 2}px)`, left: `${m}px`, width: `calc(100% - ${m * 2}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            case 'tl': geo = { top: `${m}px`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            case 'tr': geo = { top: `${m}px`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            case 'bl': geo = { top: `calc(50% + ${m / 2}px)`, left: `${m}px`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            case 'br': geo = { top: `calc(50% + ${m / 2}px)`, left: `calc(50% + ${m / 2}px)`, width: `calc(50% - ${m * 1.5}px)`, height: `calc(50% - ${m * 1.5}px)` }; break;
-            default: break;
-        }
-
-        return { ...base, ...geo };
-    }, [layoutHint]);
 
     // ==========================================
     // HARİCİDEN (Sidebar veya Menüden) SÜRÜKLE BIRAK YÖNETİMİ
@@ -357,7 +367,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
         if (e.dataTransfer.types.includes('application/json')) {
             e.preventDefault();
             const config = getDropZoneConfig(e);
-            setLayoutHint(config.type);
+            setLayoutHint(config.type ? config : null);
         }
     };
 
@@ -420,8 +430,12 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
 
                 <BackgroundLogo />
 
-                {/* Modern, Tekil Cam (Glassmorphic) İşaretçi */}
-                <div style={layoutHintStyle} />
+                {/* Layout önizlemesi: tüm zone'lar gösterilir, hedef mavi highlight */}
+                <AnimatePresence>
+                    {layoutHint && layoutHint.layoutId && (
+                        <LayoutHintOverlay key={layoutHint.layoutId} hint={layoutHint} />
+                    )}
+                </AnimatePresence>
 
                 <div className="absolute inset-0 z-10 p-0 pointer-events-none">
                     <SortableContext
