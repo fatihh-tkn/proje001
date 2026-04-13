@@ -20,6 +20,8 @@ import threading
 
 from sqlalchemy.exc import OperationalError
 
+from sqlalchemy import text
+
 from database.sql.base import Base
 from database.sql.session import engine
 
@@ -41,6 +43,24 @@ def wait_for_db(timeout: float = 30.0) -> bool:
     return _db_ready.wait(timeout=timeout)
 
 
+def _run_schema_migrations(eng) -> None:
+    """
+    Mevcut veritabanına eksik kolonları ekler (create_all() mevcut tabloları değiştirmez).
+    Her ALTER TABLE IF NOT EXISTS idempotent olduğundan güvenle tekrar çalışabilir.
+    """
+    migrations = [
+        # VektorParcasi: chunk metadata (image_path, page_width, page_height, type vb.)
+        "ALTER TABLE vektor_parcalari ADD COLUMN IF NOT EXISTS meta JSONB",
+    ]
+    with eng.connect() as conn:
+        for stmt in migrations:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Schema migration atlandı ({stmt[:60]}...): {e}")
+
+
 def init_db() -> None:
     """
     Postgres hazır olana kadar retry'lı bağlantı dener, ardından tabloları oluşturur.
@@ -53,6 +73,7 @@ def init_db() -> None:
         try:
             logger.info(f"Veritabanı bağlantısı deneniyor... ({attempt}/{max_attempts})")
             Base.metadata.create_all(bind=engine)
+            _run_schema_migrations(engine)
             logger.info("Veritabanı hazır.")
             _db_ready.set()
             return

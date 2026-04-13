@@ -307,6 +307,8 @@ class VektorParcasi(Base):
     sayfa_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bounding box (görüntü tabanlı parçalar için)
     sinir_kutusu: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Chunk'ın tam metadata'sı: image_path, page_width, page_height, zoom_factor, type vb.
+    meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Hangi embedding modeliyle vektörleştirildiği (model geçişlerini takip için)
     embedding_modeli: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Bu parçanın RAG sorgularında kaç kez getirildiği
