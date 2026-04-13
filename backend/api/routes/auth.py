@@ -149,11 +149,27 @@ def update_user_meta(user_id: str, meta: dict, db: Session = Depends(get_db)):
     user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
-    
+
     # We replace entirely or merge based on logic, we will replace here for simple toggle state
     user.meta = meta
     db.commit()
     return {"mesaj": "Ayarlar güncellendi"}
+
+
+class ProfileUpdateRequest(BaseModel):
+    tam_ad: str
+
+@router.patch("/users/{user_id}/profile")
+def update_user_profile(user_id: str, req: ProfileUpdateRequest, db: Session = Depends(get_db)):
+    """Kullanıcının profil bilgilerini (ad soyad) günceller."""
+    user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    if not req.tam_ad.strip():
+        raise HTTPException(status_code=400, detail="Ad soyad boş olamaz")
+    user.tam_ad = req.tam_ad.strip()
+    db.commit()
+    return {"mesaj": "Profil güncellendi", "tam_ad": user.tam_ad}
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str, db: Session = Depends(get_db)):

@@ -9,6 +9,7 @@ import FullLogoImage from '../../assets/logo-acik.png';
 import SymbolImage from '../../assets/logo-kapali.png';
 import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
+import UserPanel from './UserPanel';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
@@ -17,7 +18,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
-    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsOpen,  setSettingsOpen]  = useState(false);
+    const [userPanelOpen, setUserPanelOpen] = useState(false);
 
     const hasPermission = (key, defaultVal = true) => {
         if (!currentUser) return defaultVal;
@@ -122,6 +124,26 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 isCollapsed={isCollapsed}
                 onOpenFile={onOpenFile}
                 currentUser={currentUser}
+            />
+
+            {/* UserPanel — kullanıcı simgesine tıklayınca sağdan açılan panel */}
+            <UserPanel
+                open={userPanelOpen}
+                onClose={() => setUserPanelOpen(false)}
+                onLogout={() => {
+                    setUserPanelOpen(false);
+                    if (window.confirm('Oturumu kapatmak istediğinize emin misiniz?')) {
+                        fetch('/api/auth/audit/event', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kullanici_kimlik: currentUser?.id, islem_turu: 'LOGOUT' })
+                        }).finally(() => {
+                            useWorkspaceStore.getState().setIsLoggedIn(false);
+                            useWorkspaceStore.getState().setCurrentUser(null);
+                        });
+                    }
+                }}
+                isCollapsed={isCollapsed}
             />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
@@ -248,25 +270,20 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     )}
 
                     <div
+                        data-user-panel-trigger
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm('Oturumu kapatmak istediğinize emin misiniz?')) {
-                                fetch('/api/auth/audit/event', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ kullanici_kimlik: currentUser.id, islem_turu: 'LOGOUT' })
-                                }).finally(() => {
-                                    useWorkspaceStore.getState().setIsLoggedIn(false);
-                                    useWorkspaceStore.getState().setCurrentUser(null);
-                                });
-                            }
+                            setUserPanelOpen(v => !v);
                         }}
-                        className={`flex items-center justify-center bg-slate-800/60 border border-slate-700/50 rounded-sm cursor-pointer hover:border-[#A01B1B]/60 hover:bg-slate-800 transition-all duration-200
+                        className={`flex items-center justify-center bg-slate-800/60 border cursor-pointer transition-all duration-200 rounded-sm
+                            ${userPanelOpen
+                                ? 'border-[#A01B1B]/60 bg-slate-800 text-white'
+                                : 'border-slate-700/50 hover:border-[#A01B1B]/60 hover:bg-slate-800'}
                             ${isCollapsed ? 'w-11 h-11' : 'w-9 h-9'}
                         `}
-                        title="Kullanıcı"
+                        title={currentUser?.tam_ad || 'Kullanıcı'}
                     >
-                        <User size={isCollapsed ? 20 : 16} className="text-slate-400" />
+                        <User size={isCollapsed ? 20 : 16} className={userPanelOpen ? 'text-white' : 'text-slate-400'} />
                     </div>
                 </div>
             </div>
