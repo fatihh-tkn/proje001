@@ -51,6 +51,19 @@ def _run_schema_migrations(eng) -> None:
     migrations = [
         # VektorParcasi: chunk metadata (image_path, page_width, page_height, type vb.)
         "ALTER TABLE vektor_parcalari ADD COLUMN IF NOT EXISTS meta JSONB",
+        # BilgiIliskisi: duplicate kenar koruması — aynı (kaynak, hedef, tür) yalnızca 1 kez
+        """
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_bilgi_iliskileri_kaynak_hedef_tur'
+            ) THEN
+                ALTER TABLE bilgi_iliskileri
+                    ADD CONSTRAINT uq_bilgi_iliskileri_kaynak_hedef_tur
+                    UNIQUE (kaynak_parca_kimlik, hedef_parca_kimlik, iliski_turu);
+            END IF;
+        END $$
+        """,
     ]
     with eng.connect() as conn:
         for stmt in migrations:

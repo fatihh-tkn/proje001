@@ -382,6 +382,12 @@ class BilgiIliskisi(Base):
     )
 
     __table_args__ = (
+        # Aynı chunk çifti + tür kombinasyonu yalnızca bir kez olabilir.
+        # Re-upload veya tekrar çalışan memory.py duplicate kenar oluşturamaz.
+        UniqueConstraint(
+            "kaynak_parca_kimlik", "hedef_parca_kimlik", "iliski_turu",
+            name="uq_bilgi_iliskileri_kaynak_hedef_tur"
+        ),
         Index("ix_bilgi_iliskileri_kaynak", "kaynak_parca_kimlik"),
         Index("ix_bilgi_iliskileri_hedef", "hedef_parca_kimlik"),
         Index("ix_bilgi_iliskileri_turu", "iliski_turu"),

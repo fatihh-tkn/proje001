@@ -211,6 +211,13 @@ def delete_chunk(chunk_id: str):
             except Exception as graph_err:
                 logger.warning("Graf silme hatası (devam): %s", graph_err)
 
+            # 9 — ChunkGraph (in-memory) temizle
+            try:
+                from database.graph.networkx_db import chunk_graph
+                chunk_graph.remove_document([chunk_id])
+            except Exception as cg_err:
+                logger.warning("ChunkGraph temizleme hatası (devam): %s", cg_err)
+
         logger.info("Chunk atomik silme OK: chromadb_id=%s sql_pk=%s", chunk_id, parca_pk)
         return {"status": "ok", "deleted_chunk_id": chunk_id, "belge_kimlik": belge_kimlik}
 
@@ -281,6 +288,12 @@ def save_to_db(data: dict):
                     except: pass
                     try: graph_db.remove_nodes(eski_graf_ids)
                     except: pass
+                    # ChunkGraph (in-memory) temizle — eski kenarlar RAM'de kalmasın
+                    try:
+                        from database.graph.networkx_db import chunk_graph
+                        chunk_graph.remove_document(eski_chroma_ids)
+                    except Exception as _cg_err:
+                        logger.warning("ChunkGraph temizleme hatası (devam): %s", _cg_err)
                     for p in eski_parcalar: db.delete(p)
                     db.flush()
                 # Belge güncelleme verisi
@@ -375,6 +388,9 @@ def save_to_db(data: dict):
                     db.flush()
 
             # 3. Semantik komşuları al
+            # Threshold: cosine distance < 0.30 → similarity >= 0.70
+            # memory.py ile aynı eşik kullanılıyor (tutarlılık için).
+            _SEM_DISTANCE_THRESHOLD = 0.30
             semantic_neighbors: dict[str, list[tuple[str, float]]] = {}
             q_ids   = [c.get("id") for c in chunks_raw if c.get("text", "").strip()]
             q_texts = [c.get("text") for c in chunks_raw if c.get("text", "").strip()]
@@ -386,7 +402,7 @@ def save_to_db(data: dict):
                 for idx, c_id in enumerate(q_ids):
                     semantic_neighbors[c_id] = [
                         (t_id, dist) for t_id, dist in zip(r_ids[idx], r_dists[idx])
-                        if t_id != c_id and t_id not in q_id_set and dist < 1.5
+                        if t_id != c_id and t_id not in q_id_set and dist < _SEM_DISTANCE_THRESHOLD
                     ]
 
             # 4. Yeni parçaları SQL'e kaydet (archive_only dosyalar atlanır)
@@ -466,14 +482,16 @@ def save_to_db(data: dict):
                     for tgt_chroma_id, dist in neighbors:
                         tgt = sem_nodes.get(tgt_chroma_id)
                         if tgt:
-                            w = max(0.1, round(1.0 - dist / 2.0, 2))
+                            # Aynı belgeden gelen chunk'ları dışla — next_chunk/ayni_sayfa zaten hallediyor
+                            if tgt.belge_kimlik == resolved_belge_kimlik:
+                                continue
+                            # Ağırlık: 1 - (dist / threshold_max) → 0.30 üst sınırında normalize
+                            w = max(0.1, round(1.0 - dist / _SEM_DISTANCE_THRESHOLD, 4))
                             # Sadece Tek Yönlü eklenecek (Depolama Maliyeti %50 tasarruf, RAM'de çift yönlü açılacak)
                             s, t = min(src_pk, tgt.kimlik), max(src_pk, tgt.kimlik)
-                            new_edge = BilgiIliskisi(kaynak_parca_kimlik=s, hedef_parca_kimlik=t, iliski_turu="semantik_benzerlik", agirlik=w)
-                            # Çakışma ve tekrarları önlemek için edges_to_add listesinde aynı (s, t, tur) varmı bakmak yerine
-                            # basit filter ile liste kontrolü:
+                            # Liste içi duplicate kontrolü (DB UNIQUE CONSTRAINT de korur ama gereksiz obje yaratmayalım)
                             if not any(e.kaynak_parca_kimlik == s and e.hedef_parca_kimlik == t and e.iliski_turu == "semantik_benzerlik" for e in edges_to_add):
-                                edges_to_add.append(new_edge)
+                                edges_to_add.append(BilgiIliskisi(kaynak_parca_kimlik=s, hedef_parca_kimlik=t, iliski_turu="semantik_benzerlik", agirlik=w))
 
             # 3g. Mantıksal kenarlar
             chroma_to_meta = {c.get("id"): c.get("metadata", {}) for c in chunks_raw if c.get("id")}
@@ -512,7 +530,20 @@ def save_to_db(data: dict):
                             edges_to_add.append(BilgiIliskisi(kaynak_parca_kimlik=t_ids[a], hedef_parca_kimlik=t_ids[b], iliski_turu="ayni_sayfa", agirlik=0.8))
 
             if edges_to_add:
-                db.add_all(edges_to_add)
+                # INSERT ... ON CONFLICT DO NOTHING → UNIQUE CONSTRAINT ihlali sessizce atlanır.
+                # Belge yeniden yüklenince veya memory.py paralel çalışınca duplicate oluşmaz.
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                for edge in edges_to_add:
+                    stmt = pg_insert(BilgiIliskisi).values(
+                        kaynak_parca_kimlik=edge.kaynak_parca_kimlik,
+                        hedef_parca_kimlik=edge.hedef_parca_kimlik,
+                        iliski_turu=edge.iliski_turu,
+                        agirlik=edge.agirlik,
+                        kaynak=edge.kaynak if hasattr(edge, "kaynak") and edge.kaynak else "otomatik",
+                    ).on_conflict_do_nothing(
+                        constraint="uq_bilgi_iliskileri_kaynak_hedef_tur"
+                    )
+                    db.execute(stmt)
             # UoW burada oto commit yapar (__exit__ metodu ile).
             # db.commit() yazmaya artik gerek yok cunku try blogunun sonunda uow bitiyor.
 

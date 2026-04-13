@@ -398,7 +398,7 @@ def parse_audio(
                         "type":   "error",
                         "ext":    ext,
                         "error":  "ffmpeg_not_found",
-                        "page":   0,
+                        "page":   1,
                     }
                 }]
 
@@ -481,7 +481,7 @@ def parse_audio(
                         "type":     "audio_transcript",
                         "language": detected_lang,
                         "is_video": is_video,
-                        "page":     0,
+                        "page":     1,
                     }
                 }],
                 "formatted_text": "",
@@ -497,11 +497,16 @@ def parse_audio(
         optimized = _merge_segments(raw_segments)
 
         # 5. Chunk listesi oluştur
+        # Her segment için UUID'leri önceden üret — next_id/prev_id için gerekli
+        chunk_ids = [str(uuid.uuid4()) for _ in optimized]
         chunks = []
         for idx, seg in enumerate(optimized):
-            chunk_id = str(uuid.uuid4())
+            chunk_id = chunk_ids[idx]
             start    = seg["start"]
             end      = seg["end"]
+            # page: segment_index + 1 (1-tabanlı) → sayfalama mantığıyla uyumlu,
+            # her segment "kendi sayfası" → ayni_sayfa bağları anlam taşır
+            page_no  = idx + 1
 
             chunks.append({
                 "id":   chunk_id,
@@ -518,8 +523,11 @@ def parse_audio(
                     "lang_probability": lang_prob,
                     "is_video":        is_video,
                     "is_searchable":   True,
-                    "page":            0,
+                    "page":            page_no,
                     "chunk_index":     idx,
+                    # Sıralı zincir için → memory.py NEXT kenarlarını bunlardan kurar
+                    "prev_id": chunk_ids[idx - 1] if idx > 0 else "",
+                    "next_id": chunk_ids[idx + 1] if idx < len(optimized) - 1 else "",
                 }
             })
 

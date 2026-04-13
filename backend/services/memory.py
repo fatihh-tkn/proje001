@@ -87,7 +87,9 @@ class MemoryEngine:
                 for vp in rows:
                     vp_by_chromadb[vp.chromadb_kimlik] = vp
 
-                # ── 4. NEXT/PREV kenarları ──────────────────────────────────
+                # ── 4. NEXT kenarları ───────────────────────────────────────
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+
                 next_pairs: list[tuple[str, str]] = []
 
                 for chunk, chromadb_id, meta in zip(chunks, ids, metadatas):
@@ -98,18 +100,27 @@ class MemoryEngine:
                         src_vp = vp_by_chromadb.get(chromadb_id)
                         tgt_vp = vp_by_chromadb.get(next_chromadb)
                         if src_vp and tgt_vp:
-                            db.add(BilgiIliskisi(
-                                kaynak_parca_kimlik=src_vp.kimlik,
-                                hedef_parca_kimlik=tgt_vp.kimlik,
-                                iliski_turu="NEXT",
-                                agirlik=1.0,
-                                kaynak="otomatik",
-                            ))
+                            # ON CONFLICT DO NOTHING → yeniden yüklemede duplicate olmaz
+                            db.execute(
+                                pg_insert(BilgiIliskisi).values(
+                                    kaynak_parca_kimlik=src_vp.kimlik,
+                                    hedef_parca_kimlik=tgt_vp.kimlik,
+                                    iliski_turu="NEXT",
+                                    agirlik=1.0,
+                                    kaynak="otomatik",
+                                ).on_conflict_do_nothing(
+                                    constraint="uq_bilgi_iliskileri_kaynak_hedef_tur"
+                                )
+                            )
                             next_pairs.append((chromadb_id, next_chromadb))
 
                 db.flush()
 
                 # ── 5. SEMANTIC kenarlar — pgvector cosine distance ─────────
+                # Tek sorguda hem komşuları hem mesafeyi çek (çift sorguyu ortadan kaldır).
+                from sqlalchemy import literal_column
+                from pgvector.sqlalchemy import Vector
+
                 semantic_pairs: list[tuple[str, str, float]] = []
 
                 for chromadb_id in ids:
@@ -118,38 +129,34 @@ class MemoryEngine:
                         continue
 
                     try:
-                        # Farklı belgelerden en yakın chunk'ları bul
-                        neighbors = db.scalars(
-                            select(VektorParcasi)
+                        dist_col = VektorParcasi.vektor_verisi.cosine_distance(src_vp.vektor_verisi).label("dist")
+                        rows_with_dist = db.execute(
+                            select(VektorParcasi, dist_col)
                             .where(
                                 VektorParcasi.vektor_verisi.is_not(None),
                                 VektorParcasi.belge_kimlik != sql_doc_id,
                             )
-                            .order_by(
-                                VektorParcasi.vektor_verisi.cosine_distance(src_vp.vektor_verisi)
-                            )
+                            .order_by(dist_col)
                             .limit(_SEMANTIC_TOP_K)
                         ).all()
 
-                        for tgt_vp in neighbors:
-                            # cosine_distance hesapla
-                            dist_row = db.execute(
-                                select(
-                                    VektorParcasi.vektor_verisi.cosine_distance(src_vp.vektor_verisi)
-                                ).where(VektorParcasi.kimlik == tgt_vp.kimlik)
-                            ).scalar()
-
-                            if dist_row is None or dist_row > _SEMANTIC_DISTANCE_THRESHOLD:
+                        for tgt_vp, dist_val in rows_with_dist:
+                            if dist_val is None or dist_val > _SEMANTIC_DISTANCE_THRESHOLD:
                                 continue
 
-                            similarity = round(1.0 - float(dist_row), 4)
-                            db.add(BilgiIliskisi(
-                                kaynak_parca_kimlik=src_vp.kimlik,
-                                hedef_parca_kimlik=tgt_vp.kimlik,
-                                iliski_turu="BENZER_ICERIK",
-                                agirlik=similarity,
-                                kaynak="otomatik",
-                            ))
+                            similarity = round(1.0 - float(dist_val), 4)
+                            # ON CONFLICT DO NOTHING → UNIQUE CONSTRAINT ihlali sessizce atlanır
+                            db.execute(
+                                pg_insert(BilgiIliskisi).values(
+                                    kaynak_parca_kimlik=src_vp.kimlik,
+                                    hedef_parca_kimlik=tgt_vp.kimlik,
+                                    iliski_turu="BENZER_ICERIK",
+                                    agirlik=similarity,
+                                    kaynak="otomatik",
+                                ).on_conflict_do_nothing(
+                                    constraint="uq_bilgi_iliskileri_kaynak_hedef_tur"
+                                )
+                            )
                             semantic_pairs.append((chromadb_id, tgt_vp.chromadb_kimlik, similarity))
 
                     except Exception as e:
