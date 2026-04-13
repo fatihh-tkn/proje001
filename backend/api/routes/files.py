@@ -1,6 +1,5 @@
 import os
 import io
-import urllib.parse
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
