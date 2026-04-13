@@ -422,13 +422,16 @@ def get_documents():
             .order_by(desc(Belge.olusturulma_tarihi))
         ).all()
 
+        # Gerçek parça sayısını VektorParcasi tablosundan tek seferde say
+        gercek_parcalar_raw = db.execute(
+            select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+            .group_by(VektorParcasi.belge_kimlik)
+        ).all()
+        gercek_parcalar_dict = {row[0]: row[1] for row in gercek_parcalar_raw}
+
         results = []
         for b in belgeler:
-            # Gerçek parça sayısını VektorParcasi tablosundan say
-            gercek_parca = db.scalar(
-                select(func.count(VektorParcasi.kimlik))
-                .where(VektorParcasi.belge_kimlik == b.kimlik)
-            ) or 0
+            gercek_parca = gercek_parcalar_dict.get(b.kimlik, 0)
 
             results.append({
                 "id":           b.kimlik,
@@ -471,12 +474,15 @@ def sync_chunk_counts():
             select(Belge).where(Belge.dosya_turu != "folder")
         ).all()
 
+        # Gerçek parça sayısını VektorParcasi tablosundan tek seferde say
+        gercek_parcalar_raw = db.execute(
+            select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+            .group_by(VektorParcasi.belge_kimlik)
+        ).all()
+        gercek_parcalar_dict = {row[0]: row[1] for row in gercek_parcalar_raw}
+
         for b in belgeler:
-            # Gercek parca sayisini anlık say
-            gercek = db.scalar(
-                select(func.count(VektorParcasi.kimlik))
-                .where(VektorParcasi.belge_kimlik == b.kimlik)
-            ) or 0
+            gercek = gercek_parcalar_dict.get(b.kimlik, 0)
 
             if b.parca_sayisi != gercek:
                 detaylar.append({
@@ -534,11 +540,15 @@ def integrity_report():
             select(Belge).where(Belge.dosya_turu != "folder")
         ).all()
 
+        # Gerçek parça sayısını VektorParcasi tablosundan tek seferde say
+        gercek_parcalar_raw = db.execute(
+            select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+            .group_by(VektorParcasi.belge_kimlik)
+        ).all()
+        gercek_parcalar_dict = {row[0]: row[1] for row in gercek_parcalar_raw}
+
         for b in belgeler:
-            gercek = db.scalar(
-                select(func.count(VektorParcasi.kimlik))
-                .where(VektorParcasi.belge_kimlik == b.kimlik)
-            ) or 0
+            gercek = gercek_parcalar_dict.get(b.kimlik, 0)
 
             if b.parca_sayisi != gercek:
                 rapor["A_parca_sayisi_uyumsuzlugu"].append({
