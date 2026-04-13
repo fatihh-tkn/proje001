@@ -409,10 +409,13 @@ def save_to_db(data: dict):
                     if chunk.get("metadata", {}).get("type") == "archive_only":
                         continue
                     meta = chunk.get("metadata", {})
+                    # Kaydedilecek tam metadata (image_path, page_width, page_height, zoom_factor, type vb.)
+                    meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
                     new_parcalar.append(VektorParcasi(
                         belge_kimlik=resolved_belge_kimlik, chromadb_kimlik=chroma_id,
                         icerik=chunk.get("text", "")[:1000], konum_imi=f"{meta.get('source', file_name)} | Sayfa {meta.get('page', 0)}",
-                        sayfa_no=meta.get("page", 0), sinir_kutusu=str(meta.get("bbox")) if meta.get("bbox") else None
+                        sayfa_no=meta.get("page", 0), sinir_kutusu=str(meta.get("bbox")) if meta.get("bbox") else None,
+                        meta=meta_to_save if meta_to_save else None,
                     ))
 
                 if new_parcalar:

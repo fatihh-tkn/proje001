@@ -67,12 +67,20 @@ class PgVectorDB(VectorDBProvider):
                     parca.vektor_verisi = vec
                     if not parca.icerik:
                         parca.icerik = doc_text[:1000]
+                    # meta yoksa güncelle
+                    if not parca.meta:
+                        meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
+                        if meta_to_save:
+                            parca.meta = meta_to_save
                     db.add(parca)
                 else:
                     if not belge_kimlik:
                         # memory.py'da metadata içerisinde gecmeyebilir diye logluyoruz ama atliyoruz
                         continue
-                        
+
+                    # Tam metadata'yı JSON olarak kaydet (image_path, page_width, page_height, zoom_factor, type vb.)
+                    meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
+
                     yeni_parca = VektorParcasi(
                         belge_kimlik=belge_kimlik,
                         chromadb_kimlik=chroma_id,
@@ -80,6 +88,7 @@ class PgVectorDB(VectorDBProvider):
                         konum_imi=f"Sayfa {meta.get('page', 0)}",
                         sayfa_no=meta.get("page", 0),
                         sinir_kutusu=str(meta.get("bbox", "")) if meta.get("bbox") else None,
+                        meta=meta_to_save if meta_to_save else None,
                         embedding_modeli="all-MiniLM-L6-v2",
                         vektor_verisi=vec
                     )

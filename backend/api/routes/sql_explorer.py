@@ -598,12 +598,29 @@ def get_document_chunks(doc_id: str):
         
         results = []
         for p in parcalar:
+            bbox_str = p.sinir_kutusu or ""
+            x_val, y_val = 0, 0
+            if bbox_str and bbox_str != "0,0,0,0":
+                parts = bbox_str.split(',')
+                if len(parts) >= 2:
+                    try:
+                        x_val = int(float(parts[0]))
+                        y_val = int(float(parts[1]))
+                    except ValueError:
+                        pass
+            chunk_meta = p.meta or {}
+            raw_meta = {
+                "page": p.sayfa_no or 1,
+                "bbox": bbox_str,
+                **{k: v for k, v in chunk_meta.items() if k not in ("sql_doc_id", "sqlite_doc_id")},
+            }
             results.append({
                 "id": p.chromadb_kimlik,
                 "text": p.icerik,
                 "page": p.sayfa_no or 1,
-                "x": 0,
-                "y": 0,
+                "x": x_val,
+                "y": y_val,
+                "rawMeta": raw_meta,
             })
             
     return {"chunks": results, "total": len(results)}
@@ -635,6 +652,19 @@ def get_all_global_chunks(limit: int = 1000):
                     except ValueError:
                         pass
                         
+                # meta kolonundan tam metadata'yı al (image_path, page_width, page_height, zoom_factor, type vb.)
+            chunk_meta = p.meta or {}
+            raw_meta = {
+                "source": d_name or "Bilinmeyen Dosya",
+                "page": p.sayfa_no or 1,
+                "bbox": bbox_str,
+                # Kaydedilmiş tam metadata alanlarını üst üste yaz
+                **{k: v for k, v in chunk_meta.items() if k not in ("sql_doc_id", "sqlite_doc_id")},
+            }
+            # bbox güncelle: meta'dan geliyorsa onu kullan, yoksa sinir_kutusu'nu koru
+            if chunk_meta.get("bbox") and not bbox_str:
+                raw_meta["bbox"] = str(chunk_meta["bbox"])
+
             results.append({
                 "id": p.chromadb_kimlik,
                 "text": p.icerik,
@@ -642,11 +672,7 @@ def get_all_global_chunks(limit: int = 1000):
                 "page": p.sayfa_no or 1,
                 "x": x_val,
                 "y": y_val,
-                "rawMeta": {
-                    "source": d_name or "Bilinmeyen Dosya",
-                    "page": p.sayfa_no or 1,
-                    "bbox": bbox_str
-                }
+                "rawMeta": raw_meta,
             })
             
     return {"chunks": results, "total": len(results)}
