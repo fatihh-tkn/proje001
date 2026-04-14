@@ -111,7 +111,7 @@ const MoveModal = ({ item, folders, onClose, onMove }) => {
 };
 
 // ── DETAY / ÖNİZLEME PANELİ
-const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe }) => {
+const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, onTranscribeComplete }) => {
     const [tags, setTags] = useState(doc?.etiketler || []);
     const [tagInput, setTagInput] = useState('');
     const [desc, setDesc] = useState(doc?.aciklama || '');
@@ -157,17 +157,25 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe }) 
         const isProc = status_for_poll === 'processing' || status_for_poll === 'pending';
         if (!isProc || !doc_id_for_poll || !(isAudio(file_type_for_poll) || isVideo(file_type_for_poll))) return;
         setTxPercent(0);
-        const timer = setInterval(async () => {
+        let notified = false;
+        let timer;
+        timer = setInterval(async () => {
             try {
                 const r = await fetch(`/api/archive/progress/${doc_id_for_poll}`);
                 if (r.ok) {
                     const d = await r.json();
                     setTxPercent(d.percent ?? 0);
+                    // Yüzde 100'e ulaşınca parent'ı bilgilendir (bir kez yeter)
+                    if (!notified && (d.percent ?? 0) >= 100) {
+                        notified = true;
+                        clearInterval(timer);
+                        onTranscribeComplete?.(doc_id_for_poll);
+                    }
                 }
             } catch { }
         }, 1000);
         return () => clearInterval(timer);
-    }, [status_for_poll, doc_id_for_poll, file_type_for_poll]);
+    }, [status_for_poll, doc_id_for_poll, file_type_for_poll, onTranscribeComplete]);
 
     if (!doc) return null;
 
@@ -566,6 +574,10 @@ export default function AudioArchiveViewer() {
 
     const fileInputRef = useRef(null);
 
+    // selectedDoc'un her zaman güncel değerini tutan ref (stale closure sorununu önler)
+    const selectedDocRef = useRef(selectedDoc);
+    useEffect(() => { selectedDocRef.current = selectedDoc; }, [selectedDoc]);
+
     const fetchArchive = useCallback(async () => {
         setLoading(true);
         try {
@@ -823,32 +835,51 @@ export default function AudioArchiveViewer() {
             if (res.ok) {
                 // Durumu hemen "pending" olarak güncelle
                 updateDocInList(docId, { meta: { ...((items.find(i => i.id === docId)?.meta) || {}), transcription_status: 'pending' } });
-                // 5 saniyede bir polling yap (max 10 dakika)
+                // 3 saniyede bir polling yap (max 10 dakika)
                 let attempts = 0;
                 const poll = setInterval(async () => {
                     attempts++;
-                    if (attempts > 120) { clearInterval(poll); return; }
+                    if (attempts > 200) { clearInterval(poll); return; }
                     try {
-                        const r = await fetch('/api/archive/list');
+                        const r = await fetch(`/api/archive/detail/${docId}`);
                         if (r.ok) {
-                            const d = await r.json();
-                            const updated = (d.items || []).find(i => i.id === docId);
-                            if (updated) {
-                                setItems(d.items || []);
-                                if (selectedDoc?.id === docId) setSelectedDoc(updated);
-                                const status = updated.meta?.transcription_status;
-                                if (status === 'done' || status === 'failed') {
-                                    clearInterval(poll);
-                                }
+                            const detail = await r.json();
+                            setItems(prev => prev.map(it => it.id === docId ? { ...it, ...detail } : it));
+                            if (selectedDocRef.current?.id === docId) {
+                                setSelectedDoc(prev => prev?.id === docId ? { ...prev, ...detail } : prev);
+                            }
+                            const status = detail.meta?.transcription_status;
+                            if (status === 'done' || status === 'failed') {
+                                clearInterval(poll);
                             }
                         }
                     } catch (e) { console.error('Polling hatası:', e); }
-                }, 5000);
+                }, 3000);
             }
         } catch (err) {
             console.error('Transkripsiyon başlatma hatası:', err);
         }
     };
+
+    // Progress polling'den percent>=100 sinyali gelince çağrılır.
+    // DB commit biraz geç tamamlanabilir, bu yüzden 'done' görene kadar tekrar dener.
+    const handleTranscribeComplete = useCallback(async (docId) => {
+        for (let attempt = 0; attempt < 8; attempt++) {
+            await new Promise(res => setTimeout(res, 1000));
+            try {
+                const r = await fetch(`/api/archive/detail/${docId}`);
+                if (!r.ok) continue;
+                const detail = await r.json();
+                if (detail.meta?.transcription_status === 'done') {
+                    setItems(prev => prev.map(it => it.id === docId ? { ...it, ...detail } : it));
+                    if (selectedDocRef.current?.id === docId) {
+                        setSelectedDoc(prev => prev?.id === docId ? { ...prev, ...detail } : prev);
+                    }
+                    return;
+                }
+            } catch { /* ağ hatası — tekrar dene */ }
+        }
+    }, []);
 
     return (
         <div className="flex bg-[#f4f5f7] h-full w-full font-sans overflow-hidden">
@@ -1172,6 +1203,7 @@ export default function AudioArchiveViewer() {
                         onTagUpdate={(id, tags) => updateDocInList(id, { etiketler: tags })}
                         onDescUpdate={(id, aciklama) => updateDocInList(id, { aciklama })}
                         onTranscribe={handleTranscribe}
+                        onTranscribeComplete={handleTranscribeComplete}
                     />
                 )}
             </div>
