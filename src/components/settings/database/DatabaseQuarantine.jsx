@@ -1,6 +1,7 @@
-import React from 'react';
-import { ShieldCheck, CheckCheck, FileText, CheckCircle2, AlertTriangle, Loader2, Save, Fingerprint, DatabaseZap } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, CheckCheck, FileText, CheckCircle2, AlertTriangle, Loader2, Save, Fingerprint, DatabaseZap, Brain } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import EmbeddingModelPanel from '../databases/EmbeddingModelPanel';
 
 const SkeletonChunk = () => (
     <div className="bg-white border-l-4 border-slate-200 border-y border-r rounded-r-xl rounded-l-md p-4 animate-pulse flex flex-col gap-3 shadow-sm">
@@ -39,11 +40,45 @@ const DatabaseQuarantine = ({
     handleSave,
     saveError
 }) => {
+    const [showEmbeddingPanel, setShowEmbeddingPanel] = useState(false);
+
     return (
         <div className="flex-1 flex flex-col min-w-0 bg-white">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-white z-10">
                 <ShieldCheck size={14} className="text-emerald-600" />
                 <span className="text-[11px] font-bold text-slate-500 tracking-widest uppercase">Parça İnceleme</span>
+
+                {/* ── Embedding Ayarları Butonu (Parça İnceleme'nin Sağı) ── */}
+                <div className="relative ml-2">
+                    <button
+                        onClick={() => setShowEmbeddingPanel(!showEmbeddingPanel)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-colors ${showEmbeddingPanel ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                        title="Embedding Model Ayarları"
+                    >
+                        <Brain size={13} className={showEmbeddingPanel ? 'text-indigo-500' : 'text-slate-400'} />
+                        Model Seç
+                    </button>
+
+                    {/* Popup / Panel */}
+                    <AnimatePresence>
+                        {showEmbeddingPanel && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowEmbeddingPanel(false)} />
+                                <motion.div
+                                    initial={{ opacity: 0, y: 5, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                                    transition={{ duration: 0.15 }}
+                                    className="absolute left-0 top-full mt-2 w-[400px] bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                >
+                                    <div className="max-h-[70vh] overflow-y-auto px-4 py-2 custom-scrollbar">
+                                        <EmbeddingModelPanel />
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
+                </div>
                 {/* ── TOPLU ONAY (sağ üst köşe) ── */}
                 <AnimatePresence>
                     {chunks.length > 0 && phase !== 'saving' && (

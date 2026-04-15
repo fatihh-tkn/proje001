@@ -4,32 +4,15 @@ from sqlalchemy import select, text
 from database.sql.session import get_session
 from database.sql.models import VektorParcasi, Belge
 from database.vector.provider import VectorDBProvider
+from database.vector.embedding_manager import (
+    get_embeddings,
+    get_active_model_key,
+    get_active_model_info,
+    MAX_VECTOR_DIM,
+)
 import logging
-import torch
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    SentenceTransformer = None
 
 logger = logging.getLogger(__name__)
-
-_embedding_model = None
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        if SentenceTransformer is None:
-            raise ImportError("sentence_transformers kütüphanesi bulunamadı.")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Yapay Zeka (Embedding) Modeli RAM'e yukleniyor ({device})...")
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-    return _embedding_model
-
-def get_embeddings(texts: list[str]) -> list[list[float]]:
-    if not texts:
-        return []
-    model = get_embedding_model()
-    return [vec.tolist() for vec in model.encode(texts)]
 
 
 class PgVectorDB(VectorDBProvider):
@@ -89,7 +72,7 @@ class PgVectorDB(VectorDBProvider):
                         sayfa_no=meta.get("page", 0),
                         sinir_kutusu=str(meta.get("bbox", "")) if meta.get("bbox") else None,
                         meta=meta_to_save if meta_to_save else None,
-                        embedding_modeli="all-MiniLM-L6-v2",
+                        embedding_modeli=get_active_model_key(),
                         vektor_verisi=vec
                     )
                     db.add(yeni_parca)
@@ -152,6 +135,49 @@ class PgVectorDB(VectorDBProvider):
             "documents": res_documents,
             "metadatas": res_metadatas
         }
+
+    def hybrid_query(
+        self,
+        query_text: str,
+        n_results: int = 10,
+        doc_id_filter: str | None = None,
+        use_reranker: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Hybrid Search: Vektör + Full-Text + RRF + Re-Ranking.
+
+        Döner: [{kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
+                 konum_imi, meta, rrf_score, rerank_score, in_vector, in_fts}, ...]
+        """
+        try:
+            from database.vector.hybrid_search import hybrid_search
+            return hybrid_search(
+                query=query_text,
+                n_results=n_results,
+                doc_id_filter=doc_id_filter,
+                use_reranker=use_reranker,
+            )
+        except Exception as e:
+            logger.error(f"[PgVectorDB] hybrid_query hatası: {e}")
+            # Fallback: klasik vektör araması
+            results = self.query(
+                collection_name="documents",
+                query_texts=[query_text],
+                n_results=n_results,
+            )
+            # Eski formatı yeni formata dönüştür
+            fallback = []
+            ids = results.get("ids", [[]])[0]
+            docs = results.get("documents", [[]])[0]
+            for i, cid in enumerate(ids):
+                fallback.append({
+                    "chromadb_kimlik": cid,
+                    "icerik": docs[i] if i < len(docs) else "",
+                    "rrf_score": 1.0 - (i * 0.05),
+                    "in_vector": True,
+                    "in_fts": False,
+                })
+            return fallback
 
     def delete_collection(self, name: str) -> Dict[str, str]:
         return {"deleted": name}

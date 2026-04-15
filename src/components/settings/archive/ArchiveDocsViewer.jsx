@@ -7,6 +7,7 @@ import {
     Mic, Loader2, AlertCircle, GripVertical
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
+import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
 const getFileVisual = (fileType) => {
@@ -481,6 +482,7 @@ export default function ArchiveDocsViewer() {
     }, []);
 
     useEffect(() => { fetchArchive(); }, [fetchArchive]);
+    useArchiveChangedListener(fetchArchive);
 
     const getFolderPath = (folderId) => {
         const path = [];
@@ -570,14 +572,30 @@ export default function ArchiveDocsViewer() {
 
     const handleBatchDelete = async (ids) => {
         if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
-        await fetch('/api/archive/delete', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids })
-        });
+        try {
+            const res = await fetch('/api/archive/delete', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(`Silme başarısız: ${err.detail || res.statusText}`);
+                return;
+            }
+            const data = await res.json();
+            if (data.status === 'partial') {
+                alert(`Kısmi silme tamamlandı:\n${data.uyarilar?.join('\n') || 'Bazı dosyalar silinemedi.'}`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Sunucuya ulaşılamadı.");
+            return;
+        }
         setSelectedIds(new Set());
         if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
         fetchArchive();
+        dispatchArchiveChanged();
     };
 
     const handleRename = async () => {

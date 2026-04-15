@@ -44,22 +44,22 @@ const Login = ({ onLogin }) => {
 
     // Şifre gücü kontrolü (sadece kayıt modunda aktif)
     const REQUIREMENTS = [
-        { regex: /.{8,}/,  text: 'En az 8 karakter' },
-        { regex: /[A-Z]/,  text: 'En az 1 büyük harf' },
-        { regex: /[0-9]/,  text: 'En az 1 rakam' },
+        { regex: /.{8,}/, text: 'En az 8 karakter' },
+        { regex: /[A-Z]/, text: 'En az 1 büyük harf' },
+        { regex: /[0-9]/, text: 'En az 1 rakam' },
     ];
 
     const strength = useMemo(() =>
         REQUIREMENTS.map(r => ({ met: r.regex.test(password), text: r.text })),
-    [password]);
+        [password]);
 
     const strengthScore = strength.filter(r => r.met).length;
 
     const strengthBarColor =
         strengthScore === 0 ? 'bg-slate-200' :
-        strengthScore === 1 ? 'bg-red-400'   :
-        strengthScore === 2 ? 'bg-amber-400'  :
-                              'bg-emerald-500';
+            strengthScore === 1 ? 'bg-red-400' :
+                strengthScore === 2 ? 'bg-amber-400' :
+                    'bg-emerald-500';
 
     // Şifre tekrar: uzunluk sınırı aşılırsa salla, eşleşme durumunu hesapla
     const passwordsMatch = password.length > 0 && password === passwordConfirm;
@@ -135,26 +135,29 @@ const Login = ({ onLogin }) => {
                 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
 
-                    {/* Sistem başlatılıyor animasyonu — yalnızca 503 geldiğinde */}
-                    {isStarting && (
-                        <style>{`
+                {/* Sistem başlatılıyor animasyonu — yalnızca 503 geldiğinde */}
+                {isStarting && (
+                    <style>{`
                             @keyframes traceCCW {
-                                from { transform: rotate(0deg); }
-                                to   { transform: rotate(-360deg); }
+                                from { transform: translate(-50%, -50%) rotate(0deg); }
+                                to   { transform: translate(-50%, -50%) rotate(-360deg); }
                             }
                         `}</style>
-                    )}
+                )}
 
-                    {/* Kart */}
-                    <div
-                        className="rounded-xl"
-                        style={isStarting ? {
-                            padding: '2px',
-                            background: 'conic-gradient(from 0deg, transparent 96%, #b91c1c 96%, #b91c1c 100%)',
-                            animation: 'traceCCW 2.2s linear infinite',
-                        } : {}}
-                    >
-                    <div className={`relative bg-white/85 backdrop-blur-[40px] px-9 pt-0 pb-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.9)] overflow-hidden ${isStarting ? 'rounded-[10px]' : 'rounded-xl border border-white/60'}`}>
+                {/* Kart */}
+                <div className={`relative ${isStarting ? 'p-[2px] rounded-[14px] overflow-hidden' : ''}`}>
+                    {isStarting && (
+                        <div
+                            className="absolute top-1/2 left-1/2 w-[200%] h-[200%]"
+                            style={{
+                                background: 'conic-gradient(from 0deg, transparent 75%, #b91c1c 100%)',
+                                animation: 'traceCCW 1.8s linear infinite',
+                                zIndex: 0
+                            }}
+                        />
+                    )}
+                    <div className={`relative z-10 backdrop-blur-[40px] px-9 pt-0 pb-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.9)] overflow-hidden ${isStarting ? 'bg-[#f8f9fa] rounded-[12px]' : 'bg-white/85 rounded-xl border border-white/60'}`}>
 
                         {/* Header */}
                         <div className="flex flex-col items-center justify-center mb-5">
@@ -169,28 +172,25 @@ const Login = ({ onLogin }) => {
                         </div>
 
                         {error && (
-                            <div className={`relative mb-4 rounded-md text-sm font-semibold shadow-sm border overflow-hidden ${
-                                errorType === 'suspended' ? 'bg-amber-50 border-amber-300'
-                                : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
-                                : errorType === 'starting' ? 'bg-slate-50 border-slate-200'
-                                : 'bg-red-50 border-red-200'}`}>
-                                <div className={`h-1 w-full ${
-                                    errorType === 'suspended' ? 'bg-amber-400'
-                                    : errorType === 'not_found' ? 'bg-blue-400'
-                                    : errorType === 'starting' ? 'bg-slate-400'
-                                    : 'bg-red-400'}`} />
+                            <div className={`relative mb-4 rounded-md text-sm font-semibold shadow-sm border overflow-hidden ${errorType === 'suspended' ? 'bg-amber-50 border-amber-300'
+                                    : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
+                                        : errorType === 'starting' ? 'bg-slate-50 border-slate-200'
+                                            : 'bg-red-50 border-red-200'}`}>
+                                <div className={`h-1 w-full ${errorType === 'suspended' ? 'bg-amber-400'
+                                        : errorType === 'not_found' ? 'bg-blue-400'
+                                            : errorType === 'starting' ? 'bg-slate-400'
+                                                : 'bg-red-400'}`} />
                                 <div className="flex items-start gap-3 p-3">
                                     <span className="text-xl shrink-0 mt-0.5">
                                         {errorType === 'suspended' ? '⚠️'
-                                        : errorType === 'not_found' ? '🔍'
-                                        : errorType === 'starting' ? '⏳'
-                                        : '🔐'}
+                                            : errorType === 'not_found' ? '🔍'
+                                                : errorType === 'starting' ? '⏳'
+                                                    : '🔐'}
                                     </span>
-                                    <span className={`leading-snug text-[12px] ${
-                                        errorType === 'suspended' ? 'text-amber-800'
-                                        : errorType === 'not_found' ? 'text-blue-700'
-                                        : errorType === 'starting' ? 'text-slate-600'
-                                        : 'text-red-600'}`}>
+                                    <span className={`leading-snug text-[12px] ${errorType === 'suspended' ? 'text-amber-800'
+                                            : errorType === 'not_found' ? 'text-blue-700'
+                                                : errorType === 'starting' ? 'text-slate-600'
+                                                    : 'text-red-600'}`}>
                                         {error}
                                     </span>
                                 </div>
@@ -318,11 +318,10 @@ const Login = ({ onLogin }) => {
                                             {password.split('').map((letter, i) => (
                                                 <div
                                                     key={i}
-                                                    className={`h-[3px] flex-1 rounded-full transition-all duration-200 ${
-                                                        passwordConfirm[i] === letter ? 'bg-green-500' :
-                                                        passwordConfirm[i]            ? 'bg-red-400'   :
-                                                                                        'bg-slate-200'
-                                                    }`}
+                                                    className={`h-[3px] flex-1 rounded-full transition-all duration-200 ${passwordConfirm[i] === letter ? 'bg-green-500' :
+                                                            passwordConfirm[i] ? 'bg-red-400' :
+                                                                'bg-slate-200'
+                                                        }`}
                                                 />
                                             ))}
                                         </div>
@@ -351,7 +350,7 @@ const Login = ({ onLogin }) => {
                             </div>
                         </form>
                     </div>
-                    </div>{/* gradient wrapper kapanışı */}
+                </div>{/* gradient wrapper kapanışı */}
             </motion.div>
         </div>
     );

@@ -175,10 +175,11 @@ def _build_semantic_context(
     allowed_pools: list[str] = None
 ) -> tuple[str, list[dict], dict | None]:
     """
-    RAG Pipeline Optimizasyonu:
-    1. ChromaDB'den vektörel anlamsal sonuçları getir (Aşama 1).
-    2. DocumentRepository üzerinden SQLite JOIN yaparak ilgili metinleri, relations tablosunu ve location_marker'ı çek (Aşama 2 & 3).
-    3. LLM_PRE_FILTER_DISTANCE_THRESHOLD eşiğindeki sonuçları reddet.
+    RAG Pipeline — Hybrid Search + Re-Ranking Mimarisi:
+    1. Hybrid Search: pgvector (vektörel) + tsvector (kelime eşleştirme) → RRF birleştirme
+    2. Re-Ranking: Cross-Encoder ile sonuçları yeniden sıralama
+    3. ChunkGraph ile komşu genişletmesi
+    4. DocumentRepository ile zengin bağlam çekme
     """
     top_k = top_k or SETTINGS.GENERAL_RAG_TOP_K
     try:
@@ -186,20 +187,131 @@ def _build_semantic_context(
         from database.sql.session import get_session
         from database.sql.repositories.document_repo import DocumentRepository
 
+        parts:   list[str] = []
+        sources: list[dict] = []
+        best_ui_action: dict | None = None
+
+        # ── Hybrid Search: Vektör + FTS + RRF + Re-Ranking ──────────────
+        try:
+            hybrid_results = vector_db.hybrid_query(
+                query_text=user_message,
+                n_results=top_k * 2,  # Re-ranking için fazla çek
+                use_reranker=True,
+            )
+        except Exception as e:
+            print(f"[RAG-HYBRID] Hybrid search hatası, klasik yola düşülüyor: {e}")
+            hybrid_results = []
+
+        if hybrid_results:
+            # Hybrid Search başarılı — sonuçları chromadb_kimlik listesine çevir
+            hybrid_ids = [r["chromadb_kimlik"] for r in hybrid_results if r.get("chromadb_kimlik")]
+
+            if hybrid_ids:
+                # ChunkGraph ile komşu genişletmesi
+                try:
+                    from database.graph.networkx_db import chunk_graph
+                    expanded_ids = chunk_graph.expand(hybrid_ids)
+                except Exception:
+                    expanded_ids = hybrid_ids
+
+                # DocumentRepository ile zengin bağlam
+                with get_session() as db:
+                    repo = DocumentRepository(db)
+                    rich_contexts = repo.node_ids_to_context(expanded_ids[:top_k])
+
+                    for ctx in rich_contexts:
+                        doc_info = ctx["document"]
+                        src = doc_info["filename"]
+
+                        if file_name and src != file_name:
+                            continue
+
+                        if excluded_file_ids and doc_info.get("id") in excluded_file_ids:
+                            continue
+
+                        # Havuz yetki kontrolü
+                        if allowed_pools:
+                            f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
+                            AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
+                            pool_id = "rag_2" if f_type in AUDIO_EXTS else "rag_1"
+                            if pool_id not in allowed_pools:
+                                continue
+
+                        marker = ctx["location_marker"]
+                        content = ctx["content"]
+                        page    = ctx.get("page")
+                        bbox    = ctx.get("bbox")
+                        pdf_path = doc_info.get("pdf_path") or doc_info.get("file_path") or ""
+
+                        # Graf Okuması
+                        graph_note = ""
+                        if ctx["related_nodes"]:
+                            graph_note = "\n[Sistem Graph Notu: Bu düğüm şunlarla ilişkilidir:\n"
+                            for rel in ctx["related_nodes"]:
+                                tgt = rel.get('document_name') or 'Bilinmeyen'
+                                r_type = rel.get('relation_type', 'bağlı')
+                                graph_note += f"- '{tgt}' ({r_type})\n"
+                            graph_note += "]\n"
+
+                        # Hybrid arama bilgisi — hangi yöntemle bulunduğunu işaretle
+                        hybrid_info = ""
+                        chroma_id = ctx.get("chroma_id", "")
+                        for hr in hybrid_results:
+                            if hr.get("chromadb_kimlik") == chroma_id:
+                                methods = []
+                                if hr.get("in_vector"): methods.append("Vektör")
+                                if hr.get("in_fts"):    methods.append("FTS")
+                                rrf = hr.get("rrf_score", 0)
+                                rerank = hr.get("rerank_score")
+                                score_str = f"RRF:{rrf:.4f}"
+                                if rerank is not None:
+                                    score_str += f" | ReRank:{rerank:.4f}"
+                                hybrid_info = f" [{'+'.join(methods)} | {score_str}]"
+                                break
+
+                        header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + f"{hybrid_info}]"
+                        parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
+
+                        # UI Action
+                        if not best_ui_action:
+                            import urllib.parse
+                            pdf_url = (
+                                f"/api/archive/file/{doc_info.get('id')}"
+                                if doc_info.get("id")
+                                else ""
+                            )
+                            best_ui_action = {
+                                "command":     "OPEN_PDF_AT",
+                                "pdf_url":     pdf_url,
+                                "source_file": src,
+                                "page":        page,
+                                "bbox":        bbox,
+                                "doc_id":      doc_info.get("id"),
+                            }
+
+                        sources.append({
+                            "file":             src,
+                            "location_marker":  marker,
+                            "chroma_id":        chroma_id,
+                            "page":             page,
+                            "bbox":             bbox,
+                            "doc_id":           doc_info.get("id"),
+                        })
+
+            if parts:
+                return "\n\n---\n\n".join(parts), sources, best_ui_action
+
+        # ── Fallback: Klasik vektör araması (hybrid başarısız olursa) ────
         all_collections = vector_db.list_collections()
         if not all_collections:
             return "", [], None
 
         target_cols = [collection_name] if collection_name else all_collections
-        parts:   list[str] = []
-        sources: list[dict] = []
-        best_ui_action: dict | None = None
 
         for col in target_cols:
             if col not in all_collections:
                 continue
             try:
-                # Aşama 1: Vektör Araması (Semantic Retrieval)
                 results = vector_db.query(
                     collection_name=col,
                     query_texts=[user_message],
@@ -211,24 +323,21 @@ def _build_semantic_context(
                 if not chroma_ids:
                     continue
 
-                # Kaba filtreleme (Python Router Threshold)
                 filtered_ids = []
                 for rank, cid in enumerate(chroma_ids):
                     dist = dists[rank] if rank < len(dists) else 0.0
                     if dist <= SETTINGS.LLM_PRE_FILTER_DISTANCE_THRESHOLD:
                         filtered_ids.append(cid)
-                
+
                 if not filtered_ids:
                     continue
 
-                # Aşama 2: ChunkGraph ile komşu genişletmesi (NEXT/PREV/SEMANTIC)
                 try:
                     from database.graph.networkx_db import chunk_graph
                     expanded_ids = chunk_graph.expand(filtered_ids)
                 except Exception:
                     expanded_ids = filtered_ids
 
-                # Aşama 3: Graf Genişletmesi ve SQLite JOIN
                 with get_session() as db:
                     repo = DocumentRepository(db)
                     rich_contexts = repo.node_ids_to_context(expanded_ids[:top_k])
@@ -236,22 +345,17 @@ def _build_semantic_context(
                     for ctx in rich_contexts:
                         doc_info = ctx["document"]
                         src = doc_info["filename"]
-                        
+
                         if file_name and src != file_name:
                             continue
-                            
-                        # Dosya ajan ayarlarında yasaklanmışsa (erişim kapatılmışsa) bu sonucu yoksay
+
                         if excluded_file_ids and doc_info.get("id") in excluded_file_ids:
                             continue
 
-                        # Havuz yetki kontrolü (Beyaz liste - Inclusion)
                         if allowed_pools:
                             f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
                             AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
-                            
-                            # Mantık: UI tarafında Ses/Video "rag_2", diğer belgeler "rag_1" havuzuna atandı.
                             pool_id = "rag_2" if f_type in AUDIO_EXTS else "rag_1"
-                            
                             if pool_id not in allowed_pools:
                                 continue
 
@@ -259,10 +363,7 @@ def _build_semantic_context(
                         content = ctx["content"]
                         page    = ctx.get("page")
                         bbox    = ctx.get("bbox")
-                        doc_info = ctx["document"]
-                        pdf_path = doc_info.get("pdf_path") or doc_info.get("file_path") or ""
 
-                        # 1 Derece Derinlikte Graf Okuması (Relations)
                         graph_note = ""
                         if ctx["related_nodes"]:
                             graph_note = "\n[Sistem Graph Notu: Bu düğüm şunlarla ilişkilidir:\n"
@@ -275,9 +376,7 @@ def _build_semantic_context(
                         header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + "]"
                         parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
 
-                        # UI Action Belirleme (İlk ve en yakın sonuç)
                         if not best_ui_action:
-                            # PDF URL oluştur (fiziksel yol → API endpoint)
                             import urllib.parse
                             pdf_url = (
                                 f"/api/archive/file/{doc_info.get('id')}"
@@ -309,7 +408,7 @@ def _build_semantic_context(
         return "\n\n---\n\n".join(parts), sources, best_ui_action
 
     except Exception as e:
-        print(f"[RAG-SEMANTIC] Genel Hata: {e}")
+        print(f"[RAG-HYBRID] Genel Hata: {e}")
         return "", [], None
 
 

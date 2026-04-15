@@ -3,14 +3,15 @@ import { Trash2, Code, Image, X, Target } from 'lucide-react';
 
 // ── Chunk tipi → renk/etiket ─────────────────────────────────────────
 const CHUNK_TYPE_META = {
-    pptx_title:             { label: 'Başlık',    color: 'bg-blue-100 text-blue-700 border-blue-200' },
-    pptx_callout:           { label: 'Açıklama',  color: 'bg-orange-100 text-orange-700 border-orange-200' },
-    pptx_body:              { label: 'Gövde',     color: 'bg-slate-100 text-slate-600 border-slate-200' },
-    pptx_notes:             { label: 'Notlar',    color: 'bg-purple-100 text-purple-700 border-purple-200' },
-    pptx_slide:             { label: 'Slayt',     color: 'bg-slate-100 text-slate-600 border-slate-200' },
-    pptx_summary:           { label: 'Özet',      color: 'bg-green-100 text-green-700 border-green-200' },
-    pptx_screenshot_vision: { label: 'Vision',    color: 'bg-pink-100 text-pink-700 border-pink-200' },
-    pptx_error:             { label: 'Hata',      color: 'bg-red-100 text-red-700 border-red-200' },
+    pptx_title: { label: 'Başlık', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    pptx_callout: { label: 'Açıklama', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+    pptx_body: { label: 'Gövde', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+    pptx_notes: { label: 'Notlar', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+    pptx_slide: { label: 'Slayt', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+    pptx_summary: { label: 'Özet', color: 'bg-green-100 text-green-700 border-green-200' },
+    pptx_screenshot_vision: { label: 'Vision', color: 'bg-pink-100 text-pink-700 border-pink-200' },
+    pptx_error: { label: 'Hata', color: 'bg-red-100 text-red-700 border-red-200' },
+    audio_transcript: { label: 'Transkript', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
 };
 
 const ChunkTypeBadge = ({ type }) => {
@@ -176,8 +177,18 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                             {/* Footer */}
                             <div className="px-3 py-2 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
                                 <div className="flex gap-3">
-                                    <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
-                                    <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
+                                    {(chunk.rawMeta?.start_time_fmt || chunk.rawMeta?.end_time_fmt) ? (
+                                        <>
+                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm text-indigo-600 font-semibold" title="Başlangıç Süresi">{chunk.rawMeta.start_time_fmt || '00:00:00'}</span>
+                                            <span className="font-mono bg-transparent px-0.5 py-0.5 rounded text-slate-400 font-bold">-</span>
+                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm text-indigo-600 font-semibold" title="Bitiş Süresi">{chunk.rawMeta.end_time_fmt || '00:00:00'}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
+                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     {hasTarget(chunk) && (

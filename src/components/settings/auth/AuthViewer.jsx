@@ -74,6 +74,7 @@ function UsersTab() {
     const [users, setUsers] = useState([]);
     const [expandedUserId, setExpandedUserId] = useState(null);
     const [dashboardUser, setDashboardUser] = useState(null);
+    const [editingRoleId, setEditingRoleId] = useState(null);
 
     useEffect(() => {
         fetch('/api/auth/users')
@@ -81,6 +82,19 @@ function UsersTab() {
             .then(data => setUsers(data))
             .catch(err => console.error('Kullanıcılar yüklenemedi', err));
     }, []);
+
+    const updateRole = (userId, newRole) => {
+        fetch(`/api/auth/users/${userId}/role`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: newRole })
+        }).then(res => {
+            if (res.ok) {
+                setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+            }
+            setEditingRoleId(null);
+        }).catch(err => console.error('Rol güncellenemedi', err));
+    };
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -120,9 +134,26 @@ function UsersTab() {
                                     <td className="p-4 font-medium">{user.name}</td>
                                     <td className="p-4 text-slate-500">{user.email}</td>
                                     <td className="p-4">
-                                        <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[10px] font-medium border border-slate-200">
-                                            {user.role}
-                                        </span>
+                                        {editingRoleId === user.id ? (
+                                            <select
+                                                autoFocus
+                                                onBlur={() => setEditingRoleId(null)}
+                                                onChange={(e) => updateRole(user.id, e.target.value)}
+                                                value={user.role}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="bg-white text-slate-700 px-2 py-1 rounded-md text-[10px] font-medium border border-[#b91d2c] shadow-sm focus:outline-none focus:ring-1 focus:ring-[#b91d2c] cursor-pointer appearance-none pr-6 relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23b91d2c%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[length:8px_8px] bg-[position:right_8px_center]"
+                                            >
+                                                <option value="Standart Kullanıcı">Standart Kullanıcı</option>
+                                                <option value="Sistem Yöneticisi">Sistem Yöneticisi</option>
+                                            </select>
+                                        ) : (
+                                            <span
+                                                onClick={(e) => { e.stopPropagation(); setEditingRoleId(user.id); }}
+                                                className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[10px] font-medium border border-slate-200 hover:border-slate-300 hover:bg-slate-200 transition-colors cursor-pointer"
+                                            >
+                                                {user.role}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded-md text-[10px] font-medium flex items-center gap-1.5 w-max ${user.status === 'Aktif' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>

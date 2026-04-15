@@ -12,6 +12,7 @@ import TreeNode from './TreeNode';
 import UserPanel from './UserPanel';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
+import { useArchiveChangedListener } from '../../utils/archiveEvents';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
     const isN8nBooting = useWorkspaceStore(state => state.isN8nBooting);
@@ -59,6 +60,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
             fetchArchive();
         }
     }, [currentUser]);
+
+    useArchiveChangedListener(fetchArchive);
 
     const getArchiveTree = () => {
         if (!archiveData || archiveData.length === 0) return [];

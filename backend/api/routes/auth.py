@@ -146,6 +146,26 @@ def update_user_status(user_id: str, req: StatusUpdateRequest, db: Session = Dep
         "yeni_durum": "Aktif" if user.aktif_mi else "Askıya Alındı"
     }
 
+class RoleUpdateRequest(BaseModel):
+    role: str
+
+@router.put("/users/{user_id}/role")
+def update_user_role(user_id: str, req: RoleUpdateRequest, db: Session = Depends(get_db)):
+    user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    
+    is_super = True if req.role == "Sistem Yöneticisi" else False
+    user.super_kullanici_mi = is_super
+    db.commit()
+    db.refresh(user)
+    
+    return {
+        "mesaj": "Rol güncellendi",
+        "user_id": user_id,
+        "yeni_rol": "Sistem Yöneticisi" if user.super_kullanici_mi else "Standart Kullanıcı"
+    }
+
 @router.put("/users/{user_id}/meta")
 def update_user_meta(user_id: str, meta: dict, db: Session = Depends(get_db)):
     user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()

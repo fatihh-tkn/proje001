@@ -119,12 +119,13 @@ def _hybrid_parse_pptx(
 
     # ── Fitz / PNG hazırlığı ──────────────────────────────────────────
     doc = None
-    image_dir = ""
+    # Görsel dizini her durumda hesapla (PDF dönüştürme başarısız olsa bile
+    # önceki yüklemelerden kalan görseller kullanılabilsin)
+    _base_name_for_images = os.path.splitext(file_basename)[0]
+    image_dir = os.path.join(os.path.dirname(file_path), f"images_{_base_name_for_images}")
     if _FITZ_AVAILABLE and pdf_path and os.path.exists(pdf_path):
         try:
             doc = fitz.open(pdf_path)
-            base_name = os.path.splitext(file_basename)[0]
-            image_dir = os.path.join(os.path.dirname(file_path), f"images_{base_name}")
             os.makedirs(image_dir, exist_ok=True)
         except Exception as e:
             print(f"[PPTX] Fitz başlatılamadı: {e}")
@@ -153,6 +154,13 @@ def _hybrid_parse_pptx(
                 slide_image_path = img_path_abs
             except Exception as e:
                 print(f"[PPTX] PNG kaydedilemedi slayt {slide_idx+1}: {e}")
+
+        # Geri çekilme: PDF dönüştürme başarısızsa önceki yüklemeden kalan görseli kullan
+        if not slide_image_path and image_dir:
+            fallback = os.path.abspath(os.path.join(image_dir, f"page_{slide_idx + 1}.png"))
+            if os.path.exists(fallback):
+                slide_image_path = fallback
+                print(f"[PPTX] Önceki yüklemeden görsel kullanılıyor: slayt {slide_idx+1}")
 
         # ── AŞAMA 1: Per-shape shapes ─────────────────────────────────
         shapes_data   = _extract_shapes_individual(slide)

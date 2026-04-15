@@ -9,31 +9,37 @@ from core.db_bridge import add_log_to_db
 
 # PPT-PDF için minimum içerik eşiği (karakter)
 _MIN_SLIDE_CHARS = 30
-# Gerekirse daha büyük belgeler için bölme boyutu
-_CHUNK_SIZE = 3000
-_CHUNK_OVERLAP = 400
+# Metin işleme için ideal varsayılanlar (Kelime bazlı)
+_CHUNK_SIZE_WORDS = 300
+_CHUNK_OVERLAP_WORDS = 50
 
-def chunk_text(text: str, chunk_size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLAP) -> list[str]:
-    """Metni kelime sınırında bölüp örtüşmeli chunk'lara ayırır."""
+def chunk_text(text: str, chunk_size: int = _CHUNK_SIZE_WORDS, overlap: int = _CHUNK_OVERLAP_WORDS) -> list[str]:
+    """
+    Metni kelime bazında bölüp, bağlamın kopmaması için örtüşmeli (overlap) chunk'lara ayırır.
+    (Örn: Chunk Size: 300 kelime, Overlap: 50 kelime). Anlam kaymalarını engeller.
+    """
+    words = text.split()
+    if not words:
+        return []
+    
     chunks = []
     start = 0
-    text_len = len(text)
-    while start < text_len:
-        end = start + chunk_size
-        if end < text_len:
-            last_break = max(
-                text.rfind('\n\n', start, end),  # Paragraf sınırı öncelikli
-                text.rfind('\n', start, end),
-                text.rfind(' ', start, end),
-            )
-            if last_break != -1 and last_break > start:
-                end = last_break
-        chunk_str = text[start:end].strip()
+    total_words = len(words)
+    
+    while start < total_words:
+        end = min(start + chunk_size, total_words)
+        
+        # Parçayı oluştur
+        chunk_str = " ".join(words[start:end]).strip()
         if chunk_str:
             chunks.append(chunk_str)
-        start = end - overlap
-        if start >= text_len:
+            
+        if end >= total_words:
             break
+            
+        # Sonraki parça için overlap kadar geri git
+        start = end - overlap
+        
     return chunks
 
 
@@ -220,6 +226,16 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
         doc = fitz.open(file_path)
         total_pages = len(doc)
         base_name   = os.path.splitext(file_basename)[0]
+        
+        # Meta verileri çıkart: Yazar/Konuşmacı, Tarih vb.
+        doc_metadata = doc.metadata or {}
+        author = doc_metadata.get("author", "Bilinmiyor") or "Bilinmiyor"
+        creation_date = doc_metadata.get("creationDate", "") or ""
+        # PDF tarih formatı genellikle D:YYYYMMDDHHmmSS.. şeklindedir,
+        # arayüzde gösterilebilir hale getiriyoruz.
+        if creation_date.startswith("D:"):
+            creation_date = creation_date[2:10]  # Sadece YYYYMMDD
+            
         # PNG klasörünü temp_uploads yanına koy (izin sorununu azaltır)
         image_dir   = os.path.join(os.path.dirname(file_path), f"images_{base_name}")
         try:
@@ -281,6 +297,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                     "chunk_index":  0,
                     "source":       file_basename,
                     "type":         "document_summary",
+                    "author":       author,
+                    "date":         creation_date,
                     "image_path":   page_data[0]["image_path"] if page_data else "",
                     "zoom_factor":  zoom_factor,
                     "page_width":   float(page_data[0]["page_w"]) if page_data else 0,
@@ -359,6 +377,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                             "chunk_index":   0,
                             "source":        file_basename,
                             "type":          "ai_vision_analysis",
+                            "author":        author,
+                            "date":          creation_date,
                             "routing":       routing_note,
                             "image_path":    image_path,
                             "zoom_factor":   zoom_factor,
@@ -408,6 +428,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                             "chunk_index": 1,
                             "source":      file_basename,
                             "type":        "slide_text",
+                            "author":      author,
+                            "date":        creation_date,
                             "image_path":  image_path,
                             "zoom_factor": zoom_factor,
                             "page_width":  float(page_w),
@@ -432,6 +454,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                                 "chunk_index": idx + 1,
                                 "source":      file_basename,
                                 "type":        "slide_text",
+                                "author":      author,
+                                "date":        creation_date,
                                 "image_path":  image_path,
                                 "zoom_factor": zoom_factor,
                                 "page_width":  float(page_w),
@@ -451,6 +475,8 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
                         "chunk_index": 1,
                         "source":      file_basename,
                         "type":        "slide_visual_only",
+                        "author":      author,
+                        "date":        creation_date,
                         "image_path":  image_path,
                         "zoom_factor": zoom_factor,
                         "page_width":  float(page_w),

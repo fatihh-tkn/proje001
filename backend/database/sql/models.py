@@ -19,7 +19,7 @@ Tasarım Kuralları:
   - Yabancı anahtarlar ForeignKey ile tanımlanır; ondelete davranışı belirtilir.
   - İndeksler sorgu performansı için kritik alanlara eklenmiştir.
   - JSON alanlar esnek meta veri için kullanılır.
-  - Vektör alanlar pgvector Vector(384) ile saklanır.
+  - Vektör alanlar pgvector Vector(1536) ile saklanır (çoklu model desteği).
 """
 
 from __future__ import annotations
@@ -288,7 +288,8 @@ class Belge(Base):
 class VektorParcasi(Base):
     """
     Bir belgenin pgvector tabanlı semantic parçası (chunk).
-    Hem metin içeriği hem de 384 boyutlu vektör embedding'i bu tabloda saklanır.
+    Hem metin içeriği hem de 1536 boyutlu vektör embedding'i bu tabloda saklanır.
+    Farklı boyutlu modeller (384, 1024, 1536) sıfırla doldurularak normalize edilir.
     RAG sorgularında cosine distance ile bu tablo üzerinden arama yapılır.
     """
     __tablename__ = "vektor_parcalari"
@@ -313,7 +314,7 @@ class VektorParcasi(Base):
     embedding_modeli: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Bu parçanın RAG sorgularında kaç kez getirildiği
     tiklanma_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    vektor_verisi: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    vektor_verisi: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     # En son hangi sorguda kullanıldığı
     son_sorgulanma_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)

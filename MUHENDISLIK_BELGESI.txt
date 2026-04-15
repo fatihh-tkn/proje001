@@ -1,0 +1,973 @@
+================================================================================
+KURUMSAL YAPAY ZEKA ORKESTRASYON PLATFORMU
+MUHENDISLIK BELGESI
+================================================================================
+Tarih: 14 Nisan 2026
+Platform: proje001
+Siniflandirma: Ic Kullanim
+================================================================================
+
+ICERIK
+------
+ 1. Projeye Genel Bakis
+ 2. Mimari
+ 3. Klasor Yapisi
+ 4. Teknoloji Yigini
+ 5. Veritabani Tasarimi
+ 6. API Rotalari
+ 7. Temel Servisler ve Is Mantigi
+ 8. RAG Sistemi
+ 9. Yapay Zeka Entegrasyonlari
+10. Dosya Isleme Hatti
+11. Frontend Bilesenleri
+12. Guvenlik ve Erisim Kontrolu
+13. Veri Akislari
+14. Izleme ve Denetim
+15. Otomasyon: N8N Entegrasyonu
+16. DevOps ve Dagitim
+17. Potansiyel ve Genisleme Alanlari
+18. Bilinen Sinirlamalar
+
+
+================================================================================
+1. PROJEYE GENEL BAKIS
+================================================================================
+
+proje001, kurumsal duzey bir Yapay Zeka Orkestrasyon Platformudur.
+Temel amaci; sirket belgelerini, ses/video kayitlarini, sunumlari ve Excel
+dosyalarini anlamli bilgiye donusturek calisanlara dogal dil arabirimi
+(sohbet) uzerinden kurumsal hafizaya erisim saglamaktir.
+
+TEMEL YETENEKLER
+----------------
+Kurumsal RAG          : Sirket belgelerine semantik arama ve LLM yaniti
+Ses Transkripsiyon    : Toplanti kayitlarini metne cevirmek (Whisper)
+Cok Formatli Arsiv    : PDF, PPTX, Excel, Word, BPMN, MP3, MP4 isleme
+Cok Model Destegi     : OpenAI, Google Gemini, Anthropic Claude, Ollama
+Erisim Kontrolu       : Belge bazinda rol/politika yonetimi
+Ajan Orkestrasyonu    : Farkli gorevler icin ozellestirilmis AI ajanlar
+Canli Izleme          : Token tuketimi, maliyet, oturum analitigi
+N8N Otomasyonu        : Is akisi otomasyonu entegrasyonu
+Bilgi Grafigi         : NetworkX tabanli chunk iliski haritasi
+
+
+================================================================================
+2. MIMARI
+================================================================================
+
+Genel Mimari Desen: Monolitik Moduler Backend + SPA Frontend
+Dagitim: Docker ile 3 container (postgres, backend, frontend)
+
+  [KULLANICI TARAYICI]
+  React 18 + Vite + TailwindCSS + Zustand
+         |
+         | HTTP / SSE
+         v
+  [FastAPI BACKEND (Python)]
+  +---------+ +----------+ +------------+ +----------+
+  |  Auth   | |  Chat    | |  Archive   | |  Bridge  |
+  | Routes  | | Routes   | |  Routes    | |  Routes  |
+  +---------+ +----------+ +------------+ +----------+
+         |
+    +---------+           +--------------+
+    | Services|           |  Processors  |
+    | AI/RAG  |           | Audio/PPTX   |
+    +---------+           | Excel/OCR    |
+         |                +--------------+
+         |
+  +----------+  +-----------+  +------------+
+  |PostgreSQL|  | pgvector  |  |  NetworkX  |
+  |  (SQL)   |  | (Vektor)  |  |  (Graf DB) |
+  +----------+  +-----------+  +------------+
+                      |
+               +------------+
+               |  N8N Motor |
+               | (Otomasyon)|
+               +------------+
+
+
+================================================================================
+3. KLASOR YAPISI
+================================================================================
+
+proje001/
+|-- backend/
+|   |-- api/
+|   |   |-- main.py                     # Router toplayici
+|   |   `-- routes/
+|   |       |-- auth.py                 # Kimlik dogrulama
+|   |       |-- chat.py                 # Sohbet + RAG
+|   |       |-- bridge.py               # Dosya yukleme koprusu
+|   |       |-- archive.py              # Arsiv yonetimi
+|   |       |-- db.py                   # Vektor DB islemleri
+|   |       |-- files.py                # Dosya ayristirma
+|   |       |-- orchestrator.py         # AI ajan orkestrasyonu
+|   |       |-- monitor.py              # Izleme ve log
+|   |       |-- sql_explorer.py         # SQL tablo gezgini
+|   |       |-- n8n.py                  # N8N otomasyon
+|   |       `-- meetings.py             # Toplanti yonetimi
+|   |-- core/
+|   |   |-- config.py                   # Uygulama konfigurasyonu
+|   |   |-- db_bridge.py                # DB uyumluluk katmani
+|   |   `-- prompts.py                  # LLM prompt sablonlari
+|   |-- services/
+|   |   |-- ai_service.py               # AI/LLM + RAG motoru
+|   |   |-- file_parser.py              # Dosya ayristirici
+|   |   |-- memory.py                   # Oturum hafizasi
+|   |   |-- processor.py                # Islem yonlendiricisi
+|   |   |-- monitor_service.py          # Izleme servisi
+|   |   |-- bpmn_processor.py           # BPMN isleme
+|   |   `-- processors/
+|   |       |-- audio_processor.py      # Ses/video -> metin
+|   |       |-- image_processor.py      # Goruntu OCR
+|   |       |-- pptx_processor.py       # PowerPoint isleme
+|   |       |-- excel_processor.py      # Excel ayristirma
+|   |       `-- text_processor.py       # Metin cikarma
+|   |-- database/
+|   |   |-- sql/
+|   |   |   |-- models.py               # SQLAlchemy ORM modelleri
+|   |   |   |-- session.py              # Engine ve session
+|   |   |   |-- base.py                 # Temel model
+|   |   |   |-- init_db.py              # DB baslama
+|   |   |   `-- repositories/           # Veri erisim katmani
+|   |   |       |-- chat_repo.py
+|   |   |       |-- document_repo.py
+|   |   |       |-- log_repo.py
+|   |   |       `-- user_repo.py
+|   |   |-- vector/
+|   |   |   |-- pgvector_db.py          # pgvector arabirimi
+|   |   |   `-- provider.py             # Saglayici soyutlamasi
+|   |   `-- graph/
+|   |       `-- networkx_db.py          # Graf veritabani
+|   |-- schemas/                        # Pydantic dogrulama semalari
+|   |-- main.py                         # FastAPI giris noktasi
+|   |-- requirements.txt
+|   |-- Dockerfile
+|   `-- .env
+|-- src/
+|   |-- components/
+|   |   |-- auth/Login.jsx
+|   |   |-- chatbar/
+|   |   |-- settings/
+|   |   |   |-- ai/
+|   |   |   |-- archive/
+|   |   |   |-- auth/
+|   |   |   `-- database/
+|   |   |-- viewers/
+|   |   |-- workspace/
+|   |   |-- sidebar/
+|   |   `-- header/
+|   |-- store/workspaceStore.js          # Zustand global state
+|   |-- api/chatService.js
+|   `-- App.jsx
+|-- docker-compose.yml
+|-- Dockerfile                           # Frontend multi-stage
+|-- package.json
+|-- vite.config.js
+`-- tailwind.config.js
+
+
+================================================================================
+4. TEKNOLOJI YIGINI
+================================================================================
+
+4.1 FRONTEND
+------------
+Teknoloji           Versiyon    Amac
+------------------------------------------------------------------------
+React               18.2.0      UI framework - bilesен tabanli mimari
+Vite                5.1.4       Build araci - CRA'ya gore 10x hizli HMR
+Zustand             5.0.12      State yonetimi - Redux'tan daha basit
+TailwindCSS         3.4.1       Stil sistemi - utility-first yaklasim
+Framer Motion       12.35.1     Animasyon - declarative API
+Recharts            3.8.0       Grafik/chart - React native, SVG tabanli
+React-Force-Graph   1.29.1      3D graf gorsellestirme
+BPMN.js             18.13.1     BPMN diyagrami - standart BPMN 2.0
+PDF.js              5.5.207     PDF goruntuleme - Mozilla resmi kutuphanesi
+@dnd-kit            -           Surukle-birak - erisilebiilir, modern API
+html2canvas         1.4.1       Ekran goruntusu - UI snapshot
+
+4.2 BACKEND (PYTHON)
+--------------------
+Teknoloji           Versiyon    Amac
+------------------------------------------------------------------------
+FastAPI             0.135.1     Web framework - async native, otomatik OpenAPI
+SQLAlchemy          2.0.48      ORM - en olgun Python ORM, async destegi
+PostgreSQL          16          Ana veritabani - pgvector ile vektor+SQL bir arada
+pgvector            -           Vektor depolama - PostgreSQL native
+Pydantic            2.12.5      Veri dogrulama - FastAPI ile entegre, tip guvenligi
+Uvicorn             0.41.0      ASGI sunucu - yuksek performansli, async
+bcrypt              -           Parola hash - guvenli, yavas hash (brute force'a karsi)
+httpx               -           Async HTTP client - harici API cagrilari
+
+4.3 YAPAY ZEKA / ML
+--------------------
+Teknoloji               Versiyon    Amac
+------------------------------------------------------------------------
+sentence-transformers   5.2.3       Embedding uretimi (all-MiniLM-L6-v2, 384 boyut)
+faster-whisper          -           Ses transkripsiyonu (OpenAI Whisper'in 4x hizlisi)
+LangChain               1.2.12      LLM orkestrasyonu - prompt zinciri, bellek, arac
+LangGraph               1.1.1       Ajan framework - stateful ajan akislari
+google-generativeai     0.8.6       Google Gemini 2.0 Flash entegrasyonu
+transformers            5.3.0       HuggingFace - yerel model calistirma
+networkx                3.6.1       Graf veritabani - chunk iliski haritasi
+
+4.4 VERI ISLEME
+----------------
+Teknoloji       Amac
+------------------------------------------------------------------------
+openpyxl        Excel XLSX okuma/yazma
+python-pptx     PowerPoint isleme ve slayt cikarma
+PyMuPDF         PDF isleme ve gorsel cikarma
+Pillow          Goruntu isleme ve OCR destegi
+pandas          Tablo veri manipulasyonu
+
+
+================================================================================
+5. VERITABANI TASARIMI
+================================================================================
+
+5.1 SEMA GENEL BAKIS
+--------------------
+
+kullanicilar (Users)
+    |
+    |---- sohbet_oturumlari (Chat Sessions)
+    |         |
+    |         `---- sohbet_mesajlari (Messages)
+    |
+    |---- belgeler (Documents/Archive)
+    |         |
+    |         `---- vektor_parcalari (Vector Chunks) <-- pgvector
+    |                   |
+    |                   `---- bilgi_iliskileri (Knowledge Graph Edges)
+    |
+    |---- bilgisayar_oturumlari (Device Sessions)
+    |---- denetim_izleri (Audit Log)
+    `---- sistem_ayarlari (System Config)
+
+toplantilar (Meetings)
+    |---- toplanti_segmentleri (Segments)
+    `---- toplanti_ozetleri (Summaries)
+
+ai_modelleri (AI Models)
+
+5.2 KRITIK TABLOLAR
+--------------------
+
+kullanicilar:
+  kimlik              UUID PK
+  eposta              VARCHAR UNIQUE
+  tam_ad              VARCHAR
+  sifre_karma         VARCHAR       (bcrypt)
+  aktif_mi            BOOLEAN
+  super_kullanici_mi  BOOLEAN
+  meta                JSONB         (izin yapilandirmalari)
+  son_giris_tarihi    TIMESTAMP
+
+belgeler (Arsiv merkezi):
+  kimlik              UUID PK
+  yukleyen_kimlik     UUID FK -> kullanicilar
+  dosya_adi           VARCHAR
+  dosya_turu          VARCHAR       (pdf, xlsx, pptx, mp3, mp4, bpmn...)
+  dosya_boyutu_bayt   BIGINT
+  depolama_yolu       VARCHAR
+  vektordb_koleksiyon VARCHAR
+  parca_sayisi        INTEGER
+  erisim_politikasi   VARCHAR       (public, hr, finance, admin, confidential)
+  durum               VARCHAR       (karantina, onaylandi, reddedildi, arsivde)
+  vektorlestirildi_mi BOOLEAN
+  isleme_suresi_ms    INTEGER
+  meta                JSONB         (etiketler, klasor_id, transkript verisi)
+
+vektor_parcalari (pgvector kalbi):
+  kimlik              SERIAL PK
+  belge_kimlik        UUID FK CASCADE
+  chromadb_kimlik     VARCHAR UNIQUE
+  icerik              TEXT
+  konum_imi           VARCHAR       (bounding box referansi)
+  sayfa_no            INTEGER
+  sinir_kutusu        JSONB         ({x0, y0, x1, y1})
+  meta                JSONB
+  embedding_modeli    VARCHAR
+  vektor_verisi       vector(384)   (pgvector sutunu!)
+  son_sorgulanma      TIMESTAMP
+
+bilgi_iliskileri (Graf kenarlari):
+  kaynak_parca_kimlik INTEGER FK CASCADE
+  hedef_parca_kimlik  INTEGER FK CASCADE
+  iliski_turu         VARCHAR       (next_chunk, semantic, visual_detail, action_flow)
+  agirlik             FLOAT         (kosinus benzerlik skoru)
+  kaynak              VARCHAR       (automatic, manual)
+
+ai_modelleri:
+  ad                  VARCHAR UNIQUE
+  tedarikci           VARCHAR       (openai, google, anthropic, ollama)
+  api_anahtari        VARCHAR       (sifrelenmis)
+  model_id            VARCHAR       (gpt-4o, gemini-2.0-flash, claude-3-5-sonnet...)
+  aktif_mi            BOOLEAN
+  yapilandirma        JSONB         (temperature, max_tokens, top_p...)
+
+5.3 INDEKSLER
+-------------
+Performans icin kritik indeksler:
+  - belgeler.dosya_turu           : tur filtreleme
+  - belgeler.durum                : durum filtreleme
+  - belgeler.erisim_politikasi    : erisim kontrolu
+  - vektor_parcalari.belge_kimlik : chunk->belge birlestirme
+  - vektor_parcalari.vektor_verisi: pgvector ANN indeksi
+  - sohbet_mesajlari.oturum_kimlik: oturum gecmisi
+  - denetim_izleri.kullanici_kimlik: kullanici denetimi
+
+
+================================================================================
+6. API ROTALARI
+================================================================================
+
+6.1 /api/auth -- Kimlik Yonetimi
+----------------------------------
+POST   /register                  Kullanici kaydi
+POST   /login                     Giris (bcrypt dogrulama)
+GET    /users                     Tum kullanicilari listele
+PUT    /users/{id}/status          Kullanici aktif/pasif
+PUT    /users/{id}/meta            Meta verisi guncelle
+PATCH  /users/{id}/profile         Profil guncelle
+DELETE /users/{id}                 Kullanici sil
+GET    /users/{id}/dashboard       Kullanici panosu
+GET    /users/{id}/permissions-context  UI izin baglami
+POST   /audit/event                Denetim olayi kaydet
+GET    /audit/live-dashboard       Gercek zamanli denetim
+
+6.2 /api/chat -- Sohbet ve RAG
+--------------------------------
+POST   /                          Tam yanit (RAG ile)
+POST   /stream                    SSE akisli yanit
+POST   /revise-prompt             AI prompt duzeltici
+
+6.3 /api/bridge -- Dosya Yukleme
+----------------------------------
+POST   /upload-and-analyze        Yukle + isle + vektorlestir
+GET    /progress/{task_id}        Islem ilerleme durumu
+DELETE /chunk/{chunk_id}          Atomik chunk silme + yeniden baglama
+
+6.4 /api/archive -- Arsiv Yonetimi
+------------------------------------
+GET    /list                      Belge ve klasor listesi
+GET    /detail/{doc_id}           Belge detayi (transkript dahil)
+POST   /folder                    Klasor olustur
+POST   /move                      Belgeyi tasi
+PUT    /rename                    Yeniden adlandir
+DELETE /items                     Toplu silme
+PUT    /meta                      Meta guncelleme (etiket, aciklama)
+GET    /file/{doc_id}             Dosya indir/aktar
+GET    /preview/{doc_id}          Onizleme
+
+6.5 /api/meetings -- Toplanti Yonetimi
+----------------------------------------
+POST   /upload                    Ses/video yukle
+GET    /list                      Toplanti listesi
+GET    /{meeting_id}              Toplanti + segmentler + ozet
+DELETE /{meeting_id}              Toplanti sil
+GET    /audio/{meeting_id}        Ses akisi
+
+6.6 /api/db -- Vektor Veritabani
+----------------------------------
+GET    /collections               Koleksiyon listesi
+GET    /collections/{name}        Koleksiyon bilgisi
+POST   /documents                 Embedding ile belge ekle
+POST   /query                     Semantik sorgu
+DELETE /collections               Koleksiyon sil
+GET    /collections/{name}/content Tum chunk icerigi
+
+6.7 /api/sql -- SQL Gezgini
+-----------------------------
+GET    /tables                    Tablo listesi
+GET    /tables/{table_name}       Tablo verisi (sayfali)
+GET    /graph                     Graf dugumleri ve kenarlari
+GET    /file-graph-stats          Dosya bazinda graf istatistikleri
+
+6.8 /api/monitor -- Izleme
+-----------------------------
+POST   /logs                      API cagrisi kaydet
+GET    /dashboard                 Pano istatistikleri
+GET    /logs                      Log kayitlari
+DELETE /logs                      Tum loglari temizle
+GET    /sessions                  Oturum listesi
+GET    /computers                 Bagli cihazlar
+DELETE /computers/{mac}/{ip}      Cihaz sil
+PATCH  /computers/rename          Cihaz yeniden adlandir
+DELETE /sessions/{id}             Oturum sil
+GET    /catalog                   Mevcut AI modelleri
+POST   /custom-models/verify      Ozel model API dogrula
+POST   /custom-models             Ozel model ekle
+DELETE /custom-models/{id}        Ozel model sil
+
+6.9 /api/orchestrator -- Ajan Orkestrasyonu
+--------------------------------------------
+GET    /agents                    Tum ajanlari getir
+POST   /save                      Ajan yapilandirmasini kaydet
+PATCH  /agents/{id}/toggle        Ajan aktif/pasif
+
+6.10 /api/n8n -- Otomasyon
+---------------------------
+GET    /status                    N8N motor durumu
+POST   /start                     N8N baslat
+POST   /stop                      N8N durdur
+GET    /workflows                 Is akisi listesi
+POST   /workflows/{id}/toggle     Is akisi aktif/pasif
+
+
+================================================================================
+7. TEMEL SERVISLER VE IS MANTIGI
+================================================================================
+
+7.1 AIService (backend/services/ai_service.py)
+-----------------------------------------------
+Tum yapay zeka etkilesimlerinin merkezi.
+
+get_reply() -- Tam yanit modu:
+  1. Kullanici mesaji alinir
+  2. Kullaniciya ait haric tutulan dosyalar meta'dan okunur
+  3. pgvector'de semantik benzerlik aramasi yapilir (Top-K aday)
+  4. Kosinus uzakligi filtresi uygulanir (<= 1.6)
+  5. Bilgi grafiginde komsu chunk'lar genisletilir
+  6. Belgeler tablosuyla JOIN yapilarak zengin bagiam olusturulur
+  7. Erisim politikasi filtresi uygulanir
+  8. Ses/video havuzu (rag_2) tespiti yapilir
+  9. Bagiam sinirlandirilir ve prompt olusturulur
+ 10. LLM cagrilir (ilgili saglayiciya gore)
+ 11. Yanit + RAG kaynaklari + UI aksiyonu dondurulur
+ 12. Mesaj oturuma kaydedilir, log olusturulur
+
+get_reply_stream() -- SSE akisli mod:
+  - Ayni adimlar, ancak LLM yaniti token bazinda akitilir
+  - Frontend EventSource ile anlik gosterir
+
+revise_prompt() -- Prompt duzeltici:
+  - Ayri bir bot ile kullanici promptunu netlestir
+  - Belirsiz sorulari kurumsal bagama gore zenginlestir
+
+7.2 Memory Service (backend/services/memory.py)
+------------------------------------------------
+  - Her sohbet oturumu icin ayri pgvector koleksiyonu: chat_mem_<session_id>
+  - Yeni sorguda semantik geri cagirma ile ilgili gecmis mesajlar getirilir
+  - Hem RAG bagiam hem sohbet hafizasi LLM'e birlikte sunulur
+  - Halusinasyonu azaltir
+
+7.3 Monitor Service (backend/services/monitor_service.py)
+----------------------------------------------------------
+  - Her API cagrisinda token sayisi ve maliyet hesaplanir
+  - Model ve saglayici bazinda istatistik tutulur
+  - Gercek zamanli pano icin aggregasyon yapar
+  - Oturum sure analizi saglar
+
+7.4 Processor Dispatcher (backend/services/processor.py)
+---------------------------------------------------------
+  - Dosya uzantisina gore dogru isleyiciyi yonlendirir
+  - PPTX -> PDF donusumunu yonetir
+  - Chunk'lama ve vektorlestirme koordinasyonu
+  - Atomik transaction yonetimi
+
+
+================================================================================
+8. RAG SISTEMI
+================================================================================
+
+8.1 RAG MIMARISI
+-----------------
+
+Kullanici Sorusu
+      |
+      v
+Embedding Uretimi (all-MiniLM-L6-v2, 384 boyut)
+      |
+      v
+pgvector Semantik Arama (cosine distance <= 1.6, Top-K)
+      |
+      v
+Bilgi Grafigi Genisletmesi (NetworkX 1-hop komsulari)
+      |
+      v
+Belge tablosuyla JOIN (erisim politikasi, dosya turu, meta)
+      |
+      v
+Erisim Kontrolu Filtresi (kullanici izinleri)
+      |
+      v
+Havuz Tespiti (belge havuzu mu? ses/video havuzu mu?)
+      |
+      v
+Bagiam Sinirlandirma (token limiti)
+      |
+      v
+Sistem Prompt + Kullanici Sorusu + Bagiam = LLM Prompt
+      |
+      v
+LLM Cagrisi (OpenAI / Google / Anthropic / Ollama)
+      |
+      v
+Yanit + RAG Kaynaklari + UI Aksiyonu
+
+8.2 EMBEDDING MODELI
+---------------------
+Model   : all-MiniLM-L6-v2 (sentence-transformers)
+Boyut   : 384
+Ozellik : Cok dilli, hizli, hafiza dostu
+Depolama: PostgreSQL vector(384) sutunu (pgvector)
+
+8.3 BILGI GRAFIGI
+------------------
+NetworkX tabanli graf yapisi, chunk'lar arasi iliskileri saklar:
+
+  next_chunk    : Sirali metin akisi
+  semantic      : Anlam benzerligi
+  visual_detail : Gorsel detay baglantisi
+  action_flow   : Is akisi iliskisi
+
+RAG sorgusunda bulunan chunk'larin 1-hop komsulari otomatik eklenerek
+bagiam zenginlestirilir.
+
+8.4 ERISIM POLITIKALARI
+------------------------
+Belge duzeyinde politika sistemi:
+
+  public       : Tum kullanicilar
+  hr           : IK yetkisi olan
+  finance      : Finans yetkisi olan
+  admin        : Yoneticiler
+  confidential : Ozel erisim
+
+
+================================================================================
+9. YAPAY ZEKA ENTEGRASYONLARI
+================================================================================
+
+9.1 DESTEKLENEN LLM SAGLAYICILAR
+----------------------------------
+Saglayici   Modeller                      Entegrasyon
+-----------------------------------------------------------------
+OpenAI      GPT-4, GPT-4o                 openai SDK
+Google      Gemini 2.0 Flash, Pro         google-generativeai
+Anthropic   Claude 3.5 Sonnet             anthropic SDK
+Ollama      Yerel modeller                HTTP API
+Ozel        Kullanici tanimli             API key + endpoint
+
+Modeller ai_modelleri tablosunda saklanir ve arayuzden yonetilebilir.
+API anahtarlari maskelenerek gosterilir (ilk 6 + son 4 karakter).
+
+9.2 SES TRANSKRIPSIYON (WHISPER)
+----------------------------------
+Ses/Video Dosyasi (MP3, MP4, WAV, OGG, FLAC...)
+      |
+      v
+faster-whisper (CUDA veya CPU)
+      |
+      v
+Zaman Damgali JSON Segmentleri
+      |
+  +---+---+
+  |       |
+  v       v
+Metin   Konusmaci
+Chunk   Takibi
+
+Model: large-v3, medium, base, tiny (konfigurasyona gore)
+CUDA destegi: Varsa GPU, yoksa CPU fallback
+Ilerleme takibi: GLOBAL_PROGRESS dict uzerinden gercek zamanli
+
+9.3 AJAN ORKESTRASYONU
+-----------------------
+LangGraph tabanli stateful ajan akislari:
+  - Her ajan belirli bir gorev icin optimize edilmis sistem prompt'u tasir
+  - Ajanlar veritabaninda saklanir ve arayuzden yapilandiriilabilir
+  - Aktif/pasif durumu toggle edilebilir
+  - Farkli modeller farkli ajanlara atanabilir
+
+
+================================================================================
+10. DOSYA ISLEME HATTI
+================================================================================
+
+10.1 DESTEKLENEN FORMATLAR
+---------------------------
+Kategori    Uzantilar
+-------------------------------------------------------
+Belge       PDF, DOCX, TXT
+Sunum       PPTX (PDF donusumu dahil)
+Tablo       XLSX, XLS
+Goruntu     JPG, PNG, GIF
+Ses         MP3, WAV, OGG, FLAC
+Video       MP4
+Diyagram    BPMN
+Arsiv       ZIP
+
+10.2 POWERPOINT ISLEYICI
+--------------------------
+PPTX Yukle
+    |
+    |-> Slayt Metni Cikar
+    |-> Gorselleri Kaydet (images_<uuid>/ klasoru)
+    |-> PDF'e Donustur (arayuz goruntuleme icin)
+    |-> Chunk'lara Bol (slayt bazinda)
+    `-> pgvector'e Embed Et
+
+10.3 SES/VIDEO ISLEYICI
+-------------------------
+Ses/Video Dosyasi
+    |
+    |-> faster-whisper ile Transkribe Et
+    |       `-> GLOBAL_PROGRESS ile ilerleme yayini
+    |-> Zaman Damgali Segmentler Olustur
+    |-> toplantilar tablosuna kaydet
+    |-> toplanti_segmentleri'ne detay kaydet
+    `-> Ozet + aksiyon maddeleri uret (LLM)
+
+10.4 GENEL ISLEM AKISI
+------------------------
+POST /bridge/upload-and-analyze
+    |
+    |-> Dosyayi temp_uploads/<uuid>_<dosyaadi> konumuna kaydet
+    |-> ThreadPool'da islemeyi baslat (blocking olmayan)
+    |       |-> Uzantiya gore processor sec
+    |       |-> Chunk'lari uret
+    |       |-> Embedding uret (all-MiniLM-L6-v2)
+    |       |-> pgvector'e ekle
+    |       |-> Bilgi grafigi kenarlari olustur
+    |       `-> belgeler + vektor_parcalari tablosunu guncelle
+    `-> task_id ile don (frontend progress icin poll eder)
+
+10.5 ATOMIK CHUNK SILME
+-------------------------
+DELETE /bridge/chunk/{chunk_id} ozel bir islem yapar:
+  1. Chunk silinir
+  2. Komsu chunk'lar tespit edilir
+  3. Bilgi grafigi yeniden baglanir (re-linking)
+  4. Ilgili gorsel dosyasi silinir (varsa)
+  5. parca_sayisi guncellenir
+  6. Hepsi tek transaction icinde
+
+
+================================================================================
+11. FRONTEND BILESENLERI
+================================================================================
+
+11.1 ANA LAYOUT
+----------------
+App.jsx
+|-- Login.jsx              (Kimlik dogrulama sayfasi)
+`-- Ana Uygulama
+    |-- Header             (Ust navigasyon, workspace sekmeleri)
+    |-- Sidebar.jsx        (Sol panel, dosya agaci, sohbet gecmisi)
+    `-- Workspace.jsx      (Ana icerik alani, coklu pencere)
+        |-- TileWindow.jsx (Suruklenpilen, yeniden boyutlandiriabilen pencere)
+        `-- DynamicViewer.jsx (Belge tipi yonlendiricisi)
+
+11.2 BELGE GORUNTÜLEYICILER
+-----------------------------
+Bilesen             Desteklenen Format
+--------------------------------------------------
+PdfViewer.jsx       PDF (pdf.js tabanli)
+ExcelViewer.jsx     XLSX, XLS
+BpmnViewer.jsx      BPMN 2.0 diyagramlari
+DocxViewer.jsx      Word belgeleri
+ImageViewer.jsx     JPG, PNG, GIF
+
+11.3 SOHBET ARABIRIMI
+----------------------
+ChatBar             : Sohbet giris alani ve mesaj listesi
+MessageList         : Kaynakli RAG yanit goruntuleme
+ChatInputArea       : Dosya ekleme destekli giris
+RecentChats         : Gecmis oturum listesi
+
+11.4 AYARLAR PANELLERI
+-----------------------
+AiOrchestratorViewer : AI ajan yapilandirma ve topoloji gorsellestirme
+ApiUsageViewer       : API kullanim panosu ve maliyet grafikleri
+ModelCard + ModelsTab: Model yonetimi
+AuthViewer           : Kullanici listesi ve durum yonetimi
+ArchiveDocsViewer    : Arsiv belge listesi
+DatabaseViewer       : SQL tablo gezgini
+AudioArchiveViewer   : Ses arsivi ve transkript
+VectorDatabaseViewer : Vektor bellek tarayici
+GraphDatabaseViewer  : Bilgi grafigi 3D gorsellestirme
+
+11.5 STATE YONETIMI (ZUSTAND)
+------------------------------
+workspaceStore.js su global durumlari yonetir:
+  - Workspace sekme listesi (acik dosyalar)
+  - Dosya ac/kapat/buyut operasyonlari
+  - Kullanici giris durumu
+  - UI daralt/genislet durumu
+
+
+================================================================================
+12. GUVENLIK VE ERISIM KONTROLU
+================================================================================
+
+12.1 KIMLIK DOGRULAMA
+----------------------
+Parola hash       : bcrypt, 10 round (~80ms/hash)
+Oturum yonetimi   : SQL session tablosu
+Cihaz takibi      : IP + MAC adresi kaydi
+Basarisiz giris   : Denetim tablosuna kayit
+
+12.2 YETKILENDIRME
+-------------------
+  - super_kullanici_mi boolean -- admin/standart ayrimi
+  - Belge duzeyinde erisim_politikasi -- cok katmanli erisim
+  - Kullanici meta'sinda archive_file_<id> flag'leri -- dosya bazinda izin
+  - RAG sorgusunda erisim filtresi otomatik uygulanir
+
+12.3 GUVENLIK ONLEMLERI
+------------------------
+SQL Injection   : SQLAlchemy parametrize sorgular
+XSS             : React'in varsayilan DOM sanitization
+CORS            : Sadece frontend URL + localhost:3000
+API Key Maskeleme: Ilk 6 + son 4 karakter, orta noktali
+Cascade Delete  : FK ondelete="CASCADE"
+Audit Trail     : Tum kritik islemler loglanir
+
+
+================================================================================
+13. VERI AKISLARI
+================================================================================
+
+13.1 SOHBET VE RAG AKISI
+--------------------------
+Kullanici -> POST /chat/stream
+    |
+    |-- Kullanici meta'dan haric tutulan dosyalar okunur
+    |-- pgvector: cosine similarity arama (Top-K)
+    |-- Uzaklik filtresi (<= 1.6)
+    |-- NetworkX: 1-hop komsu genisletmesi
+    |-- SQL JOIN: belge meta, erisim politikasi
+    |-- Erisim filtresi (kullanici izinleri)
+    |-- Havuz tespiti (rag_1 belge / rag_2 ses-video)
+    |-- Bagiam sinirlandirma (token limiti)
+    |-- LLM prompt insasi
+    |-- LLM -> SSE akisli yanit
+    |-- Mesaj oturuma kaydedilir
+    `-- Monitor log olusturulur
+
+13.2 DOSYA YUKLEME AKISI
+--------------------------
+Kullanici -> POST /bridge/upload-and-analyze
+    |
+    |-- Dosya temp_uploads/ konumuna UUID prefix ile kaydedilir
+    |-- ThreadPool'da asenkron isleme baslar
+    |       |-- Uzantiya gore processor secilir
+    |       |-- Icerik cikarilir (metin/tablo/ses/gorsel)
+    |       |-- Chunk'lara bolunur
+    |       |-- all-MiniLM-L6-v2 ile embedding uretilir
+    |       |-- pgvector'e kaydedilir
+    |       |-- Bilgi grafigi kenarlari olusturulur
+    |       `-- belgeler tablosu guncellenir
+    `-- task_id doner -> Frontend GLOBAL_PROGRESS'i poll eder
+
+13.3 OTURUM HAFIZASI AKISI
+---------------------------
+Yeni Sorgu
+    |
+    |-- pgvector koleksiyon: chat_mem_<session_id>
+    |-- Semantik geri cagirma: ilgili gecmis mesajlar
+    |-- Son N mesaj: sohbet_mesajlari tablosundan
+    |-- RAG bagiami + sohbet hafizasi birlestir
+    `-- LLM'e tek prompt olarak gonder
+
+
+================================================================================
+14. IZLEME VE DENETIM
+================================================================================
+
+14.1 API KULLANIM IZLEME
+-------------------------
+Her LLM cagrisinda otomatik kayit:
+  - Model adi ve saglayici
+  - Istek/yanit token sayisi
+  - Hesaplanan maliyet (USD)
+  - Yanit suresi (ms)
+  - Kullanici ve oturum referansi
+
+14.2 DENETIM IZI
+-----------------
+denetim_izleri tablosunda kayit altina alinan islemler:
+
+  LOGIN / LOGOUT          : Giris/cikis
+  CREATE                  : Kayit olusturma
+  UPDATE                  : Kayit guncelleme
+  DELETE                  : Kayit silme
+  ERISIM_REDDEDILDI       : Yetkisiz erisim girisimi
+
+Her kayitta: eski deger (JSON), yeni deger (JSON), IP adresi, zaman damgasi.
+
+14.3 CIHAZ TAKIBI
+------------------
+bilgisayar_oturumlari tablosu:
+  - IP adresi + MAC adresi
+  - Bilgisayar adi, isletim sistemi, tarayici
+  - Ilk baglanti ve son aktivite zamani
+  - Arayuzden yeniden adlandirma ve silme
+
+14.4 PANO
+----------
+GET /monitor/dashboard sunlari doner:
+  - Toplam token tuketimi
+  - Model bazinda maliyet dagilimi
+  - Oturum sayisi ve ortalama suresi
+  - Gunluk/haftalik kullanim grafikleri
+  - Basarisiz giris sayisi
+
+
+================================================================================
+15. OTOMASYON: N8N ENTEGRASYONU
+================================================================================
+
+15.1 MIMARI
+------------
+N8N, Python backend tarafindan ayri bir surec olarak yonetilir:
+  - subprocess.Popen(["n8n", "start"]) ile N8N baslatilir
+  - psutil ile surec takibi yapilir
+  - requests ile localhost:5678 N8N API ile iletisim kurulur
+
+15.2 YETENEKLER
+----------------
+  - N8N motor baslat/durdur (API uzerinden)
+  - Is akisi listesi goruntuleme
+  - Is akisi aktif/pasif toggle
+  - Webhook entegrasyonu
+
+15.3 KULLANIM SENARYOLARI
+--------------------------
+  - Belge yukleme tetikleyicisi -> harici sistem bildirimi
+  - Periyodik rapor uretimi
+  - Harici API entegrasyonlari (CRM, ERP, e-posta)
+  - Approval workflow'lari
+
+
+================================================================================
+16. DEVOPS VE DAGITIM
+================================================================================
+
+16.1 DOCKER COMPOSE
+--------------------
+Uc servis:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    volume: postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    depends_on: postgres
+    env: DATABASE_URL=postgresql://proje001:proje001pass@postgres:5432/proje001db
+
+  frontend:
+    build: . (multi-stage: Node 20 + Nginx)
+    port: 3000:80
+    depends_on: backend
+
+16.2 FRONTEND DOCKERFILE (MULTI-STAGE)
+----------------------------------------
+Asama 1 - Derleme:
+  FROM node:20-alpine AS builder
+  RUN npm install && npm run build
+
+Asama 2 - Servis:
+  FROM nginx:alpine
+  COPY --from=builder /dist /usr/share/nginx/html
+  (SPA routing: her path -> index.html)
+
+16.3 GELISTIRME ORTAMI
+-----------------------
+  npm run dev  -- Frontend (Vite, port 5173) + Backend (Uvicorn, port 8000) es zamanli
+
+16.4 ORTAM DEGISKENLERI (.env)
+--------------------------------
+  DATABASE_URL=postgresql://proje001:proje001pass@localhost:5432/proje001db
+  N8N_API_KEY=<opsiyonel>
+
+
+================================================================================
+17. POTANSIYEL VE GENISLEME ALANLARI
+================================================================================
+
+17.1 MEVCUT YAPININ GUCLU YONLERI
+-----------------------------------
+1. Tek veritabani, cok fonksiyon: PostgreSQL + pgvector ile hem iliskilenmis
+   hem vektor islemleri ayni transaction'da
+2. Model agnostik: Yeni LLM saglayici eklemek minimum kod degisikligi gerektirir
+3. Moduler isleyiciler: Yeni dosya formati destegi processors/ klasorune
+   yeni bir dosya eklenerek saglanir
+4. Graph genisletme: RAG kalitesini artiran bilgi grafigi zaten mevcut altyapida
+
+17.2 KISA VADELI GENISLEME
+---------------------------
+Alan                        Aciklama
+------------------------------------------------------------------
+Cok dilli OCR               Tesseract dil paketi ekleyerek Arapca/Japonca destek
+Gercek zamanli transkripsiyon WebSocket + Whisper streaming
+Ozel embedding modeli       Domain-specific embedding (hukuk, tip, muhendislik)
+Yeniden siralama (reranking) Cross-encoder ile RAG dogruluğunu artirma
+Belge karsilastirma         Iki belge arasindaki farklari bulma
+
+17.3 ORTA VADELI GENISLEME
+---------------------------
+Alan                Aciklama
+------------------------------------------------------------------
+Multi-tenant        Sirket bazinda izolasyon (schema-per-tenant)
+Arama federasyonu   Harici kaynaklara (SharePoint, Confluence) genisleme
+Fine-tuning         Sirket verisiyle ozel model egitimi
+Ajan is akislari    Karmasik cok-adimli ajan zincirleri (LangGraph)
+Mobil uygulama      React Native ile sohbet arabirimi
+
+17.4 UZUN VADELI POTANSIYEL
+-----------------------------
+Alan                    Aciklama
+------------------------------------------------------------------
+Aktif ogrenme           Kullanici geri bildirimi ile model iyilestirme
+Bilgi grafigi ontolojisi OWL/RDF tabanli kurumsal ontoloji
+Federe arama            Birden fazla sirket verisi, izole kimlik
+Gercek zamanli analitik Streaming analytics dashboard
+Compliance raporlama    KVKK/GDPR otomatik rapor uretimi
+
+
+================================================================================
+18. BILINEN SINIRLAMALAR
+================================================================================
+
+Sinirlilik                  Aciklama                        Cozum Yolu
+--------------------------------------------------------------------------------
+Oturum tokeni yok           JWT veya session token eksik    JWT entegrasyonu
+Tek sunucu                  Yatay olceklenme sinirli        Kubernetes + Redis
+N8N surec yonetimi          N8N Python subprocess ile       Docker compose service
+Dosya depolama lokal        temp_uploads/ disk tabanli      S3/MinIO entegrasyonu
+GLOBAL_PROGRESS dict        Bellek tabanli, sifirlanir      Redis pub/sub
+Embedding tek model         all-MiniLM-L6-v2 sabit          Pluggable embedding
+Whisper CPU fallback        GPU yoksa cok yavas             Whisper API veya Groq
+
+
+================================================================================
+OZET TABLO
+================================================================================
+
+Boyut               Detay
+------------------------------------------------------------------------
+Backend             Python 3.x, FastAPI 0.135, SQLAlchemy 2.0
+Frontend            React 18, Vite 5, Zustand, TailwindCSS
+Veritabani          PostgreSQL 16 + pgvector + NetworkX
+Embedding           all-MiniLM-L6-v2 (384 boyut)
+LLM Destegi         OpenAI, Google Gemini, Anthropic Claude, Ollama, ozel
+Ses Isleme          faster-whisper (CUDA/CPU)
+Dosya Formatlari    PDF, PPTX, XLSX, DOCX, TXT, MP3, MP4, JPG, PNG, BPMN
+Otomasyon           N8N entegrasyonu
+Dagitim             Docker Compose (3 container)
+Guvenlik            bcrypt, RBAC, denetim izi, erisim politikalari
+RAG Kalitesi        Vektor + Graf genisletme + Erisim filtresi
+Gercek Zamanli      SSE (chat streaming), ilerleme polling
+Toplam API Endpoint ~50+
+Veritabani Tablosu  13 ana tablo
+
+================================================================================
+Bu belge proje001'in 14 Nisan 2026 tarihindeki durumunu yansitmaktadir.
+Kod tabani aktif gelistirme asamasindadir.
+================================================================================

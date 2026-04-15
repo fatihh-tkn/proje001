@@ -7,6 +7,7 @@ import {
     ExternalLink, Download, Mic, Loader2, AlertCircle, Clock, CornerLeftUp
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
+import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
 const getFileVisual = (fileType) => {
@@ -594,6 +595,7 @@ export default function AudioArchiveViewer() {
     }, []);
 
     useEffect(() => { fetchArchive(); }, [fetchArchive]);
+    useArchiveChangedListener(fetchArchive);
 
     const getFolderPath = (folderId) => {
         const path = [];
@@ -688,7 +690,7 @@ export default function AudioArchiveViewer() {
 
     const handleBatchDelete = async (ids) => {
         if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
-        await fetch('/api/archive/delete', {
+        const res = await fetch('/api/archive/delete', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids })
@@ -696,6 +698,7 @@ export default function AudioArchiveViewer() {
         setSelectedIds(new Set());
         if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
         fetchArchive();
+        if (res.ok) dispatchArchiveChanged();
     };
 
     const handleRename = async () => {

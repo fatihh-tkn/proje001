@@ -9,6 +9,7 @@ import {
 import DatabaseDropzone from './database/DatabaseDropzone';
 import DatabaseQuarantine from './database/DatabaseQuarantine';
 import DatabaseMemoryTable from './database/DatabaseMemoryTable';
+import { dispatchArchiveChanged, useArchiveChangedListener } from '../../utils/archiveEvents';
 
 const BASE = '/api/db';
 const COLLECTION = 'documents';
@@ -124,6 +125,7 @@ const DatabaseViewer = ({ readOnly }) => {
     }, []);
 
     useEffect(() => { fetchRecords(); }, [fetchRecords]);
+    useArchiveChangedListener(fetchRecords);
 
     /* ── Tüm-ekran drag dinleyicisi ── */
     useEffect(() => {
@@ -489,6 +491,7 @@ const DatabaseViewer = ({ readOnly }) => {
             if (res.ok) {
                 if (expandedRecord === rec.id) setExpandedRecord(null);
                 await fetchRecords(); // Tabloyu tazeleyelim
+                dispatchArchiveChanged();
             } else {
                 const err = await res.json().catch(() => ({}));
                 alert(`Dosya silinemedi: ${err.detail || res.statusText}`);
@@ -650,7 +653,7 @@ const DatabaseViewer = ({ readOnly }) => {
             {/* ══ ÜST İKİLİ PANEL ══ */}
             {
                 !readOnly && (
-                    <div className="flex border-b border-slate-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
+                    <div className="relative z-50 flex border-b border-slate-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
 
                         {/* ── PANEL 1: BESLEME ALANI / MODEL SEÇİM ── */}
                         {pendingMediaFile ? (

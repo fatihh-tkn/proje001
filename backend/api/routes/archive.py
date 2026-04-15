@@ -107,7 +107,7 @@ def arsiv_listele():
                 "aciklama": meta.get("aciklama", ""),
                 # Transkripsiyon verileri (ses/video için)
                 "meta": {
-                    "transcription_status": meta.get("transcription_status"),
+                    "transcription_status": meta.get("transcription_status") or ("done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower() in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None),
                     "transcription_language": meta.get("transcription_language"),
                     "transcription_chunk_count": meta.get("transcription_chunk_count"),
                     "transcription_preview": meta.get("transcription_preview"),
@@ -143,7 +143,7 @@ def arsiv_detay(doc_id: str):
             "etiketler": meta.get("etiketler", []),
             "aciklama": meta.get("aciklama", ""),
             "meta": {
-                "transcription_status": meta.get("transcription_status"),
+                "transcription_status": meta.get("transcription_status") or ("done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower() in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None),
                 "transcription_language": meta.get("transcription_language"),
                 "transcription_chunk_count": meta.get("transcription_chunk_count"),
                 "transcription_preview": meta.get("transcription_preview"),
@@ -168,6 +168,11 @@ def arsiv_transkript(doc_id: str):
 
         meta = b.meta or {}
         status = meta.get("transcription_status")
+
+        # Geriye dönük uyumluluk: Eski kayıtlarda 'transcription_status' olmayabilir
+        is_av = (b.dosya_turu or "").lower() in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
+        if not status and b.vektorlestirildi_mi and is_av:
+            status = "done"
 
         if status != "done":
             return {
@@ -292,17 +297,15 @@ def toplu_sil(istek: TopluSilRequest):
             dis_depo_hatasi = False   # Bu belge icin herhangi bir dis depo hatasi var mi?
 
             # -- Adim 1: Dis depo kimliklerini topla -------------------------
-            chroma_ids = []
-            graf_ids   = []
-            if belge.vektorlestirildi_mi and belge.vektordb_koleksiyon:
-                parcalar = db.scalars(
-                    select(VektorParcasi).where(VektorParcasi.belge_kimlik == belge.kimlik)
-                ).all()
-                chroma_ids = [p.chromadb_kimlik for p in parcalar]
-                graf_ids   = [str(p.kimlik)      for p in parcalar]
+            # vektorlestirildi_mi false olsa bile SQL'de parcalar olabilir
+            parcalar = db.scalars(
+                select(VektorParcasi).where(VektorParcasi.belge_kimlik == belge.kimlik)
+            ).all()
+            chroma_ids = [p.chromadb_kimlik for p in parcalar if p.chromadb_kimlik]
+            graf_ids   = [str(p.kimlik)      for p in parcalar]
 
             # -- Adim 2: ChromaDB sil (UoW kaydi) ----------------------------
-            if chroma_ids:
+            if chroma_ids and belge.vektordb_koleksiyon:
                 def del_chroma(coll=belge.vektordb_koleksiyon, c_ids=chroma_ids, ad=belge_adi):
                     try:
                         vector_db.delete_documents(coll, c_ids)
@@ -321,15 +324,37 @@ def toplu_sil(istek: TopluSilRequest):
                         logger.warning("Graph silinemedi: %s", e)
                 uow.register_after_commit(del_graph)
 
-            # -- Adim 4: Disk dosyasi sil (UoW kaydi) -------------------------
-            path = belge.depolama_yolu
-            if path and os.path.exists(path):
-                def del_disk(p=path):
-                    try:
-                        os.remove(p)
-                        logger.info("Disk silme OK | %s", p)
-                    except Exception as e:
-                        logger.error("Disk silinemedi: %s", e)
+            # -- Adim 4: Disk dosyalari sil (UoW kaydi) -----------------------
+            # Silinecek yolları topla: birincil dosya + PPTX orijinali + images dizini
+            disk_paths_to_delete = []
+            belge_meta_dict = dict(belge.meta or {})
+
+            primary_path = belge.depolama_yolu
+            if primary_path and os.path.exists(primary_path):
+                disk_paths_to_delete.append(primary_path)
+
+            # PPTX için: meta'da orijinal_yol (PDF'den farklıysa) ve images_yolu
+            orijinal_yol = belge_meta_dict.get("orijinal_yol")
+            if orijinal_yol and orijinal_yol != primary_path and os.path.exists(orijinal_yol):
+                disk_paths_to_delete.append(orijinal_yol)
+
+            images_yolu = belge_meta_dict.get("images_yolu")
+            if images_yolu and os.path.isdir(images_yolu):
+                disk_paths_to_delete.append(("dir", images_yolu))
+
+            if disk_paths_to_delete:
+                def del_disk(paths=disk_paths_to_delete):
+                    for p in paths:
+                        try:
+                            if isinstance(p, tuple) and p[0] == "dir":
+                                import shutil
+                                shutil.rmtree(p[1])
+                                logger.info("Disk dizin silme OK | %s", p[1])
+                            else:
+                                os.remove(p)
+                                logger.info("Disk silme OK | %s", p)
+                        except Exception as e:
+                            logger.error("Disk silinemedi: %s", e)
                 uow.register_after_commit(del_disk)
 
             # -- Adim 5: Denetim kaydi + SQL silme ----------------------------
@@ -443,11 +468,12 @@ def dosya_indir(kimlik: str):
 
 
 @router.post("/direct-upload")
-def dogrudan_yukle(
+async def dogrudan_yukle(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     folder_id: str = Form(None)
 ):
-    """Dosyayı vektörleştirme olmadan doğrudan arşive yükler."""
+    """Dosyayı doğrudan arşive yükler. AV ise transkripsiyon, metin ise vektörizasyon başlatır."""
     os.makedirs(ARSIV_KLASORU, exist_ok=True)
 
     benzersiz_ad = f"{uuid.uuid4().hex[:8]}_{file.filename}"
@@ -456,7 +482,14 @@ def dogrudan_yukle(
     with open(arsiv_yolu, "wb") as tampon:
         shutil.copyfileobj(file.file, tampon)
 
-    dosya_uzantisi = file.filename.split(".")[-1] if "." in file.filename else "unknown"
+    dosya_uzantisi = (file.filename.split(".")[-1] if "." in file.filename else "unknown").lower()
+
+    is_av = dosya_uzantisi in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
+    is_text = dosya_uzantisi in {"pdf", "txt", "docx", "doc", "pptx", "ppt"}
+
+    meta_dict = {"klasor_kimlik": folder_id} if folder_id and folder_id != "null" else {}
+    if is_av or is_text:
+        meta_dict["transcription_status"] = "pending"
 
     with get_session() as db:
         yeni_belge = Belge(
@@ -466,11 +499,16 @@ def dogrudan_yukle(
             depolama_yolu=arsiv_yolu,
             vektorlestirildi_mi=False,
             durum="arsivde",
-            meta={"klasor_kimlik": folder_id} if folder_id and folder_id != "null" else {}
+            meta=meta_dict
         )
         db.add(yeni_belge)
         db.commit()
         db.refresh(yeni_belge)
+        
+    if is_av:
+        background_tasks.add_task(_run_transcription, yeni_belge.kimlik)
+    elif is_text:
+        background_tasks.add_task(_run_vectorization, yeni_belge.kimlik)
 
     return {"status": "success", "id": yeni_belge.kimlik, "filename": file.filename}
 
@@ -639,7 +677,7 @@ def _run_transcription(doc_id: str):
 # ── METİN/PDF/DOCX VEKTÖRİZASYON ENDPOINT'İ ──────────────────────────────────
 def _run_vectorization(doc_id: str):
     import uuid as _uuid
-    from services.processors.text_processor import parse_text
+    from services.processors import dispatch
     from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
     from sqlalchemy import select
@@ -666,8 +704,22 @@ def _run_vectorization(doc_id: str):
             belge.meta = meta
             db.commit()
 
-        # Metin parçalama (Text/PDF/Docx)
-        chunks = parse_text(file_path=b_depo, original_name=b_ad)
+        # Metin parçalama (Text/PDF/Docx/PPTX)
+        chunks = dispatch(file_path=b_depo, ext=belge.dosya_turu, use_vision=False, original_name=b_ad)
+
+        # PPTX dosyalarını sistemde PDF olarak koruma
+        if belge.dosya_turu in ("pptx", "ppt"):
+            basename = os.path.splitext(os.path.basename(b_depo))[0]
+            expected_pdf = os.path.join(os.path.dirname(b_depo), f"{basename}.pdf")
+            if os.path.exists(expected_pdf):
+                meta["orijinal_format"] = belge.dosya_turu
+                meta["orijinal_yol"] = b_depo
+                
+                belge.dosya_adi = os.path.splitext(b_ad)[0] + ".pdf"
+                belge.dosya_turu = "pdf"
+                belge.depolama_yolu = expected_pdf
+                belge.dosya_boyutu_bayt = os.path.getsize(expected_pdf)
+
 
         if not chunks:
             _set_transcription_status(doc_id, "failed", "Vektörizasyon boş döndü.")

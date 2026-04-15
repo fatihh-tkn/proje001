@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     N8N_API_KEY: str = ""
+    # Embedding modeli: paraphrase-multilingual-MiniLM-L12-v2 (varsayılan), BAAI/bge-m3, openai/text-embedding-3-small vb.
+    EMBEDDING_MODEL: str = ""
 
     class Config:
         env_file = ".env"

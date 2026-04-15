@@ -4,6 +4,7 @@ import { Database, File as FileIcon, RefreshCw, Search, X, Activity } from 'luci
 import VdbFileList from './VdbFileList';
 import VdbPageList from './VdbPageList';
 import VdbChunkPanel from './VdbChunkPanel';
+import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 
 const BASE = '/api/db';
 const COLLECTION = 'documents';
@@ -85,6 +86,7 @@ export default function VectorDatabaseViewer() {
     }, []);
 
     useEffect(() => { fetchRecords(); }, [fetchRecords]);
+    useArchiveChangedListener(fetchRecords);
 
     const handleDeleteChunk = async (chunkId, e) => {
         e.stopPropagation();
@@ -108,28 +110,27 @@ export default function VectorDatabaseViewer() {
 
     const handleDeleteFile = async (fileName, fileId, e) => {
         e.stopPropagation();
-        if (!window.confirm(`"${fileName}" dosyasına ait TÜM vektör parçacıklarını tüm veritabanlarından silmek istiyor musunuz?`)) return;
+        if (!window.confirm(`"${fileName}" dosyası ve tüm vektör parçacıkları kalıcı olarak silinecek. Emin misiniz?`)) return;
 
-        const chunksToDelete = allVectors.filter(v => v.file === fileName);
-        const idsToDelete = chunksToDelete.map(v => v.id);
-
-        if (idsToDelete.length > 0) {
-            // Her chunk'ı atomik endpoint'e teker teker gönder
-            let hasError = false;
-            for (const cid of idsToDelete) {
-                try {
-                    const res = await fetch(`/api/chunk/${encodeURIComponent(cid)}`, { method: 'DELETE' });
-                    if (!res.ok) { hasError = true; break; }
-                } catch {
-                    hasError = true; break;
-                }
+        try {
+            const res = await fetch('/api/archive/delete', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [fileId] })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(`Silme başarısız: ${err.detail || res.statusText}`);
+                return;
             }
-            if (hasError) { alert("Bazı parçalar silinemedi."); return; }
-            setAllVectors(prev => prev.filter(v => !idsToDelete.includes(v.id)));
+            setAllVectors(prev => prev.filter(v => v.file !== fileName));
+            setFiles(prev => prev.filter(f => f.id !== fileId));
+            if (selectedFileId === fileId) { setSelectedFileId(null); setSelectedPage(null); }
+            dispatchArchiveChanged();
+        } catch (err) {
+            console.error(err);
+            alert("Sunucuya ulaşılamadı.");
         }
-
-        setFiles(files.filter(f => f.id !== fileId));
-        if (selectedFileId === fileId) { setSelectedFileId(null); setSelectedPage(null); }
     };
 
 

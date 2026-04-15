@@ -576,6 +576,23 @@ def archive_document(data: dict):
             logger.warning("PDF arsive tasinamadi: %s", e)
             pdf_archive_path = None
 
+    # PPTX: slayt görsellerini (images_*/) de arşive kopyala
+    archive_images_dir = None
+    if file_ext in ("pptx", "ppt"):
+        base_name_no_ext   = os.path.splitext(final_name)[0]
+        temp_images_dir    = os.path.join(os.path.dirname(temp_path), f"images_{base_name_no_ext}")
+        temp_images_dir    = os.path.abspath(temp_images_dir)
+        if os.path.isdir(temp_images_dir):
+            archive_images_dir = os.path.abspath(
+                os.path.join(ARCHIVE_DIR, f"images_{uid_prefix}_{base_name_no_ext}")
+            )
+            try:
+                shutil.copytree(temp_images_dir, archive_images_dir)
+                logger.info("Slayt görselleri arsive kopyalandi: %s", archive_images_dir)
+            except Exception as e:
+                logger.warning("Slayt görselleri arsive kopyalanamadi: %s", e)
+                archive_images_dir = None
+
     # depolama_yolu: PDF varsa PDF'i göster, yoksa orijinali
     primary_path = pdf_archive_path if pdf_archive_path else archive_path
 
@@ -586,10 +603,13 @@ def archive_document(data: dict):
         belge_meta["orijinal_yol"]    = archive_path
         if pdf_archive_path:
             belge_meta["pdf_yolu"] = pdf_archive_path
+        if archive_images_dir:
+            belge_meta["images_yolu"] = archive_images_dir
 
     try:
         with get_session() as db:
             from sqlalchemy import select
+            from database.sql.models import VektorParcasi
             existing = db.scalar(
                 select(Belge).where(
                     Belge.dosya_adi == final_name,
@@ -624,13 +644,40 @@ def archive_document(data: dict):
                 db.commit()
                 db.refresh(yeni_belge)
                 belge_id = yeni_belge.kimlik
+
+            # Chunk'lardaki image_path'i arşiv konumuna güncelle
+            # (boş veya temp_uploads'a işaret edenleri düzelt)
+            if archive_images_dir and belge_id:
+                parcalar = db.scalars(
+                    select(VektorParcasi).where(VektorParcasi.belge_kimlik == belge_id)
+                ).all()
+                updated = 0
+                for p in parcalar:
+                    sayfa = p.sayfa_no or 0
+                    if sayfa <= 0:
+                        continue
+                    archive_img = os.path.join(archive_images_dir, f"page_{sayfa}.png")
+                    if not os.path.exists(archive_img):
+                        continue
+                    curr_meta = dict(p.meta or {})
+                    old_path  = curr_meta.get("image_path", "")
+                    # Boş, ya da temp dizinini işaret ediyorsa güncelle
+                    if not old_path or "temp_uploads" in old_path.replace("\\", "/"):
+                        curr_meta["image_path"] = os.path.abspath(archive_img)
+                        p.meta = curr_meta
+                        updated += 1
+                if updated:
+                    db.commit()
+                    logger.info("Chunk image_path guncellendi: %d kayit, belge=%s", updated, belge_id)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Veritabanı kaydı hatası: {str(e)}")
 
     return {
-        "status":        "success",
-        "archive_path":  primary_path,
-        "pdf_path":      pdf_archive_path,
-        "belge_kimlik":  belge_id,
-        "message":       "Dosya başarıyla arşive taşındı ve SQL veritabanına kaydedildi."
+        "status":             "success",
+        "archive_path":       primary_path,
+        "pdf_path":           pdf_archive_path,
+        "archive_images_dir": archive_images_dir,
+        "belge_kimlik":       belge_id,
+        "message":            "Dosya başarıyla arşive taşındı ve SQL veritabanına kaydedildi."
     }

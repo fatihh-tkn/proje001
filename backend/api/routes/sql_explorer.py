@@ -384,6 +384,99 @@ def repair_integrity():
     }
 
 
+@router.post("/repair-image-paths", summary="Boş image_path'li PPTX chunk'larını onar")
+def repair_image_paths():
+    """
+    image_path alanı boş olan PPTX chunk'larını tarar.
+    Belgenin adından beklenen görsel dizinini çıkarır (images_{belge_adi}/).
+    Dizin temp_uploads veya archive_uploads içinde bulunursa, her chunk'ın
+    sayfa numarasına göre page_{N}.png dosyasını bulup image_path'i günceller.
+    """
+    import os
+    from database.sql.models import Belge
+
+    TEMP_DIR    = os.path.abspath("./temp_uploads")
+    ARCHIVE_DIR = os.path.abspath("./archive_uploads")
+
+    repaired = 0
+    skipped  = 0
+
+    with get_session() as db:
+        # image_path'i boş olan chunk'ları bul (meta JSONB'de boş string veya eksik)
+        parcalar = db.scalars(select(VektorParcasi)).all()
+
+        # Belgeleri önceden yükle (N+1 sorgusunu önle)
+        belge_map = {b.kimlik: b for b in db.scalars(select(Belge)).all()}
+
+        for p in parcalar:
+            curr_meta = dict(p.meta or {})
+            if curr_meta.get("image_path"):          # Zaten dolu → atla
+                skipped += 1
+                continue
+
+            sayfa = p.sayfa_no or 0
+            if sayfa <= 0:
+                skipped += 1
+                continue
+
+            # Belge adını çöz
+            belge = belge_map.get(p.belge_kimlik)
+            if not belge:
+                skipped += 1
+                continue
+
+            # PPTX olmayan belgeleri atla
+            is_pptx = (
+                belge.dosya_turu in ("pptx", "ppt")
+                or curr_meta.get("file_type") == "pptx"
+                or curr_meta.get("type", "").startswith("pptx_")
+            )
+            if not is_pptx:
+                skipped += 1
+                continue
+
+            # Belge adından base_name'i çıkar (uzantısız)
+            belge_adi_no_ext = os.path.splitext(belge.dosya_adi)[0]
+
+            # images_* dizinini ara: önce archive, sonra temp
+            candidate_dirs = [
+                os.path.join(ARCHIVE_DIR, f"images_{belge_adi_no_ext}"),
+                os.path.join(TEMP_DIR,    f"images_{belge_adi_no_ext}"),
+            ]
+            # archive'daki UUID'li dizinleri de dene
+            try:
+                for entry in os.listdir(ARCHIVE_DIR):
+                    if entry.startswith("images_") and belge_adi_no_ext in entry:
+                        candidate_dirs.insert(0, os.path.join(ARCHIVE_DIR, entry))
+            except Exception:
+                pass
+
+            found_path = None
+            for d in candidate_dirs:
+                img = os.path.join(d, f"page_{sayfa}.png")
+                if os.path.exists(img):
+                    found_path = os.path.abspath(img)
+                    break
+
+            if not found_path:
+                skipped += 1
+                continue
+
+            curr_meta["image_path"] = found_path
+            p.meta = curr_meta
+            repaired += 1
+
+        if repaired:
+            db.commit()
+
+    return {
+        "status":   "ok",
+        "repaired": repaired,
+        "skipped":  skipped,
+        "mesaj":    f"{repaired} chunk'ın image_path'i onarıldı, {skipped} atlandı.",
+    }
+
+
 @router.post("/documents/{doc_id}/approve", summary="Karantinadaki belgeyi onayla")
 def approve_document(doc_id: str):
     from database.sql.models import Belge
@@ -612,7 +705,10 @@ def get_document_chunks(doc_id: str):
             raw_meta = {
                 "page": p.sayfa_no or 1,
                 "bbox": bbox_str,
-                **{k: v for k, v in chunk_meta.items() if k not in ("sql_doc_id", "sqlite_doc_id")},
+                **{
+                    k: v for k, v in chunk_meta.items()
+                    if k not in ("sql_doc_id", "sqlite_doc_id") and v != ""
+                },
             }
             results.append({
                 "id": p.chromadb_kimlik,
@@ -658,8 +754,12 @@ def get_all_global_chunks(limit: int = 1000):
                 "source": d_name or "Bilinmeyen Dosya",
                 "page": p.sayfa_no or 1,
                 "bbox": bbox_str,
-                # Kaydedilmiş tam metadata alanlarını üst üste yaz
-                **{k: v for k, v in chunk_meta.items() if k not in ("sql_doc_id", "sqlite_doc_id")},
+                # Kaydedilmiş tam metadata alanlarını üst üste yaz;
+                # boş string değerler mevcut sinir_kutusu veya image_path'i ezmez
+                **{
+                    k: v for k, v in chunk_meta.items()
+                    if k not in ("sql_doc_id", "sqlite_doc_id") and v != ""
+                },
             }
             # bbox güncelle: meta'dan geliyorsa onu kullan, yoksa sinir_kutusu'nu koru
             if chunk_meta.get("bbox") and not bbox_str:
