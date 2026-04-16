@@ -438,22 +438,28 @@ class AIService:
                 None,
             )
 
-        active_model      = models[0]
-        model_name        = active_model["name"]
-        api_key           = active_model["api_key"]
-        start_time        = time.time()
-        ui_action         = None
-
         # Ajan Ayarlarını SQL'den Çek
         agent_config = await run_in_threadpool(get_ai_agent, "chatbot")
         temperature = 0.7
         excluded_files = []
         allowed_pools = []
+        selected_model_name = None
         if agent_config:
             allowed_rags = agent_config.get("allowed_rags") or []
             excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
             allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
             temperature = agent_config.get("temperature", 0.7)
+            selected_model_name = agent_config.get("model")
+
+        active_model = models[0]
+        if selected_model_name:
+            active_model = next((m for m in models if m["name"] == selected_model_name), models[0])
+
+        model_name        = active_model["name"]
+        api_key           = active_model["api_key"]
+        start_time        = time.time()
+        ui_action         = None
+
 
         # Kullanıcı bazlı belge kısıtlaması
         user_excluded = await run_in_threadpool(_get_user_excluded_files, user_id)
@@ -468,8 +474,13 @@ class AIService:
             rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_general_rag_prompt()
 
-        if agent_config and agent_config.get("prompt"):
-            system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
+        if agent_config:
+            if agent_config.get("prompt"):
+                system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
+            if agent_config.get("negative_prompt"):
+                system_intro += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER (KISITLAMALAR)]\n{agent_config['negative_prompt']}"
+            if agent_config.get("can_ask_follow_up"):
+                system_intro += f"\n\nYazının sonuna kullanıcının sorabileceği 1 veya 2 adet takip sorusu önerisi ekle. Bunu kalın yazıyla 'Önerilen Takip Sorusu:' formatında yap."
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -640,21 +651,26 @@ class AIService:
             yield f"data: {json.dumps({'type': 'error', 'text': '❌ Kayıtlı model bulunamadı. Ayarlar → Yapay Zeka Modelleri kısmından ekleyin.'})}\n\n"
             return
 
-        active_model = models[0]
-        model_name   = active_model["name"]
-        api_key      = active_model["api_key"]
-        start_time   = time.time()
-
         # Ajan Ayarlarını SQL'den Çek
         agent_config = await run_in_threadpool(get_ai_agent, "chatbot")
         temperature = 0.7
         excluded_files = []
         allowed_pools = []
+        selected_model_name = None
         if agent_config:
             allowed_rags = agent_config.get("allowed_rags") or []
             excluded_files = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
             allowed_pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
             temperature = agent_config.get("temperature", 0.7)
+            selected_model_name = agent_config.get("model")
+
+        active_model = models[0]
+        if selected_model_name:
+            active_model = next((m for m in models if m["name"] == selected_model_name), models[0])
+
+        model_name   = active_model["name"]
+        api_key      = active_model["api_key"]
+        start_time   = time.time()
 
         # Kullanıcı bazlı belge kısıtlaması
         user_excluded = await run_in_threadpool(_get_user_excluded_files, user_id)
@@ -670,8 +686,13 @@ class AIService:
             rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
             system_intro = get_general_rag_prompt()
             
-        if agent_config and agent_config.get("prompt"):
-            system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
+        if agent_config:
+            if agent_config.get("prompt"):
+                system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
+            if agent_config.get("negative_prompt"):
+                system_intro += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER (KISITLAMALAR)]\n{agent_config['negative_prompt']}"
+            if agent_config.get("can_ask_follow_up"):
+                system_intro += f"\n\nYazının sonuna kullanıcının sorabileceği 1 veya 2 adet takip sorusu önerisi ekle. Bunu kalın yazıyla 'Önerilen Takip Sorusu:' formatında yap."
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -881,6 +902,9 @@ class AIService:
             raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
 
         active_model = models[0]
+        if agent_config and agent_config.get("model"):
+            active_model = next((m for m in models if m["name"] == agent_config["model"]), models[0])
+
         model_name = active_model["name"]
         api_key = active_model["api_key"]
 
@@ -921,6 +945,155 @@ class AIService:
                 response.raise_for_status()
                 data = response.json()
                 return data["choices"][0]["message"]["content"].strip()
+
+    @staticmethod
+    async def revise_message(bot_reply: str) -> str:
+        """Mesaj Revize Botu'nu kullanarak nihai yanıtı kullanıcıya gösterilmeden önce iyileştirir."""
+        agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
+        if not agent_config:
+            system_prompt = "Sana gelen metni imla, üslup ve profesyonellik açısından daha iyi bir hale getir. Eğer liste falan varsa daha okunabilir yap. Sadece revize edilmiş metni döndür, kendi yorumunu ekleme."
+            temperature = 0.4
+        else:
+            system_prompt = agent_config.get("prompt", "Gelen metni profesyonelleştir.")
+            temperature = agent_config.get("temperature", 0.4)
+
+        models = await run_in_threadpool(get_user_models)
+        if not models:
+            raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
+
+        active_model = models[0]
+        if agent_config and agent_config.get("model"):
+            active_model = next((m for m in models if m["name"] == agent_config["model"]), models[0])
+
+        model_name = active_model["name"]
+        api_key = active_model["api_key"]
+
+        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        actual_model_name = model_name
+        if is_gemini:
+            invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
+            if model_name.lower().strip() in invalid_names or "1.5" in model_name:
+                actual_model_name = "gemini-1.5-pro" if "pro" in model_name.lower() else "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if is_gemini:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                payload = {
+                    "systemInstruction": {"parts": [{"text": system_prompt}]},
+                    "contents": [{"parts": [{"text": bot_reply}]}],
+                    "generationConfig": {"temperature": temperature}
+                }
+                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                try:
+                    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                except (KeyError, IndexError):
+                    return bot_reply
+            else:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": bot_reply}
+                ]
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model": actual_model_name, "messages": messages, "temperature": temperature},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"].strip()
+
+    @staticmethod
+    async def route_action(user_message: str) -> dict:
+        """
+        İşlem Botu: Kullanıcı mesajını analiz eder ve hangi aksiyonun alınması
+        gerektiğine karar vererek JSON döndürür.
+        Örnek çıktı: {"action": "n8n", "webhook": "rapor_gonder", "payload": {}}
+        """
+        agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
+        if not agent_config:
+            fallback_prompt = """Sen bir aksiyon karar motorusun. Kullanıcının mesajını analiz ederek aşağıdaki kararlardan birini ver ve SADECE JSON döndür:
+1. n8n otomasyonu için: {"action": "n8n", "webhook": "<webhook_adi>", "payload": {}}
+2. UI navigasyon için: {"action": "ui_navigate", "target": "<sekme_kimlik>"}
+3. Aksiyon yoksa: {"action": "none"}
+Mevcut webhook'lar: toplanti_kaydet, rapor_gonder, gorev_olustur, bildirim_gonder
+Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
+            temperature = 0.0
+        else:
+            # {{user_message}} yer tutucusunu gerçek mesajla değiştir
+            raw_prompt = agent_config.get("prompt", "")
+            fallback_prompt = raw_prompt.replace("{{user_message}}", user_message)
+            temperature = agent_config.get("temperature", 0.0)
+
+        # Son mesajda user_message zaten var, system prompt'a da ekleyelim
+        full_system = fallback_prompt
+        user_input = f"Kullanıcı mesajı: {user_message}"
+
+        models = await run_in_threadpool(get_user_models)
+        if not models:
+            raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
+
+        active_model = models[0]
+        if agent_config and agent_config.get("model"):
+            active_model = next((m for m in models if m["name"] == agent_config["model"]), models[0])
+
+        model_name = active_model["name"]
+        api_key = active_model["api_key"]
+
+        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        actual_model_name = model_name
+        if is_gemini:
+            invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
+            if model_name.lower().strip() in invalid_names or "1.5" in model_name:
+                actual_model_name = "gemini-1.5-pro" if "pro" in model_name.lower() else "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
+
+        raw_text = ""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if is_gemini:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                payload = {
+                    "systemInstruction": {"parts": [{"text": full_system}]},
+                    "contents": [{"parts": [{"text": user_input}]}],
+                    "generationConfig": {"temperature": temperature}
+                }
+                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                try:
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                except (KeyError, IndexError):
+                    raw_text = '{"action": "none"}'
+            else:
+                messages = [
+                    {"role": "system", "content": full_system},
+                    {"role": "user", "content": user_input}
+                ]
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model": actual_model_name, "messages": messages, "temperature": temperature,
+                          "response_format": {"type": "json_object"}},
+                )
+                response.raise_for_status()
+                data = response.json()
+                raw_text = data["choices"][0]["message"]["content"].strip()
+
+        # JSON temizle — bazen ```json ... ``` sarmalı gelir
+        import re as _re
+        json_match = _re.search(r'\{.*\}', raw_text, _re.DOTALL)
+        if json_match:
+            raw_text = json_match.group(0)
+
+        import json as _json
+        try:
+            return _json.loads(raw_text)
+        except Exception:
+            return {"action": "none", "raw": raw_text}
 
 
 ai_service = AIService()

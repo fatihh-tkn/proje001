@@ -159,9 +159,17 @@ def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]
             "agent_kind": agent.agent_kind,
             "name": agent.ad,
             "prompt": agent.prompt,
+            "negative_prompt": agent.negative_prompt,
             "persona": agent.persona,
             "temperature": agent.temperature,
             "max_tokens": agent.max_tokens,
+            "model": agent.model,
+            "provider": agent.provider,
+            "allowed_rags": agent.allowed_rags,
+            "strict_fact_check": agent.strict_fact_check,
+            "chat_history_length": agent.chat_history_length,
+            "can_ask_follow_up": agent.can_ask_follow_up,
+            "error_message": agent.error_message
         }
 
 

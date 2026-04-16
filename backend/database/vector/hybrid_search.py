@@ -21,6 +21,55 @@ from database.sql.session import get_session
 from database.sql.models import VektorParcasi
 from database.vector.embedding_manager import get_embeddings
 
+def _expand_context_window(results: list[dict]) -> list[dict]:
+    """
+    Eşleşen sonuçlar için (eğer varsa) prev_id ve next_id metadata'larını kullanarak
+    önceki ve sonraki chunk metinlerini DB'den çeker ve 'icerik' değerini genişletir.
+    (Small-to-Big Retrieval)
+    """
+    if not results:
+        return results
+
+    neighbor_ids = set()
+    for r in results:
+        meta = r.get("meta") or {}
+        if meta.get("prev_id"):
+            neighbor_ids.add(meta["prev_id"])
+        if meta.get("next_id"):
+            neighbor_ids.add(meta["next_id"])
+
+    if not neighbor_ids:
+        return results
+
+    # DB'den çek
+    neighbors_map = {}
+    with get_session() as db:
+        stmt = select(VektorParcasi.chromadb_kimlik, VektorParcasi.icerik).where(
+            VektorParcasi.chromadb_kimlik.in_(neighbor_ids)
+        )
+        rows = db.execute(stmt).all()
+        for row in rows:
+            neighbors_map[row.chromadb_kimlik] = row.icerik or ""
+
+    # Sonuçların iceriklerini genişlet
+    for r in results:
+        meta = r.get("meta") or {}
+        p_id = meta.get("prev_id")
+        n_id = meta.get("next_id")
+
+        expanded_text = []
+        if p_id and p_id in neighbors_map:
+            expanded_text.append(f"--- ÖNCEKİ BAĞLAM ---\n{neighbors_map[p_id]}\n\n")
+            
+        expanded_text.append(r["icerik"])
+        
+        if n_id and n_id in neighbors_map:
+            expanded_text.append(f"\n\n--- SONRAKİ BAĞLAM ---\n{neighbors_map[n_id]}")
+            
+        r["icerik"] = "".join(expanded_text)
+
+    return results
+
 logger = logging.getLogger(__name__)
 
 # RRF sabit parametresi
@@ -238,18 +287,21 @@ def hybrid_search(
     merged = _reciprocal_rank_fusion(vector_results, fts_results)
 
     # 4. Re-Ranking (opsiyonel)
+    final_results = merged[:n_results]
     if use_reranker and merged:
         try:
             from database.vector.reranker import rerank
-            reranked = rerank(
+            final_results = rerank(
                 query=query,
                 candidates=merged,
                 top_k=n_results,
                 text_key="icerik",
             )
-            logger.info(f"[HybridSearch] Re-Ranking tamamlandı: {len(reranked)} sonuç")
-            return reranked
+            logger.info(f"[HybridSearch] Re-Ranking tamamlandı: {len(final_results)} sonuç")
         except Exception as e:
             logger.warning(f"[HybridSearch] Re-Ranking hatası, RRF sırasıyla devam: {e}")
 
-    return merged[:n_results]
+    # 5. Small-to-Big Retrieval (Bağlam Genişletme)
+    final_results = _expand_context_window(final_results)
+
+    return final_results

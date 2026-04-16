@@ -21,8 +21,8 @@ Strateji:
 import os
 import uuid
 
-_CHUNK_SIZE    = 3000
-_CHUNK_OVERLAP = 400
+_CHUNK_SIZE    = 1500
+_CHUNK_OVERLAP = 200
 
 # Word'deki başlık stil isimleri → hiyerarşi kademesi
 _HEADING_STYLES = {
@@ -55,22 +55,92 @@ def parse_text(
             "metadata": {"source": file_basename, "error": str(e)}
         }]
 
-# ── PDF ayrıştırıcı (PyMuPDF) ────────────────────────────────────────
+# ── PDF ayrıştırıcı (Hiyerarşik PyMuPDF) ────────────────────────────────────────
 def _parse_pdf(file_path: str, file_basename: str) -> list[dict]:
+    """
+    PDF'i basit dümdüz okumak yerine bloklara böler ve hiyerarşik yapı (başlık tahmini) yapar.
+    Olası en iyi 'prev_id' ve 'next_id' akışını sağlar.
+    """
     try:
         import fitz  # PyMuPDF
     except ImportError:
         raise ImportError("PyMuPDF kurulu değil. pip install PyMuPDF")
 
     doc = fitz.open(file_path)
-    raw_text = ""
-    for page in doc:
-        text = page.get_text()
-        if text:
-            raw_text += text + "\n\n"
+    chunks = []
     
+    current_block_lines = []
+    current_prefix = f"[{file_basename}]"
+    
+    def _flush_pdf_block(page_num, total_pages):
+        nonlocal current_block_lines, chunks
+        if not current_block_lines:
+            return
+            
+        block_text = "\n".join(current_block_lines)
+        if not block_text.strip():
+            return
+            
+        sub_chunks = _chunk_text(block_text)
+        for idx, part in enumerate(sub_chunks):
+            header = f"{current_prefix} [Sayfa {page_num}]\n"
+            chunks.append({
+                "id": str(uuid.uuid4()),
+                "text": header + part,
+                "metadata": {
+                    "page": page_num,
+                    "chunk_index": len(chunks) + 1,
+                    "source": file_basename,
+                    "type": "text_pdf",
+                    "total_pages": total_pages,
+                    "section": current_prefix
+                }
+            })
+        current_block_lines = []
+
+    total_pages = len(doc)
+    
+    for page_num, page in enumerate(doc, 1):
+        # dict metoduyla metin stillerini yakalıyoruz
+        blocks = page.get_text("dict").get("blocks", [])
+        
+        for b in blocks:
+            if b.get("type") == 0:  # 0 text block
+                for line in b.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "").strip()
+                        if not text:
+                            continue
+                            
+                        # Başlık karakter tespiti (Font boyutu > 13)
+                        size = span.get("size", 10)
+                        if size > 13 and len(text.split()) < 20: 
+                            # Yeni bloğa geç (başlık değişti)
+                            _flush_pdf_block(page_num, total_pages)
+                            current_prefix = f"[{file_basename} > {text}]"
+                        else:
+                            current_block_lines.append(text)
+                            
+        # Sayfa geçişlerinde metni çok dağıtmamak adına ufak bir boşluk koyalım
+        current_block_lines.append("\n")
+
+    # Kalanı flush yap
+    _flush_pdf_block(total_pages, total_pages)
     doc.close()
-    return _chunks_from_text(raw_text, file_basename, "pdf")
+    
+    # chunk'lara prev_id / next_id atama
+    for i, chunk in enumerate(chunks):
+        chunk["metadata"]["prev_id"] = chunks[i - 1]["id"] if i > 0 else ""
+        chunk["metadata"]["next_id"] = chunks[i + 1]["id"] if i < len(chunks) - 1 else ""
+        
+    if not chunks:
+        return [{
+            "id": f"empty-{uuid.uuid4()}",
+            "text": f"[{file_basename}] Dosya boş veya içerik bulunamadı.",
+            "metadata": {"source": file_basename, "type": "text_empty"}
+        }]
+        
+    return chunks
 
 
 # ── Hiyerarşik DOCX ayrıştırıcı ──────────────────────────────────────
@@ -269,16 +339,34 @@ def _chunk_text(text: str) -> list[str]:
     while start < length:
         end = start + _CHUNK_SIZE
         if end < length:
-            for sep in ("\n\n", "\n", " "):
+            # İleri doğru (son kısımdan) güvenli bir bitiş noktası ara
+            for sep in ("\n\n", "\n", ". ", " "):
                 pos = text.rfind(sep, start, end)
                 if pos != -1 and pos > start:
-                    end = pos
+                    end = pos + len(sep)
                     break
+                    
         part = text[start:end].strip()
         if part:
             chunks.append(part)
-        start = end - _CHUNK_OVERLAP
-        if start >= length:
+            
+        # Kesişim (Overlap) ayarı:
+        raw_start = end - _CHUNK_OVERLAP
+        if raw_start >= length or raw_start <= start:
             break
+            
+        # Geriye doğru düz saymak yerine, bulunduğumuz yere en yakın anlamlı başa git
+        new_start = raw_start
+        for sep in ("\n\n", "\n", ". ", " "):
+            pos = text.find(sep, raw_start, end)
+            if pos != -1:
+                new_start = pos + len(sep)
+                break
+                
+        # Eğer new_start end'e takılı kaldıysa (sonsuz döngüyü önle)
+        if new_start >= end or new_start <= start:
+            start = end
+        else:
+            start = new_start
 
     return chunks

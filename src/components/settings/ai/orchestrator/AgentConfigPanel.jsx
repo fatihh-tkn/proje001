@@ -78,17 +78,17 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                             {loadingModels && <Loader2 size={10} className="animate-spin text-[var(--accent)]" />}
                         </label>
                         <select
-                            value={selectedItem.model} onChange={(e) => updateAgent('model', e.target.value)}
+                            value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
+                            onChange={(e) => updateAgent('model', e.target.value)}
                             className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] cursor-pointer font-mono transition-all"
                         >
-                            {/* Eğer gelen listede mevcut model yoksa, o modeli de kaybolmasın diye en üste ekleyelim */}
-                            {fetchedModels.length === 0 ? (
-                                <option value={selectedItem.model}>{selectedItem.model} (Yükleniyor...)</option>
+                            {loadingModels ? (
+                                <option value="">Modeller yükleniyor...</option>
+                            ) : fetchedModels.length === 0 ? (
+                                <option value="">— Sistemde kayıtlı model yok —</option>
                             ) : (
                                 <>
-                                    {!fetchedModels.find(m => m.name === selectedItem.model) && (
-                                        <option value={selectedItem.model}>{selectedItem.model} (Bilinmeyen)</option>
-                                    )}
+                                    <option value="">Model seçin...</option>
                                     {Object.entries(groupedModels).map(([providerName, mList]) => (
                                         <optgroup key={providerName} label={providerName}>
                                             {mList.map(m => (

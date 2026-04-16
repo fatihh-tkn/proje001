@@ -29,7 +29,8 @@ try:
 except ImportError:
     _FITZ_AVAILABLE = False
 
-_CHUNK_SIZE = 3000
+_CHUNK_SIZE = 1500
+_CHUNK_OVERLAP = 200
 _MIN_TEXT   = 10
 
 
@@ -566,18 +567,37 @@ def _get_notes(slide) -> str:
 
 def _split(text: str) -> list[str]:
     chunks, start = [], 0
-    while start < len(text):
+    length = len(text)
+    
+    while start < length:
         end = start + _CHUNK_SIZE
-        if end < len(text):
-            pos = text.rfind("\n", start, end)
-            if pos > start:
-                end = pos
+        if end < length:
+            for sep in ("\n\n", "\n", ". ", " "):
+                pos = text.rfind(sep, start, end)
+                if pos != -1 and pos > start:
+                    end = pos + len(sep)
+                    break
+                    
         part = text[start:end].strip()
         if part:
             chunks.append(part)
-        start = end - 400
-        if start >= len(text):
+            
+        raw_start = end - _CHUNK_OVERLAP
+        if raw_start >= length or raw_start <= start:
             break
+            
+        new_start = raw_start
+        for sep in ("\n\n", "\n", ". ", " "):
+            pos = text.find(sep, raw_start, end)
+            if pos != -1:
+                new_start = pos + len(sep)
+                break
+                
+        if new_start >= end or new_start <= start:
+            start = end
+        else:
+            start = new_start
+            
     return chunks
 
 

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, ShieldCheck, Database, Layers, Cpu, CheckCircle2, Loader2, Activity, Send } from 'lucide-react';
+import { Bot, ShieldCheck, Database, Layers, Cpu, CheckCircle2, Loader2, Activity, Send, Zap, Navigation, Network } from 'lucide-react';
+
 
 const RagChatPlayground = ({ defaultAgent }) => {
     const [messages, setMessages] = useState([
@@ -18,43 +19,167 @@ const RagChatPlayground = ({ defaultAgent }) => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, currentStep]);
 
-    const handleSend = () => {
+    const isPromptReviser = defaultAgent?.agentKind === 'prompt_reviser';
+    const isMessageReviser = defaultAgent?.agentKind === 'message_reviser';
+    const isRouter = defaultAgent?.agentKind === 'router';
+
+    const handleSend = async () => {
         if (!input.trim()) return;
         const msg = input;
         setInput('');
         setMessages(prev => [...prev, { id: Date.now(), role: 'user', text: msg }]);
 
         setIsSimulating(true);
+
+        if (isPromptReviser) {
+            try {
+                const res = await fetch('/api/chat/revise-prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+
+                setIsSimulating(false);
+
+                if (data.success) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1,
+                        role: 'system',
+                        agentSettings: {
+                            persona: defaultAgent?.persona,
+                            model: defaultAgent?.model
+                        },
+                        text: `✨ Orijinal İstemi İyileştirdik:\n\n${data.revised_prompt}`
+                    }]);
+                } else {
+                    setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: `Hata: ${data.error}` }]);
+                }
+            } catch (err) {
+                console.error("Revise API Error:", err);
+                setIsSimulating(false);
+                setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: '❌ Backend servisine bağlanılamadı. İstem revize edilemedi.' }]);
+            }
+            return;
+        }
+
+        if (isMessageReviser) {
+            try {
+                const res = await fetch('/api/chat/revise-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+
+                setIsSimulating(false);
+
+                if (data.success) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1,
+                        role: 'system',
+                        agentSettings: {
+                            persona: defaultAgent?.persona,
+                            model: defaultAgent?.model
+                        },
+                        text: `📝 Taslak Metin İyileştirildi:\n\n${data.revised_message}`
+                    }]);
+                } else {
+                    setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: `Hata: ${data.error}` }]);
+                }
+            } catch (err) {
+                console.error("Revise Message API Error:", err);
+                setIsSimulating(false);
+                setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: '❌ Backend servisine bağlanılamadı. Mesaj revize edilemedi.' }]);
+            }
+            return;
+        }
+
+        if (isRouter) {
+            try {
+                const res = await fetch('/api/chat/route-action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+
+                setIsSimulating(false);
+
+                if (data.success) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1,
+                        role: 'system',
+                        actionResult: data.action_result,
+                        agentSettings: {
+                            persona: defaultAgent?.persona,
+                            model: defaultAgent?.model
+                        },
+                        text: ''
+                    }]);
+                } else {
+                    setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: `❌ Hata: ${data.error}` }]);
+                }
+            } catch (err) {
+                console.error("Route Action API Error:", err);
+                setIsSimulating(false);
+                setMessages(prev => [...prev, { id: Date.now() + 1, role: 'system', text: '❌ Backend servisine bağlanılamadı. İşlem Botu tetiklenemedi.' }]);
+            }
+            return;
+        }
+
+
+        // Genel Sohbet Asistanı RAG Akışı
         setCurrentStep(1);
 
-        // Aşama 1: Yetki Kontrolü
-        setTimeout(() => {
+        try {
+            // Animasyon adımlarını backend isteği süresince göstermek için kısa simülatif geçişler
+            await new Promise(r => setTimeout(r, 600));
             setCurrentStep(2);
-            // Aşama 2: Vektör Araması
-            setTimeout(() => {
-                setCurrentStep(3);
-                // Aşama 3: Prompt Sentezi
-                setTimeout(() => {
-                    setCurrentStep(4);
-                    // Aşama 4: LLM ve Üretim
-                    setTimeout(() => {
-                        setIsSimulating(false);
-                        setCurrentStep(0);
-                        setMessages(prev => [...prev, {
-                            id: Date.now() + 1,
-                            role: 'system',
-                            ragSources: defaultAgent?.allowedRags || ['rag_1', 'rag_2'],
-                            agentSettings: {
-                                persona: defaultAgent?.persona,
-                                model: defaultAgent?.model,
-                                factCheck: defaultAgent?.strictFactCheck
-                            },
-                            text: `İşlem tamamlandı! Seçtiğiniz havuzlarda okuduğum bağlama göre sorunuzun yanıtı şudur:\n\n**${msg}** ile ilgili olarak veritabanlarındaki dökümanlara göre büyüme oranı %15 olarak hedeflenmiştir.\n\n*(Not: Arka uç (Backend) kodları bağlandığında, yukarıdaki 4 aşama gerçek API sunucunuzda koşup buraya canlı akacaktır!)*`
-                        }]);
-                    }, 2000);
-                }, 1500);
-            }, 2000);
-        }, 1000);
+
+            await new Promise(r => setTimeout(r, 600));
+            setCurrentStep(3);
+
+            await new Promise(r => setTimeout(r, 600));
+            setCurrentStep(4);
+
+            // Gerçek API ÇAĞRISI (Backend'in Sohbet Asistanı Ucu)
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: msg,
+                    session_id: 'playground_test'
+                })
+            });
+
+            const data = await res.json();
+
+            setIsSimulating(false);
+            setCurrentStep(0);
+
+            setMessages(prev => [...prev, {
+                id: Date.now() + 1,
+                role: 'system',
+                ragSources: data.rag_sources?.map(s => s.file) || [],
+                agentSettings: {
+                    persona: defaultAgent?.persona,
+                    model: defaultAgent?.model,
+                    factCheck: defaultAgent?.strictFactCheck
+                },
+                text: data.reply || "API'den geçerli metin dönmedi."
+            }]);
+
+        } catch (error) {
+            console.error("Chat API Hatası:", error);
+            setIsSimulating(false);
+            setCurrentStep(0);
+            setMessages(prev => [...prev, {
+                id: Date.now() + 1,
+                role: 'system',
+                text: '❌ Backend servisine bağlanılamadı. Lütfen sunucunun (Python) çalıştığından emin olun.'
+            }]);
+        }
     };
 
     return (
@@ -77,40 +202,102 @@ const RagChatPlayground = ({ defaultAgent }) => {
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#f8fafc] custom-scrollbar">
                     {messages.map(m => (
                         <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 text-sm shadow-sm ${m.role === 'user' ? 'bg-[var(--accent)] text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
-                                }`}>
-                                {m.ragSources && m.ragSources.length > 0 && (
-                                    <div className="mb-4">
-                                        <div className="text-[11px] font-bold text-indigo-800 uppercase flex items-center gap-1 mb-2 border-b border-indigo-100 pb-1">
-                                            <ShieldCheck size={12} /> ARKA PLAN ÖZETİ (DEBUG LOG)
+                            {m.actionResult ? (
+                                /* İşlem Botu Karar Kartı */
+                                <div className="w-full max-w-[90%] bg-white border border-slate-200 rounded-2xl rounded-bl-none shadow-sm overflow-hidden">
+                                    <div className="px-4 py-2.5 border-b border-slate-100 bg-violet-50/60 flex items-center gap-2">
+                                        <Zap size={13} className="text-violet-500" />
+                                        <span className="text-[10px] font-bold text-violet-700 uppercase tracking-widest">İşlem Botu Kararı</span>
+                                        <span className={`ml-auto text-[9px] px-2 py-0.5 rounded-full font-bold ${m.actionResult.action === 'n8n' ? 'bg-orange-100 text-orange-700' :
+                                                m.actionResult.action === 'ui_navigate' ? 'bg-sky-100 text-sky-700' :
+                                                    'bg-slate-100 text-slate-500'
+                                            }`}>
+                                            {m.actionResult.action === 'n8n' ? '⚡ N8N TETKİKLENİYOR' :
+                                                m.actionResult.action === 'ui_navigate' ? '📲 SAYFA YÖNLENDİRMESİ' :
+                                                    '✕ AKSIYON YOK'}
+                                        </span>
+                                    </div>
+                                    <div className="p-4 space-y-2">
+                                        {m.actionResult.action === 'n8n' && (
+                                            <>
+                                                <div className="flex items-center gap-2 text-xs">
+                                                    <Network size={13} className="text-orange-500 shrink-0" />
+                                                    <span className="text-slate-500 font-semibold">Webhook:</span>
+                                                    <code className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-mono text-[11px] border border-orange-100">{m.actionResult.webhook}</code>
+                                                </div>
+                                                {m.actionResult.payload && Object.keys(m.actionResult.payload).length > 0 && (
+                                                    <div className="text-[10px] font-mono bg-slate-50 border border-slate-100 rounded-lg p-2 text-slate-600 mt-1">
+                                                        {JSON.stringify(m.actionResult.payload, null, 2)}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                        {m.actionResult.action === 'ui_navigate' && (
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <Navigation size={13} className="text-sky-500 shrink-0" />
+                                                <span className="text-slate-500 font-semibold">Hedef Sekme:</span>
+                                                <code className="bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono text-[11px] border border-sky-100">{m.actionResult.target}</code>
+                                            </div>
+                                        )}
+                                        {m.actionResult.action === 'none' && (
+                                            <p className="text-[11px] text-slate-400 italic">Bu mesaj için tetiklenecek bir aksiyon belirlenmedi.</p>
+                                        )}
+                                        <div className="pt-1 border-t border-slate-100 flex items-center gap-1.5 text-[9px] text-slate-400">
+                                            <span>Model: {m.agentSettings?.model}</span>
+                                            <span className="mx-1">•</span>
+                                            <span>{m.agentSettings?.persona}</span>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                                            <div>
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Kimlik Mimarisi</div>
-                                                <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.persona}</div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 text-sm shadow-sm ${m.role === 'user' ? 'bg-[var(--accent)] text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
+                                    }`}>
+                                    {m.ragSources && m.ragSources.length > 0 && (
+                                        <div className="mb-4">
+                                            <div className="text-[11px] font-bold text-indigo-800 uppercase flex items-center gap-1 mb-2 border-b border-indigo-100 pb-1">
+                                                <ShieldCheck size={12} /> ARKA PLAN ÖZETİ (DEBUG LOG)
                                             </div>
-                                            <div>
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase">LLM Motoru & Guardrail</div>
-                                                <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.model} | Fact: {m.agentSettings?.factCheck ? 'ON' : 'OFF'}</div>
-                                            </div>
-                                            <div className="col-span-2">
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase mb-1">Bağlantı Kurulan Havuzlar (RAG)</div>
-                                                <div className="flex gap-1.5 flex-wrap">
-                                                    {m.ragSources.map((src, i) => (
-                                                        <span key={i} className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-600 px-2 py-0.5 rounded-md font-mono">{src}</span>
-                                                    ))}
+                                            <div className="grid grid-cols-2 gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                                <div>
+                                                    <div className="text-[9px] text-slate-400 font-bold uppercase">Kimlik Mimarisi</div>
+                                                    <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.persona}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] text-slate-400 font-bold uppercase">LLM Motoru &amp; Guardrail</div>
+                                                    <div className="text-[10px] font-mono text-slate-700 mt-0.5">{m.agentSettings?.model} | Fact: {m.agentSettings?.factCheck ? 'ON' : 'OFF'}</div>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <div className="text-[9px] text-slate-400 font-bold uppercase mb-1">Bağlantı Kurulan Havuzlar (RAG)</div>
+                                                    <div className="flex gap-1.5 flex-wrap">
+                                                        {m.ragSources.map((src, i) => (
+                                                            <span key={i} className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-600 px-2 py-0.5 rounded-md font-mono">{src}</span>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
-                                <div className="leading-relaxed whitespace-pre-wrap">{m.text}</div>
-                            </div>
+                                    )}
+                                    <div className="leading-relaxed whitespace-pre-wrap">{m.text}</div>
+                                </div>
+                            )}
                         </div>
                     ))}
 
                     {/* VİZYONEL BORU HATTI ANİMASYONU */}
-                    {isSimulating && (
+                    {isSimulating && (isPromptReviser || isMessageReviser || isRouter) && (
+                        <div className="flex justify-start w-full">
+                            <div className="w-full max-w-[85%] bg-white border border-slate-200 rounded-2xl rounded-bl-none p-5 text-sm shadow-sm flex items-center gap-3">
+                                <Loader2 size={16} className={`animate-spin ${isRouter ? 'text-violet-500' : 'text-amber-500'}`} />
+                                <span className="text-xs font-medium text-slate-600">
+                                    {isPromptReviser ? `İsteminiz dönüştürülüyor (${defaultAgent?.model})...` :
+                                        isMessageReviser ? `Taslak metin yeniden yazılıyor (${defaultAgent?.model})...` :
+                                            `Aksiyon analiz ediliyor... (${defaultAgent?.model})`}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {isSimulating && !isPromptReviser && !isMessageReviser && (
                         <div className="flex justify-start w-full">
                             <div className="w-full max-w-[85%] bg-white border border-slate-200 rounded-2xl rounded-bl-none p-5 text-sm shadow-sm">
                                 <h4 className="text-[11px] font-bold text-[var(--accent)] uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">

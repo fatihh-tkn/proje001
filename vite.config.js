@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { exec } from 'child_process'
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -31,6 +32,16 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'open-chrome-app',
+      configureServer(server) {
+        server.httpServer?.once('listening', () => {
+          setTimeout(() => {
+            exec('start chrome --app=http://localhost:5173');
+          }, 1000);
+        });
+      }
+    },
     // PWA sadece production build'inde aktif
     VitePWA({
       disable: !isProd,

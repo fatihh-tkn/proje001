@@ -76,3 +76,30 @@ async def revise_prompt_endpoint(payload: RevisePromptRequest):
     except Exception as e:
         return {"success": False, "error": f"Beklenmeyen bir hata oluştu: {str(e)}"}
 
+@router.post("/revise-message")
+async def revise_message_endpoint(payload: RevisePromptRequest):
+    """
+    Mesaj Revize Botu'nu çağırır. 
+    Yapay zekanın ürettiği taslak yanıtı, daha iyi bir üslup ve kaliteyle kullanıcının göreceği nihai şekle sokar.
+    """
+    try:
+        revised = await AIService.revise_message(payload.message)
+        return {"success": True, "revised_message": revised}
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": f"Beklenmeyen bir hata oluştu: {str(e)}"}
+
+@router.post("/route-action")
+async def route_action_endpoint(payload: RevisePromptRequest):
+    """
+    İşlem Botu'nu çağırır.
+    Kullanıcı mesajını analiz ederek n8n, ui_navigate veya none aksiyonu döndürür.
+    """
+    try:
+        result = await AIService.route_action(payload.message)
+        return {"success": True, "action_result": result}
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": f"Beklenmeyen bir hata oluştu: {str(e)}"}

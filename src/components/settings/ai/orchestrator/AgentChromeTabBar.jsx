@@ -49,8 +49,7 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename }) => {
                         key={agent.id}
                         onClick={() => onSelect(agent.id)}
                         onDoubleClick={(e) => startEdit(e, agent)}
-                        className={`relative group flex items-center justify-between min-w-[150px] max-w-[220px] h-[36px] px-3 cursor-pointer transition-all select-none border-slate-200/80 border-b-0 shrink-0 ${cornerClass} ${marginClass} ${isActive ? 'bg-white border text-slate-700 z-20' : 'bg-transparent border-transparent hover:bg-slate-200/50 text-slate-500 mb-[1px]'}`}
-                        style={isActive ? { marginBottom: '-1px', paddingBottom: '1px' } : {}}
+                        className={`group flex items-center justify-between min-w-[150px] max-w-[220px] h-[36px] px-3 cursor-pointer transition-all select-none shrink-0 border border-b-0 ${cornerClass} ${marginClass} ${isActive ? 'bg-white border-slate-200/80 text-slate-700 z-10 relative -mb-[1px] pb-[1px]' : 'bg-transparent border-transparent hover:bg-slate-200/50 text-slate-500'}`}
                         title={isEditing ? undefined : `${agent.name} — Yeniden adlandırmak için çift tıklayın`}
                     >
                         <div className="flex items-center gap-2 overflow-hidden flex-1 relative z-10">
@@ -74,9 +73,6 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename }) => {
                                 </span>
                             )}
                         </div>
-
-                        {/* Aktif sekmeyi alt kutu ile bütünleştiren beyaz çizgi */}
-                        {isActive && <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-white z-20"></div>}
                     </div>
                 );
             })}

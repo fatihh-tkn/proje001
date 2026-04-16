@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -14,6 +14,7 @@ const THEMES = [
 const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed, onOpenFile, currentUser }) => {
     const [activeSection, setActiveSection] = useState(null);
     const [basePath, setBasePath] = useState(currentBasePath);
+    const [isAiExpanded, setIsAiExpanded] = useState(false);
     const menuRef = useRef(null);
 
     const canSeeTab = (key) => {
@@ -104,22 +105,80 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                         )}
 
                         {canSeeTab('ui_ai_orchestrator') && (
-                            <button
-                                onClick={() => {
-                                    if (onOpenFile) {
-                                        onOpenFile({
-                                            id: 'ai-orchestrator-settings',
-                                            title: 'Yapay Zeka Merkezi',
-                                            type: 'ai-orchestrator',
-                                        });
-                                    }
-                                    onClose();
-                                }}
-                                className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
-                            >
-                                <Bot size={14} className="text-slate-500 shrink-0" />
-                                <span>Yapay Zeka Merkezi</span>
-                            </button>
+                            <div className="my-2 border-t border-[#2d2d2d] pt-2">
+                                <div
+                                    className="px-4 py-1 text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 flex items-center justify-between cursor-pointer hover:text-white/60 transition-colors"
+                                    onClick={() => setIsAiExpanded(!isAiExpanded)}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Bot size={12} /> Yapay Zeka Merkezi
+                                    </div>
+                                    {isAiExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                </div>
+                                <AnimatePresence>
+                                    {isAiExpanded && (
+                                        <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="overflow-hidden flex flex-col"
+                                        >
+                                            <button
+                                                onClick={() => {
+                                                    if (onOpenFile) {
+                                                        onOpenFile({
+                                                            id: 'ai-architecture-center',
+                                                            title: 'Mimari Merkezi',
+                                                            type: 'ai-orchestrator',
+                                                            meta: { defaultMainTab: 'architecture' }
+                                                        });
+                                                    }
+                                                    onClose();
+                                                }}
+                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                                            >
+                                                <Layers size={14} className="text-indigo-400 shrink-0" />
+                                                <span>Mimari Merkezi</span>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (onOpenFile) {
+                                                        onOpenFile({
+                                                            id: 'ai-automation-center',
+                                                            title: 'Otomasyon',
+                                                            type: 'ai-orchestrator',
+                                                            meta: { defaultMainTab: 'automation' }
+                                                        });
+                                                    }
+                                                    onClose();
+                                                }}
+                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                                            >
+                                                <Webhook size={14} className="text-rose-400 shrink-0" />
+                                                <span>Otomasyon</span>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (onOpenFile) {
+                                                        onOpenFile({
+                                                            id: 'ai-playground-center',
+                                                            title: 'Ai Playground',
+                                                            type: 'ai-orchestrator',
+                                                            meta: { defaultMainTab: 'playground' }
+                                                        });
+                                                    }
+                                                    onClose();
+                                                }}
+                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                                            >
+                                                <MessageSquareText size={14} className="text-teal-400 shrink-0" />
+                                                <span>Playground</span>
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         )}
 
                         {canSeeTab('ui_metrics') && (

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Key, RefreshCw, X, Box } from 'lucide-react';
+import { Key, RefreshCw, X, Box, Check, Cpu } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from './utils';
 import { SlideDeleteBar } from './DeleteSlider';
 
 function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
     const [status, setStatus] = useState('checking');
-    const defaultAlias = `Model_${index + 1}`;
+    const defaultAlias = `Kaynak_${index + 1}`;
     const displayName = alias || defaultAlias;
     const [editing, setEditing] = useState(false);
     const [editName, setEditName] = useState('');
@@ -39,49 +39,77 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
     }, [model.api_key]);
 
     return (
-        <div className="group relative bg-white rounded-sm ring-1 ring-black/[0.06] hover:ring-black/[0.12] transition-all duration-300 overflow-hidden shadow-sm hover:shadow-md ease-out">
-            <SlideDeleteBar onDelete={() => onDelete(model.id)} label="Modeli Sil">
-                <div className="flex flex-col h-full p-4 relative z-10 bg-white">
-                    <div className="flex items-start gap-3 flex-1">
-                        <div className="w-9 h-9 shrink-0 flex items-center justify-center rounded-[3px] bg-gray-50 ring-1 ring-black/[0.04]">
-                            <Box size={18} className="text-gray-400" />
+        <div className="group relative bg-white rounded-md ring-1 ring-black/[0.06] hover:ring-black/[0.12] transition-colors duration-200 overflow-hidden shadow-sm">
+            <SlideDeleteBar onDelete={() => onDelete(model.id)} label="Sil">
+                <div className="flex flex-col h-full bg-white p-4 relative z-10">
+
+                    {/* Header: Icon & Status */}
+                    <div className="flex items-start justify-between mb-3">
+                        <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-sm bg-gray-50 ring-1 ring-black/[0.04] text-[var(--sidebar-text-muted)] group-hover:text-[var(--accent)] transition-colors">
+                            <Cpu size={16} />
                         </div>
-                        <div className="min-w-0 flex-1 flex flex-col pt-0.5">
-                            <div className="flex items-center justify-between gap-2 max-w-full">
-                                {editing ? (
-                                    <input
-                                        autoFocus
-                                        className="w-full text-sm font-medium bg-[var(--window-bg)] border border-[var(--accent)] rounded px-1.5 py-0.5 text-[var(--workspace-text)] focus:outline-none"
-                                        value={editName}
-                                        onChange={e => setEditName(e.target.value)}
-                                        onBlur={commitEdit}
-                                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
-                                    />
-                                ) : (
-                                    <h3
-                                        onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); setEditName(displayName); }}
-                                        className="font-medium text-[var(--workspace-text)] text-sm truncate flex-1 cursor-pointer hover:text-[var(--accent)] transition-colors"
-                                        title="Çift tıklayarak yeniden adlandır"
-                                    >
-                                        {displayName}
-                                    </h3>
-                                )}
-                                <div className="flex shrink-0">
-                                    {status === 'checking' && <span className="flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full text-slate-400 bg-slate-500/10 border border-slate-500/30"><RefreshCw size={8} className="animate-spin" /> BAĞLANIYOR</span>}
-                                    {status === 'active' && <span className="flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full text-emerald-500 bg-emerald-500/10 border border-emerald-500/30"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> AKTİF</span>}
-                                    {status === 'inactive' && <span className="flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full text-red-500 bg-red-500/10 border border-red-500/30"><X size={10} className="text-red-500" /> PASİF</span>}
-                                </div>
+
+                        <div className="flex shrink-0 mt-1">
+                            {status === 'checking' && (
+                                <span className="flex items-center gap-1.5 text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-sm text-slate-500 bg-slate-50 border border-slate-200">
+                                    <RefreshCw size={10} className="animate-spin" /> BAĞLANIYOR
+                                </span>
+                            )}
+                            {status === 'active' && (
+                                <span className="flex items-center gap-1.5 text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-sm text-emerald-600 bg-emerald-50 border border-emerald-100">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> AKTİF
+                                </span>
+                            )}
+                            {status === 'inactive' && (
+                                <span className="flex items-center gap-1.5 text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-sm text-rose-600 bg-rose-50 border border-rose-100">
+                                    <X size={10} className="text-rose-500" /> PASİF
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Body: Name & Key Info */}
+                    <div className="min-w-0 flex flex-col flex-1">
+                        {editing ? (
+                            <div className="relative flex items-center mb-1">
+                                <input
+                                    autoFocus
+                                    className="w-full text-sm font-medium bg-[var(--window-bg)] border border-[var(--accent)] rounded-sm pl-2 pr-6 py-1 text-[var(--workspace-text)] focus:outline-none"
+                                    value={editName}
+                                    onChange={e => setEditName(e.target.value)}
+                                    onBlur={commitEdit}
+                                    onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
+                                />
+                                <Check size={12} className="absolute right-2 text-[var(--accent)]" />
                             </div>
-                            <p className="text-[10px] font-mono tracking-wider truncate text-[var(--sidebar-text-muted)] mt-1.5 flex items-center gap-1.5">
-                                <span className="font-medium text-[var(--workspace-text)] opacity-80" title={model.name}>{model.name}</span>
-                                <span className="opacity-30">|</span>
-                                <Key size={10} className="opacity-70" /> {model.masked_key}
+                        ) : (
+                            <h3
+                                onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); setEditName(displayName); }}
+                                className="font-medium text-[var(--workspace-text)] text-sm truncate cursor-pointer hover:text-[var(--accent)] transition-colors mb-1"
+                                title="Yeniden adlandırmak için çift tıklayın"
+                            >
+                                {displayName}
+                            </h3>
+                        )}
+
+                        <div className="flex flex-col gap-1 mt-2">
+                            <p className="text-[11px] text-[var(--sidebar-text-muted)] flex items-center gap-2 font-mono">
+                                <span className="truncate max-w-[150px] font-medium" title={model.name}>{model.name}</span>
+                            </p>
+                            <p className="text-[11px] text-[var(--sidebar-text-muted)] flex items-center gap-2 font-mono">
+                                <Key size={12} className="opacity-60" />
+                                <span>{model.masked_key}</span>
                             </p>
                         </div>
                     </div>
-                    <div className="flex justify-between items-center pt-3 mt-auto border-t border-white/[0.06]">
-                        <span className="text-[10px] text-[var(--sidebar-text-muted)]">
-                            Oluşturulma: {new Date(model.created_at).toLocaleDateString('tr-TR')}
+
+                    {/* Footer */}
+                    <div className="flex justify-between items-center pt-3 mt-4 border-t border-black/[0.04]">
+                        <span className="text-[10px] font-medium text-[var(--sidebar-text-muted)]">
+                            ID: {model.id.substring(0, 8)}
+                        </span>
+                        <span className="text-[10px] font-medium text-[var(--sidebar-text-muted)]">
+                            {new Date(model.created_at).toLocaleDateString('tr-TR')}
                         </span>
                     </div>
                 </div>

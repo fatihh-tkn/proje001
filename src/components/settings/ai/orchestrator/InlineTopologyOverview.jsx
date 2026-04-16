@@ -1,229 +1,281 @@
-import React, { useState } from 'react';
-import { User, Database, Bot, Brain, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson } from 'lucide-react';
+import { useState } from 'react';
+import ReactDOM from 'react-dom';
+import { User, Bot, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson, AlertTriangle, Power } from 'lucide-react';
 import ApiPayloadPreview from './ApiPayloadPreview';
 
-const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload }) => {
-    // Popup state: 'user', 'prompt', 'chat', 'msg', 'action'
-    const [activePopupNode, setActivePopupNode] = useState(null);
+const PopupPortal = ({ title, iconColor, popupPos, onClose, children }) => ReactDOM.createPortal(
+    <>
+        <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+        <div
+            className="fixed z-[9999] w-[340px] rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col"
+            style={{ left: popupPos.x, top: popupPos.y, transform: 'translateY(-50%)' }}
+        >
+            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <FileJson size={12} style={{ color: iconColor || '#64748b' }} />
+                    <span className="text-[11px] font-medium text-slate-600">{title}</span>
+                </div>
+                <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors text-lg leading-none">×</button>
+            </div>
+            {children}
+        </div>
+    </>,
+    document.body
+);
 
-    // Helpers to get specific agent configs
-    const getAgent = (kind) => {
-        if (!allAgents) return agent;
-        return allAgents.find(a => a.agentKind === kind) || agent;
+// Ghost node definitions — shown at bottom of diagram when inactive
+const GHOST_DEFS = [
+    { id: 'sys_agent_prompt_001', nodeId: 'prompt', label: 'İstem Revize', Icon: PencilLine },
+    { id: 'sys_agent_chatbot_001', nodeId: 'chat',   label: 'Sohbet Asistanı', Icon: Bot },
+    { id: 'sys_agent_msg_001',    nodeId: 'msg',    label: 'Mesaj Revize',  Icon: MessageSquareText },
+    { id: 'sys_agent_action_001', nodeId: 'action', label: 'İşlem Botu',    Icon: Zap },
+];
+
+const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggleAgent }) => {
+    const [activePopupNode, setActivePopupNode] = useState(null);
+    const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
+
+    const getAgentById = (id) => allAgents?.find(a => a.id === id);
+    const getAgentByKind = (kind) => allAgents?.find(a => a.agentKind === kind);
+
+    const isAgentActive = (agentId) => {
+        const a = getAgentById(agentId);
+        return !a || a.active !== false;
     };
 
-    // Helpers to check if current agent is the one in the graph
-    const isNodeActive = (nodeId) => agent?.id === nodeId || (agent?.agentKind === nodeId);
-    const isChatbot = agent?.agentKind === 'chatbot';
-    const hasRags = Array.isArray(agent?.allowedRags) && agent.allowedRags.length > 0;
+    const chatbotAgent = getAgentById('sys_agent_chatbot_001') || agent;
+    const chatbotActive = isAgentActive('sys_agent_chatbot_001');
+    const promptActive  = isAgentActive('sys_agent_prompt_001');
+    const msgActive     = isAgentActive('sys_agent_msg_001');
+    const actionActive  = isAgentActive('sys_agent_action_001');
 
-    const handleNodeClick = (nodeName) => {
-        setActivePopupNode(prev => prev === nodeName ? null : nodeName);
+    const isRag1Active = chatbotActive && Array.isArray(chatbotAgent?.allowedRags) && chatbotAgent.allowedRags.includes('rag_1');
+    const isRag2Active = chatbotActive && Array.isArray(chatbotAgent?.allowedRags) && chatbotAgent.allowedRags.includes('rag_2');
+
+    // Passive bots shown as ghost nodes at the bottom
+    const ghostNodes = GHOST_DEFS.filter(g => !isAgentActive(g.id));
+
+    // Build visible node list in pipeline order
+    const nodeDefs = [
+        { id: 'user',     always: true },
+        { id: 'prompt',   active: promptActive },
+        { id: 'chat',     active: chatbotActive },
+        { id: 'msg',      active: msgActive },
+        { id: 'action',   active: actionActive },
+        { id: 'response', always: true },
+    ];
+    const visibleNodes = nodeDefs.filter(n => n.always || n.active);
+
+    const canvasW = 1000;
+    const centerY = 220;
+    const padX = 60;
+    const count = visibleNodes.length;
+    const gap = count > 1 ? (canvasW - padX * 2) / (count - 1) : 0;
+
+    const pos = {};
+    visibleNodes.forEach((n, i) => { pos[n.id] = padX + i * gap; });
+
+    const loopY = centerY + 80;
+    const showFeedbackLoop = chatbotActive && msgActive;
+
+    const handleNodeClick = (nodeId, e) => {
+        if (activePopupNode === nodeId) { setActivePopupNode(null); return; }
+        const rect = e.currentTarget.getBoundingClientRect();
+        setPopupPos({ x: rect.right + 12, y: rect.top + rect.height / 2 });
+        setActivePopupNode(nodeId);
         if (onOpenPayload) onOpenPayload();
     };
 
+    const closePopup = () => setActivePopupNode(null);
+
+    const rectBorder = (agentId) =>
+        agent?.id === agentId ? 'border-2 border-[#b91d2c]/60' : 'border border-[#b91d2c]/25';
+    const chatBorderClass = agent?.id === 'sys_agent_chatbot_001'
+        ? 'border-2 border-[#b91d2c]/70' : 'border border-[#b91d2c]/35';
+
     return (
-        <div className="w-full h-full relative flex items-center justify-center p-2 shrink-0 bg-[#f8fafc] overflow-hidden rounded-xl border border-slate-200/60 shadow-[inset_0_0_100px_rgba(0,0,0,0.02)] isolate">
+        <div className="w-full h-full relative flex items-center justify-center bg-white rounded-xl border border-slate-100 isolate overflow-visible">
+            <div className="relative w-[1000px] h-[420px] z-10 scale-[0.6] sm:scale-[0.75] md:scale-90 lg:scale-100 transition-transform origin-center">
 
-            {/* Arka Plan Izgara Deseni (Grid Pattern) */}
-            <div className="absolute inset-0 pointer-events-none opacity-[0.15]"
-                style={{ backgroundImage: 'radial-gradient(#94a3b8 1px, transparent 1px)', backgroundSize: '16px 16px' }}></div>
-
-            {/* Merkez Derinlik Aydınlatması (Radial Gradient) */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-sky-400/5 blur-[120px] rounded-[100%] pointer-events-none -z-10"></div>
-
-            {/* FLOW CONTAINER - Belli bir boyutta tutup ekrana sığacak şekilde ölçekleyeceğiz */}
-            <div className="relative w-[1000px] h-[450px] z-10 scale-[0.6] sm:scale-[0.75] md:scale-90 lg:scale-100 transition-transform origin-center">
-
-                {/* SVG Çizgiler Arka Plan Katmanı */}
                 <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
                     <defs>
-                        <linearGradient id="glowLine" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#cbd5e1" />
-                            <stop offset="50%" stopColor="#818cf8" />
-                            <stop offset="100%" stopColor="#cbd5e1" />
+                        <linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#f1f5f9" />
+                            <stop offset="50%" stopColor="#b91d2c" />
+                            <stop offset="100%" stopColor="#f1f5f9" />
                         </linearGradient>
-                        <mask id="dashMask">
-                            <rect x="0" y="0" width="100%" height="100%" fill="white" />
-                            <rect x="0" y="0" width="100%" height="100%" fill="url(#glowLine)" className="animate-[slideRight_3s_linear_infinite]" />
-                        </mask>
                     </defs>
 
-                    {/* Ana Yatay Çizgi Merkezi: y=250 */}
-                    <path d="M 60 250 L 940 250" stroke="#cbd5e1" strokeWidth="2" fill="none" />
+                    <path d={`M ${padX} ${centerY} L ${canvasW - padX} ${centerY}`} stroke="#cbd5e1" strokeWidth="2" fill="none" />
+                    <path d={`M ${padX} ${centerY} L ${canvasW - padX} ${centerY}`} stroke="url(#flowGrad)" strokeWidth="2" strokeDasharray="6 8" fill="none" className="animate-[dash_18s_linear_infinite]" />
 
-                    {/* Hareketli Ana Çift Çizgi */}
-                    <path d="M 60 250 L 940 250" stroke="url(#glowLine)" strokeWidth="2" strokeDasharray="6 6" fill="none" className="animate-[dash_20s_linear_infinite]" />
+                    {isRag1Active && pos.chat != null && (
+                        <path d={`M ${pos.chat - 65} ${centerY - 123} C ${pos.chat - 65} ${centerY - 82} ${pos.chat - 10} ${centerY - 82} ${pos.chat - 10} ${centerY - 42}`}
+                            stroke="#b91d2c" strokeWidth="2" strokeDasharray="4 5" strokeOpacity="0.5" fill="none" />
+                    )}
+                    {isRag2Active && pos.chat != null && (
+                        <path d={`M ${pos.chat + 65} ${centerY - 123} C ${pos.chat + 65} ${centerY - 82} ${pos.chat + 10} ${centerY - 82} ${pos.chat + 10} ${centerY - 42}`}
+                            stroke="#b91d2c" strokeWidth="2" strokeDasharray="4 5" strokeOpacity="0.5" fill="none" />
+                    )}
 
-                    {/* Döküman DB -> Sohbet Asistanı (x=400 to 470) */}
-                    <path d="M 410 160 C 410 200 460 200 460 230" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 4" fill="none" />
-                    {/* Toplantı DB -> Sohbet Asistanı (x=530 to 470) */}
-                    <path d="M 530 160 C 530 200 480 200 480 230" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 4" fill="none" />
-
-                    {/* Geri Besleme Döngüsü (Mesaj Botundan Sohbet Asistanına Geri) */}
-                    {/* Mesaj: x=670, Sohbet: x=470 */}
-                    <path d="M 670 280 C 670 340 670 340 570 340 L 470 340 C 470 340 470 300 470 280"
-                        stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                    {/* Hareketli Geri Besleme İzi */}
-                    <path d="M 670 280 C 670 340 670 340 570 340 L 470 340 C 470 340 470 300 470 280"
-                        stroke="#3b82f6" strokeWidth="2" strokeDasharray="8 6" fill="none" className="animate-[dash_8s_linear_infinite]" />
-
-                    {/* Ok uçları (x pozisyonları Node'ların aralarına göre ayarlandı) */}
-                    {/* İstem Revize sol ok (node: 230) -> left arr ~165 */}
-                    <polygon points="160,246 170,250 160,254" fill="#94a3b8" />
-                    {/* Sohbet sol ok (node: 470) -> left arr ~350 */}
-                    <polygon points="350,246 360,250 350,254" fill="#94a3b8" />
-                    {/* Mesaj sol ok (node: 670) -> left arr ~580 */}
-                    <polygon points="570,246 580,250 570,254" fill="#94a3b8" />
-                    {/* İşlem sol ok (node: 840) -> left arr ~750 */}
-                    <polygon points="750,246 760,250 750,254" fill="#94a3b8" />
-                    {/* Kullanıcı çıkış sol ok -> left arr ~900 */}
-                    <polygon points="900,246 910,250 900,254" fill="#94a3b8" />
-
-                    {/* Döngü ucu (yukarı ok Sohbet Asistanına) */}
-                    <polygon points="466,285 470,275 474,285" fill="#3b82f6" />
-                    {/* DB uçları */}
-                    <polygon points="456,220 460,230 464,220" fill="#94a3b8" />
-                    <polygon points="476,220 480,230 484,220" fill="#94a3b8" />
+                    {showFeedbackLoop && (
+                        <>
+                            <path d={`M ${pos.msg} ${centerY + 36} C ${pos.msg} ${loopY} ${pos.msg} ${loopY} ${pos.msg - 30} ${loopY} L ${pos.chat + 30} ${loopY} C ${pos.chat} ${loopY} ${pos.chat} ${loopY} ${pos.chat} ${centerY + 42}`}
+                                stroke="#cbd5e1" strokeWidth="2" fill="none" />
+                            <path d={`M ${pos.msg} ${centerY + 36} C ${pos.msg} ${loopY} ${pos.msg} ${loopY} ${pos.msg - 30} ${loopY} L ${pos.chat + 30} ${loopY} C ${pos.chat} ${loopY} ${pos.chat} ${loopY} ${pos.chat} ${centerY + 42}`}
+                                stroke="#b91d2c" strokeWidth="2" strokeDasharray="6 7" strokeOpacity="0.6" fill="none" className="animate-[dash_10s_linear_infinite]" />
+                        </>
+                    )}
                 </svg>
 
-                <style dangerouslySetInnerHTML={{
-                    __html: `
-                    @keyframes dash { to { stroke-dashoffset: -1000; } }
-                    @keyframes dashReverse { to { stroke-dashoffset: 1000; } }
-                `}} />
+                <style dangerouslySetInnerHTML={{ __html: `@keyframes dash { to { stroke-dashoffset: -1000; } }` }} />
 
-                {/* --- 1. Kullanıcı İstemi (Giriş) --- - Center: x=60, y=250 */}
-                <div className="absolute z-10 flex flex-col items-center group pointer-events-auto" style={{ left: 60, top: 250, transform: 'translate(-50%, -50%)' }}>
+                {/* User node */}
+                {pos.user != null && (
+                    <div className="absolute z-10 flex flex-col items-center pointer-events-auto" style={{ left: pos.user, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('user', e)} className="w-11 h-11 rounded-full bg-white border border-[#b91d2c]/25 flex items-center justify-center cursor-pointer hover:border-[#b91d2c]/50 transition-colors">
+                            <User size={16} className="text-slate-400" />
+                        </div>
+                        <span className="absolute top-14 text-[9px] text-slate-400 tracking-wider whitespace-nowrap">Kullanıcı</span>
+                    </div>
+                )}
+
+                {/* Prompt Reviser */}
+                {pos.prompt != null && (
+                    <div className="absolute z-10 pointer-events-auto" style={{ left: pos.prompt, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('prompt', e)} className={`w-[130px] h-[72px] rounded-xl bg-white ${rectBorder('sys_agent_prompt_001')} flex flex-col items-center justify-center gap-1 cursor-pointer hover:shadow-sm transition-all`}>
+                            <PencilLine size={16} className="text-slate-400" />
+                            <span className="text-[10px] text-slate-500 text-center leading-snug">İstem Revize<br />Botu</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* DB nodes */}
+                {isRag1Active && pos.chat != null && (
+                    <div className="absolute z-10 flex flex-col items-center pointer-events-none" style={{ left: pos.chat - 65, top: centerY - 145, transform: 'translate(-50%, -50%)' }}>
+                        <div className="w-[52px] h-[44px] rounded-xl bg-white border border-[#b91d2c]/30 flex items-center justify-center">
+                            <FileText size={15} className="text-[#b91d2c]" />
+                        </div>
+                        <span className="mt-1.5 text-[9px] text-slate-400 tracking-wider">Döküman</span>
+                    </div>
+                )}
+                {isRag2Active && pos.chat != null && (
+                    <div className="absolute z-10 flex flex-col items-center pointer-events-none" style={{ left: pos.chat + 65, top: centerY - 145, transform: 'translate(-50%, -50%)' }}>
+                        <div className="w-[52px] h-[44px] rounded-xl bg-white border border-[#b91d2c]/30 flex items-center justify-center">
+                            <Video size={15} className="text-[#b91d2c]" />
+                        </div>
+                        <span className="mt-1.5 text-[9px] text-slate-400 tracking-wider">Toplantı</span>
+                    </div>
+                )}
+
+                {/* Chat Assistant */}
+                {pos.chat != null && (
+                    <div className="absolute z-10 pointer-events-auto" style={{ left: pos.chat, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('chat', e)} className={`w-[140px] h-[84px] rounded-2xl bg-white ${chatBorderClass} flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-[#b91d2c]/60 transition-all relative z-20`}>
+                            <Bot size={22} className="text-[#b91d2c]" />
+                            <span className="text-[11px] font-semibold text-slate-700 text-center">Sohbet Asistanı</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Message Reviser */}
+                {pos.msg != null && (
+                    <div className="absolute z-10 pointer-events-auto" style={{ left: pos.msg, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('msg', e)} className={`w-[130px] h-[72px] rounded-xl bg-white ${rectBorder('sys_agent_msg_001')} flex flex-col items-center justify-center gap-1 cursor-pointer hover:shadow-sm transition-all`}>
+                            <MessageSquareText size={16} className="text-slate-400" />
+                            <span className="text-[10px] text-slate-500 text-center leading-snug">Mesaj Revize<br />Botu</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Action Bot */}
+                {pos.action != null && (
+                    <div className="absolute z-10 pointer-events-auto" style={{ left: pos.action, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('action', e)} className={`w-[130px] h-[72px] rounded-xl bg-white ${rectBorder('sys_agent_action_001')} flex flex-col items-center justify-center gap-1 cursor-pointer hover:shadow-sm transition-all`}>
+                            <Zap size={16} className="text-slate-400" />
+                            <span className="text-[10px] text-slate-500 text-center leading-snug">İşlem<br />Botu</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Response node */}
+                {pos.response != null && (
+                    <div className="absolute z-10 flex flex-col items-center pointer-events-auto" style={{ left: pos.response, top: centerY, transform: 'translate(-50%, -50%)' }}>
+                        <div onClick={(e) => handleNodeClick('response', e)} className={`w-11 h-11 rounded-full flex items-center justify-center cursor-pointer transition-colors ${chatbotActive ? 'bg-[#b91d2c] hover:bg-[#a01b2a]' : 'bg-slate-200 hover:bg-slate-300'}`}>
+                            <User size={16} className={chatbotActive ? 'text-white' : 'text-slate-400'} />
+                        </div>
+                        <span className="absolute top-14 text-[9px] text-slate-400 tracking-wider whitespace-nowrap">Yanıt</span>
+                    </div>
+                )}
+
+                {/* Ghost tray — passive bots at the bottom */}
+                {ghostNodes.length > 0 && (
                     <div
-                        onClick={() => handleNodeClick('user')}
-                        className="w-14 h-14 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center cursor-pointer hover:border-indigo-400 hover:ring-4 hover:ring-indigo-100 transition-all z-20">
-                        <User size={20} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
+                        className="absolute z-10 flex items-center gap-3 pointer-events-auto"
+                        style={{
+                            bottom: 12,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                        }}
+                    >
+                        <span className="text-[8px] text-slate-300 tracking-widest uppercase whitespace-nowrap">Pasif</span>
+                        {ghostNodes.map(({ id, label, Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => onToggleAgent && onToggleAgent(id)}
+                                title={`${label} — Aktifleştir`}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-dashed border-slate-200 hover:border-[#b91d2c]/40 hover:bg-rose-50 transition-all group"
+                            >
+                                <Icon size={11} className="text-slate-300 group-hover:text-[#b91d2c]/60 transition-colors" />
+                                <span className="text-[9px] text-slate-300 group-hover:text-slate-500 transition-colors whitespace-nowrap">{label}</span>
+                                <Power size={9} className="text-slate-200 group-hover:text-[#b91d2c]/50 transition-colors" />
+                            </button>
+                        ))}
                     </div>
-                    <span className="absolute top-16 text-[10px] font-bold text-slate-600 uppercase tracking-widest bg-white/80 px-2 rounded-lg backdrop-blur-sm shadow-sm whitespace-nowrap">Kullanıcı İstemi</span>
-
-                    {/* Payload Popup */}
-                    {activePopupNode === 'user' && (
-                        <div className="absolute top-1/2 left-[70px] -translate-y-1/2 z-50 w-[340px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
-                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-indigo-50/50 rounded-t-2xl">
-                                <FileJson size={14} className="text-indigo-500" />
-                                <span className="text-xs font-bold text-indigo-700">Ham Kullanıcı İstemi</span>
-                            </div>
-                            <ApiPayloadPreview agent={{ persona: "Kullanıcının yazdığı ham metin", model: "N/A" }} rags={[]} isUser={true} />
-                        </div>
-                    )}
-                </div>
-
-                {/* --- 2. İstem Revize Botu --- - Center: x=230, y=250 */}
-                <div className="absolute z-10 pointer-events-auto group" style={{ left: 230, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div
-                        onClick={() => handleNodeClick('prompt')}
-                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_8px_30px_rgba(251,191,36,0.15)] relative">
-                        {isNodeActive('sys_agent_prompt_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-amber-500 rounded-full border-2 border-white animate-pulse"></div>}
-                        <PencilLine size={20} className="text-amber-500" />
-                        <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">İstem Revize<br />Botu</span>
-                    </div>
-
-                    {activePopupNode === 'prompt' && (
-                        <div className="absolute top-1/2 left-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
-                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-amber-50/50 rounded-t-2xl">
-                                <FileJson size={14} className="text-amber-500" />
-                                <span className="text-xs font-bold text-amber-700">API İsteği - İstem Revize Botu</span>
-                            </div>
-                            <ApiPayloadPreview agent={getAgent('prompt_reviser') || getAgent('sys_agent_prompt_001')} rags={[]} />
-                        </div>
-                    )}
-                </div>
-
-                {/* --- 3. Sohbet Asistanı Katmanı (Merkez) --- - Center: x=470, y=250 */}
-                <div className="absolute z-10 pointer-events-auto" style={{ left: 470, top: 250, transform: 'translate(-50%, -50%)' }}>
-
-                    {/* Yukarıdaki Veritabanları */}
-                    <div className="absolute -top-[150px] left-1/2 -translate-x-1/2 flex items-center justify-between w-[150px] pointer-events-none">
-                        <div className="flex flex-col items-center group -translate-x-4">
-                            <div className="w-[60px] h-[50px] rounded-xl bg-gradient-to-b from-slate-50 to-slate-200 border border-slate-300 shadow-sm flex flex-col items-center justify-center">
-                                <FileText size={18} className="text-slate-500" />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-wide">Döküman</span>
-                        </div>
-                        <div className="flex flex-col items-center group translate-x-4">
-                            <div className="w-[60px] h-[50px] rounded-xl bg-gradient-to-b from-slate-50 to-slate-200 border border-slate-300 shadow-sm flex flex-col items-center justify-center">
-                                <Video size={18} className="text-slate-500" />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-wide">Toplantı</span>
-                        </div>
-                    </div>
-
-                    <div
-                        onClick={() => handleNodeClick('chat')}
-                        className="w-[140px] h-[90px] rounded-[1.5rem] bg-white backdrop-blur-md border-[2.5px] border-emerald-100 shadow-[0_12px_40px_rgba(16,185,129,0.15)] flex flex-col items-center justify-center gap-1.5 transition-all hover:scale-105 hover:border-emerald-300 relative z-20 pointer-events-auto cursor-pointer">
-                        {isNodeActive('sys_agent_chatbot_001') && <div className="absolute -top-2 -right-2 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-sm ring-4 ring-emerald-500/20"></div>}
-                        <Bot size={26} className="text-emerald-600" />
-                        <span className="text-[13px] font-bold text-slate-800 text-center uppercase tracking-wide">Sohbet<br />Asistanı</span>
-                    </div>
-
-                    {activePopupNode === 'chat' && (
-                        <div className="absolute top-1/2 left-[150px] -translate-y-1/2 z-50 w-[380px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-left">
-                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-emerald-50/50 rounded-t-2xl">
-                                <FileJson size={14} className="text-emerald-500" />
-                                <span className="text-xs font-bold text-emerald-700">API İsteği - Sohbet Asistanı</span>
-                            </div>
-                            <ApiPayloadPreview agent={getAgent('chatbot')} rags={rags} />
-                        </div>
-                    )}
-                </div>
-
-                {/* --- 4. Mesaj Revize Botu --- - Center: x=670, y=250 */}
-                <div className="absolute z-10 pointer-events-auto group" style={{ left: 670, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div
-                        onClick={() => handleNodeClick('msg')}
-                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_8px_30px_rgba(59,130,246,0.15)] relative">
-                        {isNodeActive('sys_agent_msg_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-white animate-pulse"></div>}
-                        <MessageSquareText size={20} className="text-blue-500" />
-                        <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">Mesaj Revize<br />Botu</span>
-                    </div>
-
-                    {activePopupNode === 'msg' && (
-                        <div className="absolute top-1/2 right-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-right">
-                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-blue-50/50 rounded-t-2xl">
-                                <FileJson size={14} className="text-blue-500" />
-                                <span className="text-xs font-bold text-blue-700">API İsteği - Mesaj Revize Botu</span>
-                            </div>
-                            <ApiPayloadPreview agent={getAgent('message_reviser') || getAgent('sys_agent_msg_001')} rags={[]} />
-                        </div>
-                    )}
-                </div>
-
-                {/* --- 5. İşlem Botu --- - Center: x=840, y=250 */}
-                <div className="absolute z-10 pointer-events-auto group" style={{ left: 840, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div
-                        onClick={() => handleNodeClick('action')}
-                        className="w-[140px] h-[80px] rounded-[1.25rem] bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer hover:-translate-y-1 hover:border-purple-300 hover:shadow-[0_8px_30px_rgba(139,92,246,0.15)] relative">
-                        {isNodeActive('sys_agent_action_001') && <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-purple-500 rounded-full border-2 border-white animate-pulse"></div>}
-                        <Zap size={20} className="text-purple-500" />
-                        <span className="text-[11px] font-bold text-slate-700 leading-tight text-center">İşlem<br />Botu</span>
-                    </div>
-
-                    {activePopupNode === 'action' && (
-                        <div className="absolute top-1/2 right-[150px] -translate-y-1/2 z-50 w-[360px] rounded-2xl border border-slate-200/80 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 origin-right">
-                            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 bg-purple-50/50 rounded-t-2xl">
-                                <FileJson size={14} className="text-purple-500" />
-                                <span className="text-xs font-bold text-purple-700">API İsteği - İşlem Botu</span>
-                            </div>
-                            <ApiPayloadPreview agent={getAgent('action_router') || getAgent('sys_agent_action_001')} rags={[]} />
-                        </div>
-                    )}
-                </div>
-
-                {/* --- 6. Kullanıcı Yanıtı (Çıkış) --- - Center: x=960, y=250 */}
-                <div className="absolute z-10 flex flex-col items-center group pointer-events-auto" style={{ left: 960, top: 250, transform: 'translate(-50%, -50%)' }}>
-                    <div className="w-14 h-14 rounded-full bg-[#1e293b] border-[3px] border-[#334155] shadow-xl flex items-center justify-center transition-transform hover:scale-110 cursor-default">
-                        <User size={20} className="text-white" />
-                    </div>
-                    <span className="absolute top-16 text-[10px] font-bold text-slate-600 uppercase tracking-widest bg-white/80 px-2 rounded-lg backdrop-blur-sm shadow-sm whitespace-nowrap">Kullanıcı Yanıtı</span>
-                </div>
-
+                )}
             </div>
+
+            {/* Portal Popups */}
+            {activePopupNode === 'user' && (
+                <PopupPortal title="Ham Kullanıcı İstemi" popupPos={popupPos} onClose={closePopup}>
+                    <ApiPayloadPreview agent={{ persona: "Kullanıcının yazdığı ham metin", model: "N/A" }} rags={[]} isUser={true} />
+                </PopupPortal>
+            )}
+            {activePopupNode === 'prompt' && (
+                <PopupPortal title="API İsteği — İstem Revize Botu" popupPos={popupPos} onClose={closePopup}>
+                    <ApiPayloadPreview agent={getAgentByKind('prompt_reviser') || getAgentById('sys_agent_prompt_001')} rags={[]} />
+                </PopupPortal>
+            )}
+            {activePopupNode === 'chat' && (
+                <PopupPortal title="API İsteği — Sohbet Asistanı" iconColor="#b91d2c" popupPos={popupPos} onClose={closePopup}>
+                    <ApiPayloadPreview agent={getAgentByKind('chatbot') || chatbotAgent} rags={rags} />
+                </PopupPortal>
+            )}
+            {activePopupNode === 'msg' && (
+                <PopupPortal title="API İsteği — Mesaj Revize Botu" popupPos={popupPos} onClose={closePopup}>
+                    <ApiPayloadPreview agent={getAgentByKind('message_reviser') || getAgentById('sys_agent_msg_001')} rags={[]} />
+                </PopupPortal>
+            )}
+            {activePopupNode === 'action' && (
+                <PopupPortal title="API İsteği — İşlem Botu" popupPos={popupPos} onClose={closePopup}>
+                    <ApiPayloadPreview agent={getAgentByKind('action_router') || getAgentById('sys_agent_action_001')} rags={[]} />
+                </PopupPortal>
+            )}
+            {activePopupNode === 'response' && (
+                <PopupPortal title="Yanıt" popupPos={popupPos} onClose={closePopup}>
+                    {chatbotActive ? (
+                        <ApiPayloadPreview agent={getAgentByKind('chatbot') || chatbotAgent} rags={rags} />
+                    ) : (
+                        <div className="px-4 py-6 flex flex-col items-center gap-3">
+                            <AlertTriangle size={22} className="text-amber-400" />
+                            <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+                                Sohbet Asistanı pasif durumda.<br />
+                                Yanıt üretilemez.
+                            </p>
+                        </div>
+                    )}
+                </PopupPortal>
+            )}
         </div>
     );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, Cpu, MessageSquareText, Save, Power, Bot, Loader2, X, ChevronsDown, ChevronsUp, Webhook } from 'lucide-react';
 
 // Components
@@ -14,9 +15,10 @@ import { AutomationTab } from './tabs/AutomationTab';
 import { DEFAULT_AGENTS } from './orchestrator/constants';
 
 /* ─── MAIN ORCHESTRATOR HUB ──────────────────────────────────────── */
-const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
-    // Top Navigation
-    const [activeMainTab, setActiveMainTab] = useState('architecture');
+const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' } = {}) => {
+    // Top Navigation (Now hidden from UI, managed by SettingsMenu props)
+    const [activeMainTab, setActiveMainTab] = useState(defaultMainTab);
+    const [isModelsOpen, setIsModelsOpen] = useState(defaultMainTab === 'models');
 
     // RAG/Pool States
     const [fetchedFiles, setFetchedFiles] = useState([]);
@@ -46,7 +48,7 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
         const fetchAgents = async () => {
             try {
                 setIsLoadingAgents(true);
-                const res = await fetch('/api/v1/orchestrator/agents');
+                const res = await fetch('/api/orchestrator/agents');
                 if (res.ok) {
                     const data = await res.json();
                     if (data && data.length > 0) {
@@ -86,7 +88,7 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const res = await fetch('/api/v1/orchestrator/save', {
+            const res = await fetch('/api/orchestrator/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(agents)
@@ -103,17 +105,9 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
         }
     };
 
-    const toggleAgent = async (id) => {
-        // UI'da anında değiştir (Optimistic Update)
+    const toggleAgent = (id) => {
         setAgents(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
-        try {
-            const res = await fetch(`/api/v1/orchestrator/agents/${id}/toggle`, { method: 'PATCH' });
-            if (!res.ok) throw new Error('Backend durumu güncelleyemedi');
-        } catch (error) {
-            console.error("Durum güncellenemedi:", error);
-            // Hata çıkarsa geri al
-            setAgents(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
-        }
+        setHasUnsavedChanges(true);
     };
 
     const updateAgent = (key, val) => {
@@ -133,14 +127,6 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
     /* ─── Render Root Logic ───────────────────────── */
     return (
         <div className="flex flex-col w-full h-full bg-[#f4f4f5] select-none text-[var(--workspace-text)] animate-in fade-in duration-300">
-            {/* Top Level Nav Bar */}
-            <div className="h-[52px] border-b border-black/[0.06] bg-white px-2 sm:px-6 flex items-center gap-2 shrink-0">
-                <button onClick={() => setActiveMainTab('architecture')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'architecture' ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Layers size={14} /> Mimari Merkezi</button>
-                <button onClick={() => setActiveMainTab('models')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'models' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Cpu size={14} /> Zekâ Kaynakları</button>
-                <button onClick={() => setActiveMainTab('automation')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ${activeMainTab === 'automation' ? 'border-[#f06e57] text-[#f06e57]' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><Webhook size={14} /> Otomasyon</button>
-                <button onClick={() => setActiveMainTab('playground')} className={`h-full px-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest transition-all border-b-[3px] ml-auto ${activeMainTab === 'playground' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-[var(--workspace-text)]'}`}><MessageSquareText size={14} /> Playground (Test Terminali)</button>
-            </div>
-
             <div className="flex-1 overflow-hidden flex flex-col">
                 {activeMainTab === 'architecture' && (
                     <div className="flex flex-col w-full h-full overflow-hidden transition-all duration-500 bg-[#f4f4f5]">
@@ -153,24 +139,63 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
                             <>
                                 {/* --- ÜST KATMAN: MONITORING (Yüzen Akış Haritası) --- */}
                                 <div
-                                    className={`flex w-full shrink-0 relative z-0 transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden bg-white ${isFlowExpanded ? 'h-[65vh] min-h-[350px]' : 'h-[180px] xl:h-[210px]'}`}
+                                    className={`flex w-full shrink-0 relative z-0 transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden bg-white border-b border-black/5 ${isFlowExpanded ? 'h-[65vh] min-h-[350px]' : 'h-[180px] xl:h-[210px]'}`}
                                     onWheel={(e) => {
                                         if (Math.abs(e.deltaY) < 15) return;
                                         if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true); // Yukarı kaydır (Şemayı büyüt)
                                         else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false); // Aşağı kaydır (Şemayı küçült)
                                     }}
                                 >
-                                    {/* Tam Genişlik: Sistem Akış Haritası */}
-                                    <div className="flex-1 flex items-center justify-center overflow-hidden transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] bg-white">
+                                    {/* Sol Taraf: Sistem Akış Haritası */}
+                                    <div className="flex-1 flex items-center justify-center overflow-hidden transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] bg-white relative">
+
+                                        {isModelsOpen && (
+                                            <div
+                                                className="absolute inset-0 z-10"
+                                                onClick={() => setIsModelsOpen(false)}
+                                            />
+                                        )}
+
+                                        <div className="absolute top-3 right-3 z-20">
+                                            <button
+                                                onClick={() => {
+                                                    setIsModelsOpen(!isModelsOpen);
+                                                    if (!isModelsOpen && !isFlowExpanded) setIsFlowExpanded(true); // Panel açılırken diagram küçükse genislet
+                                                }}
+                                                title="API Anahtarları"
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isModelsOpen ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20 shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                <Cpu size={14} />
+                                                <span>API Anahtarları</span>
+                                            </button>
+                                        </div>
+
                                         <InlineTopologyOverview
                                             agent={selectedItem}
                                             allAgents={agents}
                                             rags={rags}
-                                            onOpenPayload={() => {
-                                                setIsFlowExpanded(true); // Popup açıldığında büyük haline otomatik geçsin
-                                            }}
+                                            onOpenPayload={() => setIsFlowExpanded(true)}
                                         />
                                     </div>
+
+                                    {/* Sağ Taraf: API Anahtarları Paneli (Sadece Üst Katmanda) */}
+                                    <AnimatePresence initial={false}>
+                                        {isModelsOpen && (
+                                            <motion.div
+                                                initial={{ width: 0, opacity: 0 }}
+                                                animate={{ width: 450, opacity: 1 }}
+                                                exit={{ width: 0, opacity: 0 }}
+                                                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                                                className="h-full shrink-0 flex flex-col border-l border-slate-200 bg-white shadow-[-4px_0_15px_-5px_rgba(0,0,0,0.05)] relative z-20"
+                                            >
+                                                <div className="w-[450px] flex-col flex h-full">
+                                                    <div className="flex-1 overflow-y-auto relative bg-white pt-2">
+                                                        <ModelsTab />
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
 
@@ -208,6 +233,8 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
                                                 else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false);
                                             }}
                                         >
+
+
                                             {/* Kaydet Butonu */}
                                             <button
                                                 onClick={handleSave}
@@ -297,10 +324,12 @@ const AiOrchestratorViewer = ({ defaultAgentId } = {}) => {
                         )}
                     </div>
                 )}
-                {activeMainTab === 'models' && <ModelsTab />}
                 {activeMainTab === 'automation' && <AutomationTab />}
                 {activeMainTab === 'playground' && <RagChatPlayground defaultAgent={selectedItem} />}
             </div>
+
+
+
         </div>
     );
 };

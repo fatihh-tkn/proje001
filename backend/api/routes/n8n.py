@@ -93,15 +93,33 @@ async def get_workflows(request: Request):
             
             if response.status_code == 200:
                 data = response.json()
-                n8n_workflows = data.get("data", [])
+                
+                # N8n sürümlerine göre veri doğrudan liste veya dict->data olarak dönebilir.
+                if isinstance(data, list):
+                    n8n_workflows = data
+                else:
+                    n8n_workflows = data.get("data", []) if isinstance(data, dict) else []
                 
                 formatted = []
                 for wf in n8n_workflows:
-                    tags = [t.get("name") for t in wf.get("tags", [])] if wf.get("tags") else []
-                    nodes = wf.get("nodes", [])
+                    if not isinstance(wf, dict): continue
+                    
+                    # Tagleri güvenli okuma
+                    tags_raw = wf.get("tags")
+                    tags = []
+                    if isinstance(tags_raw, list):
+                        for t in tags_raw:
+                            if isinstance(t, dict):
+                                tags.append(t.get("name", "Tag"))
+                            else:
+                                tags.append(str(t))
+                    
+                    nodes = wf.get("nodes")
+                    if not isinstance(nodes, list): nodes = []
                     
                     trigger = "Manuel"
                     for node in nodes:
+                        if not isinstance(node, dict): continue
                         node_type = node.get("type", "").lower()
                         if "webhook" in node_type:
                             trigger = "Webhook"
@@ -114,16 +132,19 @@ async def get_workflows(request: Request):
                             break
 
                     active = wf.get("active", False)
-                    created_at = wf.get("createdAt", "Bilinmiyor")[:16].replace("T", " ")
-                    updated_at = wf.get("updatedAt", "Bilinmiyor")[:16].replace("T", " ")
+                    created_at = wf.get("createdAt", "Bilinmiyor")
+                    updated_at = wf.get("updatedAt", "Bilinmiyor")
+                    
+                    if isinstance(created_at, str) and "T" in created_at: created_at = created_at[:16].replace("T", " ")
+                    if isinstance(updated_at, str) and "T" in updated_at: updated_at = updated_at[:16].replace("T", " ")
                     
                     formatted.append({
-                        "id": wf.get("id"),
+                        "id": str(wf.get("id", "")),
                         "name": wf.get("name", "İsimsiz Şema"),
-                        "active": active,
+                        "active": bool(active),
                         "tags": tags,
                         "trigger": trigger,
-                        "lastRun": updated_at,
+                        "lastRun": str(updated_at),
                         "successRate": 100,
                         "executionsCount": len(nodes) * 4,
                         "status": "healthy" if active else "stopped"
