@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Shield, Clock, Search, MoreHorizontal, Plus, UserPlus, FileText, Database, LayoutDashboard, BookOpen, MessageSquare, Cpu, FileCog, Bot, Zap } from 'lucide-react';
 import ArchiveTreeItem from './ArchiveTreeItem';
+import SapEgitimAdminPaneli from './SapEgitimAdminPaneli';
+import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
 
 
 /* Settings menüsündeki sekmelerle birebir eşleşen sabit liste */
@@ -17,10 +19,12 @@ const SETTINGS_TABS = [
 ───────────────────────────────────────────────────────────── */
 export default function AuthViewer() {
     const [activeTab, setActiveTab] = useState('users');
+    const [egitimFormOpen, setEgitimFormOpen] = useState(false);
 
     const tabs = [
         { id: 'users', label: 'Kullanıcılar', icon: Users },
         { id: 'audit', label: 'Sistem Kayıtları', icon: Clock },
+        { id: 'egitim_yonetimi', label: 'Eğitim Yönetim Paneli', icon: BookOpen },
     ];
 
     return (
@@ -34,6 +38,12 @@ export default function AuthViewer() {
                     </h2>
                     <p className="text-[11px] text-slate-500 mt-1">Sisteme girenleri, model kullanım haklarını ve logları yönetin.</p>
                 </div>
+                <button
+                    onClick={() => setEgitimFormOpen(true)}
+                    className="flex items-center gap-2 bg-[#378ADD] hover:bg-[#185FA5] text-white px-3 py-2 rounded-md text-[12px] font-medium transition-colors shadow-sm"
+                >
+                    <Plus size={14} /> Yeni Eğitim Aç
+                </button>
             </div>
 
             {/* TABS */}
@@ -62,7 +72,11 @@ export default function AuthViewer() {
             <div className="flex-1 overflow-auto p-6">
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'audit' && <AuditTab />}
+                {activeTab === 'egitim_yonetimi' && <SapEgitimAdminPaneli />}
             </div>
+
+            {/* Slide-Over Panel */}
+            <EgitimAcmaSlideOver open={egitimFormOpen} onClose={() => setEgitimFormOpen(false)} />
         </div>
     );
 }

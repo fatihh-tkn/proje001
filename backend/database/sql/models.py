@@ -609,6 +609,136 @@ class ApiLogu(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 9. EĞİTİM YÖNETİM SİSTEMİ (LMS Katmanı)
+#    egitimler, egitim_bolumleri, kullanici_egitim_profilleri, kullanici_egitim_atamalari
+# ═══════════════════════════════════════════════════════════════════
+
+class Egitim(Base):
+    """
+    Yöneticilerin kataloğa eklediği eğitimler.
+    EgitimAcmaSlideOver veya Admin Panel üzerinden doldurulur.
+    """
+    __tablename__ = "egitimler"
+
+    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    ad: Mapped[str] = mapped_column(String(256), nullable=False)
+    kod: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    aciklama: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sure_saat: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    gecme_notu: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    egitmen: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    
+    # Kategorizasyon
+    tur: Mapped[str] = mapped_column(String(64), nullable=False, default="Zorunlu")
+    seviye: Mapped[str] = mapped_column(String(64), nullable=False, default="Başlangıç")
+    format: Mapped[str] = mapped_column(String(64), nullable=False, default="Online")
+    
+    # Hedef Kitle ve Kapsam (JSON dizileri)
+    ilgili_moduller: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    hedef_roller: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    hedef_departmanlar: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    
+    # Ayarlar
+    sinav_zorunlu: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sertifika_ver: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    tekrar_izni: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    onay_gerekli: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    
+    durum: Mapped[str] = mapped_column(String(32), nullable=False, default="Taslak") # Taslak | Yayınlandı
+    
+    yayin_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    son_tamamlama_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+    # İlişkiler
+    bolumler: Mapped[list["EgitimBolumu"]] = relationship(
+        "EgitimBolumu", back_populates="egitim", cascade="all, delete-orphan",
+        order_by="EgitimBolumu.sira"
+    )
+    atamalar: Mapped[list["KullaniciEgitimAtama"]] = relationship(
+        "KullaniciEgitimAtama", back_populates="egitim", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_egitimler_durum", "durum"),
+        Index("ix_egitimler_tur", "tur"),
+    )
+
+
+class EgitimBolumu(Base):
+    """
+    Eğitimlerin altındaki video, doküman vb. parçaları.
+    """
+    __tablename__ = "egitim_bolumleri"
+
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    egitim_kimlik: Mapped[str] = mapped_column(
+        String(36), ForeignKey("egitimler.kimlik", ondelete="CASCADE"), nullable=False
+    )
+    baslik: Mapped[str] = mapped_column(String(256), nullable=False)
+    sure_dk: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sira: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    
+    egitim: Mapped["Egitim"] = relationship("Egitim", back_populates="bolumler")
+
+
+class KullaniciEgitimProfili(Base):
+    """
+    Kullanıcının UserVeriGirisi (Bilgi Girişi) ekranından doldurduğu kendi beyanları.
+    """
+    __tablename__ = "kullanici_egitim_profilleri"
+
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kullanici_kimlik: Mapped[str] = mapped_column(
+        String(36), ForeignKey("kullanicilar.kimlik", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    ise_baslama_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    departman: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    
+    # Kullanıcının bildirdiği modüller (JSON Array: ["FI", "MM"])
+    kullanilan_moduller: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    
+    # Udemy vs. dış eğitimler: [{"name": "", "provider": "", "module": "", ...}]
+    dis_egitimler: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    
+    # Dış sertifikalar: [{"name": "", "issuer": "", "module": "", ...}]
+    dis_sertifikalar: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    
+    guncelleme_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+
+class KullaniciEgitimAtama(Base):
+    """
+    Sistemdeki bir eğitimin kullanıcıya atanması ve anlık ilerlemesi.
+    Kullanıcının 'Eğitimlerim' dashboard'unda listelenecek kısımdır.
+    """
+    __tablename__ = "kullanici_egitim_atamalari"
+
+    kimlik: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kullanici_kimlik: Mapped[str] = mapped_column(
+        String(36), ForeignKey("kullanicilar.kimlik", ondelete="CASCADE"), nullable=False
+    )
+    egitim_kimlik: Mapped[str] = mapped_column(
+        String(36), ForeignKey("egitimler.kimlik", ondelete="CASCADE"), nullable=False
+    )
+    
+    # Durum: Atandi | Devam Ediyor | Tamamlandi | Suresi Gecmis
+    durum: Mapped[str] = mapped_column(String(32), nullable=False, default="Atandi")
+    ilerleme_yuzdesi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    
+    atanma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+    tamamlama_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    not_degeri: Mapped[int | None] = mapped_column(Integer, nullable=True) # Sınav varsa
+    
+    egitim: Mapped["Egitim"] = relationship("Egitim", back_populates="atamalar")
+    
+    __table_args__ = (
+        UniqueConstraint("kullanici_kimlik", "egitim_kimlik", name="uq_kullanici_egitim"),
+        Index("ix_kullanici_egitim_atamalari_durum", "durum"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
 # GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
 # ═══════════════════════════════════════════════════════════════════
 User        = Kullanici

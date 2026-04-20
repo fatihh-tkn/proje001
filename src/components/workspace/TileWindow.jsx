@@ -20,7 +20,7 @@ const getHeaderBgClass = (type, isActive) => {
         case 'xls':
             return 'bg-gradient-to-r from-[#334155]/85 to-[#1e293b]/85 border-b border-[#0f172a]/50 backdrop-blur-xl text-white shadow-[0_4px_20px_rgba(51,65,85,0.15)]';
         default:
-            return 'bg-gradient-to-r from-[#8a1717]/85 to-[#B52020]/85 border-b border-[#6e1010]/50 backdrop-blur-xl text-white shadow-[0_4px_20px_rgba(160,27,27,0.15)]';
+            return 'th-win-bar-default backdrop-blur-xl text-white';
     }
 };
 
@@ -39,7 +39,7 @@ const getPillHoverClass = (type) => {
         case 'xls':
             return 'hover:bg-[#334155] hover:border-[#f1f5f9]/30 hover:shadow-[0_2px_12px_rgba(51,65,85,0.4)]';
         default:
-            return 'hover:bg-[#8a1717] hover:border-[#fee2e2]/30 hover:shadow-[0_2px_12px_rgba(138,23,23,0.4)]';
+            return 'th-pill-hover';
     }
 };
 
@@ -95,11 +95,19 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
         disabled: isMaximized || isDraggingGhost
     });
 
-    const style = {
+    const dndStyle = {
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0 : 1,
     };
+
+    const windowBoxShadow = !isMaximized
+        ? (isActive
+            ? '0 0 0 1px var(--th-win-ring), 0 20px 60px rgba(0,0,0,0.2)'
+            : '0 0 0 1px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06)')
+        : undefined;
+
+    const computedStyle = isDraggingGhost ? {} : (isMaximized ? {} : { ...dndStyle, boxShadow: windowBoxShadow });
 
     const getExitAnimation = () => {
         if (isDraggingGhost) return false;
@@ -116,7 +124,7 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
             onPointerDownCapture={onFocus}
 
             ref={!isMaximized ? setNodeRef : undefined}
-            style={isDraggingGhost ? {} : (isMaximized ? {} : style)}
+            style={computedStyle}
             {...(!isMaximized && !isDraggingGhost ? attributes : {})}
 
             className={`
@@ -124,9 +132,7 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
         ${showSnap ? 'z-[99999]' : isActive ? 'z-50' : 'z-10'}
         ${!isMaximized && customZoneClass ? customZoneClass : ''}
         ${isMaximized ? 'w-full h-full rounded-none shadow-none border-none opacity-100 bg-white' : 'w-full h-full relative rounded-md'}
-        ${!isMaximized && isActive
-                    ? 'shadow-[0_0_0_1px_rgba(160,27,27,0.5),0_20px_60px_rgba(0,0,0,0.2)]'
-                    : !isMaximized ? 'shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.06)] opacity-90' : ''}
+        ${!isMaximized && !isActive ? 'opacity-90' : ''}
       `}
         >
             <div className="relative w-full z-[80] shrink-0 h-[34px]">

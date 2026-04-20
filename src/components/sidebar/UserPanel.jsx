@@ -1,19 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     X, Edit2, Check, FileText, Clock,
-    Shield, LogOut, ChevronRight
+    Shield, LogOut, ChevronRight, BarChart2, ClipboardList
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import AdminEgitimForm from './AdminEgitimForm';
+import UserEgitimDashboard from './UserEgitimDashboard';
+import UserVeriGirisi from './UserVeriGirisi';
 
 const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
-    const currentUser  = useWorkspaceStore(state => state.currentUser);
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const setCurrentUser = useWorkspaceStore(state => state.setCurrentUser);
 
-    const [userData,     setUserData]     = useState(null);
-    const [dashboard,    setDashboard]    = useState(null);
-    const [nameEditing,  setNameEditing]  = useState(false);
-    const [nameValue,    setNameValue]    = useState('');
-    const [nameSaving,   setNameSaving]   = useState(false);
+    const [userData, setUserData] = useState(null);
+    const [dashboard, setDashboard] = useState(null);
+    const [nameEditing, setNameEditing] = useState(false);
+    const [nameValue, setNameValue] = useState('');
+    const [nameSaving, setNameSaving] = useState(false);
+    const [activeTab, setActiveTab] = useState('profil'); // 'profil', 'egitim', 'admin'
+    const [egitimSubTab, setEgitimSubTab] = useState('dashboard'); // 'dashboard' | 'veriGirisi'
     const panelRef = useRef(null);
 
     // Kullanıcı verisi + dashboard — panel açıldığında çek
@@ -27,12 +32,12 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                 const u = users.find(x => x.id === currentUser.id);
                 if (u) setUserData(u);
             })
-            .catch(() => {});
+            .catch(() => { });
 
         fetch(`/api/auth/users/${currentUser.id}/dashboard`)
             .then(r => r.json())
             .then(data => setDashboard(data))
-            .catch(() => {});
+            .catch(() => { });
     }, [open, currentUser?.id]);
 
     // Panel dışına tıklayınca kapat
@@ -67,7 +72,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                 setCurrentUser({ ...currentUser, tam_ad: trimmed });
                 setUserData(prev => prev ? { ...prev, name: trimmed } : prev);
             }
-        } catch (_) {}
+        } catch (_) { }
         setNameSaving(false);
         setNameEditing(false);
     };
@@ -85,17 +90,20 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
 
     // Sidebar genişliğine göre panel pozisyonu
     const sidebarW = isCollapsed ? 68 : 288;
+    const isExpanded = activeTab === 'egitim' || activeTab === 'admin';
+    const panelWidthStr = isExpanded ? '600px' : '300px';
+    const panelWidthNum = isExpanded ? 600 : 300;
 
     // ── Stil sabitleri (inline — Tailwind sınıfları sidebar karanlık temasıyla çakışıyor)
     const S = {
         panel: {
             position: 'fixed',
             top: 0,
-            left: open ? sidebarW : sidebarW - 320,
-            width: '300px',
+            left: open ? sidebarW : sidebarW - (panelWidthNum + 20),
+            width: panelWidthStr,
             height: '100vh',
             zIndex: 45,
-            transition: 'left 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s',
+            transition: 'left 0.25s cubic-bezier(0.16, 1, 0.3, 1), width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s',
             opacity: open ? 1 : 0,
             pointerEvents: open ? 'auto' : 'none',
             background: 'linear-gradient(180deg, #1e1e22 0%, #1a1a1c 100%)',
@@ -124,8 +132,8 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
             padding: '7px 0',
             borderBottom: '1px solid #1e293b',
         },
-        rowKey:   { fontSize: '11px', color: '#475569' },
-        rowVal:   { fontSize: '11px', color: '#94a3b8', fontWeight: '500' },
+        rowKey: { fontSize: '11px', color: '#475569' },
+        rowVal: { fontSize: '11px', color: '#94a3b8', fontWeight: '500' },
     };
 
     return (
@@ -175,124 +183,180 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                 </button>
             </div>
 
+            {/* ── TABS ── */}
+            <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #2a2a2d', padding: '0 16px' }}>
+                <button
+                    onClick={() => setActiveTab('profil')}
+                    style={{
+                        padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
+                        color: activeTab === 'profil' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
+                        borderBottom: activeTab === 'profil' ? '2px solid #A01B1B' : '2px solid transparent'
+                    }}
+                >
+                    Profil
+                </button>
+                <button
+                    onClick={() => { setActiveTab('egitim'); setEgitimSubTab('dashboard'); }}
+                    style={{
+                        padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
+                        color: activeTab === 'egitim' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
+                        borderBottom: activeTab === 'egitim' && egitimSubTab === 'dashboard' ? '2px solid #378ADD' : '2px solid transparent'
+                    }}
+                >
+                    Eğitimlerim
+                </button>
+
+                {/* Bilgi Girişi butonu — sadece eğitim sekmesi açıkken görünür */}
+                {activeTab === 'egitim' && (
+                    <button
+                        onClick={() => setEgitimSubTab(egitimSubTab === 'veriGirisi' ? 'dashboard' : 'veriGirisi')}
+                        style={{
+                            marginLeft: 'auto',
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '5px 10px', fontSize: 10, fontWeight: 600,
+                            borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+                            border: '1px solid',
+                            background: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.15)' : 'transparent',
+                            color: egitimSubTab === 'veriGirisi' ? '#60a5fa' : '#64748b',
+                            borderColor: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.4)' : '#334155',
+                        }}
+                    >
+                        <ClipboardList size={11} />
+                        Bilgi Girişi
+                    </button>
+                )}
+            </div>
+
             {/* ── BODY ── */}
             <div style={{ flex: 1, padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-                {/* Hesap Bilgileri */}
-                <section>
-                    <div style={S.sectionTitle}>
-                        <Clock size={11} /> Hesap Bilgileri
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        {[
-                            ['Durum',       userData?.status || 'Aktif'],
-                            ['Rol',         userData?.role   || (currentUser.super ? 'Sistem Yöneticisi' : 'Standart Kullanıcı')],
-                            ['Son Giriş',   userData?.lastLogin && userData.lastLogin !== 'Bilinmiyor'
-                                                ? new Date(userData.lastLogin).toLocaleString('tr', { dateStyle: 'medium', timeStyle: 'short' })
-                                                : '—'],
-                        ].map(([k, v]) => (
-                            <div key={k} style={S.row}>
-                                <span style={S.rowKey}>{k}</span>
-                                <span style={{ ...S.rowVal, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    {k === 'Durum' && (
-                                        <span style={{
-                                            width: 6, height: 6, borderRadius: '50%',
-                                            background: v === 'Aktif' ? '#10b981' : '#ef4444',
-                                            display: 'inline-block',
-                                        }} />
-                                    )}
-                                    {v}
-                                </span>
+                {activeTab === 'profil' && (
+                    <>
+                        {/* Hesap Bilgileri */}
+                        <section>
+                            <div style={S.sectionTitle}>
+                                <Clock size={11} /> Hesap Bilgileri
                             </div>
-                        ))}
-                    </div>
-                </section>
-
-                {/* Profil Düzenle */}
-                <section>
-                    <div style={S.sectionTitle}>
-                        <Edit2 size={11} /> Profil Düzenle
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontSize: 11, color: '#64748b' }}>Ad Soyad</label>
-                        {nameEditing ? (
-                            <div style={{ display: 'flex', gap: 6 }}>
-                                <input
-                                    autoFocus
-                                    value={nameValue}
-                                    onChange={e => setNameValue(e.target.value)}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') saveName();
-                                        if (e.key === 'Escape') { setNameEditing(false); setNameValue(currentUser.tam_ad || ''); }
-                                    }}
-                                    style={{
-                                        flex: 1, background: '#0f172a',
-                                        border: '1px solid #A01B1B', borderRadius: 6,
-                                        padding: '7px 10px', color: '#f1f5f9',
-                                        fontSize: 12, outline: 'none',
-                                    }}
-                                />
-                                <button
-                                    onClick={saveName}
-                                    disabled={nameSaving}
-                                    style={{
-                                        background: '#A01B1B', color: 'white',
-                                        border: 'none', borderRadius: 6,
-                                        padding: '7px 12px', cursor: nameSaving ? 'wait' : 'pointer',
-                                        opacity: nameSaving ? 0.7 : 1, display: 'flex', alignItems: 'center',
-                                    }}
-                                >
-                                    {nameSaving ? <span style={{ fontSize: 11 }}>...</span> : <Check size={13} />}
-                                </button>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {[
+                                    ['Durum', userData?.status || 'Aktif'],
+                                    ['Rol', userData?.role || (currentUser.super ? 'Sistem Yöneticisi' : 'Standart Kullanıcı')],
+                                    ['Son Giriş', userData?.lastLogin && userData.lastLogin !== 'Bilinmiyor'
+                                        ? new Date(userData.lastLogin).toLocaleString('tr', { dateStyle: 'medium', timeStyle: 'short' })
+                                        : '—'],
+                                ].map(([k, v]) => (
+                                    <div key={k} style={S.row}>
+                                        <span style={S.rowKey}>{k}</span>
+                                        <span style={{ ...S.rowVal, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            {k === 'Durum' && (
+                                                <span style={{
+                                                    width: 6, height: 6, borderRadius: '50%',
+                                                    background: v === 'Aktif' ? '#10b981' : '#ef4444',
+                                                    display: 'inline-block',
+                                                }} />
+                                            )}
+                                            {v}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            <div
-                                onClick={() => setNameEditing(true)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    background: '#0f172a', border: '1px solid #1e293b', borderRadius: 6,
-                                    padding: '8px 10px', cursor: 'text',
-                                }}
-                            >
-                                <span style={{ fontSize: 12, color: '#e2e8f0' }}>{currentUser.tam_ad}</span>
-                                <Edit2 size={11} style={{ color: '#475569' }} />
-                            </div>
-                        )}
-                    </div>
-                </section>
+                        </section>
 
-                {/* Son Belgeler */}
-                {dashboard?.belgeler?.length > 0 && (
-                    <section>
-                        <div style={S.sectionTitle}>
-                            <FileText size={11} /> Son Yüklenen Belgeler
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {dashboard.belgeler.map((b, i) => (
-                                <div key={i} style={{
-                                    display: 'flex', alignItems: 'center', gap: 10,
-                                    background: '#0f172a', borderRadius: 8,
-                                    padding: '8px 10px', border: '1px solid #1e293b',
-                                }}>
-                                    <span style={{
-                                        fontSize: 9, fontWeight: 700, color: '#64748b',
-                                        background: '#1e293b', padding: '2px 6px',
-                                        borderRadius: 4, flexShrink: 0, letterSpacing: '0.05em',
-                                    }}>
-                                        {b.type}
-                                    </span>
-                                    <span style={{
-                                        fontSize: 11, color: '#94a3b8', flex: 1,
-                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    }}>
-                                        {b.name}
-                                    </span>
-                                    <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>{b.date}</span>
+                        {/* Profil Düzenle */}
+                        <section>
+                            <div style={S.sectionTitle}>
+                                <Edit2 size={11} /> Profil Düzenle
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label style={{ fontSize: 11, color: '#64748b' }}>Ad Soyad</label>
+                                {nameEditing ? (
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        <input
+                                            autoFocus
+                                            value={nameValue}
+                                            onChange={e => setNameValue(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') saveName();
+                                                if (e.key === 'Escape') { setNameEditing(false); setNameValue(currentUser.tam_ad || ''); }
+                                            }}
+                                            style={{
+                                                flex: 1, background: '#0f172a',
+                                                border: '1px solid #A01B1B', borderRadius: 6,
+                                                padding: '7px 10px', color: '#f1f5f9',
+                                                fontSize: 12, outline: 'none',
+                                            }}
+                                        />
+                                        <button
+                                            onClick={saveName}
+                                            disabled={nameSaving}
+                                            style={{
+                                                background: '#A01B1B', color: 'white',
+                                                border: 'none', borderRadius: 6,
+                                                padding: '7px 12px', cursor: nameSaving ? 'wait' : 'pointer',
+                                                opacity: nameSaving ? 0.7 : 1, display: 'flex', alignItems: 'center',
+                                            }}
+                                        >
+                                            {nameSaving ? <span style={{ fontSize: 11 }}>...</span> : <Check size={13} />}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div
+                                        onClick={() => setNameEditing(true)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            background: '#0f172a', border: '1px solid #1e293b', borderRadius: 6,
+                                            padding: '8px 10px', cursor: 'text',
+                                        }}
+                                    >
+                                        <span style={{ fontSize: 12, color: '#e2e8f0' }}>{currentUser.tam_ad}</span>
+                                        <Edit2 size={11} style={{ color: '#475569' }} />
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* Son Belgeler */}
+                        {dashboard?.belgeler?.length > 0 && (
+                            <section>
+                                <div style={S.sectionTitle}>
+                                    <FileText size={11} /> Son Yüklenen Belgeler
                                 </div>
-                            ))}
-                        </div>
-                    </section>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {dashboard.belgeler.map((b, i) => (
+                                        <div key={i} style={{
+                                            display: 'flex', alignItems: 'center', gap: 10,
+                                            background: '#0f172a', borderRadius: 8,
+                                            padding: '8px 10px', border: '1px solid #1e293b',
+                                        }}>
+                                            <span style={{
+                                                fontSize: 9, fontWeight: 700, color: '#64748b',
+                                                background: '#1e293b', padding: '2px 6px',
+                                                borderRadius: 4, flexShrink: 0, letterSpacing: '0.05em',
+                                            }}>
+                                                {b.type}
+                                            </span>
+                                            <span style={{
+                                                fontSize: 11, color: '#94a3b8', flex: 1,
+                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                            }}>
+                                                {b.name}
+                                            </span>
+                                            <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>{b.date}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </>
                 )}
+
+                {activeTab === 'egitim' && (
+                    <>
+                        {egitimSubTab === 'dashboard' && <UserEgitimDashboard currentUser={currentUser} />}
+                        {egitimSubTab === 'veriGirisi' && <UserVeriGirisi currentUser={currentUser} />}
+                    </>
+                )}
+
+
             </div>
 
             {/* ── FOOTER — Çıkış ── */}

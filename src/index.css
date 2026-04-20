@@ -1,3 +1,238 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ──── Tema Renk Değişkenleri ──── */
+:root,
+[data-theme="dark"] {
+  /* Header */
+  --th-header-bg: rgba(22, 22, 24, 0.92);
+  --th-header-border: #2a2a2d;
+  /* Tab container */
+  --th-tab-wrap-bg: rgba(38, 38, 42, 0.7);
+  --th-tab-wrap-ring: rgba(55, 55, 58, 0.7);
+  /* Tab renkler */
+  --th-tab-active-bg: #A01B1B;
+  --th-tab-active-shadow: rgba(160, 27, 27, 0.35);
+  --th-tab-active-ring: #8a1717;
+  --th-tab-inactive-text: #6b7280;
+  --th-tab-inactive-hover-text: #9ca3af;
+  --th-tab-inactive-hover-bg: rgba(255, 255, 255, 0.05);
+  /* Kapat butonu */
+  --th-close-wrap-border: #2a2a2d;
+  --th-close-wrap-bg: rgba(38, 38, 42, 0.4);
+  /* Paylaş butonu */
+  --th-share-bg: #1c1c1e;
+  --th-share-text: #6b7280;
+  --th-share-border: #2a2a2d;
+  --th-share-hover-bg: rgba(255, 255, 255, 0.04);
+  --th-share-hover-text: #9ca3af;
+  /* Ghost durum kutusu */
+  --th-ghost-bg: rgba(38, 38, 42, 0.4);
+  --th-ghost-border: rgba(55, 55, 58, 0.6);
+  --th-ghost-text: #64748b;
+  /* Pencere başlık barı */
+  --th-win-bar: linear-gradient(to right, rgba(138, 23, 23, 0.87), rgba(181, 32, 32, 0.87));
+  --th-win-bar-border: rgba(110, 16, 16, 0.5);
+  --th-win-bar-shadow: rgba(160, 27, 27, 0.15);
+  --th-win-ring: rgba(160, 27, 27, 0.5);
+}
+
+[data-theme="light"] {
+  --th-header-bg: rgba(255, 255, 255, 0.7);
+  --th-header-border: rgba(226, 232, 240, 0.9);
+  --th-tab-wrap-bg: rgba(241, 245, 249, 0.8);
+  --th-tab-wrap-ring: rgba(203, 213, 225, 0.8);
+  --th-tab-active-bg: #A01B1B;
+  --th-tab-active-shadow: rgba(160, 27, 27, 0.25);
+  --th-tab-active-ring: #8a1717;
+  --th-tab-inactive-text: #64748b;
+  --th-tab-inactive-hover-text: #334155;
+  --th-tab-inactive-hover-bg: rgba(0, 0, 0, 0.04);
+  --th-close-wrap-border: rgba(203, 213, 225, 0.9);
+  --th-close-wrap-bg: rgba(241, 245, 249, 0.6);
+  --th-share-bg: #ffffff;
+  --th-share-text: #475569;
+  --th-share-border: #e2e8f0;
+  --th-share-hover-bg: #fef2f2;
+  --th-share-hover-text: #dc2626;
+  --th-ghost-bg: rgba(241, 245, 249, 0.5);
+  --th-ghost-border: rgba(203, 213, 225, 0.7);
+  --th-ghost-text: #64748b;
+  --th-win-bar: linear-gradient(to right, rgba(138, 23, 23, 0.87), rgba(181, 32, 32, 0.87));
+  --th-win-bar-border: rgba(110, 16, 16, 0.5);
+  --th-win-bar-shadow: rgba(160, 27, 27, 0.15);
+  --th-win-ring: rgba(160, 27, 27, 0.5);
+}
+
+[data-theme="blue"] {
+  --th-header-bg: rgba(15, 23, 42, 0.92);
+  --th-header-border: rgba(30, 41, 59, 0.9);
+  --th-tab-wrap-bg: rgba(15, 23, 42, 0.8);
+  --th-tab-wrap-ring: rgba(30, 41, 59, 0.8);
+  --th-tab-active-bg: #3b82f6;
+  --th-tab-active-shadow: rgba(59, 130, 246, 0.35);
+  --th-tab-active-ring: #2563eb;
+  --th-tab-inactive-text: #475569;
+  --th-tab-inactive-hover-text: #7dd3fc;
+  --th-tab-inactive-hover-bg: rgba(59, 130, 246, 0.07);
+  --th-close-wrap-border: rgba(30, 41, 59, 0.9);
+  --th-close-wrap-bg: rgba(15, 23, 42, 0.6);
+  --th-share-bg: #0f172a;
+  --th-share-text: #64748b;
+  --th-share-border: #1e293b;
+  --th-share-hover-bg: rgba(59, 130, 246, 0.1);
+  --th-share-hover-text: #60a5fa;
+  --th-ghost-bg: rgba(15, 23, 42, 0.5);
+  --th-ghost-border: rgba(30, 41, 59, 0.7);
+  --th-ghost-text: #64748b;
+  --th-win-bar: linear-gradient(to right, rgba(37, 99, 235, 0.87), rgba(59, 130, 246, 0.87));
+  --th-win-bar-border: rgba(29, 78, 216, 0.5);
+  --th-win-bar-shadow: rgba(59, 130, 246, 0.15);
+  --th-win-ring: rgba(59, 130, 246, 0.5);
+}
+
+[data-theme="green"] {
+  --th-header-bg: rgba(10, 26, 15, 0.92);
+  --th-header-border: rgba(26, 46, 26, 0.9);
+  --th-tab-wrap-bg: rgba(10, 26, 15, 0.8);
+  --th-tab-wrap-ring: rgba(26, 46, 26, 0.8);
+  --th-tab-active-bg: #22c55e;
+  --th-tab-active-shadow: rgba(34, 197, 94, 0.35);
+  --th-tab-active-ring: #16a34a;
+  --th-tab-inactive-text: #4b5563;
+  --th-tab-inactive-hover-text: #86efac;
+  --th-tab-inactive-hover-bg: rgba(34, 197, 94, 0.07);
+  --th-close-wrap-border: rgba(26, 46, 26, 0.9);
+  --th-close-wrap-bg: rgba(10, 26, 15, 0.6);
+  --th-share-bg: #0a1a0f;
+  --th-share-text: #4b5563;
+  --th-share-border: #1a2e1a;
+  --th-share-hover-bg: rgba(34, 197, 94, 0.1);
+  --th-share-hover-text: #4ade80;
+  --th-ghost-bg: rgba(10, 26, 15, 0.5);
+  --th-ghost-border: rgba(26, 46, 26, 0.7);
+  --th-ghost-text: #4b5563;
+  --th-win-bar: linear-gradient(to right, rgba(22, 163, 74, 0.87), rgba(34, 197, 94, 0.87));
+  --th-win-bar-border: rgba(21, 128, 61, 0.5);
+  --th-win-bar-shadow: rgba(34, 197, 94, 0.15);
+  --th-win-ring: rgba(34, 197, 94, 0.5);
+}
+
+[data-theme="purple"] {
+  --th-header-bg: rgba(26, 10, 46, 0.92);
+  --th-header-border: rgba(45, 27, 78, 0.9);
+  --th-tab-wrap-bg: rgba(26, 10, 46, 0.8);
+  --th-tab-wrap-ring: rgba(45, 27, 78, 0.8);
+  --th-tab-active-bg: #a855f7;
+  --th-tab-active-shadow: rgba(168, 85, 247, 0.35);
+  --th-tab-active-ring: #9333ea;
+  --th-tab-inactive-text: #6b7280;
+  --th-tab-inactive-hover-text: #d8b4fe;
+  --th-tab-inactive-hover-bg: rgba(168, 85, 247, 0.07);
+  --th-close-wrap-border: rgba(45, 27, 78, 0.9);
+  --th-close-wrap-bg: rgba(26, 10, 46, 0.6);
+  --th-share-bg: #1a0a2e;
+  --th-share-text: #6b7280;
+  --th-share-border: #2d1b4e;
+  --th-share-hover-bg: rgba(168, 85, 247, 0.1);
+  --th-share-hover-text: #c084fc;
+  --th-ghost-bg: rgba(26, 10, 46, 0.5);
+  --th-ghost-border: rgba(45, 27, 78, 0.7);
+  --th-ghost-text: #6b7280;
+  --th-win-bar: linear-gradient(to right, rgba(147, 51, 234, 0.87), rgba(168, 85, 247, 0.87));
+  --th-win-bar-border: rgba(126, 34, 206, 0.5);
+  --th-win-bar-shadow: rgba(168, 85, 247, 0.15);
+  --th-win-ring: rgba(168, 85, 247, 0.5);
+}
+
+[data-theme="rose"] {
+  --th-header-bg: rgba(26, 10, 20, 0.92);
+  --th-header-border: rgba(46, 27, 36, 0.9);
+  --th-tab-wrap-bg: rgba(26, 10, 20, 0.8);
+  --th-tab-wrap-ring: rgba(46, 27, 36, 0.8);
+  --th-tab-active-bg: #f43f5e;
+  --th-tab-active-shadow: rgba(244, 63, 94, 0.35);
+  --th-tab-active-ring: #e11d48;
+  --th-tab-inactive-text: #6b7280;
+  --th-tab-inactive-hover-text: #fda4af;
+  --th-tab-inactive-hover-bg: rgba(244, 63, 94, 0.07);
+  --th-close-wrap-border: rgba(46, 27, 36, 0.9);
+  --th-close-wrap-bg: rgba(26, 10, 20, 0.6);
+  --th-share-bg: #1a0a14;
+  --th-share-text: #6b7280;
+  --th-share-border: #2e1b24;
+  --th-share-hover-bg: rgba(244, 63, 94, 0.1);
+  --th-share-hover-text: #fb7185;
+  --th-ghost-bg: rgba(26, 10, 20, 0.5);
+  --th-ghost-border: rgba(46, 27, 36, 0.7);
+  --th-ghost-text: #6b7280;
+  --th-win-bar: linear-gradient(to right, rgba(225, 29, 72, 0.87), rgba(244, 63, 94, 0.87));
+  --th-win-bar-border: rgba(190, 18, 60, 0.5);
+  --th-win-bar-shadow: rgba(244, 63, 94, 0.15);
+  --th-win-ring: rgba(244, 63, 94, 0.5);
+}
+
+/* ──── Yardımcı Sınıflar ──── */
+.th-header {
+  background: var(--th-header-bg);
+  border-bottom: 1px solid var(--th-header-border);
+}
+
+.th-tab-wrap {
+  background: var(--th-tab-wrap-bg);
+  box-shadow: 0 0 0 1px var(--th-tab-wrap-ring);
+}
+
+.th-tab-inactive {
+  color: var(--th-tab-inactive-text);
+  background: transparent;
+}
+.th-tab-inactive:hover {
+  color: var(--th-tab-inactive-hover-text);
+  background: var(--th-tab-inactive-hover-bg);
+}
+
+.th-tab-active {
+  background: var(--th-tab-active-bg);
+  box-shadow: 0 2px 12px var(--th-tab-active-shadow);
+  color: white;
+  outline: 1px solid var(--th-tab-active-ring);
+}
+
+.th-close-wrap {
+  border-left: 1px solid var(--th-close-wrap-border);
+  background: var(--th-close-wrap-bg);
+}
+
+.th-share-btn {
+  background: var(--th-share-bg);
+  color: var(--th-share-text);
+  border: 1px solid var(--th-share-border);
+}
+.th-share-btn:hover {
+  background: var(--th-share-hover-bg);
+  color: var(--th-share-hover-text);
+}
+
+.th-ghost {
+  background: var(--th-ghost-bg);
+  border: 1px solid var(--th-ghost-border);
+}
+
+/* Pencere başlık barı — tema rengini takip eder */
+.th-win-bar-default {
+  background: var(--th-win-bar);
+  border-bottom: 1px solid var(--th-win-bar-border);
+  box-shadow: 0 4px 20px var(--th-win-bar-shadow);
+}
+.th-win-bar-default:hover {
+  filter: brightness(1.05);
+}
+
+/* Pill hover — küçültülmüş sekme pilleri */
+.th-pill-hover:hover {
+  background: var(--th-tab-active-bg) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 2px 12px var(--th-tab-active-shadow) !important;
+}
