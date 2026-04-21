@@ -101,7 +101,7 @@ const EmbeddingModelPanel = () => {
             <div style={styles.container}>
                 <div style={styles.loadingBox}>
                     <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-                    <span style={{ color: '#64748b', fontSize: 12 }}>Embedding modelleri yükleniyor...</span>
+                    <span style={{ color: '#78716c', fontSize: 12 }}>Embedding modelleri yükleniyor...</span>
                 </div>
             </div>
         );
@@ -163,10 +163,10 @@ const EmbeddingModelPanel = () => {
                             onClick={() => handleSelect(m.key)}
                             style={{
                                 ...styles.modelCard,
-                                borderColor: isActive ? provConf.color : '#e2e8f0',
+                                borderColor: isActive ? provConf.color : '#e7e5e4',
                                 background: isActive
                                     ? `linear-gradient(135deg, ${provConf.color}15, ${provConf.color}05)`
-                                    : '#f8fafc',
+                                    : '#fafaf9',
                                 cursor: switching ? 'wait' : 'pointer',
                             }}
                         >
@@ -193,7 +193,7 @@ const EmbeddingModelPanel = () => {
                                         </div>
                                     ) : (
                                         switching ? (
-                                            <Loader2 size={14} style={{ color: '#94a3b8', animation: 'spin 1s linear infinite' }} />
+                                            <Loader2 size={14} style={{ color: '#a8a29e', animation: 'spin 1s linear infinite' }} />
                                         ) : null
                                     )}
                                 </div>
@@ -244,9 +244,9 @@ const EmbeddingModelPanel = () => {
                     >
                         <div style={styles.advancedInfo}>
                             <AlertTriangle size={14} style={{ color: '#fbbf24', flexShrink: 0 }} />
-                            <span style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+                            <span style={{ fontSize: 11, color: '#78716c', lineHeight: 1.5 }}>
                                 Model değiştirdikten sonra mevcut belgelerin vektörleri eski modelin çıktılarıdır.
-                                Doğru sonuçlar için <strong style={{ color: '#334155' }}>yeniden vektörleştirme</strong> yapmanız önerilir.
+                                Doğru sonuçlar için <strong style={{ color: '#44403c' }}>yeniden vektörleştirme</strong> yapmanız önerilir.
                             </span>
                         </div>
 
@@ -282,7 +282,7 @@ const EmbeddingModelPanel = () => {
                                         {reVecResult.errors > 0 && (
                                             <span style={{ color: '#f87171' }}> ({reVecResult.errors} hata)</span>
                                         )}
-                                        <span style={{ color: '#94a3b8' }}> — Model: {reVecResult.model}</span>
+                                        <span style={{ color: '#a8a29e' }}> — Model: {reVecResult.model}</span>
                                     </span>
                                 </motion.div>
                             )}
@@ -319,7 +319,7 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingBottom: 8,
-        borderBottom: '1px solid #f1f5f9', // border-slate-100
+        borderBottom: '1px solid #f5f5f4', // border-stone-100
     },
     headerLeft: {
         display: 'flex',
@@ -329,7 +329,7 @@ const styles = {
     headerTitle: {
         fontSize: 14,
         fontWeight: 600,
-        color: '#334155', // text-slate-700
+        color: '#44403c', // text-stone-700
         letterSpacing: '0.02em',
     },
     headerRight: {
@@ -338,9 +338,9 @@ const styles = {
     },
     headerBadge: {
         fontSize: 10,
-        color: '#64748b', // text-slate-500
-        background: '#f8fafc', // bg-slate-50
-        border: '1px solid #e2e8f0', // border-slate-200
+        color: '#78716c', // text-stone-500
+        background: '#fafaf9', // bg-stone-50
+        border: '1px solid #e7e5e4', // border-stone-200
         padding: '2px 8px',
         borderRadius: 6,
     },
@@ -380,7 +380,7 @@ const styles = {
     modelCard: {
         padding: '12px 14px',
         borderRadius: 10,
-        border: '1px solid #e2e8f0', // border-slate-200
+        border: '1px solid #e7e5e4', // border-stone-200
         transition: 'all 0.15s ease',
         background: '#ffffff',
     },
@@ -405,11 +405,11 @@ const styles = {
     modelName: {
         fontSize: 13,
         fontWeight: 600,
-        color: '#334155', // text-slate-700
+        color: '#44403c', // text-stone-700
     },
     modelKey: {
         fontSize: 10,
-        color: '#94a3b8', // text-slate-400
+        color: '#a8a29e', // text-stone-400
         fontFamily: 'monospace',
         marginTop: 1,
     },
@@ -429,7 +429,7 @@ const styles = {
     },
     modelDesc: {
         fontSize: 11,
-        color: '#64748b', // text-slate-500
+        color: '#78716c', // text-stone-500
         marginTop: 8,
         lineHeight: 1.5,
     },
@@ -445,14 +445,14 @@ const styles = {
     },
     statLabel: {
         fontSize: 9,
-        color: '#94a3b8', // text-slate-400
+        color: '#a8a29e', // text-stone-400
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
     },
     statValue: {
         fontSize: 12,
         fontWeight: 600,
-        color: '#475569', // text-slate-600
+        color: '#57534e', // text-stone-600
         fontFamily: 'monospace',
     },
     provBadge: {
@@ -467,7 +467,7 @@ const styles = {
         alignItems: 'center',
         gap: 6,
         fontSize: 11,
-        color: '#64748b', // text-slate-500
+        color: '#78716c', // text-stone-500
         cursor: 'pointer',
         padding: '6px 0',
         userSelect: 'none',
@@ -477,8 +477,8 @@ const styles = {
         flexDirection: 'column',
         gap: 10,
         padding: '12px 14px',
-        background: '#f8fafc', // bg-slate-50
-        border: '1px solid #e2e8f0', // border-slate-200
+        background: '#fafaf9', // bg-stone-50
+        border: '1px solid #e7e5e4', // border-stone-200
         borderRadius: 10,
         overflow: 'hidden',
     },

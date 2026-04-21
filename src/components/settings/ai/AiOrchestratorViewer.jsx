@@ -126,20 +126,20 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     /* ─── Render Root Logic ───────────────────────── */
     return (
-        <div className="flex flex-col w-full h-full bg-[#f4f4f5] select-none text-[var(--workspace-text)] animate-in fade-in duration-300">
+        <div className="flex flex-col w-full h-full bg-stone-50 select-none text-stone-700 animate-in fade-in duration-300">
             <div className="flex-1 overflow-hidden flex flex-col">
                 {activeMainTab === 'architecture' && (
-                    <div className="flex flex-col w-full h-full overflow-hidden transition-all duration-500 bg-[#f4f4f5]">
+                    <div className="flex flex-col w-full h-full overflow-hidden transition-all duration-500 bg-stone-50">
                         {isLoadingAgents ? (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-white/50 border border-slate-200/50">
-                                <Loader2 size={32} className="text-indigo-500 animate-spin mb-4" />
-                                <p className="text-slate-500 text-sm font-medium animate-pulse">Ajan konfigürasyonları yükleniyor...</p>
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-white/50 border border-stone-200/50">
+                                <Loader2 size={32} className="text-[#378ADD] animate-spin mb-4" />
+                                <p className="text-stone-500 text-sm font-bold tracking-tight animate-pulse">Ajan konfigürasyonları yükleniyor...</p>
                             </div>
                         ) : selectedItem ? (
                             <>
                                 {/* --- ÜST KATMAN: MONITORING (Yüzen Akış Haritası) --- */}
                                 <div
-                                    className={`flex w-full shrink-0 relative z-0 transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden bg-white border-b border-black/5 ${isFlowExpanded ? 'h-[65vh] min-h-[350px]' : 'h-[180px] xl:h-[210px]'}`}
+                                    className={`flex w-full shrink-0 relative z-0 transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden bg-white border-b border-stone-200 shadow-[0_4px_20px_-15px_rgba(0,0,0,0.1)] ${isFlowExpanded ? 'h-[65vh] min-h-[350px]' : 'h-[180px] xl:h-[210px]'}`}
                                     onWheel={(e) => {
                                         if (Math.abs(e.deltaY) < 15) return;
                                         if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true); // Yukarı kaydır (Şemayı büyüt)
@@ -156,16 +156,16 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                             />
                                         )}
 
-                                        <div className="absolute top-3 right-3 z-20">
+                                        <div className="absolute top-4 right-4 z-20">
                                             <button
                                                 onClick={() => {
                                                     setIsModelsOpen(!isModelsOpen);
                                                     if (!isModelsOpen && !isFlowExpanded) setIsFlowExpanded(true); // Panel açılırken diagram küçükse genislet
                                                 }}
                                                 title="API Anahtarları"
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isModelsOpen ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20 shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all ${isModelsOpen ? 'bg-amber-100 text-amber-700 border border-amber-200 shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:text-[#378ADD] hover:border-[#378ADD]/30 shadow-sm'}`}
                                             >
-                                                <Cpu size={14} />
+                                                <Cpu size={14} strokeWidth={2} />
                                                 <span>API Anahtarları</span>
                                             </button>
                                         </div>
@@ -186,7 +186,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 animate={{ width: 450, opacity: 1 }}
                                                 exit={{ width: 0, opacity: 0 }}
                                                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                                className="h-full shrink-0 flex flex-col border-l border-slate-200 bg-white shadow-[-4px_0_15px_-5px_rgba(0,0,0,0.05)] relative z-20"
+                                                className="h-full shrink-0 flex flex-col border-l border-stone-200 bg-white shadow-[-4px_0_15px_-5px_rgba(0,0,0,0.05)] relative z-20"
                                             >
                                                 <div className="w-[450px] flex-col flex h-full">
                                                     <div className="flex-1 overflow-y-auto relative bg-white pt-2">
@@ -200,11 +200,11 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
 
                                 {/* --- ALT KATMAN: CONFIGURATION (Tablar + Form) --- */}
-                                <div className="flex-1 flex flex-col overflow-hidden min-h-0 w-full relative bg-white">
+                                <div className="flex-1 flex flex-col overflow-hidden min-h-0 w-full relative bg-stone-50">
 
                                     {/* ── INTEGRATED RIBBON: Sekmeler + Ajan Başlığı + Aksiyonlar tek şeritte ── */}
                                     <div
-                                        className="shrink-0 w-full flex items-stretch border-b border-slate-200/80 bg-white relative z-10 select-none"
+                                        className="shrink-0 w-full flex items-stretch border-b border-stone-200 bg-white relative z-10 select-none shadow-sm"
                                         onWheel={(e) => {
                                             if (Math.abs(e.deltaY) < 15) return;
                                             if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true);
@@ -212,7 +212,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                         }}
                                     >
                                         {/* SOL: Ajan Sekmeleri */}
-                                        <div className="flex items-end overflow-x-auto flex-1" style={{ scrollbarWidth: 'none' }}>
+                                        <div className="flex items-end overflow-x-auto flex-1 px-4" style={{ scrollbarWidth: 'none' }}>
                                             <AgentChromeTabBar
                                                 agents={agents}
                                                 selectedItemId={selectedItemId}
@@ -226,7 +226,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
                                         {/* SAĞ: İkon Butonlar */}
                                         <div
-                                            className="flex items-center gap-1.5 px-3 shrink-0"
+                                            className="flex items-center gap-2 px-5 py-2 shrink-0 border-l border-stone-100"
                                             onWheel={(e) => {
                                                 if (Math.abs(e.deltaY) < 15) return;
                                                 if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true);
@@ -240,12 +240,12 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 onClick={handleSave}
                                                 disabled={!hasUnsavedChanges || isSaving}
                                                 title={isSaving ? 'Kaydediliyor...' : hasUnsavedChanges ? 'Sisteme Kaydet' : 'Kaydedildi'}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${isSaving ? 'bg-indigo-50 text-indigo-400 cursor-not-allowed' :
-                                                    hasUnsavedChanges ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm ring-1 ring-indigo-500/30' :
-                                                        'text-slate-400 cursor-not-allowed'
+                                                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[10px] uppercase font-bold tracking-widest transition-all ${isSaving ? 'bg-[#378ADD]/10 text-[#378ADD] cursor-not-allowed' :
+                                                    hasUnsavedChanges ? 'bg-[#378ADD] text-white hover:bg-[#2868A8] shadow-sm' :
+                                                        'text-stone-400 cursor-not-allowed bg-stone-50 border border-stone-100'
                                                     }`}
                                             >
-                                                {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                                {isSaving ? <Loader2 size={14} className="animate-spin" strokeWidth={2.5} /> : <Save size={14} strokeWidth={2.5} />}
                                                 <span className="hidden sm:inline">{isSaving ? 'Kaydediliyor' : hasUnsavedChanges ? 'Kaydet' : 'Kaydedildi'}</span>
                                             </button>
 
@@ -253,12 +253,12 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                             <button
                                                 onClick={() => toggleAgent(selectedItem.id)}
                                                 title={selectedItem.active ? 'Pasife Al' : 'Aktifleştir'}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all border ${selectedItem.active
-                                                    ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
-                                                    : 'bg-[var(--accent)] text-white border-[var(--accent-hover)] hover:bg-[var(--accent-hover)]'
+                                                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[10px] uppercase font-bold tracking-widest transition-all border ${selectedItem.active
+                                                    ? 'bg-[#FCEBEB] text-[#791F1F] border-[#FCEBEB]/60 hover:bg-[#FCEBEB]/80'
+                                                    : 'bg-[#EAF3DE] text-[#3B6D11] border-[#EAF3DE]/60 hover:bg-[#EAF3DE]/80'
                                                     }`}
                                             >
-                                                <Power size={13} />
+                                                <Power size={14} strokeWidth={2.5} />
                                                 <span className="hidden sm:inline">{selectedItem.active ? 'Pasife Al' : 'Aktifleştir'}</span>
                                             </button>
                                         </div>
@@ -266,9 +266,9 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
                                     {/* ── İÇERİK: Form veya Pasif Durumu ── */}
                                     {selectedItem.active ? (
-                                        <div className="flex-1 flex flex-col bg-white overflow-hidden h-full">
+                                        <div className="flex-1 flex flex-col bg-stone-50 overflow-hidden h-full">
                                             <div
-                                                className="flex-1 overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                                className="flex-1 overflow-y-auto p-6 md:p-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] mac-horizontal-scrollbar"
                                                 onWheel={(e) => {
                                                     const target = e.currentTarget;
                                                     if (Math.abs(e.deltaY) < 15) return;
@@ -279,29 +279,31 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                     }
                                                 }}
                                             >
-                                                <AgentConfigPanel
-                                                    selectedItem={selectedItem}
-                                                    rags={rags}
-                                                    updateAgent={updateAgent}
-                                                    toggleRagAccess={toggleRagAccess}
-                                                />
+                                                <div className="max-w-5xl mx-auto">
+                                                    <AgentConfigPanel
+                                                        selectedItem={selectedItem}
+                                                        rags={rags}
+                                                        updateAgent={updateAgent}
+                                                        toggleRagAccess={toggleRagAccess}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     ) : (
                                         /* Pasif Durum: Minimal "Uyku" Ekranı */
-                                        <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-in fade-in duration-300">
-                                            <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200/80 flex items-center justify-center">
-                                                <Power size={22} className="text-slate-300" />
+                                        <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-in fade-in duration-300 bg-stone-50">
+                                            <div className="w-16 h-16 rounded-2xl bg-white border border-stone-200 flex items-center justify-center shadow-sm">
+                                                <Power size={28} className="text-stone-300" strokeWidth={2} />
                                             </div>
-                                            <div className="text-center">
-                                                <p className="text-sm font-bold text-slate-500 mb-1">{selectedItem.name} Pasif</p>
-                                                <p className="text-[11px] text-slate-400">Bu ajan şu an sistem dışında. Yönlendirme yapılmıyor.</p>
+                                            <div className="text-center space-y-1">
+                                                <p className="text-[16px] font-black text-stone-700 tracking-tight">{selectedItem.name} Pasif</p>
+                                                <p className="text-[12px] font-bold text-stone-500 tracking-tight leading-relaxed max-w-[240px]">Bu ajan şu an sistem dışında. Yönlendirme yapılmıyor.</p>
                                             </div>
                                             <button
                                                 onClick={() => toggleAgent(selectedItem.id)}
-                                                className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-white rounded-xl text-xs font-bold hover:bg-[var(--accent-hover)] transition-all shadow-sm"
+                                                className="flex items-center gap-2 px-6 py-3 bg-[#3B6D11] text-white rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-[#2B520C] transition-all shadow-sm"
                                             >
-                                                <Power size={13} /> Aktifleştir
+                                                <Power size={16} strokeWidth={2.5} /> AKTİFLEŞTİR
                                             </button>
                                         </div>
                                     )}
@@ -310,13 +312,13 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
                             </>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-[var(--sidebar-text-muted)] p-8 bg-white border border-slate-200/80 rounded-xl shadow-sm">
-                                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center border border-black/[0.05]">
-                                    <Bot size={28} className="text-slate-300" />
+                            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-stone-500 p-10 bg-white border border-stone-200 rounded-xl shadow-sm max-w-md mx-auto my-auto">
+                                <div className="w-20 h-20 rounded-full bg-stone-50 flex items-center justify-center border border-stone-200">
+                                    <Bot size={36} className="text-stone-300" strokeWidth={1.5} />
                                 </div>
-                                <div className="text-center">
-                                    <p className="text-sm font-bold text-slate-600 mb-1">Ajan bulunamadı</p>
-                                    <p className="text-[11px] text-slate-400 max-w-[240px] leading-relaxed">
+                                <div className="text-center space-y-1.5">
+                                    <p className="text-[16px] font-black text-stone-700 tracking-tight">Ajan Bulunamadı</p>
+                                    <p className="text-[12px] font-bold text-stone-500 max-w-[240px] leading-relaxed mx-auto tracking-tight">
                                         Sistemde yapılandırılmış bir ajan bulunamadı. Lütfen veritabanınızı kontrol edin.
                                     </p>
                                 </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Brain, Plus } from 'lucide-react';
+import { Bot, Brain } from 'lucide-react';
 
 const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename }) => {
     const [editingId, setEditingId] = useState(null);
@@ -33,54 +33,47 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename }) => {
 
     return (
         <div
-            className="flex items-end px-0 pt-0 shrink-0 overflow-x-auto z-10 relative w-full"
+            className="flex items-stretch px-0 shrink-0 overflow-x-auto z-10 relative w-full h-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-            {agents.map((agent, index) => {
+            {agents.map((agent) => {
                 const isActive = selectedItemId === agent.id;
-                const isFirst = index === 0;
                 const isEditing = editingId === agent.id;
-
-                const cornerClass = isFirst ? 'rounded-tr-xl rounded-tl-none' : 'rounded-t-xl';
-                const marginClass = isFirst ? 'ml-0' : 'ml-[1px]';
 
                 return (
                     <div
                         key={agent.id}
                         onClick={() => onSelect(agent.id)}
                         onDoubleClick={(e) => startEdit(e, agent)}
-                        className={`group flex items-center justify-between min-w-[150px] max-w-[220px] h-[36px] px-3 cursor-pointer transition-all select-none shrink-0 border border-b-0 ${cornerClass} ${marginClass} ${isActive ? 'bg-white border-slate-200/80 text-slate-700 z-10 relative -mb-[1px] pb-[1px]' : 'bg-transparent border-transparent hover:bg-slate-200/50 text-slate-500'}`}
+                        className={`group relative flex items-center gap-2.5 min-w-[140px] max-w-[200px] h-full px-4 cursor-pointer transition-all select-none shrink-0 border-r border-stone-100 last:border-0
+                            ${isActive ? 'text-stone-700 bg-stone-50/50' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-50'}`}
                         title={isEditing ? undefined : `${agent.name} — Yeniden adlandırmak için çift tıklayın`}
                     >
-                        <div className="flex items-center gap-2 overflow-hidden flex-1 relative z-10">
-                            <div className={`shrink-0 flex items-center justify-center ${isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500'}`}>
-                                {agent.agentKind === 'chatbot' ? <Bot size={13} /> : <Brain size={13} />}
-                            </div>
-
-                            {isEditing && isActive ? (
-                                <input
-                                    ref={inputRef}
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    onBlur={commitEdit}
-                                    onKeyDown={handleKeyDown}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-[12px] font-semibold bg-transparent outline-none border-b border-indigo-400 text-slate-700 w-full min-w-0 leading-none py-0"
-                                />
-                            ) : (
-                                <span className={`text-[12px] truncate font-semibold pt-[1px] ${isActive ? '' : 'group-hover:text-slate-600'}`}>
-                                    {agent.name}
-                                </span>
-                            )}
+                        <div className={`shrink-0 ${isActive ? 'text-[#378ADD]' : 'text-stone-400 group-hover:text-stone-500'}`}>
+                            {agent.agentKind === 'chatbot' ? <Bot size={14} strokeWidth={isActive ? 2.5 : 2} /> : <Brain size={14} strokeWidth={isActive ? 2.5 : 2} />}
                         </div>
+
+                        {isEditing && isActive ? (
+                            <input
+                                ref={inputRef}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={commitEdit}
+                                onKeyDown={handleKeyDown}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[12px] font-black tracking-tight bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0 focus:ring-0"
+                            />
+                        ) : (
+                            <span className={`text-[12px] tracking-tight truncate flex-1 ${isActive ? 'font-black' : 'font-bold'}`}>{agent.name}</span>
+                        )}
+
+                        {/* Aktif göstergesi — alt çizgi */}
+                        {isActive && (
+                            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#378ADD] rounded-t-full" />
+                        )}
                     </div>
                 );
             })}
-
-            {/* Yeni Sekme (Görsel) */}
-            <div className="w-8 h-8 rounded-full hover:bg-slate-200/50 flex items-center justify-center cursor-pointer text-slate-400 hover:text-slate-600 ml-1 mb-1 shrink-0 transition-colors z-10 relative">
-                <Plus size={14} />
-            </div>
         </div>
     );
 };

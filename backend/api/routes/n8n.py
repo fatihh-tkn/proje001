@@ -2,7 +2,10 @@ import subprocess
 import os
 import psutil
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
+from sqlalchemy.orm import Session
+from database.sql.session import get_db
+from database.sql.models import N8nWorkflowCache
 
 router = APIRouter()
 
@@ -66,9 +69,10 @@ def stop_n8n():
 
 
 @router.get("/workflows", summary="n8n API üzerinden kayıtlı tüm iş akışlarını çeker")
-async def get_workflows(request: Request):
+async def get_workflows(request: Request, db: Session = Depends(get_db)):
     """
     Yerel n8n sunucusuna bağlanarak workspace'teki iş akışlarını okur ve frontend formatına temizleyip döner.
+    Bağlantı başarısız olursa veritabanındaki (cache) iş akışlarını `is_cached: True` bayrağı ile döner.
     """
     # Gelen istekte x-n8n-api-key var mı? Yoksa çevresel değişkene bak (Fallback)
     api_key = request.headers.get("x-n8n-api-key") or os.getenv("N8N_API_KEY", "")
@@ -138,25 +142,71 @@ async def get_workflows(request: Request):
                     if isinstance(created_at, str) and "T" in created_at: created_at = created_at[:16].replace("T", " ")
                     if isinstance(updated_at, str) and "T" in updated_at: updated_at = updated_at[:16].replace("T", " ")
                     
-                    formatted.append({
+                    workflow_data = {
                         "id": str(wf.get("id", "")),
                         "name": wf.get("name", "İsimsiz Şema"),
                         "active": bool(active),
                         "tags": tags,
                         "trigger": trigger,
-                        "lastRun": str(updated_at),
-                        "successRate": 100,
-                        "executionsCount": len(nodes) * 4,
+                        "last_run": str(updated_at),
+                        "success_rate": 100,
+                        "executions_count": len(nodes) * 4,
                         "status": "healthy" if active else "stopped"
+                    }
+
+                    # Veritabanına UPSERT işlemi (Update or Insert)
+                    existing = db.query(N8nWorkflowCache).filter(N8nWorkflowCache.id == workflow_data["id"]).first()
+                    if existing:
+                        for k, v in workflow_data.items():
+                            setattr(existing, k, v)
+                    else:
+                        new_cache = N8nWorkflowCache(**workflow_data)
+                        db.add(new_cache)
+                    
+                    # Frontend'in beklediği camelCase formata çevir
+                    formatted.append({
+                        "id": workflow_data["id"],
+                        "name": workflow_data["name"],
+                        "active": workflow_data["active"],
+                        "tags": workflow_data["tags"],
+                        "trigger": workflow_data["trigger"],
+                        "lastRun": workflow_data["last_run"],
+                        "successRate": workflow_data["success_rate"],
+                        "executionsCount": workflow_data["executions_count"],
+                        "status": workflow_data["status"]
                     })
-                return {"success": True, "workflows": formatted}
+                
+                # Cache değişikliklerini kaydet
+                db.commit()
+                return {"success": True, "is_cached": False, "workflows": formatted}
             else:
                 return {
                     "success": False, 
                     "error": f"n8n API Hatası ({response.status_code}). N8N_API_KEY ayarını kontrol edin."
                 }
+    
     except Exception as e:
-        return {"success": False, "error": f"n8n bağlantı hatası: {str(e)}"}
+        # Timeout, ConnectionRefusedError vs. gelirse Cache'den dön
+        cached_workflows = db.query(N8nWorkflowCache).all()
+        formatted = []
+        for wf in cached_workflows:
+            formatted.append({
+                "id": wf.id,
+                "name": wf.name,
+                "active": wf.active,
+                "tags": wf.tags,
+                "trigger": wf.trigger,
+                "lastRun": wf.last_run,
+                "successRate": wf.success_rate,
+                "executionsCount": wf.executions_count,
+                "status": "offline" # Motor kapalı, offline etiketiyle damgala
+            })
+        
+        # Eğer henüz DB'de hiç kayıt yoksa ve ilk çalışmadan patladıysa:
+        if len(formatted) == 0:
+            return {"success": False, "error": f"n8n bağlantı hatası: {str(e)} ve önbellek (cache) boş."}
+            
+        return {"success": True, "is_cached": True, "workflows": formatted}
 
 
 @router.post("/workflows/{workflow_id}/toggle", summary="Bir n8n iş akışını (workflow) aktif veya pasif yapar")

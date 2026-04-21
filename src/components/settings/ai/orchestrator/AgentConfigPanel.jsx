@@ -58,29 +58,29 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
     return (
         <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* ── KUTU 1: Karakter & Yetkinlik ── */}
-            <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-slate-50/60">
-                    <User size={13} className="text-[var(--accent)]" />
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Karakter &amp; Yetkinlik</span>
+            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
+                    <User size={13} className="text-[#378ADD]" />
+                    <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Karakter &amp; Yetkinlik</span>
                 </div>
                 <div className="grid grid-cols-2 gap-5 p-5">
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2">Ajan Rolü / Yeteneği</label>
+                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">Ajan Rolü / Yeteneği</label>
                         <input
                             type="text" value={selectedItem.persona} onChange={(e) => updateAgent('persona', e.target.value)}
                             placeholder="Örn: Finansal Asistan, Müşteri Temsilcisi"
-                            className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] focus:bg-white transition-all placeholder:text-slate-300"
+                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:bg-white focus:ring-1 focus:ring-[#378ADD]/30 transition-all placeholder:text-stone-400 placeholder:font-medium"
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex justify-between items-center">
+                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex justify-between items-center">
                             <span>Zekâ Modeli</span>
-                            {loadingModels && <Loader2 size={10} className="animate-spin text-[var(--accent)]" />}
+                            {loadingModels && <Loader2 size={12} className="animate-spin text-[#378ADD]" />}
                         </label>
                         <select
                             value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
                             onChange={(e) => updateAgent('model', e.target.value)}
-                            className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] cursor-pointer font-mono transition-all"
+                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 cursor-pointer font-mono transition-all"
                         >
                             {loadingModels ? (
                                 <option value="">Modeller yükleniyor...</option>
@@ -104,72 +104,72 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                     </div>
                     {selectedItem.agentKind === 'chatbot' && (
                         <div>
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
-                                <Hash size={11} className="text-violet-400" /> Konuşma Hafızası (son kaç mesaj?)
+                            <label className="block text-[10px] font-bold text-stone-500 mb-1.5 flex items-center gap-1.5 uppercase tracking-wide">
+                                <Hash size={12} className="text-[#378ADD]" /> Konuşma Hafızası <span className="normal-case tracking-normal opacity-70">(son mesaj limiti)</span>
                             </label>
                             <input
                                 type="number" min={1} max={50} value={selectedItem.chatHistoryLength}
                                 onChange={e => updateAgent('chatHistoryLength', parseInt(e.target.value))}
-                                className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] transition-all"
+                                className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
                             />
-                            <p className="text-[9px] text-slate-400 mt-1.5">Bot son bu kadar mesajı hatırlar.</p>
+                            <p className="text-[10px] font-semibold text-stone-400 mt-1.5 tracking-tight">Bot son bu kadar mesajı hatırlar.</p>
                         </div>
                     )}
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center justify-between">
+                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center justify-between">
                             <span>Yaratıcılık (Temperature)</span>
-                            <span className="text-violet-500 font-mono text-xs">{typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp.toFixed(1)}</span>
+                            <span className="text-[#378ADD] font-black text-xs font-mono">{typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp.toFixed(1)}</span>
                         </label>
                         <input
                             type="range" min="0.0" max="2.0" step="0.1"
                             value={typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp}
                             onChange={(e) => updateAgent('temp', parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500 mt-1"
+                            className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#378ADD] mt-1"
                         />
-                        <div className="flex justify-between text-[9px] font-semibold text-slate-400 mt-1.5">
+                        <div className="flex justify-between text-[10px] font-bold text-stone-400 mt-1.5 tracking-tight">
                             <span>Analitik (0.0)</span><span>Dengeli (1.0)</span><span>Yaratıcı (2.0)</span>
                         </div>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
-                            <Hash size={11} className="text-violet-400" /> Maks. Çıktı (Max Tokens)
+                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                            <Hash size={12} className="text-[#378ADD]" /> Maks. Çıktı (Max Token)
                         </label>
                         <input
                             type="number" value={selectedItem.maxTokens}
                             onChange={(e) => updateAgent('maxTokens', parseInt(e.target.value))}
-                            className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-[var(--accent)] transition-all"
+                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
                         />
-                        <p className="text-[9px] text-slate-400 mt-1.5">Daha kısa = daha az maliyet.</p>
+                        <p className="text-[10px] font-semibold text-stone-400 mt-1.5 tracking-tight">Daha kısa değer = daha düşük maliyet.</p>
                     </div>
                 </div>
             </div>
 
             {/* ── KUTU 3: Görev Tanımı & Talimatlar ── */}
-            <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-amber-50/40">
-                    <AlignLeft size={13} className="text-amber-500" />
-                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Görev Tanımı &amp; Talimatlar</span>
+            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-[#FAEEDA]/40">
+                    <AlignLeft size={13} className="text-[#854F0B]" />
+                    <span className="text-[10px] font-black text-[#854F0B] uppercase tracking-widest">Görev Tanımı &amp; Talimatlar</span>
                 </div>
                 <div className="grid grid-cols-2 gap-5 p-5">
                     <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
-                            <AlignLeft size={12} className="text-amber-500" /> Pozitif Görevler (Do's)
+                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                            <CheckCircle2 size={12} className="text-[#3B6D11]" /> Pozitif Görevler (Do's)
                         </label>
                         <textarea
                             value={selectedItem.prompt}
                             onChange={(e) => updateAgent('prompt', e.target.value)}
-                            className="w-full bg-slate-50 border border-black/[0.08] text-[var(--workspace-text)] text-xs font-mono rounded-lg px-4 py-3 outline-none focus:border-amber-400 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all"
+                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-stone-400 placeholder:font-normal"
                             placeholder="Görevi ve beklentileri girin..."
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-semibold text-rose-500 mb-2 flex items-center gap-1.5">
-                            <ShieldCheck size={12} className="text-rose-500" /> Kısıtlamalar (Don'ts)
+                        <label className="block text-[10px] font-bold text-[#791F1F] mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                            <ShieldCheck size={12} className="text-[#791F1F]" /> Kısıtlamalar (Don'ts)
                         </label>
                         <textarea
                             value={selectedItem.negativePrompt}
                             onChange={(e) => updateAgent('negativePrompt', e.target.value)}
-                            className="w-full bg-rose-50/30 border border-rose-100 text-[var(--workspace-text)] text-xs font-mono rounded-lg px-4 py-3 outline-none focus:border-rose-400 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-rose-200"
+                            className="w-full bg-[#FCEBEB]/30 border border-[#FCEBEB] text-[#791F1F] text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#791F1F]/40 focus:ring-1 focus:ring-[#791F1F]/20 focus:bg-[#FCEBEB]/50 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-[#791F1F]/40 placeholder:font-normal"
                             placeholder="Örn: Fiyat verme, siyaset konuşma..."
                         />
                     </div>
@@ -178,10 +178,10 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
             {/* ── KUTU 4: Bilgi Kaynağı (sadece chatbot) ── */}
             {selectedItem.agentKind === 'chatbot' && (
-                <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
-                    <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-emerald-50/40">
-                        <Database size={13} className="text-emerald-500" />
-                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Bilgi Kaynağı (Vektör Havuzları)</span>
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                    <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
+                        <Database size={13} className="text-stone-500" />
+                        <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Bilgi Kaynağı (Vektör Havuzları)</span>
                     </div>
                     <div className="p-5">
                         <div className="space-y-1.5">
@@ -192,45 +192,45 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                                     <div key={rag.id} className="flex flex-col gap-1">
                                         <div
                                             onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
-                                            className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
-                                                ? 'bg-white border-[var(--accent)] text-[var(--workspace-text)] font-semibold shadow-sm'
-                                                : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'
+                                            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
+                                                ? 'bg-white border-[#378ADD]/30 text-stone-700 font-bold shadow-sm ring-1 ring-[#378ADD]/10'
+                                                : 'bg-stone-50 border-stone-100/50 text-stone-500 font-medium hover:bg-stone-100'
                                                 }`}
                                         >
                                             {hasAccess
-                                                ? <CheckCircle2 size={14} className="text-[var(--accent)] shrink-0" />
-                                                : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 shrink-0" />}
+                                                ? <CheckCircle2 size={16} className="text-[#378ADD] shrink-0" strokeWidth={2.5} />
+                                                : <div className="w-4 h-4 rounded-full border-2 border-stone-300 shrink-0 bg-white" />}
                                             <span className="flex-1">{rag.name}</span>
 
                                             {rag.files && rag.files.length > 0 && (
                                                 <button
                                                     onClick={(e) => toggleRagAccordion(e, rag.id)}
-                                                    className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                                                    className="p-1 hover:bg-stone-200 rounded text-stone-400 hover:text-stone-600 transition-colors"
                                                     title="Dosyaları Göster/Gizle"
                                                 >
-                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                                 </button>
                                             )}
                                         </div>
 
                                         {/* Akordeon İçeriği (Dosyalar) */}
                                         {isExpanded && rag.files && (
-                                            <div className="pl-9 pr-3 py-1 space-y-1 mt-1 mb-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                            <div className="pl-9 pr-3 py-1 space-y-1.5 mt-2 mb-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                                 {rag.files.map((file) => {
                                                     const isFileDisabled = selectedItem.allowedRags.includes(`!${file.id}`);
                                                     return (
                                                         <div
                                                             key={file.id}
                                                             onClick={(e) => toggleFileAccess(e, file.id)}
-                                                            className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded border cursor-pointer transition-colors ${isFileDisabled ? 'bg-rose-50/50 border-rose-100 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100'}`}
+                                                            className={`flex items-center gap-2 text-[11px] px-3 py-2 rounded border cursor-pointer transition-colors font-semibold tracking-tight ${isFileDisabled ? 'bg-[#FCEBEB]/50 border-[#FCEBEB] text-stone-400' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'}`}
                                                             title={isFileDisabled ? "Yapay zeka erişimine kapalı. Açmak için tıklayın." : "Yapay zeka erişimine açık. Kapatmak için tıklayın."}
                                                         >
-                                                            <div className="flex-1 flex items-center gap-2 truncate">
-                                                                <FileText size={10} className={isFileDisabled ? "text-rose-300" : "text-emerald-400"} />
-                                                                <span className={`truncate ${isFileDisabled ? 'line-through' : ''}`}>{file.filename}</span>
+                                                            <div className="flex-1 flex items-center gap-2.5 truncate">
+                                                                <FileText size={12} strokeWidth={2.5} className={isFileDisabled ? "text-[#791F1F]/50" : "text-[#378ADD]"} />
+                                                                <span className={`truncate ${isFileDisabled ? 'line-through decoration-stone-300' : ''}`}>{file.filename}</span>
                                                             </div>
                                                             <div className="shrink-0">
-                                                                {isFileDisabled ? <ToggleLeft size={14} className="text-rose-400" /> : <ToggleRight size={14} className="text-emerald-500" />}
+                                                                {isFileDisabled ? <ToggleLeft size={16} strokeWidth={2.5} className="text-[#791F1F]/60" /> : <ToggleRight size={16} strokeWidth={2.5} className="text-[#378ADD]" />}
                                                             </div>
                                                         </div>
                                                     );
@@ -247,56 +247,56 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
             {/* ── KUTU 5: Akıllı Denetim (sadece chatbot) ── */}
             {selectedItem.agentKind === 'chatbot' && (
-                <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
-                    <div className="flex items-center gap-2 px-5 py-3 border-b border-black/[0.05] bg-sky-50/40">
-                        <ShieldCheck size={13} className="text-sky-500" />
-                        <span className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">Akıllı Denetim</span>
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                    <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
+                        <ShieldCheck size={13} className="text-stone-500" />
+                        <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Akıllı Denetim</span>
                     </div>
                     <div className="grid grid-cols-2 gap-5 p-5">
                         {/* Sol sütun: Toggle'lar */}
                         <div className="space-y-3">
                             <div
-                                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedItem.strictFactCheck ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-black/[0.08] hover:bg-slate-50'
+                                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${selectedItem.strictFactCheck ? 'bg-[#EAF3DE] border-[#EAF3DE]/60 shadow-[inset_0_2px_10px_-5px_rgba(59,109,17,0.1)]' : 'bg-white border-stone-200 hover:bg-stone-50 shadow-sm'
                                     }`}
                                 onClick={() => updateAgent('strictFactCheck', !selectedItem.strictFactCheck)}
                             >
                                 <div>
-                                    <div className={`text-xs font-semibold flex items-center gap-1.5 ${selectedItem.strictFactCheck ? 'text-emerald-700' : 'text-[var(--workspace-text)]'}`}>
-                                        <CheckCircle2 size={14} className={selectedItem.strictFactCheck ? 'text-emerald-500' : 'text-slate-400'} />
+                                    <div className={`text-xs font-black flex items-center gap-2 tracking-tight ${selectedItem.strictFactCheck ? 'text-[#3B6D11]' : 'text-stone-700'}`}>
+                                        <CheckCircle2 size={15} strokeWidth={2.5} className={selectedItem.strictFactCheck ? 'text-[#3B6D11]' : 'text-stone-400'} />
                                         Sıkı Doğruluk (Fact Check)
                                     </div>
-                                    <div className={`text-[10px] mt-0.5 ${selectedItem.strictFactCheck ? 'text-emerald-600/70' : 'text-slate-500'}`}>
+                                    <div className={`text-[11px] font-semibold tracking-tight mt-1 ${selectedItem.strictFactCheck ? 'text-[#3B6D11]/70' : 'text-stone-500'}`}>
                                         RAG dışına çıkılmasını yasaklar.
                                     </div>
                                 </div>
-                                {selectedItem.strictFactCheck ? <ToggleRight size={26} className="text-emerald-500" /> : <ToggleLeft size={26} className="text-slate-300" />}
+                                {selectedItem.strictFactCheck ? <ToggleRight size={28} strokeWidth={2} className="text-[#3B6D11]" /> : <ToggleLeft size={28} strokeWidth={2} className="text-stone-300" />}
                             </div>
 
                             <div
-                                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedItem.canAskFollowUp ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-black/[0.08] hover:bg-slate-50'
+                                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${selectedItem.canAskFollowUp ? 'bg-[#378ADD]/10 border-[#378ADD]/20 shadow-[inset_0_2px_10px_-5px_rgba(55,138,221,0.1)]' : 'bg-white border-stone-200 hover:bg-stone-50 shadow-sm'
                                     }`}
                                 onClick={() => updateAgent('canAskFollowUp', !selectedItem.canAskFollowUp)}
                             >
                                 <div>
-                                    <div className={`text-xs font-semibold flex items-center gap-1.5 ${selectedItem.canAskFollowUp ? 'text-indigo-700' : 'text-[var(--workspace-text)]'}`}>
-                                        <Sparkles size={13} className={selectedItem.canAskFollowUp ? 'text-indigo-500' : 'text-slate-400'} />
+                                    <div className={`text-xs font-black flex items-center gap-2 tracking-tight ${selectedItem.canAskFollowUp ? 'text-[#378ADD]' : 'text-stone-700'}`}>
+                                        <Sparkles size={14} strokeWidth={2.5} className={selectedItem.canAskFollowUp ? 'text-[#378ADD]' : 'text-stone-400'} />
                                         Takip Sorusu Önerisi
                                     </div>
-                                    <div className={`text-[10px] mt-0.5 ${selectedItem.canAskFollowUp ? 'text-indigo-600/70' : 'text-slate-500'}`}>
+                                    <div className={`text-[11px] font-semibold tracking-tight mt-1 ${selectedItem.canAskFollowUp ? 'text-[#378ADD]/70' : 'text-stone-500'}`}>
                                         Cevap bitince akıllı öneriler çıkar.
                                     </div>
                                 </div>
-                                {selectedItem.canAskFollowUp ? <ToggleRight size={26} className="text-indigo-500" /> : <ToggleLeft size={26} className="text-slate-300" />}
+                                {selectedItem.canAskFollowUp ? <ToggleRight size={28} strokeWidth={2} className="text-[#378ADD]" /> : <ToggleLeft size={28} strokeWidth={2} className="text-stone-300" />}
                             </div>
                         </div>
 
                         {/* Sağ sütun: Hata yanıtı */}
                         <div>
-                            <label className="block text-[10px] font-semibold text-rose-500 mb-1.5">Hata Durumu Yanıtı</label>
+                            <label className="block text-[10px] font-bold text-[#791F1F] mb-1.5 uppercase tracking-wide">Hata Durumu Yanıtı (Fallback)</label>
                             <textarea
                                 value={selectedItem.errorMessage}
                                 onChange={e => updateAgent('errorMessage', e.target.value)}
-                                className="w-full bg-rose-50/40 border border-rose-100 text-[var(--workspace-text)] text-xs rounded-lg px-3 py-2 outline-none focus:border-rose-400 transition-all resize-none min-h-[96px]"
+                                className="w-full bg-[#FCEBEB]/30 border border-[#FCEBEB] text-[#791F1F] text-xs font-medium rounded-xl px-4 py-3 outline-none focus:border-[#791F1F]/40 focus:ring-1 focus:ring-[#791F1F]/20 focus:bg-[#FCEBEB]/50 transition-all resize-none min-h-[110px] placeholder:text-[#791F1F]/40 placeholder:font-normal"
                                 placeholder="Bilgi bulamazsa kullanıcıya ne desin?"
                             />
                         </div>

@@ -8,11 +8,12 @@ from schemas.agent_schema import AgentBase, AgentResponse
 
 router = APIRouter()
 
-@router.get("/agents", response_model=List[AgentResponse])
+@router.get("/agents")
 def get_agents(db: Session = Depends(get_db)):
     """Tüm ajan konfigürasyonlarını getirir."""
     agents = db.query(AIAgent).all()
-    return agents
+    # by_alias=False ile frontend'in beklediği camelCase alan adlarıyla döndür
+    return [AgentResponse.model_validate(a).model_dump(by_alias=False) for a in agents]
 
 @router.post("/save")
 def save_agents(agents_data: List[AgentBase], db: Session = Depends(get_db)):

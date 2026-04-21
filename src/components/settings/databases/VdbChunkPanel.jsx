@@ -3,11 +3,11 @@ import { Trash2, Code, Image, X, Target } from 'lucide-react';
 
 // ── Chunk tipi → renk/etiket ─────────────────────────────────────────
 const CHUNK_TYPE_META = {
-    pptx_title: { label: 'Başlık', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    pptx_title: { label: 'Başlık', color: 'bg-[#E6F1FB] text-[#0C447C] border-[#B8D4F0]' },
     pptx_callout: { label: 'Açıklama', color: 'bg-orange-100 text-orange-700 border-orange-200' },
-    pptx_body: { label: 'Gövde', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+    pptx_body: { label: 'Gövde', color: 'bg-stone-100 text-stone-600 border-stone-200' },
     pptx_notes: { label: 'Notlar', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-    pptx_slide: { label: 'Slayt', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+    pptx_slide: { label: 'Slayt', color: 'bg-stone-100 text-stone-600 border-stone-200' },
     pptx_summary: { label: 'Özet', color: 'bg-green-100 text-green-700 border-green-200' },
     pptx_screenshot_vision: { label: 'Vision', color: 'bg-pink-100 text-pink-700 border-pink-200' },
     pptx_error: { label: 'Hata', color: 'bg-red-100 text-red-700 border-red-200' },
@@ -16,7 +16,7 @@ const CHUNK_TYPE_META = {
 
 const ChunkTypeBadge = ({ type }) => {
     if (!type) return null;
-    const meta = CHUNK_TYPE_META[type] || { label: type.replace('pptx_', ''), color: 'bg-slate-100 text-slate-500 border-slate-200' };
+    const meta = CHUNK_TYPE_META[type] || { label: type.replace('pptx_', ''), color: 'bg-stone-100 text-stone-500 border-stone-200' };
     return (
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${meta.color}`}>
             {meta.label}
@@ -128,7 +128,7 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
 
     return (
         <div className="flex-1 bg-white flex flex-col h-full overflow-x-hidden overflow-y-auto min-w-[300px]">
-            <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 font-semibold text-[11px] tracking-wide text-slate-600 uppercase shrink-0 sticky top-0 z-10">
+            <div className="px-4 py-2 bg-stone-50 border-b border-stone-100 font-semibold text-[11px] tracking-wide text-stone-600 uppercase shrink-0 sticky top-0 z-10">
                 Bilgi Parçacıkları (Chunks)
             </div>
             <div className="p-4 space-y-4 pb-20">
@@ -142,23 +142,23 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                             ref={el => chunkRefs.current[chunk.id] = el}
                             style={{ scrollMarginTop: '100px' }}
                             className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group
-                                ${isTarget ? 'border-amber-400 ring-4 ring-amber-100 bg-amber-50' : 'border-slate-200 bg-white'}
+                                ${isTarget ? 'border-[#F5DDB3] ring-4 ring-[#FAEEDA] bg-[#FAEEDA]/50' : 'border-stone-200 bg-white'}
                             `}
                         >
                             {/* Header */}
-                            <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-100 flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${isTarget ? 'bg-amber-500' : 'bg-[#b91d2c]'}`} />
+                            <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-100 flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-1.5">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isTarget ? 'bg-[#854F0B]' : 'bg-[#378ADD]'}`} />
                                     Parça {idx + 1}
                                     <ChunkTypeBadge type={chunkType} />
                                 </span>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-mono text-slate-400 bg-white border border-slate-200 px-1 py-0.5 rounded">
+                                    <span className="text-[9px] font-mono text-stone-400 bg-white border border-stone-200 px-1 py-0.5 rounded">
                                         ID: {chunk.id.substring(0, 8)}
                                     </span>
                                     <button
                                         onClick={(e) => handleDeleteChunk(chunk.id, e)}
-                                        className="p-1 px-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors flex items-center gap-1 border border-transparent hover:border-red-100"
+                                        className="p-1 px-1.5 text-stone-400 hover:text-[#791F1F] hover:bg-[#FCEBEB] rounded transition-colors flex items-center gap-1 border border-transparent hover:border-[#FCEBEB]/50"
                                         title="Bu Chunk'ı Veritabanından Sil"
                                     >
                                         <Trash2 size={10} />
@@ -169,24 +169,24 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
 
                             {/* Text */}
                             <div className="p-3">
-                                <p className="text-[12px] text-slate-700 leading-relaxed break-words font-mono whitespace-pre-wrap">
+                                <p className="text-[12px] text-stone-700 leading-relaxed break-words font-mono whitespace-pre-wrap">
                                     <HighlightWrapper text={chunk.text} highlight={searchTerm} />
                                 </p>
                             </div>
 
                             {/* Footer */}
-                            <div className="px-3 py-2 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                            <div className="px-3 py-2 bg-stone-50/50 border-t border-stone-100 flex items-center justify-between text-[10px] text-stone-500">
                                 <div className="flex gap-3">
                                     {(chunk.rawMeta?.start_time_fmt || chunk.rawMeta?.end_time_fmt) ? (
                                         <>
-                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm text-indigo-600 font-semibold" title="Başlangıç Süresi">{chunk.rawMeta.start_time_fmt || '00:00:00'}</span>
-                                            <span className="font-mono bg-transparent px-0.5 py-0.5 rounded text-slate-400 font-bold">-</span>
-                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm text-indigo-600 font-semibold" title="Bitiş Süresi">{chunk.rawMeta.end_time_fmt || '00:00:00'}</span>
+                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD] font-semibold" title="Başlangıç Süresi">{chunk.rawMeta.start_time_fmt || '00:00:00'}</span>
+                                            <span className="font-mono bg-transparent px-0.5 py-0.5 rounded text-stone-400 font-bold">-</span>
+                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD] font-semibold" title="Bitiş Süresi">{chunk.rawMeta.end_time_fmt || '00:00:00'}</span>
                                         </>
                                     ) : (
                                         <>
-                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
-                                            <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
+                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
+                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
                                         </>
                                     )}
                                 </div>
@@ -194,7 +194,7 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                                     {hasTarget(chunk) && (
                                         <button
                                             onClick={() => setPopup({ chunk, mode: 'target' })}
-                                            className="flex items-center gap-1 px-2 py-1 text-slate-500 hover:text-amber-700 hover:bg-amber-50 border border-transparent hover:border-amber-200 rounded transition-colors font-medium"
+                                            className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-[#854F0B] hover:bg-[#FAEEDA] border border-transparent hover:border-[#F5DDB3] rounded transition-colors font-medium"
                                             title="Okun İşaret Ettiği Alanı Göster"
                                         >
                                             <Target size={12} /> Hedef
@@ -203,7 +203,7 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                                     {hasImage(chunk) && (
                                         <button
                                             onClick={() => setPopup({ chunk, mode: 'callout' })}
-                                            className="flex items-center gap-1 px-2 py-1 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded transition-colors font-medium"
+                                            className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded transition-colors font-medium"
                                             title="Chunk Görselini Göster"
                                         >
                                             <Image size={12} /> Görsel
@@ -211,7 +211,7 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                                     )}
                                     <button
                                         onClick={() => toggleJsonInfo(chunk.id)}
-                                        className="flex items-center gap-1 px-2 py-1 text-slate-500 hover:text-[#b91d2c] hover:bg-red-50 border border-transparent hover:border-red-100 rounded transition-colors font-medium"
+                                        className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-[#378ADD] hover:bg-[#E6F1FB] border border-transparent hover:border-[#B8D4F0] rounded transition-colors font-medium"
                                     >
                                         <Code size={12} /> {expandedJson[chunk.id] ? 'Gizle' : 'JSON'}
                                     </button>
@@ -220,7 +220,7 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
 
                             {/* JSON detail */}
                             {expandedJson[chunk.id] && (
-                                <div className="border-t border-slate-200 bg-[#0f172a] animate-in fade-in slide-in-from-top-1">
+                                <div className="border-t border-stone-200 bg-[#0f172a] animate-in fade-in slide-in-from-top-1">
                                     <div className="p-3 overflow-x-auto">
                                         <pre className="text-[10px] text-emerald-400 font-mono">
                                             {JSON.stringify({ id: chunk.id, ...chunk.rawMeta, char_length: chunk.text.length }, null, 2)}

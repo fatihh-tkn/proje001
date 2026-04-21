@@ -11,7 +11,7 @@ const Header = ({ tabs = [], activeTabId, onTabClick, onCloseTab, onCloseAllTabs
     <motion.header
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="h-10 flex items-center px-4 bg-white/40 backdrop-blur-md border-b border-white/50 z-20 w-full shrink-0 relative shadow-[0_4px_30px_rgba(0,0,0,0.02)]"
+      className="h-10 flex items-center px-4 bg-[#f8f9fa] border-b border-slate-200/80 z-20 w-full shrink-0 relative"
     >
 
       {/* SOL ALAN: Sekmeler veya Varsayılan Başlık */}
@@ -24,7 +24,7 @@ const Header = ({ tabs = [], activeTabId, onTabClick, onCloseTab, onCloseAllTabs
           </div>
         ) : (
           // SEKME VARSA: Modern Mac-Style Pill (Hap) Tasarımı (Tüm alanı kaplayabilir)
-          <div className="flex items-stretch bg-slate-100/60 ring-1 ring-slate-200/60 rounded-[4px] max-w-full overflow-hidden mr-2">
+          <div className="flex items-stretch max-w-full overflow-hidden mr-2">
 
             {/* Scroll edilebilir yatay sekme listesi */}
             <div className="flex items-center gap-1 p-1 overflow-x-auto overflow-y-hidden mac-horizontal-scrollbar flex-1">

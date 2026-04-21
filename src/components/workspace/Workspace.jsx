@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, Activity, Database, Bot, Settings as SettingsIcon, X, ChevronsDown } from 'lucide-react';
 import { DndContext, DragOverlay, closestCenter, pointerWithin, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arraySwap, SortableContext, rectSwappingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
@@ -8,6 +9,98 @@ import { SNAP_LAYOUTS, getGridLayout } from './layoutUtils';
 import { TileWindow } from './TileWindow';
 import { TrashDropZone } from './TrashDropZone';
 import { BackgroundLogo } from './BackgroundLogo';
+
+const TAB_THEME = {
+    'n8n':               { bg: 'bg-orange-50',  border: 'border-orange-200', text: 'text-orange-700',  icon: 'text-orange-400' },
+    'database':          { bg: 'bg-blue-50',    border: 'border-blue-200',   text: 'text-blue-700',    icon: 'text-blue-400'   },
+    'databases-viewer':  { bg: 'bg-blue-50',    border: 'border-blue-200',   text: 'text-blue-700',    icon: 'text-blue-400'   },
+    'api-usage':         { bg: 'bg-violet-50',  border: 'border-violet-200', text: 'text-violet-700',  icon: 'text-violet-400' },
+    'ai-orchestrator':   { bg: 'bg-violet-50',  border: 'border-violet-200', text: 'text-violet-700',  icon: 'text-violet-400' },
+    'meetings':          { bg: 'bg-teal-50',    border: 'border-teal-200',   text: 'text-teal-700',    icon: 'text-teal-400'   },
+    'pdf':               { bg: 'bg-slate-100',  border: 'border-slate-300',  text: 'text-slate-700',   icon: 'text-slate-400'  },
+    'docx':              { bg: 'bg-slate-100',  border: 'border-slate-300',  text: 'text-slate-700',   icon: 'text-slate-400'  },
+    'xls':               { bg: 'bg-slate-100',  border: 'border-slate-300',  text: 'text-slate-700',   icon: 'text-slate-400'  },
+};
+const DEFAULT_THEME = { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', icon: 'text-indigo-400' };
+
+const getMinTabIcon = (type, iconClass) => {
+    switch (type) {
+        case 'api-usage':
+        case 'ai-orchestrator': return <Bot size={12} strokeWidth={2} className={`shrink-0 ${iconClass}`} />;
+        case 'database':
+        case 'databases-viewer': return <Database size={12} strokeWidth={2} className={`shrink-0 ${iconClass}`} />;
+        case 'settings': return <SettingsIcon size={12} strokeWidth={2} className={`shrink-0 ${iconClass}`} />;
+        case 'n8n': return <Activity size={12} strokeWidth={2} className={`shrink-0 ${iconClass}`} />;
+        default: return <FileText size={12} strokeWidth={2} className={`shrink-0 ${iconClass}`} />;
+    }
+};
+
+const NEUTRAL_THEME = { bg: 'bg-slate-100', border: 'border-slate-200/80', text: 'text-slate-500', icon: 'text-slate-400' };
+
+const MinimizedTabBar = ({ allTabs, minimizedTabIds, activeTabId, onRestore, onFocus, onClose, onCloseAll }) => {
+    const [collapsed, setCollapsed] = React.useState(true);
+    const spring = { type: 'spring', stiffness: 400, damping: 30 };
+    const total = allTabs.length;
+
+    return (
+        <div className="absolute top-0 left-0 right-0 z-[200] pointer-events-none">
+            <motion.div
+                initial={{ y: -34 }}
+                animate={{ y: collapsed ? -34 : 0 }}
+                transition={spring}
+                className="h-[34px] flex items-center px-2 gap-1 bg-[#f8f9fa] border-b border-slate-200/80 pointer-events-auto overflow-hidden"
+                style={{ scrollbarWidth: 'none' }}
+            >
+                <div className="flex items-center gap-1 flex-1 overflow-x-auto overflow-y-hidden" style={{ scrollbarWidth: 'none' }}>
+                    {allTabs.map(tab => {
+                        const isMin = minimizedTabIds.includes(tab.id);
+                        const isActive = tab.id === activeTabId;
+                        // Sadece ekranda açık olan (minimize değil) sekme renkli, gerisi nötr
+                        const theme = (!isMin && isActive)
+                            ? (TAB_THEME[tab.type] || DEFAULT_THEME)
+                            : NEUTRAL_THEME;
+                        return (
+                            <div
+                                key={tab.id}
+                                onClick={() => isMin ? onRestore(tab.id) : onFocus(tab.id)}
+                                className={`flex items-center gap-1.5 px-2.5 h-[22px] ${theme.bg} ${theme.border} border rounded-sm cursor-pointer transition-all group/mintab shrink-0 hover:brightness-95`}
+                            >
+                                {getMinTabIcon(tab.type, theme.icon)}
+                                <span className={`text-[11px] font-medium truncate max-w-[130px] ${theme.text}`}>{tab.title}</span>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
+                                    className="opacity-0 group-hover/mintab:opacity-100 ml-0.5 text-slate-300 hover:text-red-500 transition-all"
+                                >
+                                    <X size={10} strokeWidth={2.5} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+                <button
+                    onClick={onCloseAll}
+                    className="flex items-center gap-1 px-2 h-[22px] text-[10px] text-slate-400 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-sm transition-all shrink-0"
+                >
+                    <X size={10} strokeWidth={2.5} />
+                    Hepsini kapat
+                </button>
+            </motion.div>
+
+            <motion.button
+                animate={{ y: collapsed ? -34 : 0 }}
+                transition={spring}
+                onClick={() => setCollapsed(c => !c)}
+                title={collapsed ? `${total} sekme` : 'Gizle'}
+                className="absolute top-[34px] left-1/2 -translate-x-1/2 pointer-events-auto flex items-center gap-1 px-3 h-[14px] bg-[#f8f9fa] border border-t-0 border-slate-200/80 rounded-b-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+                {collapsed
+                    ? <><ChevronsDown size={10} strokeWidth={2} /><span className="text-[9px] font-medium">{total}</span></>
+                    : <ChevronsDown size={10} strokeWidth={2} />
+                }
+            </motion.button>
+        </div>
+    );
+};
 
 const EmptySlot = ({ tab, idx, zoneClass, isMinimized, onOpenFile, targetDropZoneIndexRef, isNativeDragging }) => {
     const { setNodeRef, isOver } = useSortable({
@@ -430,6 +523,31 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
 
                 <BackgroundLogo />
 
+                {/* Sekme Barı */}
+                {localTabs.filter(t => !t.isEmpty).length > 0 && (
+                    <MinimizedTabBar
+                        allTabs={localTabs.filter(t => !t.isEmpty)}
+                        minimizedTabIds={minimizedTabs}
+                        activeTabId={activeTabId}
+                        onRestore={(tabId) => {
+                            // Ekranda açık sekme varsa ızgara düzeninde aç, yoksa tek başına göster
+                            setMinimizedTabs(prev => prev.filter(id => id !== tabId));
+                            if (onFocusTab) onFocusTab(tabId);
+                        }}
+                        onFocus={(tabId) => {
+                            if (onFocusTab) onFocusTab(tabId);
+                        }}
+                        onClose={(tabId) => {
+                            if (onCloseTab) onCloseTab(tabId);
+                            setMinimizedTabs(prev => prev.filter(id => id !== tabId));
+                        }}
+                        onCloseAll={() => {
+                            minimizedTabsData.forEach(t => { if (onCloseTab) onCloseTab(t.id); });
+                            setMinimizedTabs([]);
+                        }}
+                    />
+                )}
+
                 {/* Layout önizlemesi: tüm zone'lar gösterilir, hedef mavi highlight */}
                 <AnimatePresence>
                     {layoutHint && layoutHint.layoutId && (
@@ -496,15 +614,6 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                             }}
                                             onMaximize={() => onMaximizeTab && onMaximizeTab(tab.id)}
                                             onSelectLayout={(layoutId, zoneId) => handleSelectLayout(tab.id, layoutId, zoneId)}
-                                            minimizedTabsData={minimizedTabsData}
-                                            onSwapTab={(targetId) => {
-                                                setMinimizedTabs(prev => prev.filter(id => id !== targetId));
-                                                if (onFocusTab) onFocusTab(targetId);
-                                            }}
-                                            onCloseAllMinimized={() => {
-                                                minimizedTabsData.forEach(t => { if (onCloseTab) onCloseTab(t.id); });
-                                                setMinimizedTabs([]);
-                                            }}
                                         />
                                     </div>
                                 );
@@ -551,16 +660,6 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                     onSelectLayout={(layoutId, zoneId) => {
                                         if (onMaximizeTab) onMaximizeTab(maxTab.id);
                                         handleSelectLayout(maxTab.id, layoutId, zoneId);
-                                    }}
-                                    minimizedTabsData={minimizedTabsData}
-                                    onSwapTab={(targetId) => {
-                                        if (onMaximizeTab) onMaximizeTab(maxTab.id);
-                                        setMinimizedTabs(prev => prev.filter(id => id !== targetId));
-                                        if (onFocusTab) onFocusTab(targetId);
-                                    }}
-                                    onCloseAllMinimized={() => {
-                                        minimizedTabsData.forEach(t => { if (onCloseTab) onCloseTab(t.id); });
-                                        setMinimizedTabs([]);
                                     }}
                                 />
                             </motion.div>

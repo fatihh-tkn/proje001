@@ -20,16 +20,16 @@ export default function DatabasesViewer() {
     ];
 
     return (
-        <div className="flex flex-col h-full w-full bg-[#f8f9fa] font-sans">
+        <div className="flex flex-col h-full w-full bg-stone-50 font-sans">
 
             {/* ── KOMPAKT TEK SATIRLIK HEADER + TABS ── */}
-            <div className="flex-none bg-white border-b border-slate-200/70">
+            <div className="flex-none bg-white border-b border-stone-200/70">
                 <div className="flex items-center px-5">
 
                     {/* Sol: Başlık */}
-                    <div className="flex items-center gap-2 py-3 pr-6 border-r border-slate-200/60 mr-4 shrink-0">
-                        <DatabaseZap size={16} className="text-[#b91d2c]" />
-                        <span className="text-[13px] font-semibold text-slate-800 whitespace-nowrap">Veri Yönetimi</span>
+                    <div className="flex items-center gap-2 py-3 pr-6 border-r border-stone-200/60 mr-4 shrink-0">
+                        <DatabaseZap size={16} className="text-[#378ADD]" />
+                        <span className="text-[13px] font-semibold text-stone-800 whitespace-nowrap">Veri Yönetimi</span>
                     </div>
 
                     {/* Sağ: Sekmeler */}
@@ -42,15 +42,15 @@ export default function DatabasesViewer() {
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex items-center gap-1.5 px-3 py-3 text-[12px] font-medium transition-all relative whitespace-nowrap shrink-0
                                         ${isActive
-                                            ? 'text-[#b91d2c]'
-                                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                            ? 'text-[#378ADD]'
+                                            : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
                                         }
                                     `}
                                 >
                                     <tab.icon size={13} />
                                     {tab.label}
                                     {isActive && (
-                                        <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-sm" />
+                                        <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#378ADD] rounded-t-sm" />
                                     )}
                                 </button>
                             );

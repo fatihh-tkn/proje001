@@ -16,6 +16,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@react-three/fiber": "^8.17.6",
+    "@splinetool/react-spline": "^4.1.0",
     "bpmn-js": "^18.13.1",
     "cors": "^2.8.6",
     "docx-preview": "^0.3.7",

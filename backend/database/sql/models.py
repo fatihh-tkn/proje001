@@ -750,3 +750,30 @@ Relation    = BilgiIliskisi
 UserModel   = AIModeli
 Agent       = AIAgent
 ApiLog      = ApiLogu
+
+# ═══════════════════════════════════════════════════════════════════
+# 10. N8N ÖNBELLEK KATMANI
+# ═══════════════════════════════════════════════════════════════════
+from sqlalchemy.sql import func
+from sqlalchemy import DateTime
+
+class N8nWorkflowCache(Base):
+    """
+    n8n iş akışlarının veritabanındaki önbelleği.
+    n8n kapalıyken bile iş akışlarının arayüzde salt-okunur gösterilmesini sağlar.
+    """
+    __tablename__ = "n8n_workflows_cache"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    tags: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
+    trigger: Mapped[str] = mapped_column(String(64), default="Manuel")
+    last_run: Mapped[str] = mapped_column(String(64), default="Bilinmiyor")
+    success_rate: Mapped[int] = mapped_column(Integer, default=100)
+    executions_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), default="stopped")
+    
+    cached_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

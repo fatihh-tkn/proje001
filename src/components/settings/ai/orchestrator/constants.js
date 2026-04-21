@@ -54,7 +54,7 @@ export const DEFAULT_CHATBOT = {
     canAskFollowUp: true,
     followUpCount: 2,
     avatarEmoji: '🤖',
-    widgetColor: '#10b981',
+    widgetColor: '#1D9E75',
     offlineMessage: '',
     errorMessage: 'Şu anda bilgiye ulaşamıyorum, lütfen daha sonra tekrar deneyin.'
 };
@@ -84,7 +84,7 @@ export const DEFAULT_PROMPT_BOT = {
     canAskFollowUp: false,
     followUpCount: 0,
     avatarEmoji: '✍️',
-    widgetColor: '#eab308',
+    widgetColor: '#EF9F27',
     offlineMessage: '',
     errorMessage: 'İstem revize edilemedi.'
 };
@@ -114,7 +114,7 @@ export const DEFAULT_MSG_BOT = {
     canAskFollowUp: false,
     followUpCount: 0,
     avatarEmoji: '✉️',
-    widgetColor: '#3b82f6',
+    widgetColor: '#378ADD',
     offlineMessage: '',
     errorMessage: 'Mesaj revize edilemedi.'
 };
@@ -158,7 +158,7 @@ Kullanıcı mesajı: {{user_message}}`,
     canAskFollowUp: false,
     followUpCount: 0,
     avatarEmoji: '⚡',
-    widgetColor: '#8b5cf6',
+    widgetColor: '#4E4EBA',
     offlineMessage: '',
     errorMessage: 'Aksiyon belirlenemedi.'
 };

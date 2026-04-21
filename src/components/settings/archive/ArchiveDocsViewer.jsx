@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
+import { FileCard } from '../../ui/file-card-collections';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
 const getFileVisual = (fileType) => {
@@ -20,7 +21,7 @@ const getFileVisual = (fileType) => {
     if (['mp4', 'avi', 'mov'].includes(t)) return { Icon: Film, color: 'text-pink-500', bg: 'bg-pink-50', border: 'border-pink-100' };
     if (['mp3', 'wav', 'ogg'].includes(t)) return { Icon: Music, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
     if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
-    return { Icon: File, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100' };
+    return { Icon: File, color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100' };
 };
 
 // Sadece arşiv modunda olan formatlar
@@ -52,24 +53,24 @@ const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove }) => {
     return (
         <div
             ref={ref}
-            className="fixed z-[9999] bg-white border border-slate-200 rounded-lg shadow-xl py-1 w-44"
+            className="fixed z-[9999] bg-white border border-stone-200 rounded-lg shadow-xl py-1 w-44"
             style={{ top: y, left: x }}
         >
             <button onClick={() => { onRename(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-slate-700 hover:bg-slate-50 transition-colors">
-                <Edit2 size={13} className="text-slate-400" /> Yeniden Adlandır
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
+                <Edit2 size={13} className="text-stone-400" /> Yeniden Adlandır
             </button>
             <button onClick={() => { onMove(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-slate-700 hover:bg-slate-50 transition-colors">
-                <FolderInput size={13} className="text-slate-400" /> Klasöre Taşı
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
+                <FolderInput size={13} className="text-stone-400" /> Klasöre Taşı
             </button>
             {item.file_type !== 'folder' && (
                 <button onClick={onClose}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-slate-700 hover:bg-slate-50 transition-colors">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
                     <Cpu size={13} className="text-teal-500" /> Vektörleştir
                 </button>
             )}
-            <div className="border-t border-slate-100 my-1" />
+            <div className="border-t border-stone-100 my-1" />
             <button onClick={() => { onDelete([item.id]); onClose(); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors">
                 <Trash2 size={13} /> Sil
@@ -84,29 +85,29 @@ const MoveModal = ({ item, folders, onClose, onMove }) => {
     return (
         <div className="fixed inset-0 z-[9000] bg-black/30 flex items-center justify-center">
             <div className="bg-white rounded-xl shadow-2xl w-80 overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-[14px] font-bold text-slate-800">Klasöre Taşı</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+                <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">
+                    <h3 className="text-[14px] font-bold text-stone-800">Klasöre Taşı</h3>
+                    <button onClick={onClose} className="text-stone-400 hover:text-stone-600"><X size={16} /></button>
                 </div>
                 <div className="p-4 max-h-64 overflow-y-auto flex flex-col gap-1">
                     <button
                         onClick={() => setTargetId(null)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === null ? 'bg-[#A01B1B]/10 text-[#A01B1B]' : 'hover:bg-slate-50 text-slate-700'}`}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === null ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}
                     >
                         <Folder size={14} /> Kök Dizin
                     </button>
                     {folders.filter(f => f.id !== item.id).map(f => (
                         <button key={f.id}
                             onClick={() => setTargetId(f.id)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === f.id ? 'bg-[#A01B1B]/10 text-[#A01B1B]' : 'hover:bg-slate-50 text-slate-700'}`}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === f.id ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}
                         >
                             <Folder size={14} className="text-amber-500" /> {f.filename}
                         </button>
                     ))}
                 </div>
-                <div className="px-4 py-3 border-t border-slate-100 flex justify-end gap-2">
-                    <button onClick={onClose} className="px-3 py-1.5 text-[12px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md">İptal</button>
-                    <button onClick={() => { onMove(item.id, targetId); onClose(); }} className="px-3 py-1.5 text-[12px] bg-[#A01B1B] hover:bg-[#8a1717] text-white rounded-md">Taşı</button>
+                <div className="px-4 py-3 border-t border-stone-100 flex justify-end gap-2">
+                    <button onClick={onClose} className="px-3 py-1.5 text-[12px] bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-md">İptal</button>
+                    <button onClick={() => { onMove(item.id, targetId); onClose(); }} className="px-3 py-1.5 text-[12px] bg-[#378ADD] hover:bg-[#2A68AB] text-white rounded-md">Taşı</button>
                 </div>
             </div>
         </div>
@@ -141,7 +142,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                 fetch(`/api/archive/transcript/${doc.id}`)
                     .then(r => r.ok ? r.json() : null)
                     .then(data => { if (data?.full_text) setTxFullText(data.full_text); })
-                    .catch(() => {})
+                    .catch(() => { })
                     .finally(() => setTxLoading(false));
             }
         }
@@ -190,32 +191,32 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
 
     return (
         <div
-            className="absolute top-0 right-0 w-[340px] h-full bg-white border-l border-slate-200 shadow-xl flex flex-col z-50 overflow-hidden"
+            className="absolute top-0 right-0 w-[340px] h-full bg-white border-l border-stone-200 shadow-xl flex flex-col z-50 overflow-hidden"
             style={{ transition: 'right 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
             {/* Header */}
-            <div className="flex-none px-5 py-3.5 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
-                <h3 className="text-[13px] font-bold text-slate-800 truncate">{doc.filename}</h3>
-                <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full text-slate-500 shrink-0 ml-2">
+            <div className="flex-none px-5 py-3.5 flex items-center justify-between border-b border-stone-100 bg-stone-50/50">
+                <h3 className="text-[13px] font-bold text-stone-800 truncate">{doc.filename}</h3>
+                <button onClick={onClose} className="p-1 hover:bg-stone-200 rounded-full text-stone-500 shrink-0 ml-2">
                     <X size={15} />
                 </button>
             </div>
 
             <div className="flex-1 overflow-y-auto">
                 {/* Önizleme Alanı */}
-                <div className="border-b border-slate-100">
+                <div className="border-b border-stone-100">
                     {isImage(doc.file_type) ? (
-                        <img src={previewUrl} alt={doc.filename} className="w-full max-h-48 object-contain bg-slate-50 p-4" />
+                        <img src={previewUrl} alt={doc.filename} className="w-full max-h-48 object-contain bg-stone-50 p-4" />
                     ) : isPdf(doc.file_type) ? (
-                        <iframe src={previewUrl} title="PDF Önizleme" className="w-full h-48 border-0 bg-slate-50" />
+                        <iframe src={previewUrl} title="PDF Önizleme" className="w-full h-48 border-0 bg-stone-50" />
                     ) : (
                         <div className={`flex flex-col items-center justify-center h-32 ${bg}`}>
-                            <Icon size={40} className={`${color} opacity-60`} strokeWidth={1} />
+                            <div className="scale-[1.15] mb-2 opacity-90"><FileCard formatFile={doc.file_type || ''} /></div>
                             <a
                                 href={previewUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="mt-2 flex items-center gap-1 text-[11px] text-[#A01B1B] hover:underline"
+                                className="mt-1 flex items-center gap-1 text-[11px] text-[#378ADD] hover:underline"
                             >
                                 <ExternalLink size={11} /> Dosyayı Aç
                             </a>
@@ -236,9 +237,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 : doc.is_vectorized ? '✅ Vektörleşmiş' : '📁 Arşivde'],
                             ['Chunk', doc.total_chunks > 0 ? `${doc.total_chunks} parça` : '-'],
                         ].map(([k, v]) => (
-                            <div key={k} className="flex justify-between border-b border-slate-50 pb-1.5">
-                                <span className="text-slate-400 font-medium">{k}</span>
-                                <span className="text-slate-700 font-medium text-right">{v}</span>
+                            <div key={k} className="flex justify-between border-b border-stone-50 pb-1.5">
+                                <span className="text-stone-400 font-medium">{k}</span>
+                                <span className="text-stone-700 font-medium text-right">{v}</span>
                             </div>
                         ))}
 
@@ -258,14 +259,14 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                     {/* Etiketler */}
                     <div>
                         <div className="flex items-center gap-1 mb-2">
-                            <Tag size={12} className="text-slate-400" />
-                            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Etiketler</span>
+                            <Tag size={12} className="text-stone-400" />
+                            <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Etiketler</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5 mb-2">
                             {tags.map(tag => (
-                                <span key={tag} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                                <span key={tag} className="inline-flex items-center gap-1 bg-stone-100 text-stone-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
                                     {tag}
-                                    <button onClick={() => removeTag(tag)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                    <button onClick={() => removeTag(tag)} className="text-stone-400 hover:text-red-500 transition-colors">
                                         <X size={10} />
                                     </button>
                                 </span>
@@ -278,11 +279,11 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 onChange={e => setTagInput(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') addTag(tagInput); }}
                                 placeholder="Etiket ekle..."
-                                className="flex-1 text-[11px] border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-[#A01B1B]"
+                                className="flex-1 text-[11px] border border-stone-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-[#378ADD]"
                             />
                             <button
                                 onClick={() => addTag(tagInput)}
-                                className="px-2 py-1.5 bg-slate-800 text-white rounded-md text-[11px] hover:bg-slate-700"
+                                className="px-2 py-1.5 bg-stone-800 text-white rounded-md text-[11px] hover:bg-stone-700"
                             >
                                 <Plus size={13} />
                             </button>
@@ -292,8 +293,8 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                     {/* Açıklama */}
                     <div>
                         <div className="flex items-center gap-1 mb-2">
-                            <MessageSquare size={12} className="text-slate-400" />
-                            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Açıklama</span>
+                            <MessageSquare size={12} className="text-stone-400" />
+                            <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Açıklama</span>
                         </div>
                         {descEditing ? (
                             <div className="flex flex-col gap-1.5">
@@ -302,16 +303,16 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                     value={desc}
                                     onChange={e => setDesc(e.target.value)}
                                     rows={3}
-                                    className="w-full text-[12px] border border-slate-200 rounded-md px-2.5 py-2 resize-none focus:outline-none focus:border-[#A01B1B]"
+                                    className="w-full text-[12px] border border-stone-200 rounded-md px-2.5 py-2 resize-none focus:outline-none focus:border-[#378ADD]"
                                     placeholder="Bu dosya hakkında not ekleyin..."
                                 />
                                 <div className="flex gap-1.5">
                                     <button onClick={saveDesc} disabled={saving}
-                                        className="flex items-center gap-1 px-2.5 py-1 bg-[#A01B1B] text-white rounded-md text-[11px] hover:bg-[#8a1717]">
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-[#378ADD] text-white rounded-md text-[11px] hover:bg-[#2A68AB]">
                                         <Check size={12} /> {saving ? 'Kaydediliyor...' : 'Kaydet'}
                                     </button>
                                     <button onClick={() => setDescEditing(false)}
-                                        className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-[11px] hover:bg-slate-200">
+                                        className="px-2.5 py-1 bg-stone-100 text-stone-600 rounded-md text-[11px] hover:bg-stone-200">
                                         İptal
                                     </button>
                                 </div>
@@ -319,9 +320,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                         ) : (
                             <div
                                 onClick={() => setDescEditing(true)}
-                                className="min-h-[48px] text-[12px] text-slate-600 bg-slate-50 rounded-md px-2.5 py-2 cursor-text border border-transparent hover:border-slate-200 transition-colors"
+                                className="min-h-[48px] text-[12px] text-stone-600 bg-stone-50 rounded-md px-2.5 py-2 cursor-text border border-transparent hover:border-stone-200 transition-colors"
                             >
-                                {desc || <span className="text-slate-300 italic">Açıklama eklemek için tıklayın...</span>}
+                                {desc || <span className="text-stone-300 italic">Açıklama eklemek için tıklayın...</span>}
                             </div>
                         )}
                     </div>
@@ -350,8 +351,8 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 {/* Başlık + İndir Butonu */}
                                 <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-1">
-                                        <Mic size={12} className="text-slate-400" />
-                                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Metin Dökümü</span>
+                                        <Mic size={12} className="text-stone-400" />
+                                        <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Metin Dökümü</span>
                                     </div>
                                     {txStatus === 'done' && (txFullText || meta.transcription_raw_text) && (
                                         <button
@@ -366,25 +367,23 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
 
                                 {/* Tam metin kutusu */}
                                 {txStatus === 'done' && txFullText && !txLoading && (
-                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto">
-                                        <p className="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed font-mono">
+                                    <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg max-h-48 overflow-y-auto">
+                                        <p className="text-[11px] text-stone-700 whitespace-pre-wrap leading-relaxed font-mono">
                                             {txFullText}
                                         </p>
                                     </div>
                                 )}
 
                                 {/* Durum kartı */}
-                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${
-                                    txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
+                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
                                     txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-50 border-amber-200' :
-                                    txStatus === 'failed' ? 'bg-red-50 border-red-200' :
-                                    'bg-slate-50 border-slate-200'
-                                }`}>
-                                    <div className={`shrink-0 p-1.5 rounded-lg ${
-                                        txStatus === 'done' ? 'bg-teal-100' :
-                                        txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-100' :
-                                        txStatus === 'failed' ? 'bg-red-100' : 'bg-slate-100'
+                                        txStatus === 'failed' ? 'bg-red-50 border-red-200' :
+                                            'bg-stone-50 border-stone-200'
                                     }`}>
+                                    <div className={`shrink-0 p-1.5 rounded-lg ${txStatus === 'done' ? 'bg-teal-100' :
+                                        txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-100' :
+                                            txStatus === 'failed' ? 'bg-red-100' : 'bg-stone-100'
+                                        }`}>
                                         {txLoading
                                             ? <Loader2 size={15} className="animate-spin text-amber-500" />
                                             : txStatus === 'done'
@@ -393,15 +392,15 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                                     ? <Loader2 size={15} className="animate-spin text-amber-500" />
                                                     : txStatus === 'failed'
                                                         ? <AlertCircle size={15} className="text-red-500" />
-                                                        : <Mic size={15} className="text-slate-400" />
+                                                        : <Mic size={15} className="text-stone-400" />
                                         }
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[11px] font-semibold text-slate-800 truncate">
+                                        <p className="text-[11px] font-semibold text-stone-800 truncate">
                                             {txStatus === 'done' ? 'Transkript hazır' :
-                                             txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
-                                             txStatus === 'failed' ? 'Transkripsiyon başarısız' :
-                                             'Transkript yok'}
+                                                txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
+                                                    txStatus === 'failed' ? 'Transkripsiyon başarısız' :
+                                                        'Transkript yok'}
                                         </p>
                                         <p className="text-[10px] mt-0.5 truncate">
                                             {txLoading
@@ -409,14 +408,14 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                                 : txStatus === 'done' && txFullText
                                                     ? <span className="text-teal-600 font-medium">
                                                         {txLang?.toUpperCase()}{txChunkCount ? ` · ${txChunkCount} parça` : ''} · {txFullText.length.toLocaleString('tr')} karakter
-                                                      </span>
+                                                    </span>
                                                     : txStatus === 'done' && !txFullText
-                                                        ? <span className="text-slate-400">Transkript metni bulunamadı</span>
+                                                        ? <span className="text-stone-400">Transkript metni bulunamadı</span>
                                                         : txStatus === 'failed'
                                                             ? <span className="text-red-500">İşlem sırasında hata oluştu</span>
                                                             : txStatus === 'processing' || txStatus === 'pending'
                                                                 ? <span className="text-amber-600">İşleniyor…</span>
-                                                                : <span className="text-slate-400">Henüz transkript oluşturulmadı</span>
+                                                                : <span className="text-stone-400">Henüz transkript oluşturulmadı</span>
                                             }
                                         </p>
                                     </div>
@@ -428,11 +427,11 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
             </div>
 
             {/* Footer / İndir Butonu */}
-            <div className="flex-none p-4 border-t border-slate-100 bg-white">
+            <div className="flex-none p-4 border-t border-stone-100 bg-white">
                 <a
                     href={previewUrl}
                     download={doc.filename}
-                    className="flex flex-1 items-center justify-center gap-2 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[12px] font-medium transition-colors"
+                    className="flex flex-1 items-center justify-center gap-2 w-full py-2 bg-stone-800 hover:bg-stone-700 text-white rounded-lg text-[12px] font-medium transition-colors"
                 >
                     <Download size={14} /> Dosyayı İndir
                 </a>
@@ -676,12 +675,12 @@ export default function ArchiveDocsViewer() {
                 stackHtml += `
                     <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center;">
                         ${i === 0
-                            ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>`
-                            : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
+                        ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>`
+                        : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
                     </div>`;
             }
             stackHtml += `
-                <div style="position:absolute;bottom:0;right:0;background:#A01B1B;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(160,27,27,0.4);border:2px solid white;">
+                <div style="position:absolute;bottom:0;right:0;background:#378ADD;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(55,138,221,0.4);border:2px solid white;">
                     ${dragIds.length} Dosya
                 </div>
             </div>`;
@@ -771,51 +770,51 @@ export default function ArchiveDocsViewer() {
             <div className={`flex flex-col flex-1 h-full bg-white transition-all duration-300 ${selectedDoc ? 'mr-[340px]' : ''}`}>
 
                 {/* ── HEADER ── */}
-                <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-slate-200 bg-white gap-3">
+                <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-stone-200 bg-white gap-3">
                     {/* Breadcrumb */}
                     <div className="flex items-center gap-1.5 text-[12px] overflow-hidden">
                         {currentFolderId && (
                             <button onClick={() => {
                                 const parent = breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null;
                                 setCurrentFolderId(parent);
-                            }} title="Üst Klasör" className="p-1 hover:bg-slate-100 text-slate-500 rounded transition-colors mr-1">
+                            }} title="Üst Klasör" className="p-1 hover:bg-stone-100 text-stone-500 rounded transition-colors mr-1">
                                 <CornerLeftUp size={14} />
                             </button>
                         )}
                         <button onClick={() => { setCurrentFolderId(null); setSearchQuery(''); }}
-                            className={`flex items-center gap-1 hover:text-[#A01B1B] transition-colors shrink-0 ${!currentFolderId && !searchQuery ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
-                            <Folder size={13} className={!currentFolderId && !searchQuery ? 'text-[#b91d2c]' : ''} />
+                            className={`flex items-center gap-1 hover:text-[#378ADD] transition-colors shrink-0 ${!currentFolderId && !searchQuery ? 'font-semibold text-stone-800' : 'text-stone-400'}`}>
+                            <Folder size={13} className={!currentFolderId && !searchQuery ? 'text-[#378ADD]' : ''} />
                             Kök Dizin
                         </button>
                         {breadcrumbs.map(bc => (
                             <React.Fragment key={bc.id}>
-                                <ChevronRight size={12} className="text-slate-300 shrink-0" />
+                                <ChevronRight size={12} className="text-stone-300 shrink-0" />
                                 <button onClick={() => setCurrentFolderId(bc.id)}
-                                    className={`hover:text-[#A01B1B] transition-colors truncate ${currentFolderId === bc.id ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
+                                    className={`hover:text-[#378ADD] transition-colors truncate ${currentFolderId === bc.id ? 'font-semibold text-stone-800' : 'text-stone-400'}`}>
                                     {bc.filename}
                                 </button>
                             </React.Fragment>
                         ))}
                         {searchQuery && <>
-                            <ChevronRight size={12} className="text-slate-300 shrink-0" />
-                            <span className="font-semibold text-slate-700 text-[11px]">Arama Sonuçları</span>
+                            <ChevronRight size={12} className="text-stone-300 shrink-0" />
+                            <span className="font-semibold text-stone-700 text-[11px]">Arama Sonuçları</span>
                         </>}
                     </div>
 
                     {/* Araçlar */}
                     <div className="flex items-center gap-2 shrink-0">
                         <div className="relative">
-                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <Search size={13} className="absolute left-2.5 top-1/2 -transtone-y-1/2 text-stone-400" />
                             <input type="text" placeholder="Ara..." value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-7 pr-7 py-1.5 text-[11px] border border-slate-200 rounded-md w-36 focus:outline-none focus:border-[#A01B1B] bg-slate-50" />
+                                className="pl-7 pr-7 py-1.5 text-[11px] border border-stone-200 rounded-md w-36 focus:outline-none focus:border-[#378ADD] bg-stone-50" />
                             {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -transtone-y-1/2 text-stone-300 hover:text-stone-500"><X size={12} /></button>
                             )}
                         </div>
                         <div className="relative">
                             <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                                className="pl-7 pr-2 py-1.5 text-[11px] border border-slate-200 rounded-md bg-slate-50 text-slate-700 focus:outline-none focus:border-[#A01B1B] appearance-none cursor-pointer">
+                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-md bg-stone-50 text-stone-700 focus:outline-none focus:border-[#378ADD] appearance-none cursor-pointer">
                                 <option value="all">Tüm Dosyalar</option>
                                 <option value="pdf">PDF</option>
                                 <option value="excel">Excel / CSV</option>
@@ -823,25 +822,25 @@ export default function ArchiveDocsViewer() {
                                 <option value="image">Görseller</option>
                                 <option value="vectorized">Vektörleşmiş</option>
                             </select>
-                            <SlidersHorizontal size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            <SlidersHorizontal size={12} className="absolute left-2 top-1/2 -transtone-y-1/2 text-stone-400 pointer-events-none" />
                         </div>
                         <div className="relative">
                             <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-                                className="pl-7 pr-2 py-1.5 text-[11px] border border-slate-200 rounded-md bg-slate-50 text-slate-700 focus:outline-none focus:border-[#A01B1B] appearance-none cursor-pointer">
+                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-md bg-stone-50 text-stone-700 focus:outline-none focus:border-[#378ADD] appearance-none cursor-pointer">
                                 <option value="newest">En Yeni</option>
                                 <option value="oldest">En Eski</option>
                                 <option value="largest">En Büyük</option>
                                 <option value="name">İsim (A-Z)</option>
                             </select>
-                            <ArrowUpDown size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            <ArrowUpDown size={12} className="absolute left-2 top-1/2 -transtone-y-1/2 text-stone-400 pointer-events-none" />
                         </div>
-                        <div className="w-px h-5 bg-slate-200" />
+                        <div className="w-px h-5 bg-stone-200" />
                         <button onClick={() => setIsCreatingFolder(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium rounded-md transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-medium rounded-md transition-colors">
                             <Plus size={13} /> Klasör
                         </button>
                         <button onClick={handleUploadClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#A01B1B] hover:bg-[#8a1717] text-white text-[11px] font-medium rounded-md transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white text-[11px] font-medium rounded-md transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv" />
@@ -849,14 +848,14 @@ export default function ArchiveDocsViewer() {
                 </div>
 
                 {/* ── İSTATİSTİK ŞERİDİ ── */}
-                <div className="flex-none px-5 py-1.5 flex items-center gap-5 bg-slate-50 border-b border-slate-100 text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1.5"><FileText size={12} className="text-slate-400" /> <b className="text-slate-700">{allDocs.length}</b> Dosya</span>
-                    <span className="flex items-center gap-1.5"><Folder size={12} className="text-slate-400" /> <b className="text-slate-700">{allFolders.length}</b> Klasör</span>
-                    <span className="flex items-center gap-1.5"><Database size={12} className="text-teal-500" /> <b className="text-slate-700">{vectorCount}</b> Vektörleşmiş</span>
-                    <span className="ml-auto flex items-center gap-1"><b className="text-slate-700">{formatBytes(totalSize)}</b> Toplam</span>
+                <div className="flex-none px-5 py-1.5 flex items-center gap-5 bg-stone-50 border-b border-stone-100 text-[11px] text-stone-500">
+                    <span className="flex items-center gap-1.5"><FileText size={12} className="text-stone-400" /> <b className="text-stone-700">{allDocs.length}</b> Dosya</span>
+                    <span className="flex items-center gap-1.5"><Folder size={12} className="text-stone-400" /> <b className="text-stone-700">{allFolders.length}</b> Klasör</span>
+                    <span className="flex items-center gap-1.5"><Database size={12} className="text-teal-500" /> <b className="text-stone-700">{vectorCount}</b> Vektörleşmiş</span>
+                    <span className="ml-auto flex items-center gap-1"><b className="text-stone-700">{formatBytes(totalSize)}</b> Toplam</span>
                     {selectedIds.size > 0 && (
-                        <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
-                            <span className="font-semibold text-slate-700">{selectedIds.size} seçildi</span>
+                        <div className="flex items-center gap-2 pl-4 border-l border-stone-200">
+                            <span className="font-semibold text-stone-700">{selectedIds.size} seçildi</span>
                             <button onClick={() => {
                                 const allIds = currentItems.map(item => item.id);
                                 if (selectedIds.size === allIds.length && allIds.length > 0) {
@@ -865,7 +864,7 @@ export default function ArchiveDocsViewer() {
                                     setSelectedIds(new Set(allIds));
                                 }
                             }}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#A01B1B]/10 text-[#A01B1B] hover:bg-[#A01B1B]/20 font-medium transition-colors">
+                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#378ADD]/10 text-[#378ADD] hover:bg-[#378ADD]/20 font-medium transition-colors">
                                 <CheckSquare size={11} /> Tümünü Seç
                             </button>
                             <button onClick={() => handleBatchDelete([...selectedIds])}
@@ -873,7 +872,7 @@ export default function ArchiveDocsViewer() {
                                 <Trash2 size={11} /> Sil
                             </button>
                             <button onClick={() => setSelectedIds(new Set())}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium transition-colors">
+                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-stone-100 text-stone-600 hover:bg-stone-200 font-medium transition-colors">
                                 <X size={11} /> Temizle
                             </button>
                         </div>
@@ -881,24 +880,24 @@ export default function ArchiveDocsViewer() {
                 </div>
 
                 {/* ── CONTENT ── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50/50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
+                <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50/50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
 
                     {loading ? (
                         <div className="flex items-center justify-center h-40">
-                            <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-[#A01B1B]" />
+                            <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-[#378ADD]" />
                         </div>
                     ) : folders.length === 0 && documents.length === 0 && !isCreatingFolder ? (
-                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                        <div className="flex flex-col items-center justify-center h-64 text-stone-400">
                             <PackageOpen size={48} strokeWidth={1.5} className="mb-4 opacity-30" />
-                            <h3 className="text-[14px] font-semibold text-slate-700 mb-1">Bu Dizin Boş</h3>
-                            <p className="text-[12px] text-slate-400 max-w-sm text-center">Dosya yükleyin veya yeni klasör oluşturun.</p>
+                            <h3 className="text-[14px] font-semibold text-stone-700 mb-1">Bu Dizin Boş</h3>
+                            <p className="text-[12px] text-stone-400 max-w-sm text-center">Dosya yükleyin veya yeni klasör oluşturun.</p>
                         </div>
                     ) : (
                         <div className="flex flex-col">
                             {/* Klasörler */}
                             {folders.length > 0 && (
                                 <div className="mb-6">
-                                    <h3 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">Klasörler</h3>
+                                    <h3 className="text-[12px] font-bold text-stone-500 uppercase tracking-wider mb-3 px-1">Klasörler</h3>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {isCreatingFolder && (
                                             <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
@@ -909,7 +908,7 @@ export default function ArchiveDocsViewer() {
                                                     onChange={e => setNewFolderName(e.target.value)}
                                                     onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setIsCreatingFolder(false); }}
                                                     onBlur={() => { if (newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}
-                                                    className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B]"
+                                                    className="w-full text-[11px] font-semibold text-stone-800 bg-stone-50 border border-[#378ADD]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#378ADD]"
                                                     placeholder="Yeni Klasör"
                                                 />
                                             </div>
@@ -935,11 +934,11 @@ export default function ArchiveDocsViewer() {
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: folder }); }}
                                                     className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
-                                                        ${isSelected ? 'bg-red-50/80 ring-1 ring-[#A01B1B]/20' : isDragOver ? 'bg-amber-50 ring-1 ring-amber-400/30' : 'hover:bg-slate-200/50 border border-transparent'}`}
+                                                        ${isSelected ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/20' : isDragOver ? 'bg-amber-50 ring-1 ring-amber-400/30' : 'hover:bg-stone-200/50 border border-transparent'}`}
                                                 >
                                                     <div onClick={(e) => toggleSelect(folder.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
+                                                        {isSelected ? <CheckSquare size={14} className="text-[#378ADD]" /> : <Square size={14} className="text-stone-300" />}
                                                     </div>
                                                     <Folder size={64} strokeWidth={1} className="text-amber-500 fill-amber-200 mb-2 drop-shadow-md shrink-0" />
                                                     {renameItem?.id === folder.id ? (
@@ -951,16 +950,16 @@ export default function ArchiveDocsViewer() {
                                                             onBlur={handleRename}
                                                             onClick={e => e.stopPropagation()}
                                                             onDoubleClick={e => e.stopPropagation()}
-                                                            className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B] mt-0.5"
+                                                            className="w-full text-[11px] font-semibold text-stone-800 bg-stone-50 border border-[#378ADD]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#378ADD] mt-0.5"
                                                         />
                                                     ) : (
                                                         <h4
                                                             onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(folder); setRenameValue(folder.filename); }}
-                                                            className="text-[11px] font-semibold text-slate-800 line-clamp-2 select-text mt-0.5 max-w-full leading-tight" title={folder.filename}>
+                                                            className="text-[11px] font-semibold text-stone-800 line-clamp-2 select-text mt-0.5 max-w-full leading-tight" title={folder.filename}>
                                                             {folder.filename}
                                                         </h4>
                                                     )}
-                                                    <p className="text-[10px] text-slate-400 mt-1 truncate">{new Date(folder.created_at).toLocaleDateString('tr')}</p>
+                                                    <p className="text-[10px] text-stone-400 mt-1 truncate">{new Date(folder.created_at).toLocaleDateString('tr')}</p>
                                                 </div>
                                             );
                                         })}
@@ -971,7 +970,7 @@ export default function ArchiveDocsViewer() {
                             {/* Dosyalar */}
                             {documents.length > 0 && (
                                 <div>
-                                    <h3 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">Dosyalar</h3>
+                                    <h3 className="text-[12px] font-bold text-stone-500 uppercase tracking-wider mb-3 px-1">Dosyalar</h3>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {documents.map(doc => {
                                             const { Icon, color, bg, border } = getFileVisual(doc.file_type);
@@ -987,18 +986,18 @@ export default function ArchiveDocsViewer() {
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: doc }); }}
                                                     className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
-                                                        ${selectedDoc?.id === doc.id ? 'bg-red-50/80 ring-1 ring-[#A01B1B]/30'
-                                                            : isSelected ? 'bg-red-50/40 ring-1 ring-[#A01B1B]/20'
-                                                                : 'hover:bg-slate-200/50 border border-transparent'}`}
+                                                        ${selectedDoc?.id === doc.id ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/30'
+                                                            : isSelected ? 'bg-[#378ADD]/5 ring-1 ring-[#378ADD]/20'
+                                                                : 'hover:bg-stone-200/50 border border-transparent'}`}
                                                 >
                                                     <div onClick={(e) => toggleSelect(doc.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {isSelected ? <CheckSquare size={14} className="text-[#A01B1B]" /> : <Square size={14} className="text-slate-300" />}
+                                                        {isSelected ? <CheckSquare size={14} className="text-[#378ADD]" /> : <Square size={14} className="text-stone-300" />}
                                                     </div>
                                                     {/* Dışarı sürükleme tutamacı — hover'da görünür */}
                                                     <div
                                                         title="Sürükleyerek masaüstüne, maile veya WhatsApp'a kopyala"
-                                                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-slate-400 cursor-grab active:cursor-grabbing"
+                                                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-stone-400 cursor-grab active:cursor-grabbing"
                                                     >
                                                         <GripVertical size={11} />
                                                         <span className="text-[9px] leading-none">sürükle</span>
@@ -1014,11 +1013,15 @@ export default function ArchiveDocsViewer() {
                                                     )}
 
                                                     {(doc.etiketler?.length > 0) && (
-                                                        <span className="absolute top-8 right-2 flex items-center gap-0.5 text-slate-400">
+                                                        <span className="absolute top-8 right-2 flex items-center gap-0.5 text-stone-400">
                                                             <Tag size={9} /><span className="text-[9px]">{doc.etiketler.length}</span>
                                                         </span>
                                                     )}
-                                                    <Icon size={58} strokeWidth={1.2} className={`${color} mb-3 drop-shadow-md shrink-0`} />
+
+                                                    <div className="shrink-0 mb-3 drop-shadow-md">
+                                                        <FileCard formatFile={doc.file_type || ''} />
+                                                    </div>
+
                                                     {renameItem?.id === doc.id ? (
                                                         <input
                                                             autoFocus
@@ -1028,22 +1031,22 @@ export default function ArchiveDocsViewer() {
                                                             onBlur={handleRename}
                                                             onClick={e => e.stopPropagation()}
                                                             onDoubleClick={e => e.stopPropagation()}
-                                                            className="w-full text-[11px] font-semibold text-slate-800 bg-slate-50 border border-[#A01B1B]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#A01B1B] mt-2 mb-1"
+                                                            className="w-full text-[11px] font-semibold text-stone-800 bg-stone-50 border border-[#378ADD]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#378ADD] mt-2 mb-1"
                                                         />
                                                     ) : (
                                                         <h4
                                                             onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(doc); setRenameValue(doc.filename); }}
-                                                            className="text-[11px] font-semibold text-slate-800 line-clamp-2 select-text mt-auto leading-tight" title={doc.filename}>
+                                                            className="text-[11px] font-semibold text-stone-800 line-clamp-2 select-text mt-auto leading-tight" title={doc.filename}>
                                                             {doc.filename}
                                                         </h4>
                                                     )}
                                                     <div className="flex flex-col items-center mt-1">
-                                                        <span className="text-[10px] text-slate-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
-                                                        <span className="text-[10px] text-slate-400 font-medium">{formatBytes(doc.file_size)}</span>
+                                                        <span className="text-[10px] text-stone-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
+                                                        <span className="text-[10px] text-stone-400 font-medium">{formatBytes(doc.file_size)}</span>
                                                     </div>
                                                     {doc.meta?.transcription_preview && (
-                                                        <div className="mt-1.5 w-full flex items-start justify-between gap-1 border-t border-slate-100 pt-1.5">
-                                                            <p className="flex-1 text-[10px] text-slate-500 leading-snug line-clamp-2 text-left">
+                                                        <div className="mt-1.5 w-full flex items-start justify-between gap-1 border-t border-stone-100 pt-1.5">
+                                                            <p className="flex-1 text-[10px] text-stone-500 leading-snug line-clamp-2 text-left">
                                                                 {doc.meta.transcription_preview}
                                                             </p>
                                                             <button

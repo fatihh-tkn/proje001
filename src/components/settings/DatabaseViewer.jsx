@@ -38,26 +38,26 @@ const makeChunks = (file) => {
 
 /* ── Skeleton satır ── */
 const SkeletonChunk = () => (
-    <div className="bg-white border border-slate-100 rounded-xl p-3 animate-pulse">
+    <div className="bg-white border border-stone-100 rounded-xl p-3 animate-pulse">
         <div className="flex gap-2">
-            <div className="w-3 h-3 rounded bg-slate-200 mt-0.5 shrink-0" />
+            <div className="w-3 h-3 rounded bg-stone-200 mt-0.5 shrink-0" />
             <div className="flex-1 space-y-1.5">
-                <div className="h-2.5 bg-slate-200 rounded w-full" />
-                <div className="h-2.5 bg-slate-200 rounded w-4/5" />
+                <div className="h-2.5 bg-stone-200 rounded w-full" />
+                <div className="h-2.5 bg-stone-200 rounded w-4/5" />
             </div>
         </div>
-        <div className="flex gap-4 mt-2.5 pt-2 border-t border-slate-100">
-            <div className="h-2 bg-slate-100 rounded w-16" />
-            <div className="h-2 bg-slate-100 rounded w-20" />
+        <div className="flex gap-4 mt-2.5 pt-2 border-t border-stone-100">
+            <div className="h-2 bg-stone-100 rounded w-16" />
+            <div className="h-2 bg-stone-100 rounded w-20" />
         </div>
     </div>
 );
 
 /* ── Skeleton tablo satırı ── */
 const SkeletonRow = () => (
-    <div className="grid grid-cols-[2fr_1fr_1fr_1.5fr_40px] items-center px-5 py-3.5 border-b border-slate-100 animate-pulse">
+    <div className="grid grid-cols-[2fr_1fr_1fr_1.5fr_40px] items-center px-5 py-3.5 border-b border-stone-100 animate-pulse">
         {[['w-40', 'mr-2'], ['w-20'], ['w-14'], ['w-24'], []].map(([w, extra], i) =>
-            w ? <div key={i} className={`h-2.5 bg-slate-200 rounded ${w} ${extra || ''}`} /> : <div key={i} />
+            w ? <div key={i} className={`h-2.5 bg-stone-200 rounded ${w} ${extra || ''}`} /> : <div key={i} />
         )}
     </div>
 );
@@ -625,18 +625,18 @@ const DatabaseViewer = ({ readOnly }) => {
     // Backend henüz başlatılmadıysa bilgi ekranı göster
     if (backendReady === false) {
         return (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-white text-slate-500">
-                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
-                    <Activity size={36} className="text-amber-500 animate-pulse" />
+            <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-white text-stone-500">
+                <div className="p-5 bg-[#FAEEDA] border border-[#F5DDB3] rounded-2xl">
+                    <Activity size={36} className="text-[#854F0B] animate-pulse" />
                 </div>
                 <div className="text-center">
-                    <p className="text-base font-bold text-slate-700">Backend Başlatılıyor...</p>
-                    <p className="text-sm text-slate-400 mt-1">Python sunucusu (FastAPI) henüz hazır değil.</p>
-                    <p className="text-xs text-slate-400 mt-0.5 font-mono">localhost:8000 bekleniyor</p>
+                    <p className="text-base font-bold text-stone-700">Backend Başlatılıyor...</p>
+                    <p className="text-sm text-stone-400 mt-1">Python sunucusu (FastAPI) henüz hazır değil.</p>
+                    <p className="text-xs text-stone-400 mt-0.5 font-mono">localhost:8000 bekleniyor</p>
                 </div>
                 <button
                     onClick={fetchRecords}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-semibold text-slate-600 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-stone-100 hover:bg-stone-200 rounded-xl text-sm font-semibold text-stone-600 transition-all"
                 >
                     <RefreshCw size={14} /> Tekrar Dene
                 </button>
@@ -645,7 +645,7 @@ const DatabaseViewer = ({ readOnly }) => {
     }
 
     return (
-        <div className="w-full h-full flex flex-col bg-white text-slate-800 overflow-hidden font-sans">
+        <div className="w-full h-full flex flex-col bg-white text-stone-800 overflow-hidden font-sans">
 
 
 
@@ -653,31 +653,31 @@ const DatabaseViewer = ({ readOnly }) => {
             {/* ══ ÜST İKİLİ PANEL ══ */}
             {
                 !readOnly && (
-                    <div className="relative z-50 flex border-b border-slate-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
+                    <div className="relative z-50 flex border-b border-stone-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
 
                         {/* ── PANEL 1: BESLEME ALANI / MODEL SEÇİM ── */}
                         {pendingMediaFile ? (
-                            <div className="flex-1 p-6 flex flex-col justify-center items-center bg-white border-r border-slate-200"
+                            <div className="flex-1 p-6 flex flex-col justify-center items-center bg-white border-r border-stone-200"
                                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                <div className="w-full max-w-[420px] rounded-2xl overflow-hidden border border-slate-200 shadow-sm animate-in fade-in zoom-in-95 duration-200 bg-white flex flex-col">
-                                    <div className="p-5 border-b border-slate-100 flex items-start gap-4 relative bg-slate-50/30">
-                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-slate-300 hover:text-[#E11D48] transition-colors p-1"><X size={16} /></button>
+                                <div className="w-full max-w-[420px] rounded-2xl overflow-hidden border border-stone-200 shadow-sm animate-in fade-in zoom-in-95 duration-200 bg-white flex flex-col">
+                                    <div className="p-5 border-b border-stone-100 flex items-start gap-4 relative bg-stone-50/30">
+                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-stone-300 hover:text-[#791F1F] transition-colors p-1"><X size={16} /></button>
 
-                                        <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center shrink-0">
+                                        <div className="w-12 h-12 rounded-xl bg-white border border-stone-200 shadow-sm flex items-center justify-center shrink-0">
                                             {pendingMediaFile.type?.startsWith('video/') ? (
-                                                <div className="w-6 h-6 rounded bg-[#4F46E5]/10 text-[#4F46E5] flex items-center justify-center">▶</div>
+                                                <div className="w-6 h-6 rounded bg-[#378ADD]/10 text-[#378ADD] flex items-center justify-center">▶</div>
                                             ) : (
-                                                <div className="w-6 h-6 rounded bg-amber-500/10 text-amber-500 flex items-center justify-center text-lg leading-none mt-[-2px]">♫</div>
+                                                <div className="w-6 h-6 rounded bg-[#FAEEDA] text-[#854F0B] flex items-center justify-center text-lg leading-none mt-[-2px]">♫</div>
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0 pr-6">
-                                            <h3 className="text-[14px] font-bold text-slate-800 truncate">{pendingMediaFile.name}</h3>
+                                            <h3 className="text-[14px] font-bold text-stone-800 truncate">{pendingMediaFile.name}</h3>
                                             <div className="flex items-center gap-2 mt-2">
-                                                <span className="text-[11px] font-bold text-slate-500 border border-slate-200 bg-white px-2 py-0.5 rounded shadow-sm">
+                                                <span className="text-[11px] font-bold text-stone-500 border border-stone-200 bg-white px-2 py-0.5 rounded shadow-sm">
                                                     {(pendingMediaFile.size / (1024 * 1024)).toFixed(2)} MB
                                                 </span>
-                                                <span className="text-[11px] font-bold text-[#4F46E5] bg-[#4F46E5]/10 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                                                <span className="text-[11px] font-bold text-[#378ADD] bg-[#378ADD]/10 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
                                                     ⏱ {mediaDuration || "Ölçülüyor..."}
                                                 </span>
                                             </div>
@@ -685,47 +685,47 @@ const DatabaseViewer = ({ readOnly }) => {
                                     </div>
 
                                     <div className="p-5 flex flex-col gap-3 bg-white">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Kullanılacak Yapay Zeka Modeli</div>
-                                        <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner">
+                                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5 ml-1">Kullanılacak Yapay Zeka Modeli</div>
+                                        <div className="flex bg-stone-100 p-1.5 rounded-xl border border-stone-200 shadow-inner">
                                             <button
                                                 onClick={() => setSelectedModel('tiny')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'tiny' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'tiny' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
                                             >Hızlı</button>
                                             <button
                                                 onClick={() => setSelectedModel('base')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'base' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'base' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
                                             >Dengeli</button>
                                             <button
                                                 onClick={() => setSelectedModel('large-v3')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'large-v3' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'large-v3' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
                                             >Gelişmiş</button>
                                         </div>
 
-                                        <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner mt-1">
+                                        <div className="flex bg-stone-100 p-1.5 rounded-xl border border-stone-200 shadow-inner mt-1">
                                             <button
                                                 onClick={() => setComputeDevice('cpu')}
-                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cpu' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cpu' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
                                             >İşlemci (CPU)</button>
                                             <button
                                                 onClick={() => setComputeDevice('cuda')}
-                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cuda' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cuda' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
                                             >Ekran Kartı (GPU)</button>
                                         </div>
 
-                                        <div className="mt-1 min-h-[40px] flex items-center justify-center p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                            {selectedModel === 'tiny' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">İşlemcide şipşak sonuç verir. Kabataslak ve hızlı notlar içindir.</span>}
-                                            {selectedModel === 'base' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Hız ve doğruluk dengesi idealdir. Normal toplantı kayıtları için.</span>}
-                                            {selectedModel === 'large-v3' && <span className="text-[11px] text-slate-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Kusursuz harfiyen metin çıkarır. Güçlü GPU ekran kartı gerektirir.</span>}
+                                        <div className="mt-1 min-h-[40px] flex items-center justify-center p-3 bg-stone-50 rounded-lg border border-stone-100">
+                                            {selectedModel === 'tiny' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">İşlemcide şipşak sonuç verir. Kabataslak ve hızlı notlar içindir.</span>}
+                                            {selectedModel === 'base' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Hız ve doğruluk dengesi idealdir. Normal toplantı kayıtları için.</span>}
+                                            {selectedModel === 'large-v3' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Kusursuz harfiyen metin çıkarır. Güçlü GPU ekran kartı gerektirir.</span>}
                                         </div>
                                     </div>
 
-                                    <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+                                    <div className="p-4 border-t border-stone-100 bg-stone-50/50">
                                         <button
                                             onClick={() => {
                                                 executeAnalysis(pendingMediaFile, selectedModel, computeDevice);
                                                 setPendingMediaFile(null);
                                             }}
-                                            className="w-full py-3 bg-[#E11D48] hover:bg-[#be123c] text-white text-[13px] font-bold rounded-xl shadow-lg shadow-[#E11D48]/30 transition-all hover:scale-[0.99] active:scale-95 flex items-center justify-center gap-2"
+                                            className="w-full py-3 bg-[#378ADD] hover:bg-[#0C447C] text-white text-[13px] font-bold rounded-xl shadow-lg shadow-[#378ADD]/30 transition-all hover:scale-[0.99] active:scale-95 flex items-center justify-center gap-2"
                                         >
                                             <svg className="w-4 h-4 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0-12l4 4m-4-4L8 8m-4 8v1a3 3 0 003 3h10a3 3 0 003-3v-1" /></svg>
                                             Yükle

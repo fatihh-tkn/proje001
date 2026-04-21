@@ -306,17 +306,17 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSideOpen ? 'w-[27rem] cursor-default' : 'w-[68px] cursor-pointer hover:bg-slate-200/50'} relative bg-[#f1f5f9] border-l border-slate-200/60 shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
-                ${isDragOver ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}
+            className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSideOpen ? 'w-[27rem] cursor-default' : 'w-[68px] cursor-pointer hover:bg-stone-100'} relative bg-stone-50 border-l border-stone-200 shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
+                ${isDragOver ? 'border-[#378ADD] bg-[#E6F1FB]/40' : 'border-stone-200'}
             `}
         >
             {/* Drop overlay göstergesi */}
             {isDragOver && (
                 <div className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none">
-                    <div className="bg-white/90 border-2 border-dashed border-red-400 rounded-2xl px-8 py-6 flex flex-col items-center gap-2 shadow-xl">
+                    <div className="bg-white/90 border-2 border-dashed border-[#378ADD] rounded-2xl px-8 py-6 flex flex-col items-center gap-2 shadow-xl">
                         <span className="text-3xl">📎</span>
-                        <p className="text-sm font-semibold text-red-500">Dosyayı buraya bırak</p>
-                        <p className="text-xs text-slate-400">Bu dosya hakkında soru sorabilirsin</p>
+                        <p className="text-sm font-semibold text-[#378ADD]">Dosyayı buraya bırak</p>
+                        <p className="text-xs text-stone-400">Bu dosya hakkında soru sorabilirsin</p>
                     </div>
                 </div>
             )}
@@ -324,7 +324,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
 
 
             {/* 2. ANA İÇERİK ALANI */}
-            <div className="flex-1 flex flex-col min-w-0 h-full relative w-full bg-gradient-to-b from-[#f1f5f9] to-[#e2e8f0]/30">
+            <div className="flex-1 flex flex-col min-w-0 h-full relative w-full bg-gradient-to-b from-stone-50 to-stone-100/30">
                 {/* ÜST KISIM */}
                 <RecentChats
                     isSideOpen={isSideOpen}

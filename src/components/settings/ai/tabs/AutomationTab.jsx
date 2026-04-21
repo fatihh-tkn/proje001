@@ -9,6 +9,7 @@ export const AutomationTab = () => {
     const [apiKeyInput, setApiKeyInput] = useState('');
     const [authError, setAuthError] = useState('');
     const [isActionLoading, setIsActionLoading] = useState(false);
+    const [isCachedData, setIsCachedData] = useState(false);
 
     const fetchWorkflows = async (showLoader = true) => {
         if (showLoader) setIsLoading(true);
@@ -29,6 +30,7 @@ export const AutomationTab = () => {
             if (data.success && data.workflows) {
                 setWorkflows(data.workflows);
                 setNeedsAuth(false);
+                setIsCachedData(data.is_cached === true);
             } else {
                 console.error("n8n Workflow hatası:", data.error);
                 if (data.error && (String(data.error).includes("401") || String(data.error).includes("403") || String(data.error).includes("Unauthorized"))) {
@@ -68,7 +70,7 @@ export const AutomationTab = () => {
     };
 
     const toggleWorkflowStatus = async (id, currentStatus) => {
-        if (isActionLoading) return;
+        if (isActionLoading || isCachedData) return;
         setIsActionLoading(true);
         const newStatus = !currentStatus;
 
@@ -122,43 +124,43 @@ export const AutomationTab = () => {
 
     if (needsAuth) {
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full bg-white p-6 animate-in fade-in duration-300">
-                <div className="max-w-md w-full bg-white rounded-sm ring-1 ring-black/[0.06] shadow-sm p-8">
-                    <div className="w-12 h-12 bg-gray-50 rounded-sm flex items-center justify-center mx-auto mb-6 ring-1 ring-black/[0.04]">
-                        <KeyRound size={24} className="text-[var(--accent)]" />
+            <div className="flex flex-col items-center justify-center w-full h-full bg-[#fafafa] p-6 animate-in fade-in duration-300">
+                <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-stone-200 p-8">
+                    <div className="w-12 h-12 bg-stone-50 rounded-lg flex items-center justify-center mx-auto mb-6 border border-stone-100">
+                        <KeyRound size={24} className="text-[#378ADD]" />
                     </div>
-                    <h3 className="text-lg font-semibold text-[var(--workspace-text)] text-center mb-2">API Yetkilendirmesi</h3>
-                    <p className="text-xs text-[var(--sidebar-text-muted)] text-center mb-6">
+                    <h3 className="text-[14px] font-bold text-stone-800 text-center mb-2 uppercase tracking-wide">API Yetkilendirmesi</h3>
+                    <p className="text-[11px] text-stone-500 text-center mb-6">
                         n8n sunucusuna bağlanabilmek için geçerli bir API anahtarına ihtiyacımız var.
-                        <strong> n8n arayüzünden (Settings &gt; n8n API) </strong> oluşturduğunuz anahtarı aşağıya yapıştırın.
+                        <strong className="text-stone-700"> n8n arayüzünden (Settings &gt; n8n API) </strong> oluşturduğunuz anahtarı aşağıya yapıştırın.
                     </p>
 
                     {authError && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-sm flex items-start gap-2">
-                            <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                            <p className="text-xs font-medium text-red-600">{authError}</p>
+                        <div className="mb-4 p-3 bg-[#FCEBEB] border border-[#FCEBEB] rounded-lg flex items-start gap-2">
+                            <AlertCircle size={14} className="text-[#791F1F] shrink-0 mt-0.5" />
+                            <p className="text-[10px] font-medium text-[#791F1F]">{authError}</p>
                         </div>
                     )}
 
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-[10px] font-semibold text-[var(--sidebar-text-muted)] uppercase tracking-wider mb-1.5">n8n API Key</label>
+                            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">n8n API Key</label>
                             <input
                                 type="password"
                                 value={apiKeyInput}
                                 onChange={(e) => setApiKeyInput(e.target.value)}
                                 placeholder="ny8_***************************"
-                                className="w-full bg-gray-50 border border-black/[0.08] rounded-sm px-3 py-2 text-xs font-mono text-[var(--workspace-text)] focus:outline-none focus:bg-white focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                                className="w-full bg-stone-50 border border-stone-200 rounded-md px-3 py-2 text-[11px] font-mono text-stone-700 focus:outline-none focus:bg-white focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD] transition-all"
                                 onKeyDown={(e) => e.key === 'Enter' && saveApiKeyAndRetry()}
                             />
                         </div>
                         <button
                             onClick={saveApiKeyAndRetry}
-                            className="w-full flex justify-center items-center gap-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-sm px-4 py-2.5 text-xs font-bold shadow-sm transition-all"
+                            className="w-full flex justify-center items-center gap-2 bg-[#378ADD] hover:bg-[#2A68AB] text-white rounded-md px-4 py-2 text-[11px] font-bold shadow-sm transition-all"
                         >
                             <Save size={14} /> Sistemi Bağla
                         </button>
-                        <p className="text-[10px] text-center text-gray-400 mt-2">
+                        <p className="text-[10px] text-center text-stone-400 mt-2">
                             Anahtarınız siber güvenlik gereği backend'e iletilir ve tarayıcınızda lokal olarak saklanır.
                         </p>
                     </div>
@@ -168,171 +170,183 @@ export const AutomationTab = () => {
     }
 
     return (
-        <div className="flex flex-col w-full h-full bg-white animate-in fade-in duration-300">
-
+        <div className="flex flex-col w-full h-full bg-[#fafafa] animate-in fade-in duration-300">
+            {isCachedData && (
+                <div className="w-full bg-[#FAEEDA] border-b border-[#EAD5AB] px-8 py-2 flex items-center gap-2 shadow-sm shrink-0">
+                    <AlertCircle size={14} className="text-[#854F0B]" />
+                    <p className="text-[11px] font-bold text-[#854F0B]">
+                        n8n motoru şu an kapalı. İş akışlarınızın son yedeklenmiş versiyonunu görüntülüyorsunuz. (Salt Okunur)
+                    </p>
+                </div>
+            )}
             {/* ── Üst Araç Çubuğu (Unboxed) ── */}
             <div className="shrink-0 px-8 pt-8 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h3 className="text-xl font-bold text-[var(--workspace-text)] flex items-center gap-2">
-                        <Activity size={20} className="text-[var(--accent)]" />
+                    <h3 className="text-[12px] font-bold text-stone-600 uppercase tracking-wide flex items-center gap-2">
+                        <Activity size={16} className="text-[#378ADD]" />
                         Otomasyon & İş Akışları
                     </h3>
-                    <p className="text-sm text-[var(--sidebar-text-muted)] mt-1 ml-1 max-w-lg">
-                        Sistem içi eylemleri ve dış servis etkileşimlerini (n8n) doğrudan buradan yönetin.
+                    <p className="text-[11px] text-stone-400 mt-1 max-w-lg">
+                        Sistem içi eylemleri ve dış servis etkileşimlerini (n8n) yönetin.
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 shrink-0">
                     <div className="relative group">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--accent)] transition-colors" />
+                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-[#378ADD] transition-colors" />
                         <input
                             type="text"
                             placeholder="İş akışı ara..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-black/[0.03] hover:bg-black/[0.05] rounded-full pl-9 pr-4 py-2 text-sm text-[var(--workspace-text)] w-60 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[var(--accent)] transition-all placeholder:text-gray-400"
+                            className="bg-white border border-stone-200 rounded-md pl-8 pr-4 py-1.5 text-[11px] text-stone-700 w-60 focus:outline-none focus:border-[#378ADD] transition-all placeholder:text-stone-400"
                         />
                     </div>
-                    <button className="flex items-center gap-1.5 px-4 py-2 text-[var(--sidebar-text-muted)] hover:text-[var(--workspace-text)] hover:bg-black/[0.04] rounded-full text-sm font-semibold transition-all">
-                        <Filter size={14} /> Filtre
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-md text-[11px] font-semibold transition-all">
+                        <Filter size={12} /> Filtre
                     </button>
                     <button
                         onClick={createNewN8n}
-                        className="flex items-center gap-1.5 px-5 py-2 bg-[var(--workspace-text)] text-white rounded-full text-sm font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white rounded-md text-[11px] font-bold shadow-sm transition-all"
                     >
-                        <Webhook size={14} /> Yeni Ekle
+                        <Webhook size={12} /> Yeni Ekle
                     </button>
                 </div>
             </div>
 
-            {/* ── İstatistik Şeridi (Unboxed) ── */}
-            <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-6 px-8 pb-8 pt-2">
-                <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                        <Activity size={16} className="text-emerald-600" />
+            {/* ── İstatistik Şeridi ── */}
+            <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-4 px-8 pb-6 pt-2">
+                <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-stone-200 shadow-sm">
+                    <div className="w-8 h-8 rounded-md bg-[#EAF3DE] flex items-center justify-center shrink-0 border border-[#b4dc8f]/30">
+                        <Activity size={14} className="text-[#3B6D11]" />
                     </div>
                     <div>
-                        <p className="text-xs font-semibold text-[var(--sidebar-text-muted)] mb-0.5">Aktif Senaryo</p>
-                        <p className="text-2xl font-bold text-[var(--workspace-text)] leading-none">{activeCount} <span className="text-sm font-medium text-gray-400">/ {totalCount}</span></p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-0.5">Aktif Senaryo</p>
+                        <p className="text-[14px] font-black text-stone-700 leading-none">{activeCount} <span className="text-[10px] font-medium text-stone-400">/ {totalCount}</span></p>
                     </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                        <Server size={16} className="text-blue-600" />
+                <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-stone-200 shadow-sm">
+                    <div className="w-8 h-8 rounded-md bg-[#378ADD]/10 flex items-center justify-center shrink-0 border border-[#378ADD]/20">
+                        <Server size={14} className="text-[#378ADD]" />
                     </div>
                     <div>
-                        <p className="text-xs font-semibold text-[var(--sidebar-text-muted)] mb-0.5">Toplam İstek</p>
-                        <p className="text-2xl font-bold text-[var(--workspace-text)] leading-none">{totalExecutions > 1000 ? (totalExecutions / 1000).toFixed(1) + 'K' : totalExecutions}</p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-0.5">Toplam İstek</p>
+                        <p className="text-[14px] font-black text-stone-700 leading-none">{totalExecutions > 1000 ? (totalExecutions / 1000).toFixed(1) + 'K' : totalExecutions}</p>
                     </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
-                        <CheckCircle2 size={16} className="text-[var(--accent)]" />
+                <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-stone-200 shadow-sm">
+                    <div className="w-8 h-8 rounded-md bg-[#EAF3DE] flex items-center justify-center shrink-0 border border-[#b4dc8f]/30">
+                        <CheckCircle2 size={14} className="text-[#3B6D11]" />
                     </div>
                     <div>
-                        <p className="text-xs font-semibold text-[var(--sidebar-text-muted)] mb-0.5">Başarı Oranı</p>
-                        <p className="text-2xl font-bold text-[var(--workspace-text)] leading-none">% {avgSuccess}</p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-0.5">Başarı Oranı</p>
+                        <p className="text-[14px] font-black text-stone-700 leading-none">% {avgSuccess}</p>
                     </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${failingCount > 0 ? 'bg-rose-500/10' : 'bg-black/[0.04]'}`}>
-                        <XCircle size={16} className={failingCount > 0 ? 'text-rose-600' : 'text-gray-400'} />
+                <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-stone-200 shadow-sm">
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border ${failingCount > 0 ? 'bg-[#FCEBEB] border-[#FCEBEB]/50' : 'bg-stone-50 border-stone-100'}`}>
+                        <XCircle size={14} className={failingCount > 0 ? 'text-[#791F1F]' : 'text-stone-400'} />
                     </div>
                     <div>
-                        <p className="text-xs font-semibold text-[var(--sidebar-text-muted)] mb-0.5">Uyarı / Hata</p>
-                        <p className={`text-2xl font-bold leading-none ${failingCount > 0 ? 'text-rose-600' : 'text-[var(--workspace-text)]'}`}>{failingCount}</p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-0.5">Uyarı / Hata</p>
+                        <p className={`text-[14px] font-black leading-none ${failingCount > 0 ? 'text-[#791F1F]' : 'text-stone-700'}`}>{failingCount}</p>
                     </div>
                 </div>
             </div>
 
-            {/* ── Tablo Alanı (Unboxed) ── */}
+            {/* ── Tablo Alanı ── */}
             <div className="flex-1 min-h-0 overflow-y-auto px-8 pb-8">
                 {isLoading ? (
-                    <div className="w-full h-16 rounded-lg bg-black/[0.03] animate-pulse"></div>
+                    <div className="w-full h-16 rounded-lg bg-stone-100 animate-pulse"></div>
                 ) : filteredWorkflows.length === 0 ? (
                     <div className="w-full py-16 flex flex-col items-center justify-center text-center">
-                        <div className="w-16 h-16 rounded-full bg-black/[0.03] flex items-center justify-center mb-4">
-                            <Search size={28} className="text-[var(--sidebar-text-muted)]" />
+                        <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center mb-4">
+                            <Search size={28} className="text-stone-400" />
                         </div>
-                        <h3 className="text-base font-bold text-[var(--workspace-text)] mb-2">Şema Bulunamadı</h3>
-                        <p className="text-sm text-[var(--sidebar-text-muted)] max-w-sm">N8n iş akışınız bulunmuyor veya arama kriterlerini değiştirmeniz gerekiyor.</p>
+                        <h3 className="text-[12px] font-bold text-stone-700 uppercase tracking-widest mb-2">Şema Bulunamadı</h3>
+                        <p className="text-[11px] text-stone-500 max-w-sm">N8n iş akışınız bulunmuyor veya arama kriterlerini değiştirmeniz gerekiyor.</p>
                     </div>
                 ) : (
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="border-b-2 border-black/[0.04]">
-                                <th className="px-2 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase w-16 text-center">Aç/Kapat</th>
-                                <th className="px-4 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase">İş Akışı</th>
-                                <th className="px-4 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase">Tetikleyici</th>
-                                <th className="px-4 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase">Durum</th>
-                                <th className="px-4 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase text-right">Başarı Oranı</th>
-                                <th className="px-2 py-4 text-[11px] font-semibold tracking-widest text-gray-400 uppercase text-center w-24">Aksiyon</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredWorkflows.map((wk) => (
-                                <tr key={wk.id} className="border-b border-black/[0.03] hover:bg-black/[0.02] transition-colors group">
-                                    <td className="px-2 py-5 text-center" onClick={() => toggleWorkflowStatus(wk.id, wk.active)}>
-                                        <div className={`w-10 h-5 rounded-full relative cursor-pointer inline-block align-middle transition-colors duration-300 ${wk.active ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                                            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm ${wk.active ? 'right-0.5' : 'left-0.5'}`}></div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5">
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${wk.status === 'healthy' ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : 'bg-rose-500/10 text-rose-500'}`}>
-                                                <Webhook size={18} />
+                    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b border-stone-200 bg-stone-50">
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase w-16 text-center">Aç/Kapat</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase">İş Akışı</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase">Tetikleyici</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase">Durum</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase text-right">Başarı Oranı</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase text-center w-24">Aksiyon</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredWorkflows.map((wk, index) => (
+                                    <tr key={wk.id} className={`${index !== filteredWorkflows.length - 1 ? 'border-b border-stone-100' : ''} hover:bg-stone-50/50 transition-colors group ${isCachedData ? 'opacity-90' : ''}`}>
+                                        <td className={`px-4 py-4 text-center ${isCachedData ? 'cursor-not-allowed' : 'cursor-pointer'}`} onClick={() => toggleWorkflowStatus(wk.id, wk.active)}>
+                                            <div className={`w-8 h-4 rounded-full relative inline-block align-middle transition-colors duration-300 ${wk.active ? (isCachedData ? 'bg-[#1D9E75]/50' : 'bg-[#1D9E75]') : 'bg-stone-300'}`}>
+                                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 shadow-sm ${wk.active ? 'right-0.5' : 'left-0.5'}`}></div>
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-[var(--workspace-text)] group-hover:text-[var(--accent)] transition-colors cursor-pointer" onClick={() => openInN8n(wk.id)}>{wk.name}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-[11px] font-medium text-gray-400 font-mono tracking-wide">{wk.id}</span>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {wk.tags && wk.tags.map(tag => (
-                                                            <span key={tag} className="px-2 py-0.5 rounded-full bg-black/[0.04] text-[10px] font-bold text-[var(--sidebar-text-muted)]">{tag}</span>
-                                                        ))}
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border 
+                                                    ${wk.status === 'offline' ? 'bg-stone-100 border-stone-200 text-stone-400'
+                                                        : wk.status === 'healthy' ? 'bg-[#378ADD]/10 border-[#378ADD]/20 text-[#378ADD]'
+                                                            : 'bg-[#FCEBEB] border-[#FCEBEB]/50 text-[#791F1F]'}`}>
+                                                    <Webhook size={14} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[11px] font-black text-stone-700 group-hover:text-[#378ADD] transition-colors cursor-pointer" onClick={() => openInN8n(wk.id)}>{wk.name}</p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-[9px] font-medium text-stone-400 font-mono tracking-wide">{wk.id}</span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {wk.tags && wk.tags.map(tag => (
+                                                                <span key={tag} className="px-1.5 py-0.5 rounded border border-stone-200 bg-stone-100 text-[8px] font-bold text-stone-500 uppercase">{tag}</span>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-5">
-                                        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white ring-1 ring-black/[0.06] text-xs font-semibold text-[var(--sidebar-text-muted)]">
-                                            <Clock size={12} className={wk.trigger === 'Webhook' ? 'text-blue-500' : 'text-[var(--accent)]'} />
-                                            {wk.trigger}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-5">
-                                        <p className="text-sm font-semibold text-[var(--workspace-text)]">{wk.lastRun || "Henüz tetiklenmedi"}</p>
-                                        <p className="text-xs text-gray-400 mt-0.5">{wk.executionsCount} toplam yürütme</p>
-                                    </td>
-                                    <td className="px-4 py-5 text-right">
-                                        <div className="flex flex-col items-end">
-                                            <span className={`text-sm font-black ${wk.successRate === 100 ? 'text-emerald-500' : wk.successRate > 50 ? 'text-amber-500' : 'text-rose-500'}`}>
-                                                %{wk.successRate || 0}
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-stone-50 border border-stone-200 text-[10px] font-semibold text-stone-600">
+                                                <Clock size={10} className={wk.trigger === 'Webhook' ? 'text-[#378ADD]' : 'text-stone-400'} />
+                                                {wk.trigger}
                                             </span>
-                                            <div className="w-20 h-1.5 mt-1.5 bg-black/[0.04] rounded-full overflow-hidden">
-                                                <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-emerald-500' : wk.successRate > 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <p className="text-[11px] font-bold text-stone-600">{wk.lastRun || "Henüz tetiklenmedi"}</p>
+                                            <p className="text-[10px] text-stone-400 mt-0.5">{wk.executionsCount} işlem</p>
+                                        </td>
+                                        <td className="px-4 py-4 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <span className={`text-[11px] font-black ${wk.successRate === 100 ? 'text-[#3B6D11]' : wk.successRate > 50 ? 'text-[#854F0B]' : 'text-[#791F1F]'}`}>
+                                                    %{wk.successRate || 0}
+                                                </span>
+                                                <div className="w-16 h-1 mt-1 bg-stone-100 rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-[#EAF3DE]' : wk.successRate > 50 ? 'bg-[#FAEEDA]' : 'bg-[#FCEBEB]'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-5">
-                                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => openInN8n(wk.id)}
-                                                className="w-8 h-8 rounded-full bg-white ring-1 ring-black/[0.08] flex items-center justify-center text-[var(--sidebar-text-muted)] hover:text-[var(--accent)] hover:ring-[var(--accent)] transition-all shadow-sm"
-                                                title="Düzenle"
-                                            >
-                                                <ExternalLink size={14} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => openInN8n(wk.id)}
+                                                    className="w-7 h-7 rounded-md bg-white border border-stone-200 flex items-center justify-center text-stone-400 hover:text-[#378ADD] hover:border-[#378ADD] transition-all shadow-sm"
+                                                    title="Düzenle"
+                                                >
+                                                    <ExternalLink size={12} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
 

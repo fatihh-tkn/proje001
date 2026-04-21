@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Clock, Search, MoreHorizontal, Plus, UserPlus, FileText, Database, LayoutDashboard, BookOpen, MessageSquare, Cpu, FileCog, Bot, Zap } from 'lucide-react';
+import { Users, Shield, Clock, Search, ChevronRight, Plus, UserPlus, FileText, Database, LayoutDashboard, BookOpen, MessageSquare, Cpu, FileCog, Bot, Zap } from 'lucide-react';
+import InlineUserDashboard from './InlineUserDashboard';
 import ArchiveTreeItem from './ArchiveTreeItem';
 import SapEgitimAdminPaneli from './SapEgitimAdminPaneli';
 import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
@@ -25,6 +26,7 @@ export default function AuthViewer() {
         { id: 'users', label: 'Kullanıcılar', icon: Users },
         { id: 'audit', label: 'Sistem Kayıtları', icon: Clock },
         { id: 'egitim_yonetimi', label: 'Eğitim Yönetim Paneli', icon: BookOpen },
+        { id: 'restrictions', label: 'Kısıtlamalar', icon: Shield },
     ];
 
     return (
@@ -73,6 +75,7 @@ export default function AuthViewer() {
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'audit' && <AuditTab />}
                 {activeTab === 'egitim_yonetimi' && <SapEgitimAdminPaneli />}
+                {activeTab === 'restrictions' && <RestrictionsTab />}
             </div>
 
             {/* Slide-Over Panel */}
@@ -87,8 +90,8 @@ export default function AuthViewer() {
 function UsersTab() {
     const [users, setUsers] = useState([]);
     const [expandedUserId, setExpandedUserId] = useState(null);
-    const [dashboardUser, setDashboardUser] = useState(null);
     const [editingRoleId, setEditingRoleId] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         fetch('/api/auth/users')
@@ -103,126 +106,252 @@ function UsersTab() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: newRole })
         }).then(res => {
-            if (res.ok) {
-                setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-            }
+            if (res.ok) setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
             setEditingRoleId(null);
         }).catch(err => console.error('Rol güncellenemedi', err));
     };
 
+    const toggleExpand = (userId) => {
+        setExpandedUserId(prev => prev === userId ? null : userId);
+    };
+
+    /* Token'ı kısa formata çevir */
+    const fmtToken = (n) => {
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+        if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+        return String(n || 0);
+    };
+
+    const filteredUsers = users.filter(u =>
+        u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
-        <div className="space-y-4 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between mb-2">
+        <div className="space-y-4 animate-in fade-in duration-300 max-w-6xl mx-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
                     <input
                         type="text"
                         placeholder="Kullanıcı ara..."
-                        className="pl-9 pr-4 py-2 border border-slate-200 rounded-sm text-[12px] w-64 focus:outline-none focus:border-[#b91d2c] focus:ring-1 focus:ring-[#b91d2c]"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="pl-9 pr-4 py-1.5 border border-stone-200 rounded-md text-[12px] font-sans w-64 bg-white text-stone-700 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD] transition-shadow placeholder:text-stone-400"
                     />
                 </div>
-                <button className="flex items-center gap-2 bg-[#b91d2c] hover:bg-[#961e27] text-white px-4 py-2 rounded-sm text-[12px] font-medium transition-colors shadow-sm">
-                    <UserPlus size={14} /> Yeni Kullanıcı
+                <button className="flex items-center gap-2 bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors shadow-sm">
+                    <UserPlus size={14} className="text-stone-500" /> Yeni Ekle
                 </button>
             </div>
 
-            <div className="bg-white border border-slate-200/60 rounded-lg overflow-hidden shadow-sm">
+            {/* Table */}
+            <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-[#f1f3f5] border-b border-slate-200/60 text-[11px] uppercase tracking-wider text-slate-600 font-semibold">
-                            <th className="p-4">Kullanıcı Adı</th>
-                            <th className="p-4">E-Posta</th>
-                            <th className="p-4">Rol</th>
-                            <th className="p-4">Durum</th>
-                            <th className="p-4">Son Giriş</th>
-                            <th className="p-4 text-center">İşlem</th>
+                        <tr>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80">Kullanıcı</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80">E-Posta</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80">Departman</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80 text-right">Oturum</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80 text-right">Token</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80">Durum</th>
+                            <th className="py-2.5 px-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80">Son Giriş</th>
+                            <th className="py-2.5 px-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-200 bg-stone-50/80 w-8"></th>
                         </tr>
                     </thead>
-                    <tbody className="text-[12px] text-slate-700 divide-y divide-slate-100">
-                        {users.map(user => (
+                    <tbody className="text-[12px] text-stone-800">
+                        {filteredUsers.map(user => (
                             <React.Fragment key={user.id}>
-                                <tr
-                                    onClick={() => setExpandedUserId(expandedUserId === user.id ? null : user.id)}
-                                    className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${expandedUserId === user.id ? 'bg-slate-50/80' : ''}`}
-                                >
-                                    <td className="p-4 font-medium">{user.name}</td>
-                                    <td className="p-4 text-slate-500">{user.email}</td>
-                                    <td className="p-4">
-                                        {editingRoleId === user.id ? (
-                                            <select
-                                                autoFocus
-                                                onBlur={() => setEditingRoleId(null)}
-                                                onChange={(e) => updateRole(user.id, e.target.value)}
-                                                value={user.role}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="bg-white text-slate-700 px-2 py-1 rounded-md text-[10px] font-medium border border-[#b91d2c] shadow-sm focus:outline-none focus:ring-1 focus:ring-[#b91d2c] cursor-pointer appearance-none pr-6 relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23b91d2c%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[length:8px_8px] bg-[position:right_8px_center]"
-                                            >
-                                                <option value="Standart Kullanıcı">Standart Kullanıcı</option>
-                                                <option value="Sistem Yöneticisi">Sistem Yöneticisi</option>
-                                            </select>
-                                        ) : (
-                                            <span
-                                                onClick={(e) => { e.stopPropagation(); setEditingRoleId(user.id); }}
-                                                className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[10px] font-medium border border-slate-200 hover:border-slate-300 hover:bg-slate-200 transition-colors cursor-pointer"
-                                            >
-                                                {user.role}
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded-md text-[10px] font-medium flex items-center gap-1.5 w-max ${user.status === 'Aktif' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Aktif' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                            {user.status}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-slate-400 text-[11px]">{user.lastLogin}</td>
-                                    <td className="p-4 text-center">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setDashboardUser(user); }}
-                                            className="p-1 transition-all rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                            title="Özet Dashboard"
+                                {/* Kullanıcı Satırı */}
+                                {(() => {
+                                    const isPassive = user.status !== 'Aktif';
+                                    const isAdmin = user.role === 'Sistem Yöneticisi';
+                                    const isExpanded = expandedUserId === user.id;
+
+                                    // Satır renk kararı: pasif > admin > normal
+                                    const rowBg = isExpanded
+                                        ? 'bg-[#378ADD]/5 border-b-0'
+                                        : isPassive
+                                            ? 'bg-[#FCEBEB]/50 hover:bg-[#FCEBEB]/80'
+                                            : isAdmin
+                                                ? 'bg-[#FAEEDA]/40 hover:bg-[#FAEEDA]/70'
+                                                : 'hover:bg-stone-50';
+
+                                    const avatarBg = isPassive ? '#791F1F' : isAdmin ? '#A07A0B' : '#378ADD';
+
+                                    return (
+                                        <tr
+                                            onClick={() => toggleExpand(user.id)}
+                                            className={`border-b border-stone-100 transition-colors cursor-pointer group ${rowBg}`}
                                         >
-                                            <MoreHorizontal size={14} />
-                                        </button>
-                                    </td>
-                                </tr>
+                                            {/* Ad */}
+                                            <td className="py-3 px-4">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div
+                                                        className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                                                        style={{ background: avatarBg }}
+                                                    >
+                                                        {(user.name || 'U').split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2)}
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-black text-stone-700 text-[12px] group-hover:text-[#378ADD] transition-colors block">{user.name}</span>
+                                                        {isAdmin && <span className="text-[9px] font-bold text-[#A07A0B] uppercase tracking-widest">Yönetici</span>}
+                                                        {isPassive && <span className="text-[9px] font-bold text-[#791F1F] uppercase tracking-widest">Pasif</span>}
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            {/* E-posta */}
+                                            <td className="py-3 px-4 text-stone-500 text-[11px] font-mono">{user.email}</td>
+
+                                            {/* Departman */}
+                                            <td className="py-3 px-4">
+                                                <span className="text-[10px] font-bold text-stone-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-md">
+                                                    {user.department || 'Belirtilmemiş'}
+                                                </span>
+                                            </td>
+
+                                            {/* Oturum */}
+                                            <td className="py-3 px-4 text-right">
+                                                <span className="text-[13px] font-black text-[#378ADD]">{user.sessionCount ?? 0}</span>
+                                            </td>
+
+                                            {/* Token */}
+                                            <td className="py-3 px-4 text-right">
+                                                <span className="text-[12px] font-black text-[#7F77DD] font-mono">{fmtToken(user.totalTokens)}</span>
+                                            </td>
+
+                                            {/* Durum */}
+                                            <td className="py-3 px-4">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block w-max border ${user.status === 'Aktif'
+                                                    ? 'bg-[#EAF3DE] text-[#3B6D11] border-[#3B6D11]/20'
+                                                    : 'bg-[#FCEBEB] text-[#791F1F] border-[#791F1F]/20'
+                                                    }`}>
+                                                    {user.status}
+                                                </span>
+                                            </td>
+
+                                            {/* Son Giriş */}
+                                            <td className="py-3 px-4 text-stone-400 text-[11px] font-mono">{user.lastLogin}</td>
+
+                                            {/* Accordion ok */}
+                                            <td className="py-3 px-2 text-center">
+                                                <ChevronRight
+                                                    size={14}
+                                                    className={`text-stone-400 transition-all duration-200 mx-auto ${expandedUserId === user.id
+                                                        ? 'rotate-90 text-[#378ADD]'
+                                                        : 'group-hover:text-stone-600'
+                                                        }`}
+                                                />
+                                            </td>
+                                        </tr>
+                                    );
+                                })()}
+
+                                {/* Inline Dashboard Accordion */}
                                 {expandedUserId === user.id && (
                                     <tr>
-                                        <td colSpan="6" className="p-0 border-b border-slate-200 bg-slate-50/40">
-                                            <div className="px-6 py-6 border-t border-slate-100">
-                                                <UserDetailView
-                                                    user={user}
-                                                    onBack={() => setExpandedUserId(null)}
-                                                    onUpdateStatus={(newStatus) => {
-                                                        fetch(`/api/auth/users/${user.id}/status`, {
-                                                            method: 'PUT',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({ status: newStatus })
-                                                        }).then(res => {
-                                                            if (res.ok) setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
-                                                        }).catch(err => console.error('Durum güncellenemedi', err));
-                                                    }}
-                                                    onDelete={() => {
-                                                        fetch(`/api/auth/users/${user.id}`, { method: 'DELETE' })
-                                                            .then(res => {
-                                                                if (res.ok) {
-                                                                    setUsers(prev => prev.filter(u => u.id !== user.id));
-                                                                    setExpandedUserId(null);
-                                                                }
-                                                            }).catch(err => console.error('Kullanıcı silinemedi', err));
-                                                    }}
-                                                />
-                                            </div>
+                                        <td colSpan={8} className="p-0">
+                                            <InlineUserDashboard
+                                                userId={user.id}
+                                                userName={user.name}
+                                            />
                                         </td>
                                     </tr>
                                 )}
                             </React.Fragment>
                         ))}
+                        {filteredUsers.length === 0 && (
+                            <tr>
+                                <td colSpan={9} className="py-12 text-center text-[12px] text-stone-400 italic">Kullanıcı bulunamadı.</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+}
 
-            {dashboardUser && <UserDashboardModal user={dashboardUser} onClose={() => setDashboardUser(null)} />}
+/* ─────────────────────────────────────────────────────────────
+   KISITLAMALAR SEKMESİ (YENİ)
+───────────────────────────────────────────────────────────── */
+function RestrictionsTab() {
+    const [users, setUsers] = useState([]);
+    const [selectedUserId, setSelectedUserId] = useState(null);
+
+    useEffect(() => {
+        fetch('/api/auth/users')
+            .then(res => res.json())
+            .then(data => {
+                setUsers(data);
+                if (data.length > 0) {
+                    setSelectedUserId(data[0].id);
+                }
+            })
+            .catch(err => console.error('Kullanıcılar yüklenemedi', err));
+    }, []);
+
+    const selectedUser = users.find(u => u.id === selectedUserId);
+
+    return (
+        <div className="flex gap-6 h-full animate-in fade-in duration-300 max-w-5xl mx-auto">
+            {/* User List Sidebar */}
+            <div className="w-64 flex flex-col bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden shrink-0 h-[650px] max-h-full">
+                <div className="p-4 border-b border-stone-200 bg-stone-50/50 font-semibold text-[11px] uppercase tracking-wide text-stone-500 flex items-center gap-2">
+                    <Users size={14} className="text-[#378ADD]" /> Kullanıcı Seçimi
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                    {users.map(u => (
+                        <button
+                            key={u.id}
+                            onClick={() => setSelectedUserId(u.id)}
+                            className={`w-full flex items-center justify-between text-left px-3 py-2.5 text-[12px] rounded-md transition-colors ${selectedUserId === u.id ? 'bg-[#378ADD]/10 text-[#378ADD] font-semibold' : 'text-stone-600 hover:bg-stone-50'}`}
+                        >
+                            <span>{u.name}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-stone-300'}`}></span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Restrictions Panel */}
+            <div className="flex-1 overflow-y-auto bg-white border border-stone-200 rounded-xl shadow-sm p-6 h-[650px] max-h-full">
+                {selectedUser ? (
+                    <UserDetailView
+                        key={selectedUser.id}
+                        user={selectedUser}
+                        onBack={() => setSelectedUserId(null)}
+                        onUpdateStatus={(newStatus) => {
+                            fetch(`/api/auth/users/${selectedUser.id}/status`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: newStatus })
+                            }).then(res => {
+                                if (res.ok) {
+                                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: newStatus } : u));
+                                }
+                            });
+                        }}
+                        onDelete={() => {
+                            fetch(`/api/auth/users/${selectedUser.id}`, { method: 'DELETE' })
+                                .then(res => {
+                                    if (res.ok) {
+                                        setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
+                                        setSelectedUserId(null);
+                                    }
+                                });
+                        }}
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-stone-400">
+                        <Shield size={32} className="opacity-20 mb-3 text-stone-300" />
+                        <span className="text-[13px] font-medium text-stone-500">Lütfen soldan bir kullanıcı seçin.</span>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -237,6 +366,7 @@ function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState(user.status);
+    const [activeSubTab, setActiveSubTab] = useState('models');
 
     useEffect(() => {
         fetch(`/api/auth/users/${user.id}/permissions-context`)
@@ -270,8 +400,8 @@ function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
     if (!context) {
         return (
             <div className="flex items-center justify-center h-48 w-full animate-in fade-in">
-                <span className="text-[12px] text-slate-400 font-medium flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-slate-200 border-t-[#b91d2c] rounded-full animate-spin" />
+                <span className="text-[12px] text-stone-400 font-medium flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-stone-200 border-t-[#378ADD] rounded-full animate-spin" />
                     Sistem Yetkileri Toplanıyor...
                 </span>
             </div>
@@ -281,98 +411,120 @@ function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
     return (
         <div className="flex flex-col animate-in fade-in slide-in-from-top-2 duration-300">
 
-            {/* 3 Kolonlu Yetki Izgarası */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-
-                {/* KOLON 1: Model Yetkileri — Gerçek YZ modelleri */}
-                <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
-                        <div className="p-1.5 rounded bg-[#b91d2c]/10">
-                            <Cpu size={12} className="text-[#b91d2c]" />
-                        </div>
-                        <h3 className="text-[12px] font-bold text-slate-800">1. Model Yetkileri</h3>
-                        <span className="ml-auto text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">
-                            {context.models.filter(m => meta[m.key] !== false).length}/{context.models.length} aktif
-                        </span>
+            {/* Alt Sekme Menüsü */}
+            <div className="flex border-b border-stone-200 mb-5 gap-4 px-1">
+                <button
+                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'models' ? 'border-[#378ADD] text-[#378ADD]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
+                    onClick={() => setActiveSubTab('models')}
+                >
+                    <div className={`p-1 rounded ${activeSubTab === 'models' ? 'bg-[#378ADD]/10' : 'bg-stone-100'}`}>
+                        <Cpu size={14} className={activeSubTab === 'models' ? 'text-[#378ADD]' : 'text-stone-500'} />
                     </div>
-                    <div className="flex-1">
+                    Model Yetkileri
+                    <span className="ml-1 text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-medium">
+                        {context.models.filter(m => meta[m.key] !== false).length}/{context.models.length}
+                    </span>
+                </button>
+                <button
+                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'archives' ? 'border-[#D85A30] text-[#D85A30]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
+                    onClick={() => setActiveSubTab('archives')}
+                >
+                    <div className={`p-1 rounded ${activeSubTab === 'archives' ? 'bg-[#D85A30]/10' : 'bg-stone-100'}`}>
+                        <Database size={14} className={activeSubTab === 'archives' ? 'text-[#D85A30]' : 'text-stone-500'} />
+                    </div>
+                    Belge / Arşiv Yetkileri
+                </button>
+                <button
+                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'tabs' ? 'border-[#1D9E75] text-[#1D9E75]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
+                    onClick={() => setActiveSubTab('tabs')}
+                >
+                    <div className={`p-1 rounded ${activeSubTab === 'tabs' ? 'bg-[#1D9E75]/10' : 'bg-stone-100'}`}>
+                        <LayoutDashboard size={14} className={activeSubTab === 'tabs' ? 'text-[#1D9E75]' : 'text-stone-500'} />
+                    </div>
+                    Görünür Sekmeler
+                </button>
+            </div>
+
+            {/* İçerik Alanı */}
+            <div className="min-h-[220px] mb-6">
+                {activeSubTab === 'models' && (
+                    <div className="animate-in fade-in flex flex-col gap-2">
                         {context.models.length === 0 ? (
-                            <div className="py-1.5 px-2 text-[10px] text-slate-400 italic">Tanımlı model bulunamadı.</div>
+                            <div className="py-2 text-[11px] text-stone-400 italic">Tanımlı model bulunamadı.</div>
                         ) : (
-                            context.models.map(m => {
-                                const checked = meta[m.key] !== undefined ? meta[m.key] : true;
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {context.models.map(m => {
+                                    const checked = meta[m.key] !== undefined ? meta[m.key] : true;
+                                    return (
+                                        <div key={m.key} className="flex items-center gap-2 py-2 px-3 border border-stone-200 rounded-md hover:border-stone-300 hover:shadow-sm bg-white group cursor-pointer transition-all" onClick={() => updateMeta(m.key, !checked)}>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[12px] font-medium text-stone-700 group-hover:text-stone-900 truncate">
+                                                        {m.label}
+                                                    </span>
+                                                    {m.model_id && (
+                                                        <span className="text-[10px] font-mono text-stone-400 truncate">{m.model_id}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className={`shrink-0 w-8 h-4 rounded-full transition-all relative flex items-center ${checked ? 'bg-[#1D9E75]' : 'bg-stone-200'}`}>
+                                                <div className={`w-3 h-3 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[18px]' : 'left-[2px]'}`} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeSubTab === 'archives' && (
+                    <div className="animate-in fade-in max-h-[300px] overflow-y-auto pr-2 bg-white border border-stone-200 rounded-md p-4 shadow-sm">
+                        <div className="space-y-1">
+                            {context.archives
+                                .filter(a => !a.parent_id || a.parent_id === null || a.parent_id === 'null')
+                                .map(a => (
+                                    <ArchiveTreeItem
+                                        key={a.key}
+                                        item={a}
+                                        archives={context.archives}
+                                        meta={meta}
+                                        updateMeta={updateMeta}
+                                    />
+                                ))
+                            }
+                            {context.archives.length === 0 && (
+                                <div className="py-2 text-[11px] text-stone-400 italic">Yetkilendirilecek arşiv klasörü bulunamadı.</div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {activeSubTab === 'tabs' && (
+                    <div className="animate-in fade-in flex flex-col gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {SETTINGS_TABS.map(t => {
+                                const checked = meta[t.key] !== undefined ? meta[t.key] : true;
                                 return (
-                                    <div key={m.key} className="flex items-center gap-1 py-1 pr-1 group cursor-pointer" onClick={() => updateMeta(m.key, !checked)}>
-                                        <div className="w-1 h-1 rounded-full bg-slate-300 shrink-0 ml-0.5 mr-0.5" />
-                                        <span className="flex-1 text-[11px] text-slate-600 group-hover:text-slate-800 truncate transition-colors">
-                                            {m.label}
-                                        </span>
-                                        {m.model_id && (
-                                            <span className="text-[9px] font-mono text-slate-300 mr-1.5">{m.model_id}</span>
-                                        )}
-                                        <div className={`shrink-0 w-7 h-3.5 rounded-full transition-all relative flex items-center ${checked ? 'bg-emerald-400' : 'bg-slate-200'}`}>
-                                            <div className={`w-2.5 h-2.5 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[15px]' : 'left-[2px]'}`} />
+                                    <div key={t.key} className="flex items-center gap-2 py-2.5 px-3 border border-stone-200 rounded-md hover:border-stone-300 hover:shadow-sm bg-white group cursor-pointer transition-all" onClick={() => updateMeta(t.key, !checked)}>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="text-[12px] font-medium text-stone-700 group-hover:text-stone-900 truncate">
+                                                {t.label}
+                                            </span>
+                                        </div>
+                                        <div className={`shrink-0 w-8 h-4 rounded-full transition-all relative flex items-center ${checked ? 'bg-[#1D9E75]' : 'bg-stone-200'}`}>
+                                            <div className={`w-3 h-3 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[18px]' : 'left-[2px]'}`} />
                                         </div>
                                     </div>
                                 );
-                            })
-                        )}
-                    </div>
-                </div>
-
-                {/* KOLON 2: Arşiv/Belge Yetkileri — Ağaç yapısı */}
-                <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
-                        <div className="p-1.5 rounded bg-blue-50">
-                            <Database size={12} className="text-blue-600" />
+                            })}
                         </div>
-                        <h3 className="text-[12px] font-bold text-slate-800">2. Belge / Arşiv Yetkileri</h3>
                     </div>
-                    <div className="space-y-1 flex-1 max-h-80 overflow-y-auto pr-1">
-                        {context.archives
-                            .filter(a => !a.parent_id || a.parent_id === null || a.parent_id === 'null')
-                            .map(a => (
-                                <ArchiveTreeItem
-                                    key={a.key}
-                                    item={a}
-                                    archives={context.archives}
-                                    meta={meta}
-                                    updateMeta={updateMeta}
-                                />
-                            ))
-                        }
-                    </div>
-                </div>
-
-                {/* KOLON 3: Görünür Sekmeler */}
-                <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
-                        <div className="p-1.5 rounded bg-emerald-50">
-                            <LayoutDashboard size={12} className="text-emerald-600" />
-                        </div>
-                        <h3 className="text-[12px] font-bold text-slate-800">3. Görünür Sekmeler</h3>
-                    </div>
-                    <div className="flex-1">
-                        {SETTINGS_TABS.map(t => {
-                            const checked = meta[t.key] !== undefined ? meta[t.key] : true;
-                            return (
-                                <div key={t.key} className="flex items-center gap-1 py-1 pr-1 group cursor-pointer" onClick={() => updateMeta(t.key, !checked)}>
-                                    <div className="w-1 h-1 rounded-full bg-slate-300 shrink-0 ml-0.5 mr-0.5" />
-                                    <span className="flex-1 text-[11px] text-slate-600 group-hover:text-slate-800 truncate transition-colors">
-                                        {t.label}
-                                    </span>
-                                    <div className={`shrink-0 w-7 h-3.5 rounded-full transition-all relative flex items-center ${checked ? 'bg-emerald-400' : 'bg-slate-200'}`}>
-                                        <div className={`w-2.5 h-2.5 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[15px]' : 'left-[2px]'}`} />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Alt Butonlar */}
-            <div className="flex items-center pt-4 border-t border-slate-200/60">
+            <div className="flex items-center pt-4 mt-auto border-t border-stone-200">
                 {/* Sol: Tehlikeli işlemler */}
                 <div className="flex items-center gap-2">
                     <button
@@ -382,15 +534,15 @@ function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
                             onUpdateStatus(newStatus);
                         }}
                         className={`text-[11px] font-medium px-3 py-1.5 rounded-sm transition-colors border ${status === 'Aktif'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                            ? 'bg-[#FAEEDA] text-[#854F0B] border-stone-200 hover:bg-[#F2DFBA]'
+                            : 'bg-[#EAF3DE] text-[#3B6D11] border-stone-200 hover:bg-[#CFE2B6]'
                             }`}
                     >
                         {status === 'Aktif' ? 'Hesabı Askıya Al' : 'Hesabı Aktifleştir'}
                     </button>
                     <button
                         onClick={() => { if (window.confirm('Bu kullanıcıyı tamamen silmek istediğinize emin misiniz?')) onDelete(); }}
-                        className="text-[11px] font-medium px-3 py-1.5 rounded-sm border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
+                        className="text-[11px] font-medium px-3 py-1.5 rounded-sm border bg-[#FCEBEB] text-[#791F1F] border-stone-200 hover:bg-[#F2D7D7] transition-colors"
                     >
                         Kullanıcıyı Sil
                     </button>
@@ -400,16 +552,16 @@ function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
                 <div className="flex items-center gap-2 ml-auto">
                     <button
                         onClick={onBack}
-                        className="text-[11px] font-medium text-slate-400 hover:text-slate-700 transition-colors px-3 py-1.5"
+                        className="text-[11px] font-medium text-stone-500 hover:text-stone-800 transition-colors px-3 py-1.5"
                     >
                         Paneli Kapat
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className={`text-[11px] font-medium px-3 py-1.5 rounded-sm border transition-all ${isDirty
-                            ? 'bg-[#b91d2c] text-white border-[#b91d2c] hover:bg-[#961e27]'
-                            : 'bg-slate-50 text-slate-400 border-slate-200 cursor-default'
+                        className={`text-[11px] font-medium px-4 py-1.5 rounded-md border transition-all ${isDirty
+                            ? 'bg-[#378ADD] text-white border-[#378ADD] hover:bg-[#0C447C] shadow-sm'
+                            : 'bg-stone-50 text-stone-400 border-stone-200 cursor-default'
                             }`}
                     >
                         {isSaving ? 'Kaydediliyor...' : 'Kaydet'}
@@ -455,9 +607,9 @@ function AuditTab() {
 
     if (isLoading && !data) {
         return (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400 w-full">
-                <div className="w-8 h-8 rounded-full border-4 border-slate-100 border-t-[#b91d2c] animate-spin mb-4" />
-                <h3 className="text-[13px] font-semibold text-slate-700 animate-pulse">Sistem Verileri Derleniyor...</h3>
+            <div className="flex flex-col items-center justify-center h-64 text-stone-400 w-full">
+                <div className="w-8 h-8 rounded-full border-4 border-stone-100 border-t-[#378ADD] animate-spin mb-4" />
+                <h3 className="text-[13px] font-semibold text-stone-700 animate-pulse">Sistem Verileri Derleniyor...</h3>
             </div>
         );
     }
@@ -467,72 +619,72 @@ function AuditTab() {
     const { overview, users, timeline } = data;
 
     return (
-        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-5xl mx-auto">
             {/* OVERVIEW CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white border text-left border-slate-200 rounded-lg p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex justify-center items-center">
                         <Users size={18} />
                     </div>
                     <div>
-                        <p className="text-[11px] text-slate-500 font-medium">Şu An Aktif Kullanıcı</p>
-                        <h4 className="text-[18px] font-bold text-slate-800">{overview.online_users}</h4>
+                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Şu An Aktif Kullanıcı</p>
+                        <h4 className="text-[18px] font-bold text-stone-800">{overview.online_users}</h4>
                     </div>
                 </div>
-                <div className="bg-white border text-left border-slate-200 rounded-lg p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex justify-center items-center">
                         <Shield size={18} />
                     </div>
                     <div>
-                        <p className="text-[11px] text-slate-500 font-medium">Başarısız Giriş Denemesi</p>
-                        <h4 className="text-[18px] font-bold text-slate-800">{overview.failed_logins} <span className="text-[10px] text-red-500 font-normal ml-1">/ bugün</span></h4>
+                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Başarısız Giriş Denemesi</p>
+                        <h4 className="text-[18px] font-bold text-stone-800">{overview.failed_logins} <span className="text-[10px] text-red-500 font-normal ml-1">/ bugün</span></h4>
                     </div>
                 </div>
-                <div className="bg-white border text-left border-slate-200 rounded-lg p-4 shadow-sm flex items-center gap-4">
+                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex justify-center items-center">
                         <Zap size={18} />
                     </div>
                     <div>
-                        <p className="text-[11px] text-slate-500 font-medium">Sistem API Sinyali</p>
-                        <h4 className="text-[18px] font-bold text-slate-800">{overview.total_signals} <span className="text-[10px] text-slate-400 font-normal ml-1">istek</span></h4>
+                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Sistem API Sinyali</p>
+                        <h4 className="text-[18px] font-bold text-stone-800">{overview.total_signals} <span className="text-[10px] text-stone-400 font-normal ml-1">istek</span></h4>
                     </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px]">
                 {/* USERS TABLE */}
-                <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="text-[13px] font-bold text-slate-800 flex items-center gap-2"><LayoutDashboard size={14} className="text-[#b91d2c]" /> Kullanıcı Analizleri</h3>
-                        <span className="text-[10px] text-slate-400 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Canlı Takip</span>
+                <div className="lg:col-span-2 bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+                    <div className="p-4 border-b border-stone-200 flex justify-between items-center bg-stone-50/50">
+                        <h3 className="text-[11px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2"><LayoutDashboard size={14} className="text-[#378ADD]" /> Kullanıcı Analizleri</h3>
+                        <span className="text-[10px] text-stone-400 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Canlı Takip</span>
                     </div>
                     <div className="flex-1 overflow-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-slate-50/50 text-[10px] uppercase text-slate-400 font-bold sticky top-0 z-10 border-b border-slate-100">
+                            <thead className="bg-stone-50 text-[10px] uppercase text-stone-500 font-medium tracking-wide sticky top-0 z-10 border-b border-stone-200">
                                 <tr>
-                                    <th className="px-4 py-2">Kullanıcı</th>
-                                    <th className="px-4 py-2">Eğilim / Tab</th>
-                                    <th className="px-4 py-2">API İs.</th>
-                                    <th className="px-4 py-2">Token</th>
-                                    <th className="px-4 py-2">Süre</th>
+                                    <th className="px-4 py-2.5">Kullanıcı</th>
+                                    <th className="px-4 py-2.5">Eğilim / Tab</th>
+                                    <th className="px-4 py-2.5">API İs.</th>
+                                    <th className="px-4 py-2.5">Token</th>
+                                    <th className="px-4 py-2.5">Süre</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 text-[11px] text-slate-600">
+                            <tbody className="divide-y divide-stone-100 text-[11px] text-stone-600">
                                 {users.map((u, i) => (
-                                    <tr key={i} className="hover:bg-slate-50">
-                                        <td className="px-4 py-2.5 font-medium text-slate-800 flex items-center gap-2">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Aktif' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                    <tr key={i} className="hover:bg-stone-50 transition-colors">
+                                        <td className="px-4 py-2.5 font-medium text-stone-900 flex items-center gap-2">
+                                            <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-stone-300'}`} />
                                             {u.name}
                                         </td>
-                                        <td className="px-4 py-2.5 max-w-[120px] truncate text-slate-500" title={u.favorite_tab}>{u.favorite_tab}</td>
-                                        <td className="px-4 py-2.5 text-blue-600 font-semibold">{u.api_requests}</td>
-                                        <td className="px-4 py-2.5 text-purple-600 font-semibold">{u.total_tokens.toLocaleString()}</td>
-                                        <td className="px-4 py-2.5 text-slate-500">{u.session_duration}</td>
+                                        <td className="px-4 py-2.5 max-w-[120px] truncate text-stone-500" title={u.favorite_tab}>{u.favorite_tab}</td>
+                                        <td className="px-4 py-2.5 text-[#378ADD] font-semibold">{u.api_requests}</td>
+                                        <td className="px-4 py-2.5 text-[#7F77DD] font-semibold">{u.total_tokens.toLocaleString()}</td>
+                                        <td className="px-4 py-2.5 text-stone-500">{u.session_duration}</td>
                                     </tr>
                                 ))}
                                 {users.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="text-center py-6 text-slate-400 italic">Kayıt bulunamadı.</td>
+                                        <td colSpan={5} className="text-center py-6 text-stone-400 italic">Kayıt bulunamadı.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -541,34 +693,34 @@ function AuditTab() {
                 </div>
 
                 {/* TIMELINE */}
-                <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="text-[13px] font-bold text-slate-800 flex items-center gap-2"><Clock size={14} className="text-[#b91d2c]" /> Canlı Akış</h3>
+                <div className="bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+                    <div className="p-4 border-b border-stone-200 flex justify-between items-center bg-stone-50/50">
+                        <h3 className="text-[11px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2"><Clock size={14} className="text-[#378ADD]" /> Canlı Akış</h3>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {timeline.length === 0 ? (
-                            <div className="h-full flex items-center justify-center text-[11px] text-slate-400 italic">Hareket yok...</div>
+                            <div className="h-full flex items-center justify-center text-[11px] text-stone-400 italic">Hareket yok...</div>
                         ) : (
                             timeline.map((evt, idx) => {
                                 const timeStr = evt.time.split('T')[1]?.substring(0, 5) || evt.time;
                                 return (
                                     <div key={idx} className="flex gap-3 text-[11px]">
-                                        <div className="w-[35px] shrink-0 text-slate-400 font-mono text-[10px] mt-0.5 text-right">{timeStr}</div>
-                                        <div className="flex flex-col relative w-full pb-3 border-l-2 border-slate-100 pl-3">
+                                        <div className="w-[35px] shrink-0 text-stone-400 font-mono text-[10px] mt-0.5 text-right">{timeStr}</div>
+                                        <div className="flex flex-col relative w-full pb-3 border-l-2 border-stone-100 pl-3">
                                             <div
                                                 className="absolute -left-[5px] top-[2px] w-2 h-2 rounded-full border-2 border-white shadow-sm"
                                                 style={{
-                                                    backgroundColor: evt.color === 'red' ? '#f87171' : evt.color === 'emerald' ? '#34d399' : '#60a5fa',
-                                                    outline: `2px solid ${evt.color === 'red' ? '#fca5a5' : evt.color === 'emerald' ? '#6ee7b7' : '#93c5fd'}`
+                                                    backgroundColor: evt.color === 'red' ? '#FCEBEB' : evt.color === 'emerald' ? '#EAF3DE' : '#E6F1FB',
+                                                    outline: `2px solid ${evt.color === 'red' ? '#791F1F' : evt.color === 'emerald' ? '#3B6D11' : '#0C447C'}`
                                                 }}
                                             />
-                                            <span className="font-semibold text-slate-800">{evt.user}</span>
-                                            <span className="text-slate-500 leading-tight">
+                                            <span className="font-semibold text-stone-800">{evt.user}</span>
+                                            <span className="text-stone-500 leading-tight">
                                                 {evt.action.replace("LOGIN_SUCCESS", "Sisteme girdi")
                                                     .replace("LOGIN_FAILED_", "Hatalı Giriş: ")
                                                     .replace("TAB_VIEW", "Sekme geçişi: ")
                                                     .replace("LOGOUT", "Sistemden çıkış yaptı")}
-                                                {evt.detail && <span className="font-bold whitespace-nowrap ml-1 text-slate-600">[{evt.detail.substring(0, 20)}]</span>}
+                                                {evt.detail && <span className="font-bold whitespace-nowrap ml-1 text-stone-600">[{evt.detail.substring(0, 20)}]</span>}
                                             </span>
                                         </div>
                                     </div>
@@ -582,10 +734,8 @@ function AuditTab() {
     );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   KULLANICI DASHBOARD MODALI
-───────────────────────────────────────────────────────────── */
-function UserDashboardModal({ user, onClose }) {
+/* UserDashboardModal kaldırıldı — yerini InlineUserDashboard aldı */
+function _UNUSED_UserDashboardModal({ user, onClose }) {
     const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -604,10 +754,10 @@ function UserDashboardModal({ user, onClose }) {
 
     if (loading) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-                <div className="bg-white py-12 px-20 border border-slate-200 rounded-xl shadow-2xl flex flex-col items-center justify-center gap-4">
-                    <div className="w-8 h-8 rounded-full border-4 border-slate-100 border-t-[#b91d2c] animate-spin" />
-                    <span className="text-slate-500 font-semibold text-[13px] animate-pulse">Sistem Verileri Derleniyor...</span>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white py-12 px-20 border border-stone-200 rounded-xl shadow-2xl flex flex-col items-center justify-center gap-4">
+                    <div className="w-8 h-8 rounded-full border-4 border-stone-100 border-t-[#378ADD] animate-spin" />
+                    <span className="text-stone-500 font-semibold text-[13px] animate-pulse">Sistem Verileri Derleniyor...</span>
                 </div>
             </div>
         );
@@ -616,32 +766,32 @@ function UserDashboardModal({ user, onClose }) {
     if (!dashboardData) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white w-[700px] max-h-[85vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white">
+                <div className="flex items-center justify-between px-6 py-5 border-b border-stone-100 bg-white">
                     <div>
-                        <h2 className="text-[16px] font-bold text-slate-800">{user.name} Detay Özeti</h2>
-                        <p className="text-[12px] text-slate-500 font-mono mt-0.5">{user.email}</p>
+                        <h2 className="text-[16px] font-bold text-stone-900">{user.name} Detay Özeti</h2>
+                        <p className="text-[12px] text-stone-500 font-mono mt-0.5">{user.email}</p>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors">
                         ✕
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-stone-50">
                     {/* Eğitimler */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/60 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                            <BookOpen size={18} className="text-[#b91d2c]" />
-                            <h3 className="text-[14px] font-bold text-slate-800">Sistem İçi Eğitimler</h3>
+                    <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4 border-b border-stone-100 pb-3">
+                            <BookOpen size={18} className="text-[#378ADD]" />
+                            <h3 className="text-[14px] font-bold text-stone-800">Sistem İçi Eğitimler</h3>
                         </div>
-                        <ul className="space-y-3 text-[12px] text-slate-600">
+                        <ul className="space-y-3 text-[12px] text-stone-600">
                             {dashboardData.egitimler.map((egitim, i) => (
-                                <li key={i} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                                    <span className="font-medium text-slate-700">• {egitim.isim}</span>
-                                    <span className={`text-[10px] font-bold tracking-wide px-2.5 py-1 rounded border ${egitim.renk === 'emerald' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                        egitim.renk === 'amber' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                            'bg-slate-50 text-slate-500 border-slate-100'
+                                <li key={i} className="flex items-center justify-between p-2 hover:bg-stone-50 rounded-lg transition-colors">
+                                    <span className="font-medium text-stone-800">• {egitim.isim}</span>
+                                    <span className={`text-[10px] font-bold tracking-wide px-2.5 py-1 rounded border ${egitim.renk === 'emerald' ? 'bg-[#EAF3DE] text-[#3B6D11] border-[#CFE2B6]' :
+                                        egitim.renk === 'amber' ? 'bg-[#FAEEDA] text-[#854F0B] border-[#F2DFBA]' :
+                                            'bg-stone-100 text-stone-600 border-stone-200'
                                         }`}>
                                         {egitim.durum}
                                     </span>
@@ -651,48 +801,48 @@ function UserDashboardModal({ user, onClose }) {
                     </div>
 
                     {/* Son İncelenen Belgeler */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/60 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                            <FileText size={18} className="text-blue-600" />
-                            <h3 className="text-[14px] font-bold text-slate-800">Son İncelenen Belgeler</h3>
+                    <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4 border-b border-stone-100 pb-3">
+                            <FileText size={18} className="text-[#7F77DD]" />
+                            <h3 className="text-[14px] font-bold text-stone-800">Son İncelenen Belgeler</h3>
                         </div>
-                        <ul className="space-y-3 text-[12px] text-slate-600">
+                        <ul className="space-y-3 text-[12px] text-stone-600">
                             {dashboardData.belgeler.map((belge, i) => (
-                                <li key={i} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                                    {belge.type === 'PDF' && <div className="w-8 h-8 rounded bg-red-50 text-red-500 flex items-center justify-center font-bold text-[10px]">PDF</div>}
-                                    {belge.type === 'DOCX' && <div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center font-bold text-[10px]">DOCX</div>}
-                                    {belge.type === 'XLSX' && <div className="w-8 h-8 rounded bg-emerald-50 text-emerald-500 flex items-center justify-center font-bold text-[10px]">XLSX</div>}
-                                    {belge.type === 'FILE' && <div className="w-8 h-8 rounded bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-[10px]">DOSYA</div>}
-                                    <span className="font-medium text-slate-700">{belge.name}</span>
-                                    <span className="text-[10px] text-slate-400 ml-auto whitespace-nowrap">{belge.date}</span>
+                                <li key={i} className="flex items-center gap-3 p-2 hover:bg-stone-50 rounded-lg transition-colors">
+                                    {belge.type === 'PDF' && <div className="w-8 h-8 rounded bg-[#FCEBEB] text-[#791F1F] flex items-center justify-center font-bold text-[10px]">PDF</div>}
+                                    {belge.type === 'DOCX' && <div className="w-8 h-8 rounded bg-[#E6F1FB] text-[#0C447C] flex items-center justify-center font-bold text-[10px]">DOCX</div>}
+                                    {belge.type === 'XLSX' && <div className="w-8 h-8 rounded bg-[#EAF3DE] text-[#3B6D11] flex items-center justify-center font-bold text-[10px]">XLSX</div>}
+                                    {belge.type === 'FILE' && <div className="w-8 h-8 rounded bg-stone-100 text-stone-600 flex items-center justify-center font-bold text-[10px]">DOSYA</div>}
+                                    <span className="font-medium text-stone-800">{belge.name}</span>
+                                    <span className="text-[10px] text-stone-400 ml-auto whitespace-nowrap">{belge.date}</span>
                                 </li>
                             ))}
                             {dashboardData.belgeler.length === 0 && (
-                                <p className="text-[11px] text-slate-400 italic">Henüz incelenen belge yok.</p>
+                                <p className="text-[11px] text-stone-400 italic">Henüz incelenen belge yok.</p>
                             )}
                         </ul>
                     </div>
 
                     {/* Özel Talepler */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/60 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-                            <MessageSquare size={18} className="text-purple-600" />
-                            <h3 className="text-[14px] font-bold text-slate-800">Yönetimden Özel Talepler</h3>
+                    <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4 border-b border-stone-100 pb-3">
+                            <MessageSquare size={18} className="text-[#D85A30]" />
+                            <h3 className="text-[14px] font-bold text-stone-800">Yönetimden Özel Talepler</h3>
                         </div>
-                        <div className="space-y-3 text-[12px] text-slate-600">
+                        <div className="space-y-3 text-[12px] text-stone-600">
                             {dashboardData.talepler.map((talep, i) => (
-                                <div key={i} className="bg-slate-50/80 p-3 rounded-lg border border-slate-100 relative">
-                                    <div className={`absolute top-3 right-3 w-2 h-2 rounded-full ${talep.renk === 'emerald' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                    <p className="font-semibold text-slate-800 italic">"{talep.mesaj}"</p>
-                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-2">
-                                        <span className={`font-bold ${talep.renk === 'emerald' ? 'text-emerald-600' : 'text-amber-600'}`}>{talep.durum}</span>
-                                        <span className="text-slate-300">•</span>
+                                <div key={i} className="bg-stone-50 p-3 rounded-lg border border-stone-100 relative">
+                                    <div className={`absolute top-3 right-3 w-2 h-2 rounded-full ${talep.renk === 'emerald' ? 'bg-[#3B6D11]' : 'bg-[#EF9F27]'}`} />
+                                    <p className="font-semibold text-stone-800 italic">"{talep.mesaj}"</p>
+                                    <div className="flex items-center gap-2 text-[10px] text-stone-500 mt-2">
+                                        <span className={`font-bold tracking-wide ${talep.renk === 'emerald' ? 'text-[#3B6D11]' : 'text-[#854F0B]'}`}>{talep.durum}</span>
+                                        <span className="text-stone-300">•</span>
                                         <span>Tarih: {talep.tarih}</span>
                                     </div>
                                 </div>
                             ))}
                             {dashboardData.talepler.length === 0 && (
-                                <p className="text-[11px] text-slate-400 italic">Herhangi bir özel izin talebi bulunmuyor.</p>
+                                <p className="text-[11px] text-stone-400 italic">Herhangi bir özel izin talebi bulunmuyor.</p>
                             )}
                         </div>
                     </div>

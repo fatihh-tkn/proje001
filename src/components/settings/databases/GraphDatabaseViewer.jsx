@@ -203,13 +203,13 @@ const GraphDatabaseViewer = () => {
 
     return (
         <div className="flex flex-col w-full h-full bg-[#fafafa] relative overflow-hidden font-sans">
-            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-slate-200 bg-white shrink-0 z-20 shadow-sm">
-                <div className="p-1.5 bg-[#A01B1B]/10 border border-[#A01B1B]/20 rounded-lg">
-                    <Network size={15} className="text-[#A01B1B]" />
+            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-stone-200 bg-white shrink-0 z-20 shadow-sm">
+                <div className="p-1.5 bg-[#378ADD]/10 border border-[#378ADD]/20 rounded-lg">
+                    <Network size={15} className="text-[#378ADD]" />
                 </div>
                 <div>
-                    <h2 className="text-[13px] font-bold text-slate-800 leading-none">Ağ İlişki Haritası (Knowledge Graph)</h2>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
+                    <h2 className="text-[13px] font-bold text-stone-800 leading-none">Ağ İlişki Haritası (Knowledge Graph)</h2>
+                    <p className="text-[10px] text-stone-400 mt-0.5">
                         Düğümlere tıklayarak ilişkileri izole edebilir, fare ile haritayı döndürebilirsiniz.
                     </p>
                 </div>
@@ -220,49 +220,49 @@ const GraphDatabaseViewer = () => {
                         onClick={() => setAutoRotate(!autoRotate)}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors duration-200 border ${autoRotate
                             ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
-                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                            : 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
                             }`}
                         title="Otomatik Döndürme (Tüm ağı yavaşça çevirir)"
                     >
-                        {autoRotate ? <Pause size={12} className="fill-blue-600" /> : <Play size={12} className="fill-slate-500" />}
+                        {autoRotate ? <Pause size={12} className="fill-blue-600" /> : <Play size={12} className="fill-stone-500" />}
                         {autoRotate ? 'Durdur' : 'Döndür'}
                     </button>
 
-                    <span className="w-[1px] h-4 bg-slate-200 mx-1"></span>
+                    <span className="w-[1px] h-4 bg-stone-200 mx-1"></span>
 
                     <select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 focus:outline-none focus:border-[#A01B1B] appearance-none"
+                        className="text-[11px] font-semibold text-stone-600 bg-stone-50 px-2.5 py-1 rounded-md border border-stone-200 focus:outline-none focus:border-[#378ADD] appearance-none"
                     >
                         <option value="all">Tümü (Metin + Medya)</option>
                         <option value="text">Sadece Metinler</option>
                         <option value="media">Sadece Ses & Video</option>
                     </select>
 
-                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                    <span className="text-[11px] font-semibold text-stone-500 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200">
                         {graphData.nodes?.length || 0} Node, {graphData.links?.length || 0} Edge
                     </span>
                     <button
                         onClick={fetchGraph}
-                        className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                        className="p-1.5 hover:bg-stone-100 text-stone-500 rounded-lg transition-colors border border-transparent hover:border-stone-200"
                     >
                         <RefreshCw size={13} className={`${loading ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-gradient-to-b from-white to-slate-50">
+            <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-gradient-to-b from-white to-stone-50">
                 {loading ? (
                     <div className="flex flex-col items-center gap-3">
-                        <div className="w-8 h-8 border-[3px] border-[#A01B1B] border-t-transparent rounded-full animate-spin" />
-                        <span className="text-sm font-semibold text-slate-500 tracking-wide">Graf Yükleniyor...</span>
+                        <div className="w-8 h-8 border-[3px] border-[#378ADD] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm font-semibold text-stone-500 tracking-wide">Graf Yükleniyor...</span>
                     </div>
                 ) : (
                     <Suspense fallback={
                         <div className="flex flex-col items-center gap-3">
-                            <div className="w-8 h-8 border-[3px] border-[#A01B1B] border-t-transparent rounded-full animate-spin" />
-                            <span className="text-sm text-slate-500 animate-pulse">3D Motor Yükleniyor...</span>
+                            <div className="w-8 h-8 border-[3px] border-[#378ADD] border-t-transparent rounded-full animate-spin" />
+                            <span className="text-sm text-stone-500 animate-pulse">3D Motor Yükleniyor...</span>
                         </div>
                     }>
                         <ForceGraph3D
@@ -313,17 +313,17 @@ const GraphDatabaseViewer = () => {
             </div>
 
             {selectedNode && (
-                <div className="absolute left-6 bottom-6 w-80 bg-white/95 backdrop-blur-md border border-slate-200 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] rounded-xl p-4 z-30 flex flex-col gap-3 transition-opacity">
+                <div className="absolute left-6 bottom-6 w-80 bg-white/95 backdrop-blur-md border border-stone-200 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] rounded-xl p-4 z-30 flex flex-col gap-3 transition-opacity">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="p-1 px-1.5 bg-emerald-100 rounded-md border border-emerald-200">
-                                <span className="text-[10px] font-black tracking-wide text-emerald-700">ODAK</span>
+                            <div className="p-1 px-1.5 bg-[#378ADD]/10 rounded-md border border-[#378ADD]/20">
+                                <span className="text-[10px] font-black tracking-wide text-[#378ADD]">ODAK</span>
                             </div>
-                            <h3 className="text-[12px] font-bold text-slate-800 uppercase tracking-wide truncate max-w-[150px]">{selectedNode.file_type || 'Metin'}</h3>
+                            <h3 className="text-[12px] font-bold text-stone-800 uppercase tracking-wide truncate max-w-[150px]">{selectedNode.file_type || 'Metin'}</h3>
                         </div>
                         <button
                             onClick={clearSelection}
-                            className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded-md"
+                            className="text-stone-400 hover:text-red-500 transition-colors p-1 rounded-md"
                         >
                             <X size={14} />
                         </button>
@@ -335,20 +335,20 @@ const GraphDatabaseViewer = () => {
                         </div>
                         {selectedNode.location && (
                             <div>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Harita Konumu (Chunk P.):</span>
-                                <span className="text-[11px] text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">{selectedNode.location}</span>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest block mb-0.5">Harita Konumu (Chunk P.):</span>
+                                <span className="text-[11px] text-stone-600 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">{selectedNode.location}</span>
                             </div>
                         )}
                         <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Vektörel İçerik:</span>
-                            <p className="text-[10.5px] text-slate-700 font-serif leading-relaxed line-clamp-4 border-l-2 border-emerald-500 pl-2 mt-1">
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest block mb-0.5">Vektörel İçerik:</span>
+                            <p className="text-[10.5px] text-stone-700 font-serif leading-relaxed line-clamp-4 border-l-2 border-[#378ADD] pl-2 mt-1">
                                 {selectedNode.content || 'İçerik yok'}
                             </p>
                         </div>
 
-                        <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[10px] font-medium text-slate-500">
-                                Toplam <strong className="text-amber-600 font-bold">{highlightLinks.size}</strong> ağ bağlantısı
+                        <div className="pt-2 mt-2 border-t border-stone-100 flex items-center justify-between">
+                            <span className="text-[10px] font-medium text-stone-500">
+                                Toplam <strong className="text-[#378ADD] font-bold">{highlightLinks.size}</strong> ağ bağlantısı
                             </span>
                         </div>
                     </div>

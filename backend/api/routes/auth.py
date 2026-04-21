@@ -108,8 +108,33 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/users")
 def get_users(db: Session = Depends(get_db)):
+    from sqlalchemy import select, func
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     users = db.query(Kullanici).all()
-    # Serialize for frontend map
+
+    # --- Session counts (bugünkü LOGIN_SUCCESS olayları) ---
+    session_rows = (
+        db.query(DenetimIzi.kullanici_kimlik, func.count(DenetimIzi.kimlik).label("cnt"))
+        .filter(
+            DenetimIzi.islem_turu == "LOGIN_SUCCESS",
+            DenetimIzi.olusturulma_tarihi.like(f"{today}%")
+        )
+        .group_by(DenetimIzi.kullanici_kimlik)
+        .all()
+    )
+    session_counts = {row.kullanici_kimlik: row.cnt for row in session_rows}
+
+    # --- Token totals (bugünkü API logları) ---
+    from database.sql.models import ApiLogu as ApiLog
+    token_rows = (
+        db.query(ApiLog.kullanici_kimlik, func.coalesce(func.sum(ApiLog.toplam_token), 0).label("tok"))
+        .filter(ApiLog.olusturulma_tarihi.like(f"{today}%"))
+        .group_by(ApiLog.kullanici_kimlik)
+        .all()
+    )
+    token_counts = {row.kullanici_kimlik: int(row.tok) for row in token_rows}
+
     return [{
         "id": u.kimlik,
         "name": u.tam_ad,
@@ -117,7 +142,10 @@ def get_users(db: Session = Depends(get_db)):
         "role": "Sistem Yöneticisi" if u.super_kullanici_mi else "Standart Kullanıcı",
         "status": "Aktif" if u.aktif_mi else "Askıya Alındı",
         "lastLogin": u.son_giris_tarihi or "Bilinmiyor",
-        "meta": u.meta or {}
+        "meta": u.meta or {},
+        "department": (u.meta or {}).get("department", "Belirtilmemiş"),
+        "sessionCount": session_counts.get(u.kimlik, 0),
+        "totalTokens": token_counts.get(u.kimlik, 0),
     } for u in users]
 
 class StatusUpdateRequest(BaseModel):

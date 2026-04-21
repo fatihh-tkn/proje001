@@ -5,6 +5,7 @@ import ChatInput from './components/chatbar/ChatBar';
 import { BootLogs } from './components/workspace/BootLogs';
 import { useWorkspaceStore } from './store/workspaceStore';
 import Login from './components/auth/Login';
+import OnboardingWizard from './components/auth/OnboardingWizard';
 
 function App() {
   const {
@@ -136,6 +137,15 @@ function App() {
         isSideOpen={isRightOpen}
         setIsSideOpen={setIsRightOpen}
       />
+
+      {isLoggedIn && !currentUser?.meta?.onboarding_completed && (
+        <OnboardingWizard
+          user={currentUser}
+          onComplete={(newMeta) => {
+            setCurrentUser({ ...currentUser, meta: newMeta });
+          }}
+        />
+      )}
 
     </div>
   );
