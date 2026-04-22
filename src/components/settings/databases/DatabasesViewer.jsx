@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Database, Network, Table, DatabaseZap, PackageOpen, BarChart3, Mic } from 'lucide-react';
+import { Database, Network, Table, DatabaseZap, PackageOpen, BarChart3 } from 'lucide-react';
 
 import DatabaseViewer from '../DatabaseViewer';
 import VectorDatabaseViewer from './VectorDatabaseViewer';
 import SqlDatabaseViewer from '../SqlDatabaseViewer';
 import GraphDatabaseViewer from './GraphDatabaseViewer';
 import ArchiveDocsViewer from '../archive/ArchiveDocsViewer';
-import AudioArchiveViewer from '../meetings/AudioArchiveViewer';
 
 export default function DatabasesViewer() {
     const [activeTab, setActiveTab] = useState('sql');
@@ -16,7 +15,6 @@ export default function DatabasesViewer() {
         { id: 'vector', label: 'Vektör', icon: Database },
         { id: 'graph', label: 'Graf', icon: BarChart3 },
         { id: 'archive', label: 'Arşiv', icon: PackageOpen },
-        { id: 'audio-archive', label: 'Ses Arşivi', icon: Mic },
     ];
 
     return (
@@ -73,9 +71,7 @@ export default function DatabasesViewer() {
                 <div className={`w-full h-full ${activeTab === 'archive' ? 'block' : 'hidden'}`}>
                     <ArchiveDocsViewer />
                 </div>
-                <div className={`w-full h-full ${activeTab === 'audio-archive' ? 'block' : 'hidden'}`}>
-                    <AudioArchiveViewer />
-                </div>
+
             </div>
         </div>
     );

@@ -25,6 +25,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
     const hasPermission = (key, defaultVal = true) => {
         if (!currentUser) return defaultVal;
+        if (currentUser.super) return true;
         return currentUser.meta?.[key] !== undefined ? currentUser.meta[key] : defaultVal;
     };
 
@@ -40,11 +41,10 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
                 // Frontend-side archive policy filtering based on explicit file/folder toggles
                 let items = data.items || [];
-                if (currentUser && currentUser.meta) {
+                if (currentUser && currentUser.meta && !currentUser.super) {
                     items = items.filter(item => {
                         const typePrefix = item.file_type === 'folder' ? 'folder' : 'file';
                         const key = `archive_${typePrefix}_${item.id}`;
-                        // If specifically set to false, hide it
                         return currentUser.meta[key] !== false;
                     });
                 }

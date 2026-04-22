@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.orm import Session
 
-from database.sql.models import Belge, VektorParcasi, BilgiIliskisi
+from database.sql.models import Belge, VektorParcasi, BilgiIliskisi, Kullanici
 
 # Backward compatibility
 Document = Belge
@@ -39,6 +39,7 @@ class DocumentRepository:
         storage_path: Optional[str] = None,
         access_role: str = "herkese_acik",
         meta: Optional[dict] = None,
+        havuz_turu: str = "sistem",
     ) -> Belge:
         doc = Belge(
             dosya_adi=filename,
@@ -48,6 +49,7 @@ class DocumentRepository:
             depolama_yolu=storage_path,
             erisim_politikasi=access_role,
             meta=meta or {},
+            havuz_turu=havuz_turu,
         )
         self.db.add(doc)
         self.db.commit()
@@ -62,6 +64,149 @@ class DocumentRepository:
         if access_role:
             stmt = stmt.where(Belge.erisim_politikasi == access_role)
         return list(self.db.scalars(stmt).all())
+
+    def list_system_documents(self, limit: int = 500) -> list[Belge]:
+        """Sistem havuzundaki (admin) tüm belgeleri döner."""
+        stmt = (
+            select(Belge)
+            .where(Belge.havuz_turu == "sistem")
+            .order_by(desc(Belge.olusturulma_tarihi))
+            .limit(limit)
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def list_user_documents(self, user_id: str, limit: int = 500) -> list[Belge]:
+        """Verilen kullanıcının kendi (kullanici) havuzundaki belgelerini döner."""
+        stmt = (
+            select(Belge)
+            .where(Belge.havuz_turu == "kullanici")
+            .where(Belge.yukleyen_kimlik == user_id)
+            .order_by(desc(Belge.olusturulma_tarihi))
+            .limit(limit)
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def get_pool_doc_ids(self, user_id: Optional[str]) -> list[str]:
+        """
+        Kullanıcının RAG sorgulayabileceği belge kimliklerini döner.
+        Kural:
+          - Sistem belgesi → izin listesi boşsa herkese açık (varsayılan),
+            liste doluysa sadece listede olan kullanıcıya açık.
+          - Kullanıcı belgesi → sahibine + izin listesindeki kullanıcılara açık.
+        """
+        tum_sistem = self.db.scalars(
+            select(Belge).where(Belge.havuz_turu == "sistem")
+        ).all()
+
+        sys_ids = [
+            b.kimlik for b in tum_sistem
+            if not user_id
+            or not (b.meta or {}).get("izin_verilen_kullanicilar")  # boşsa herkese açık
+            or user_id in (b.meta or {}).get("izin_verilen_kullanicilar", [])
+        ]
+
+        if not user_id:
+            return sys_ids
+
+        # Kullanıcının kendi yüklediği belgeler
+        usr_stmt = (
+            select(Belge.kimlik)
+            .where(Belge.havuz_turu == "kullanici")
+            .where(Belge.yukleyen_kimlik == user_id)
+        )
+        usr_ids = list(self.db.scalars(usr_stmt).all())
+
+        # Başkasının yüklediği ama erişim izni verilmiş belgeler
+        shared_belgeler = self.db.scalars(
+            select(Belge).where(
+                Belge.havuz_turu == "kullanici",
+                Belge.yukleyen_kimlik != user_id,
+            )
+        ).all()
+        shared_ids = [
+            b.kimlik for b in shared_belgeler
+            if user_id in (b.meta or {}).get("izin_verilen_kullanicilar", [])
+        ]
+
+        return sys_ids + usr_ids + shared_ids
+
+    def get_user_quota_info(self, user_id: str) -> dict:
+        """
+        Kullanıcının kota durumunu döner.
+        {
+          "dosya_limiti": int | None,
+          "depolama_limiti_mb": float | None,
+          "kullanilan_dosya": int,
+          "kullanilan_mb": float,
+          "dolu_mu": bool,
+        }
+        """
+        user = self.db.get(Kullanici, user_id)
+        if not user:
+            return {"hata": "Kullanıcı bulunamadı"}
+
+        # Kullanılan dosya sayısı ve alan
+        dosya_sayisi_row = self.db.execute(
+            select(func.count(Belge.kimlik)).where(
+                Belge.havuz_turu == "kullanici",
+                Belge.yukleyen_kimlik == user_id,
+            )
+        ).scalar() or 0
+
+        toplam_bayt_row = self.db.execute(
+            select(func.coalesce(func.sum(Belge.dosya_boyutu_bayt), 0)).where(
+                Belge.havuz_turu == "kullanici",
+                Belge.yukleyen_kimlik == user_id,
+            )
+        ).scalar() or 0
+
+        kullanilan_mb = round((toplam_bayt_row or 0) / (1024 * 1024), 2)
+
+        dosya_dolu = (
+            user.dosya_limiti is not None
+            and dosya_sayisi_row >= user.dosya_limiti
+        )
+        mb_dolu = (
+            user.depolama_limiti_mb is not None
+            and kullanilan_mb >= user.depolama_limiti_mb
+        )
+
+        return {
+            "kullanici_kimlik": user_id,
+            "dosya_limiti": user.dosya_limiti,
+            "depolama_limiti_mb": user.depolama_limiti_mb,
+            "kullanilan_dosya": dosya_sayisi_row,
+            "kullanilan_mb": kullanilan_mb,
+            "dolu_mu": dosya_dolu or mb_dolu,
+            "dosya_dolu_mu": dosya_dolu,
+            "mb_dolu_mu": mb_dolu,
+        }
+
+    def check_user_can_upload(self, user_id: str, new_file_size_bytes: int = 0) -> tuple[bool, str]:
+        """
+        Kullanıcının yeni dosya yükleyip yükleyemeyeceğini kontrol eder.
+        Döner: (izin_var_mi, red_nedeni)
+        """
+        info = self.get_user_quota_info(user_id)
+        if "hata" in info:
+            return False, info["hata"]
+
+        if info["dosya_limiti"] is not None:
+            if info["kullanilan_dosya"] >= info["dosya_limiti"]:
+                return False, (
+                    f"Dosya limitine ulaşıldı: {info['kullanilan_dosya']}/{info['dosya_limiti']} dosya."
+                )
+
+        if info["depolama_limiti_mb"] is not None:
+            yeni_mb = round(new_file_size_bytes / (1024 * 1024), 2)
+            if info["kullanilan_mb"] + yeni_mb > info["depolama_limiti_mb"]:
+                return False, (
+                    f"Depolama limitine ulaşıldı: "
+                    f"{info['kullanilan_mb']} MB kullanımda, "
+                    f"limit {info['depolama_limiti_mb']} MB."
+                )
+
+        return True, ""
 
     def mark_vectorized(
         self,

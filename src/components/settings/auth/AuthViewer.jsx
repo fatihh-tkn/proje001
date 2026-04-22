@@ -1,19 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Clock, Search, ChevronRight, Plus, UserPlus, FileText, Database, LayoutDashboard, BookOpen, MessageSquare, Cpu, FileCog, Bot, Zap } from 'lucide-react';
+import { Users, Clock, Search, ChevronRight, Plus, UserPlus, LayoutDashboard, BookOpen, Zap, Shield } from 'lucide-react';
 import InlineUserDashboard from './InlineUserDashboard';
-import ArchiveTreeItem from './ArchiveTreeItem';
 import SapEgitimAdminPaneli from './SapEgitimAdminPaneli';
 import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
-
-
-/* Settings menüsündeki sekmelerle birebir eşleşen sabit liste */
-const SETTINGS_TABS = [
-    { key: 'ui_file_processing', label: 'Dosya İşleme', desc: 'Dosya yükleme, işleme ve arşiv yönetimi.', icon: FileCog },
-    { key: 'ui_database', label: 'Veritabanı', desc: 'Sistemdeki dosyalara göz atma ve silme.', icon: Database },
-    { key: 'ui_ai_orchestrator', label: 'Yapay Zeka Merkezi', desc: 'YZ modelleri, agentlar ve chatbot etkileşimi.', icon: Bot },
-    { key: 'ui_metrics', label: 'Sistem Metrikleri', desc: 'Analitik grafikleri ve izleme logları.', icon: Cpu },
-    { key: 'ui_auth', label: 'Kullanıcı ve Rol Yönetimi', desc: 'Kullanıcı, rol ve yetki yönetimi.', icon: Users },
-];
 
 /* ─────────────────────────────────────────────────────────────
    ANA SARMALAYICI
@@ -26,7 +15,6 @@ export default function AuthViewer() {
         { id: 'users', label: 'Kullanıcılar', icon: Users },
         { id: 'audit', label: 'Sistem Kayıtları', icon: Clock },
         { id: 'egitim_yonetimi', label: 'Eğitim Yönetim Paneli', icon: BookOpen },
-        { id: 'restrictions', label: 'Kısıtlamalar', icon: Shield },
     ];
 
     return (
@@ -75,7 +63,6 @@ export default function AuthViewer() {
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'audit' && <AuditTab />}
                 {activeTab === 'egitim_yonetimi' && <SapEgitimAdminPaneli />}
-                {activeTab === 'restrictions' && <RestrictionsTab />}
             </div>
 
             {/* Slide-Over Panel */}
@@ -257,6 +244,14 @@ function UsersTab() {
                                             <InlineUserDashboard
                                                 userId={user.id}
                                                 userName={user.name}
+                                                userStatus={user.status}
+                                                onStatusChange={(newStatus) =>
+                                                    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u))
+                                                }
+                                                onDelete={() => {
+                                                    setUsers(prev => prev.filter(u => u.id !== user.id));
+                                                    setExpandedUserId(null);
+                                                }}
                                             />
                                         </td>
                                     </tr>
@@ -270,303 +265,6 @@ function UsersTab() {
                         )}
                     </tbody>
                 </table>
-            </div>
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   KISITLAMALAR SEKMESİ (YENİ)
-───────────────────────────────────────────────────────────── */
-function RestrictionsTab() {
-    const [users, setUsers] = useState([]);
-    const [selectedUserId, setSelectedUserId] = useState(null);
-
-    useEffect(() => {
-        fetch('/api/auth/users')
-            .then(res => res.json())
-            .then(data => {
-                setUsers(data);
-                if (data.length > 0) {
-                    setSelectedUserId(data[0].id);
-                }
-            })
-            .catch(err => console.error('Kullanıcılar yüklenemedi', err));
-    }, []);
-
-    const selectedUser = users.find(u => u.id === selectedUserId);
-
-    return (
-        <div className="flex gap-6 h-full animate-in fade-in duration-300 max-w-5xl mx-auto">
-            {/* User List Sidebar */}
-            <div className="w-64 flex flex-col bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden shrink-0 h-[650px] max-h-full">
-                <div className="p-4 border-b border-stone-200 bg-stone-50/50 font-semibold text-[11px] uppercase tracking-wide text-stone-500 flex items-center gap-2">
-                    <Users size={14} className="text-[#378ADD]" /> Kullanıcı Seçimi
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {users.map(u => (
-                        <button
-                            key={u.id}
-                            onClick={() => setSelectedUserId(u.id)}
-                            className={`w-full flex items-center justify-between text-left px-3 py-2.5 text-[12px] rounded-md transition-colors ${selectedUserId === u.id ? 'bg-[#378ADD]/10 text-[#378ADD] font-semibold' : 'text-stone-600 hover:bg-stone-50'}`}
-                        >
-                            <span>{u.name}</span>
-                            <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-stone-300'}`}></span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Restrictions Panel */}
-            <div className="flex-1 overflow-y-auto bg-white border border-stone-200 rounded-xl shadow-sm p-6 h-[650px] max-h-full">
-                {selectedUser ? (
-                    <UserDetailView
-                        key={selectedUser.id}
-                        user={selectedUser}
-                        onBack={() => setSelectedUserId(null)}
-                        onUpdateStatus={(newStatus) => {
-                            fetch(`/api/auth/users/${selectedUser.id}/status`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: newStatus })
-                            }).then(res => {
-                                if (res.ok) {
-                                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: newStatus } : u));
-                                }
-                            });
-                        }}
-                        onDelete={() => {
-                            fetch(`/api/auth/users/${selectedUser.id}`, { method: 'DELETE' })
-                                .then(res => {
-                                    if (res.ok) {
-                                        setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-                                        setSelectedUserId(null);
-                                    }
-                                });
-                        }}
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-stone-400">
-                        <Shield size={32} className="opacity-20 mb-3 text-stone-300" />
-                        <span className="text-[13px] font-medium text-stone-500">Lütfen soldan bir kullanıcı seçin.</span>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   KULLANICI DETAY PANELİ — Yetkiler buraya gösterilecek
-   Bu TAMAMEN UserDetailView dışında, ayrı modül düzeyinde fonksiyonlar
-───────────────────────────────────────────────────────────── */
-function UserDetailView({ user, onBack, onUpdateStatus, onDelete }) {
-    const [meta, setMeta] = useState(user.meta || {});
-    const [context, setContext] = useState(null);
-    const [isDirty, setIsDirty] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [status, setStatus] = useState(user.status);
-    const [activeSubTab, setActiveSubTab] = useState('models');
-
-    useEffect(() => {
-        fetch(`/api/auth/users/${user.id}/permissions-context`)
-            .then(res => res.json())
-            .then(data => {
-                setContext(data);
-                if (data.user_meta && Object.keys(data.user_meta).length > 0) {
-                    setMeta(data.user_meta);
-                }
-            })
-            .catch(err => console.error('Permissions context yüklenemedi', err));
-    }, [user.id]);
-
-    const updateMeta = (key, value) => {
-        setMeta(prev => ({ ...prev, [key]: value }));
-        setIsDirty(true);
-    };
-
-    const handleSave = () => {
-        setIsSaving(true);
-        fetch(`/api/auth/users/${user.id}/meta`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(meta)
-        })
-            .then(() => { setIsDirty(false); })
-            .catch(err => console.error('Meta kaydedilemedi', err))
-            .finally(() => setIsSaving(false));
-    };
-
-    if (!context) {
-        return (
-            <div className="flex items-center justify-center h-48 w-full animate-in fade-in">
-                <span className="text-[12px] text-stone-400 font-medium flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-stone-200 border-t-[#378ADD] rounded-full animate-spin" />
-                    Sistem Yetkileri Toplanıyor...
-                </span>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex flex-col animate-in fade-in slide-in-from-top-2 duration-300">
-
-            {/* Alt Sekme Menüsü */}
-            <div className="flex border-b border-stone-200 mb-5 gap-4 px-1">
-                <button
-                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'models' ? 'border-[#378ADD] text-[#378ADD]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
-                    onClick={() => setActiveSubTab('models')}
-                >
-                    <div className={`p-1 rounded ${activeSubTab === 'models' ? 'bg-[#378ADD]/10' : 'bg-stone-100'}`}>
-                        <Cpu size={14} className={activeSubTab === 'models' ? 'text-[#378ADD]' : 'text-stone-500'} />
-                    </div>
-                    Model Yetkileri
-                    <span className="ml-1 text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-medium">
-                        {context.models.filter(m => meta[m.key] !== false).length}/{context.models.length}
-                    </span>
-                </button>
-                <button
-                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'archives' ? 'border-[#D85A30] text-[#D85A30]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
-                    onClick={() => setActiveSubTab('archives')}
-                >
-                    <div className={`p-1 rounded ${activeSubTab === 'archives' ? 'bg-[#D85A30]/10' : 'bg-stone-100'}`}>
-                        <Database size={14} className={activeSubTab === 'archives' ? 'text-[#D85A30]' : 'text-stone-500'} />
-                    </div>
-                    Belge / Arşiv Yetkileri
-                </button>
-                <button
-                    className={`pb-2.5 text-[12px] font-medium transition-colors border-b-[2px] flex items-center gap-1.5 ${activeSubTab === 'tabs' ? 'border-[#1D9E75] text-[#1D9E75]' : 'border-transparent text-stone-500 hover:text-stone-700'}`}
-                    onClick={() => setActiveSubTab('tabs')}
-                >
-                    <div className={`p-1 rounded ${activeSubTab === 'tabs' ? 'bg-[#1D9E75]/10' : 'bg-stone-100'}`}>
-                        <LayoutDashboard size={14} className={activeSubTab === 'tabs' ? 'text-[#1D9E75]' : 'text-stone-500'} />
-                    </div>
-                    Görünür Sekmeler
-                </button>
-            </div>
-
-            {/* İçerik Alanı */}
-            <div className="min-h-[220px] mb-6">
-                {activeSubTab === 'models' && (
-                    <div className="animate-in fade-in flex flex-col gap-2">
-                        {context.models.length === 0 ? (
-                            <div className="py-2 text-[11px] text-stone-400 italic">Tanımlı model bulunamadı.</div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {context.models.map(m => {
-                                    const checked = meta[m.key] !== undefined ? meta[m.key] : true;
-                                    return (
-                                        <div key={m.key} className="flex items-center gap-2 py-2 px-3 border border-stone-200 rounded-md hover:border-stone-300 hover:shadow-sm bg-white group cursor-pointer transition-all" onClick={() => updateMeta(m.key, !checked)}>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[12px] font-medium text-stone-700 group-hover:text-stone-900 truncate">
-                                                        {m.label}
-                                                    </span>
-                                                    {m.model_id && (
-                                                        <span className="text-[10px] font-mono text-stone-400 truncate">{m.model_id}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className={`shrink-0 w-8 h-4 rounded-full transition-all relative flex items-center ${checked ? 'bg-[#1D9E75]' : 'bg-stone-200'}`}>
-                                                <div className={`w-3 h-3 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[18px]' : 'left-[2px]'}`} />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {activeSubTab === 'archives' && (
-                    <div className="animate-in fade-in max-h-[300px] overflow-y-auto pr-2 bg-white border border-stone-200 rounded-md p-4 shadow-sm">
-                        <div className="space-y-1">
-                            {context.archives
-                                .filter(a => !a.parent_id || a.parent_id === null || a.parent_id === 'null')
-                                .map(a => (
-                                    <ArchiveTreeItem
-                                        key={a.key}
-                                        item={a}
-                                        archives={context.archives}
-                                        meta={meta}
-                                        updateMeta={updateMeta}
-                                    />
-                                ))
-                            }
-                            {context.archives.length === 0 && (
-                                <div className="py-2 text-[11px] text-stone-400 italic">Yetkilendirilecek arşiv klasörü bulunamadı.</div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeSubTab === 'tabs' && (
-                    <div className="animate-in fade-in flex flex-col gap-2">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {SETTINGS_TABS.map(t => {
-                                const checked = meta[t.key] !== undefined ? meta[t.key] : true;
-                                return (
-                                    <div key={t.key} className="flex items-center gap-2 py-2.5 px-3 border border-stone-200 rounded-md hover:border-stone-300 hover:shadow-sm bg-white group cursor-pointer transition-all" onClick={() => updateMeta(t.key, !checked)}>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-[12px] font-medium text-stone-700 group-hover:text-stone-900 truncate">
-                                                {t.label}
-                                            </span>
-                                        </div>
-                                        <div className={`shrink-0 w-8 h-4 rounded-full transition-all relative flex items-center ${checked ? 'bg-[#1D9E75]' : 'bg-stone-200'}`}>
-                                            <div className={`w-3 h-3 rounded-full bg-white absolute transition-all shadow-sm ${checked ? 'left-[18px]' : 'left-[2px]'}`} />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Alt Butonlar */}
-            <div className="flex items-center pt-4 mt-auto border-t border-stone-200">
-                {/* Sol: Tehlikeli işlemler */}
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => {
-                            const newStatus = status === 'Aktif' ? 'Askıya Alındı' : 'Aktif';
-                            setStatus(newStatus);
-                            onUpdateStatus(newStatus);
-                        }}
-                        className={`text-[11px] font-medium px-3 py-1.5 rounded-sm transition-colors border ${status === 'Aktif'
-                            ? 'bg-[#FAEEDA] text-[#854F0B] border-stone-200 hover:bg-[#F2DFBA]'
-                            : 'bg-[#EAF3DE] text-[#3B6D11] border-stone-200 hover:bg-[#CFE2B6]'
-                            }`}
-                    >
-                        {status === 'Aktif' ? 'Hesabı Askıya Al' : 'Hesabı Aktifleştir'}
-                    </button>
-                    <button
-                        onClick={() => { if (window.confirm('Bu kullanıcıyı tamamen silmek istediğinize emin misiniz?')) onDelete(); }}
-                        className="text-[11px] font-medium px-3 py-1.5 rounded-sm border bg-[#FCEBEB] text-[#791F1F] border-stone-200 hover:bg-[#F2D7D7] transition-colors"
-                    >
-                        Kullanıcıyı Sil
-                    </button>
-                </div>
-
-                {/* Sağ: Panel kontrolleri */}
-                <div className="flex items-center gap-2 ml-auto">
-                    <button
-                        onClick={onBack}
-                        className="text-[11px] font-medium text-stone-500 hover:text-stone-800 transition-colors px-3 py-1.5"
-                    >
-                        Paneli Kapat
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className={`text-[11px] font-medium px-4 py-1.5 rounded-md border transition-all ${isDirty
-                            ? 'bg-[#378ADD] text-white border-[#378ADD] hover:bg-[#0C447C] shadow-sm'
-                            : 'bg-stone-50 text-stone-400 border-stone-200 cursor-default'
-                            }`}
-                    >
-                        {isSaving ? 'Kaydediliyor...' : 'Kaydet'}
-                    </button>
-                </div>
             </div>
         </div>
     );

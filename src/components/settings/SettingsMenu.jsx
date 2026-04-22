@@ -17,9 +17,10 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
     const [isAiExpanded, setIsAiExpanded] = useState(false);
     const menuRef = useRef(null);
 
-    const canSeeTab = (key) => {
+    const canSeeTab = (_key) => {
+        if (currentUser?.super) return true;
         if (!currentUser?.meta) return true;
-        return currentUser.meta[key] !== false;
+        return currentUser.meta[_key] !== false;
     };
 
     useEffect(() => {

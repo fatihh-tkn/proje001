@@ -81,6 +81,10 @@ class Kullanici(Base):
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
     son_giris_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # Kullanıcı RAG havuzu kotaları (NULL = sınırsız)
+    dosya_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    depolama_limiti_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # İlişkiler
 
     sohbet_oturumlari: Mapped[list["SohbetOturumu"]] = relationship(
@@ -257,6 +261,8 @@ class Belge(Base):
     parca_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Erişim politikası: 'herkese_acik' | 'ik' | 'finans' | 'yonetici' | 'gizli'
     erisim_politikasi: Mapped[str] = mapped_column(String(64), nullable=False, default="herkese_acik")
+    # Havuz türü: 'sistem' → admin belgesi (herkese açık), 'kullanici' → kişisel belge
+    havuz_turu: Mapped[str] = mapped_column(String(16), nullable=False, default="sistem")
     # Belge durumu
     durum: Mapped[str] = mapped_column(String(32), nullable=False, default="karantina")
     vektorlestirildi_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -282,6 +288,7 @@ class Belge(Base):
         Index("ix_belgeler_erisim_politikasi", "erisim_politikasi"),
         Index("ix_belgeler_vektordb_koleksiyon", "vektordb_koleksiyon"),
         Index("ix_belgeler_yukleyen_kimlik", "yukleyen_kimlik"),
+        Index("ix_belgeler_havuz_turu", "havuz_turu"),
     )
 
 

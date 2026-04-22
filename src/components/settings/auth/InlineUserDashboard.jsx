@@ -47,10 +47,12 @@ const StoneTooltip = ({ active, payload, label }) => {
 };
 
 /* ─── Ana Bileşen ────────────────────────────────── */
-export default function InlineUserDashboard({ userId, userName }) {
+export default function InlineUserDashboard({ userId, userName, userStatus, onStatusChange, onDelete }) {
     const [data, setData] = useState(null);
     const [egitimData, setEgitimData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [status, setStatus] = useState(userStatus || 'Aktif');
+    const [confirming, setConfirming] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -260,6 +262,53 @@ export default function InlineUserDashboard({ userId, userName }) {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* ── İşlem Butonları ── */}
+                        <div className="flex items-center justify-between pt-4 border-t border-stone-200 mt-2">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        const newStatus = status === 'Aktif' ? 'Askıya Alındı' : 'Aktif';
+                                        fetch(`/api/auth/users/${userId}/status`, {
+                                            method: 'PUT',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ status: newStatus })
+                                        }).then(res => {
+                                            if (res.ok) { setStatus(newStatus); onStatusChange?.(newStatus); }
+                                        });
+                                    }}
+                                    className={`text-[11px] font-medium px-3 py-1.5 rounded-md border transition-colors ${status === 'Aktif'
+                                        ? 'bg-[#FAEEDA] text-[#854F0B] border-[#F2DFBA] hover:bg-[#F2DFBA]'
+                                        : 'bg-[#EAF3DE] text-[#3B6D11] border-[#CFE2B6] hover:bg-[#CFE2B6]'}`}
+                                >
+                                    {status === 'Aktif' ? 'Hesabı Askıya Al' : 'Hesabı Aktifleştir'}
+                                </button>
+                                {!confirming ? (
+                                    <button
+                                        onClick={() => setConfirming(true)}
+                                        className="text-[11px] font-medium px-3 py-1.5 rounded-md border bg-[#FCEBEB] text-[#791F1F] border-[#F2D7D7] hover:bg-[#F2D7D7] transition-colors"
+                                    >
+                                        Kullanıcıyı Sil
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-1.5 bg-[#FCEBEB] border border-[#F2D7D7] rounded-md px-3 py-1.5">
+                                        <span className="text-[11px] text-[#791F1F] font-medium">Emin misiniz?</span>
+                                        <button
+                                            onClick={() => {
+                                                fetch(`/api/auth/users/${userId}`, { method: 'DELETE' })
+                                                    .then(res => { if (res.ok) onDelete?.(); });
+                                            }}
+                                            className="text-[11px] font-bold text-white bg-[#791F1F] px-2 py-0.5 rounded hover:bg-[#5a1717] transition-colors"
+                                        >Evet, Sil</button>
+                                        <button
+                                            onClick={() => setConfirming(false)}
+                                            className="text-[11px] text-stone-500 hover:text-stone-800 transition-colors ml-1"
+                                        >İptal</button>
+                                    </div>
+                                )}
+                            </div>
+                            <span className="text-[10px] text-stone-400 font-mono">{userId}</span>
                         </div>
                     </>
                 )}

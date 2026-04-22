@@ -142,12 +142,15 @@ class PgVectorDB(VectorDBProvider):
         n_results: int = 10,
         doc_id_filter: str | None = None,
         use_reranker: bool = True,
+        allowed_doc_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Hybrid Search: Vektör + Full-Text + RRF + Re-Ranking.
 
         Döner: [{kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
                  konum_imi, meta, rrf_score, rerank_score, in_vector, in_fts}, ...]
+
+        allowed_doc_ids: Havuz filtresi (sistem + kullanici belgeleri). None → hepsi.
         """
         try:
             from database.vector.hybrid_search import hybrid_search
@@ -156,6 +159,7 @@ class PgVectorDB(VectorDBProvider):
                 n_results=n_results,
                 doc_id_filter=doc_id_filter,
                 use_reranker=use_reranker,
+                allowed_doc_ids=allowed_doc_ids,
             )
         except Exception as e:
             logger.error(f"[PgVectorDB] hybrid_query hatası: {e}")

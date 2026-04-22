@@ -1,11 +1,68 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import {
     PackageOpen, Folder, File, ChevronRight, Upload, Search,
-    FileText, Plus, Database, Trash2, FolderInput, Cpu, X,
+    FileText, FileImage, FileSpreadsheet, FileCode, Film, Music,
+    Plus, Database, Trash2, FolderInput, Cpu, X,
     CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
     Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
-    Mic, Loader2, AlertCircle, GripVertical
+    Mic, Loader2, AlertCircle, GripVertical, Users2
 } from 'lucide-react';
+
+/* ── Klasör İkonu ──────────────────────────────────────────────────── */
+function FolderIcon({ isUserFolder, uploaderName, size = 64 }) {
+    const initials = (uploaderName || '?')
+        .split(' ').filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+
+    if (isUserFolder) {
+        return (
+            <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+                {/* Klasör gövdesi — SVG */}
+                <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+                    {/* arka gölge */}
+                    <rect x="6" y="22" width="52" height="36" rx="5" fill="var(--th-tab-active-bg)" opacity="0.12" />
+                    {/* alt kutu */}
+                    <rect x="4" y="24" width="56" height="34" rx="5"
+                        fill="var(--th-tab-active-bg)" opacity="0.18" />
+                    <rect x="4" y="24" width="56" height="34" rx="5"
+                        stroke="var(--th-tab-active-bg)" strokeWidth="1.5" strokeOpacity="0.5" />
+                    {/* üst tab */}
+                    <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z"
+                        fill="var(--th-tab-active-bg)" opacity="0.35" />
+                    {/* iç çizgiler (dosya simgesi) */}
+                    <line x1="16" y1="36" x2="34" y2="36" stroke="var(--th-tab-active-bg)" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
+                    <line x1="16" y1="42" x2="28" y2="42" stroke="var(--th-tab-active-bg)" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
+                </svg>
+                {/* Yükleyen avatarı */}
+                <div style={{
+                    position: 'absolute', bottom: 2, right: 0,
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: 'var(--th-tab-active-bg)',
+                    border: '2px solid white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 7, fontWeight: 700, color: 'white',
+                    letterSpacing: '0.03em',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }}>
+                    {initials}
+                </div>
+            </div>
+        );
+    }
+
+    // Normal klasör — nötr, temiz
+    return (
+        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ flexShrink: 0 }}>
+            <rect x="6" y="22" width="52" height="36" rx="5" fill="#94a3b8" opacity="0.10" />
+            <rect x="4" y="24" width="56" height="34" rx="5" fill="#cbd5e1" opacity="0.6" />
+            <rect x="4" y="24" width="56" height="34" rx="5" stroke="#94a3b8" strokeWidth="1.5" strokeOpacity="0.5" />
+            <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z"
+                fill="#94a3b8" opacity="0.5" />
+            <line x1="16" y1="36" x2="34" y2="36" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
+            <line x1="16" y1="42" x2="28" y2="42" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
+        </svg>
+    );
+}
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 import { FileCard } from '../../ui/file-card-collections';
@@ -42,18 +99,28 @@ const formatBytes = (bytes) => {
 };
 
 // ── SAĞ TIK CONTEXT MENU
-const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove }) => {
+const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove, onAccess, isAdmin }) => {
     const ref = useRef(null);
+
     useEffect(() => {
         const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, [onClose]);
 
-    return (
+    useLayoutEffect(() => {
+        if (!ref.current) return;
+        const rect = ref.current.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        if (x + rect.width > vw) ref.current.style.left = Math.max(8, vw - rect.width - 8) + 'px';
+        if (y + rect.height > vh) ref.current.style.top = Math.max(8, vh - rect.height - 8) + 'px';
+    }, [x, y]);
+
+    return ReactDOM.createPortal(
         <div
             ref={ref}
-            className="fixed z-[9999] bg-white border border-stone-200 rounded-lg shadow-xl py-1 w-44"
+            className="fixed z-[9999] bg-white border border-stone-200 rounded-lg shadow-xl py-1 w-48"
             style={{ top: y, left: x }}
         >
             <button onClick={() => { onRename(item); onClose(); }}
@@ -70,12 +137,254 @@ const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove }) => {
                     <Cpu size={13} className="text-teal-500" /> Vektörleştir
                 </button>
             )}
+            {isAdmin && (
+                <>
+                    <div className="border-t border-stone-100 my-1" />
+                    <button onClick={() => { onAccess(item); onClose(); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-indigo-600 hover:bg-indigo-50 transition-colors">
+                        <Users2 size={13} /> Erişim Yönetimi
+                    </button>
+                </>
+            )}
             <div className="border-t border-stone-100 my-1" />
             <button onClick={() => { onDelete([item.id]); onClose(); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors">
                 <Trash2 size={13} /> Sil
             </button>
-        </div>
+        </div>,
+        document.body
+    );
+};
+
+// Kullanıcı avatarı için sabit renk paleti (isim hash'ine göre)
+const USER_COLORS = [
+    { bg: '#378ADD20', text: '#378ADD', ring: '#378ADD40' },
+    { bg: '#1D9E7520', text: '#1D9E75', ring: '#1D9E7540' },
+    { bg: '#EF9F2720', text: '#C17D10', ring: '#EF9F2740' },
+    { bg: '#D85A3020', text: '#D85A30', ring: '#D85A3040' },
+    { bg: '#7C5CBF20', text: '#7C5CBF', ring: '#7C5CBF40' },
+    { bg: '#2E8FAF20', text: '#2E8FAF', ring: '#2E8FAF40' },
+];
+const getUserColor = (id) => USER_COLORS[(id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % USER_COLORS.length];
+
+// ── ERİŞİM YÖNETİMİ MODAL
+const AccessModal = ({ item, onClose, onSaved }) => {
+    const [data, setData] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [selected, setSelected] = useState(new Set());
+    const [search, setSearch] = useState('');
+
+    useEffect(() => {
+        fetch(`/api/archive/access/${item.id}`)
+            .then(r => r.json())
+            .then(d => {
+                setData(d);
+                const izinliler = d.izin_verilen_kullanicilar || [];
+                // Sistem dosyası ve henüz erişim listesi belirlenmemişse → herkese açık (tümü seçili)
+                const baslangicSecili = (d.havuz_turu === 'sistem' && izinliler.length === 0)
+                    ? new Set((d.tum_kullanicilar || []).map(u => u.id))
+                    : new Set(izinliler);
+                setSelected(baslangicSecili);
+            });
+    }, [item.id]);
+
+    const toggle = (id) => setSelected(prev => {
+        const n = new Set(prev);
+        n.has(id) ? n.delete(id) : n.add(id);
+        return n;
+    });
+
+    const save = async () => {
+        setSaving(true);
+        await fetch(`/api/archive/access/${item.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ izin_verilen_kullanicilar: [...selected] }),
+        });
+        setSaving(false);
+        onSaved();
+        onClose();
+    };
+
+    const filtered = data?.tum_kullanicilar.filter(u =>
+        !search || (u.tam_ad || '').toLowerCase().includes(search.toLowerCase()) || (u.eposta || '').toLowerCase().includes(search.toLowerCase())
+    ) || [];
+
+    const activeCount = selected.size;
+
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9500] flex items-center justify-center" onClick={onClose}>
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-stone-900/30 backdrop-blur-[2px]" />
+
+            <div
+                className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] w-[420px] overflow-hidden border border-stone-200/80"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="px-5 pt-5 pb-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-stone-100 flex items-center justify-center shrink-0">
+                                <Users2 size={16} className="text-stone-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <h3 className="text-[13px] font-semibold text-stone-900 tracking-tight">Erişim Yönetimi</h3>
+                                <p className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[240px]">{item.filename}</p>
+                            </div>
+                        </div>
+                        <button onClick={onClose} className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors">
+                            <X size={14} />
+                        </button>
+                    </div>
+
+                    {/* Aktif erişim özeti */}
+                    <div className="mt-4 flex items-center gap-2">
+                        <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">Erişim Açık</span>
+                        <div className="flex items-center gap-1">
+                            {activeCount === 0 ? (
+                                <span className="text-[11px] text-stone-400 italic">Kimse seçilmedi</span>
+                            ) : (
+                                <>
+                                    <div className="flex -space-x-1.5">
+                                        {[...selected].slice(0, 4).map(uid => {
+                                            const u = data?.tum_kullanicilar.find(x => x.id === uid);
+                                            const clr = getUserColor(uid);
+                                            const initials = (u?.tam_ad || '?').split(' ').filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+                                            return (
+                                                <div key={uid} className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold ring-2 ring-white"
+                                                    style={{ background: clr.bg, color: clr.text }}>
+                                                    {initials}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <span className="text-[11px] font-medium text-stone-700 ml-1">{activeCount} kullanıcı</span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Ayırıcı */}
+                <div className="h-px bg-stone-100 mx-5" />
+
+                {/* Arama */}
+                <div className="px-5 py-3">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-stone-50 rounded-lg border border-stone-200 focus-within:border-stone-300 focus-within:bg-white transition-colors">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-stone-400 shrink-0">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Kullanıcı ara..."
+                            className="flex-1 bg-transparent text-[12px] text-stone-700 placeholder:text-stone-400 outline-none"
+                        />
+                    </div>
+                </div>
+
+                {/* Kullanıcı listesi */}
+                <div className="px-3 pb-3 max-h-56 overflow-y-auto flex flex-col gap-0.5">
+                    {!data ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-2">
+                            <div className="w-5 h-5 rounded-full border-2 border-stone-300 border-t-stone-600 animate-spin" />
+                            <span className="text-[11px] text-stone-400">Yükleniyor...</span>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="text-center py-8 text-[11px] text-stone-400">
+                            {search ? 'Eşleşen kullanıcı bulunamadı.' : 'Sistemde başka kullanıcı yok.'}
+                        </div>
+                    ) : filtered.map(u => {
+                        const isOwner = u.id === data.yukleyen_kimlik;
+                        const checked = selected.has(u.id);
+                        const clr = getUserColor(u.id);
+                        const initials = (u.tam_ad || '?').split(' ').filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+
+                        return (
+                            <button
+                                key={u.id}
+                                onClick={() => !isOwner && toggle(u.id)}
+                                disabled={isOwner}
+                                className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-left w-full transition-all duration-150
+                                    ${isOwner
+                                        ? 'cursor-default opacity-70'
+                                        : checked
+                                            ? 'bg-stone-50 ring-1 ring-stone-200'
+                                            : 'hover:bg-stone-50'
+                                    }`}
+                            >
+                                {/* Avatar */}
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ring-2 ring-white"
+                                    style={isOwner
+                                        ? { background: '#EF9F2720', color: '#C17D10' }
+                                        : { background: clr.bg, color: clr.text }
+                                    }>
+                                    {initials}
+                                </div>
+
+                                {/* İsim & e-posta */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[12px] font-medium text-stone-800 truncate">{u.tam_ad}</span>
+                                        {isOwner && (
+                                            <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide"
+                                                style={{ background: '#EF9F2720', color: '#C17D10' }}>
+                                                Yükleyen
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-stone-400 truncate">{u.eposta}</div>
+                                </div>
+
+                                {/* Toggle */}
+                                {!isOwner && (
+                                    <div className={`shrink-0 w-8 h-4 rounded-full relative transition-colors duration-200
+                                        ${checked ? 'bg-[#378ADD]' : 'bg-stone-200 group-hover:bg-stone-300'}`}>
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-200
+                                            ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </div>
+                                )}
+                                {isOwner && (
+                                    <div className="shrink-0 w-8 h-4 rounded-full bg-amber-100 flex items-center justify-center">
+                                        <Check size={8} className="text-amber-500" strokeWidth={3} />
+                                    </div>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-3.5 border-t border-stone-100 bg-stone-50/60 flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">
+                        {activeCount} / {data?.tum_kullanicilar.length || 0} kullanıcı aktif
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button onClick={onClose}
+                            className="px-3 py-1.5 text-[11px] font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors">
+                            İptal
+                        </button>
+                        <button onClick={save} disabled={saving}
+                            className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold text-white rounded-lg transition-all disabled:opacity-50"
+                            style={{ background: '#378ADD' }}>
+                            {saving ? (
+                                <>
+                                    <div className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                                    Kaydediliyor
+                                </>
+                            ) : (
+                                <>
+                                    <Check size={11} strokeWidth={3} />
+                                    Kaydet
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 };
 
@@ -442,6 +751,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
 
 // ── ANA BİLEŞEN
 export default function ArchiveDocsViewer() {
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentFolderId, setCurrentFolderId] = useState(null);
@@ -459,6 +769,8 @@ export default function ArchiveDocsViewer() {
     const [renameItem, setRenameItem] = useState(null);
     const [renameValue, setRenameValue] = useState('');
     const [moveItem, setMoveItem] = useState(null);
+    const [accessItem, setAccessItem] = useState(null);
+    const isAdmin = currentUser?.super || false;
 
     // Drag state
     const [dragOverFolder, setDragOverFolder] = useState(null);
@@ -468,7 +780,8 @@ export default function ArchiveDocsViewer() {
     const fetchArchive = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/archive/list');
+            const uid = currentUser?.id ? `?user_id=${currentUser.id}` : '';
+            const res = await fetch(`/api/archive/list${uid}`);
             if (res.ok) {
                 const data = await res.json();
                 setItems(data.items || []);
@@ -478,7 +791,7 @@ export default function ArchiveDocsViewer() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [currentUser?.id]);
 
     useEffect(() => { fetchArchive(); }, [fetchArchive]);
     useArchiveChangedListener(fetchArchive);
@@ -502,15 +815,13 @@ export default function ArchiveDocsViewer() {
         })
         .filter(item => {
             if (item.file_type === 'folder') return true;
-            // Ses ve Video dosyalarını standart arşivden dışla (Ses Arşivi sekmesinde varlar)
-            const isMedia = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((item.file_type || '').toLowerCase());
-            if (isMedia) return false;
-
             if (filterType === 'all') return true;
             if (filterType === 'pdf') return item.file_type === 'pdf';
             if (filterType === 'excel') return ['xls', 'xlsx', 'csv'].includes(item.file_type);
             if (filterType === 'ppt') return ['ppt', 'pptx'].includes(item.file_type);
             if (filterType === 'image') return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(item.file_type);
+            if (filterType === 'audio') return ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma'].includes((item.file_type || '').toLowerCase());
+            if (filterType === 'video') return ['mp4', 'avi', 'mov', 'mkv', 'webm', 'm4v', 'wmv'].includes((item.file_type || '').toLowerCase());
             if (filterType === 'vectorized') return item.is_vectorized;
             return true;
         })
@@ -559,6 +870,7 @@ export default function ArchiveDocsViewer() {
         const formData = new FormData();
         formData.append('file', file);
         if (currentFolderId) formData.append('folder_id', currentFolderId);
+        if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);
         await fetch('/api/archive/direct-upload', { method: 'POST', body: formData });
         fetchArchive();
@@ -753,6 +1065,17 @@ export default function ArchiveDocsViewer() {
                     onDelete={handleBatchDelete}
                     onRename={(item) => { setRenameItem(item); setRenameValue(item.filename); }}
                     onMove={(item) => setMoveItem(item)}
+                    onAccess={(item) => setAccessItem(item)}
+                    isAdmin={isAdmin}
+                />
+            )}
+
+            {/* Access Modal */}
+            {accessItem && (
+                <AccessModal
+                    item={accessItem}
+                    onClose={() => setAccessItem(null)}
+                    onSaved={fetchArchive}
                 />
             )}
 
@@ -783,7 +1106,11 @@ export default function ArchiveDocsViewer() {
                         )}
                         <button onClick={() => { setCurrentFolderId(null); setSearchQuery(''); }}
                             className={`flex items-center gap-1 hover:text-[#378ADD] transition-colors shrink-0 ${!currentFolderId && !searchQuery ? 'font-semibold text-stone-800' : 'text-stone-400'}`}>
-                            <Folder size={13} className={!currentFolderId && !searchQuery ? 'text-[#378ADD]' : ''} />
+                            <svg width={13} height={13} viewBox="0 0 64 64" fill="none" style={{ flexShrink: 0 }}>
+                                <rect x="4" y="24" width="56" height="34" rx="5" fill={!currentFolderId && !searchQuery ? 'var(--th-tab-active-bg)' : '#94a3b8'} opacity="0.25" />
+                                <rect x="4" y="24" width="56" height="34" rx="5" stroke={!currentFolderId && !searchQuery ? 'var(--th-tab-active-bg)' : '#94a3b8'} strokeWidth="4" />
+                                <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z" fill={!currentFolderId && !searchQuery ? 'var(--th-tab-active-bg)' : '#94a3b8'} />
+                            </svg>
                             Kök Dizin
                         </button>
                         {breadcrumbs.map(bc => (
@@ -820,6 +1147,8 @@ export default function ArchiveDocsViewer() {
                                 <option value="excel">Excel / CSV</option>
                                 <option value="ppt">Sunum (PPTX)</option>
                                 <option value="image">Görseller</option>
+                                <option value="audio">Ses</option>
+                                <option value="video">Video</option>
                                 <option value="vectorized">Vektörleşmiş</option>
                             </select>
                             <SlidersHorizontal size={12} className="absolute left-2 top-1/2 -transtone-y-1/2 text-stone-400 pointer-events-none" />
@@ -850,7 +1179,14 @@ export default function ArchiveDocsViewer() {
                 {/* ── İSTATİSTİK ŞERİDİ ── */}
                 <div className="flex-none px-5 py-1.5 flex items-center gap-5 bg-stone-50 border-b border-stone-100 text-[11px] text-stone-500">
                     <span className="flex items-center gap-1.5"><FileText size={12} className="text-stone-400" /> <b className="text-stone-700">{allDocs.length}</b> Dosya</span>
-                    <span className="flex items-center gap-1.5"><Folder size={12} className="text-stone-400" /> <b className="text-stone-700">{allFolders.length}</b> Klasör</span>
+                    <span className="flex items-center gap-1.5">
+                        <svg width={12} height={12} viewBox="0 0 64 64" fill="none">
+                            <rect x="4" y="24" width="56" height="34" rx="5" fill="#94a3b8" opacity="0.3" />
+                            <rect x="4" y="24" width="56" height="34" rx="5" stroke="#94a3b8" strokeWidth="4" />
+                            <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z" fill="#94a3b8" />
+                        </svg>
+                        <b className="text-stone-700">{allFolders.length}</b> Klasör
+                    </span>
                     <span className="flex items-center gap-1.5"><Database size={12} className="text-teal-500" /> <b className="text-stone-700">{vectorCount}</b> Vektörleşmiş</span>
                     <span className="ml-auto flex items-center gap-1"><b className="text-stone-700">{formatBytes(totalSize)}</b> Toplam</span>
                     {selectedIds.size > 0 && (
@@ -901,7 +1237,7 @@ export default function ArchiveDocsViewer() {
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {isCreatingFolder && (
                                             <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
-                                                <Folder size={64} strokeWidth={1} className="text-amber-500 fill-amber-200 mb-2 drop-shadow-md shrink-0" />
+                                                <div className="mb-2"><FolderIcon isUserFolder={false} /></div>
                                                 <input
                                                     autoFocus
                                                     value={newFolderName}
@@ -934,13 +1270,22 @@ export default function ArchiveDocsViewer() {
                                                     }}
                                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: folder }); }}
                                                     className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
-                                                        ${isSelected ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/20' : isDragOver ? 'bg-amber-50 ring-1 ring-amber-400/30' : 'hover:bg-stone-200/50 border border-transparent'}`}
+                                                        ${isSelected ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/20'
+                                                            : isDragOver ? 'ring-1 ring-[var(--th-tab-active-bg)]/40 bg-[var(--th-tab-active-bg)]/5'
+                                                                : folder.havuz_turu === 'kullanici' ? 'hover:bg-[var(--th-tab-active-bg)]/5 border border-transparent'
+                                                                    : 'hover:bg-stone-200/50 border border-transparent'}`}
+                                                    title={folder.havuz_turu === 'kullanici' ? `${folder.uploader || folder.filename}'in klasörü` : folder.filename}
                                                 >
                                                     <div onClick={(e) => toggleSelect(folder.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {isSelected ? <CheckSquare size={14} className="text-[#378ADD]" /> : <Square size={14} className="text-stone-300" />}
                                                     </div>
-                                                    <Folder size={64} strokeWidth={1} className="text-amber-500 fill-amber-200 mb-2 drop-shadow-md shrink-0" />
+                                                    <div className="mb-2">
+                                                        <FolderIcon
+                                                            isUserFolder={folder.havuz_turu === 'kullanici'}
+                                                            uploaderName={folder.uploader || folder.filename}
+                                                        />
+                                                    </div>
                                                     {renameItem?.id === folder.id ? (
                                                         <input
                                                             autoFocus

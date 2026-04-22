@@ -80,10 +80,14 @@ def _vector_search(
     query_embedding: list[float],
     n_results: int = 20,
     doc_id_filter: str | None = None,
+    allowed_doc_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     pgvector cosine_distance ile semantik arama.
     Döner: [{kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no, meta, distance}, ...]
+
+    allowed_doc_ids: Sorgulama yapılabilecek belge kimliklerinin listesi (havuz filtresi).
+                     None ise tüm belgeler taranır.
     """
     results = []
     with get_session() as db:
@@ -103,6 +107,10 @@ def _vector_search(
 
         if doc_id_filter:
             stmt = stmt.where(VektorParcasi.belge_kimlik == doc_id_filter)
+        elif allowed_doc_ids is not None:
+            if not allowed_doc_ids:
+                return []  # Hiç erişilebilir belge yok
+            stmt = stmt.where(VektorParcasi.belge_kimlik.in_(allowed_doc_ids))
 
         stmt = stmt.order_by("distance").limit(n_results)
         rows = db.execute(stmt).all()
@@ -126,27 +134,37 @@ def _fulltext_search(
     query: str,
     n_results: int = 20,
     doc_id_filter: str | None = None,
+    allowed_doc_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     PostgreSQL tsvector/tsquery ile Full-Text arama.
     Kelime eşleştirme — özel isimler, kodlar, numaralar için mükemmel.
+
+    allowed_doc_ids: Sorgulama yapılabilecek belge kimliklerinin listesi (havuz filtresi).
+                     None ise tüm belgeler taranır.
     """
     results = []
 
-    # Sorguyu tsquery formatına çevir:
-    # "proje bütçe raporu" → "proje & bütçe & raporu" (AND mantığı)
-    # Boş veya çok kısa sorgularda skip
     words = [w.strip() for w in query.split() if len(w.strip()) >= 2]
     if not words:
         return []
+
+    if allowed_doc_ids is not None and not allowed_doc_ids:
+        return []  # Hiç erişilebilir belge yok
 
     # OR mantığı kullan (daha toleranslı)
     tsquery_str = " | ".join(words)
 
     try:
         with get_session() as db:
-            # tsvector sütunu olan kayıtlarda arama yap
-            sql = text("""
+            if doc_id_filter:
+                pool_clause = "AND belge_kimlik = :doc_id"
+            elif allowed_doc_ids is not None:
+                pool_clause = "AND belge_kimlik = ANY(:allowed_ids)"
+            else:
+                pool_clause = ""
+
+            sql = text(f"""
                 SELECT
                     kimlik,
                     chromadb_kimlik,
@@ -158,17 +176,16 @@ def _fulltext_search(
                     ts_rank_cd(arama_vektoru, to_tsquery('simple', :tsq)) AS rank_score
                 FROM vektor_parcalari
                 WHERE arama_vektoru @@ to_tsquery('simple', :tsq)
-                {doc_filter}
+                {pool_clause}
                 ORDER BY rank_score DESC
                 LIMIT :limit
-            """.replace(
-                "{doc_filter}",
-                "AND belge_kimlik = :doc_id" if doc_id_filter else ""
-            ))
+            """)
 
-            params = {"tsq": tsquery_str, "limit": n_results}
+            params: dict = {"tsq": tsquery_str, "limit": n_results}
             if doc_id_filter:
                 params["doc_id"] = doc_id_filter
+            elif allowed_doc_ids is not None:
+                params["allowed_ids"] = allowed_doc_ids
 
             rows = db.execute(sql, params).all()
 
@@ -186,7 +203,6 @@ def _fulltext_search(
                 })
     except Exception as e:
         logger.warning(f"[HybridSearch] Full-Text arama hatası: {e}")
-        # tsvector sütunu henüz oluşturulmamışsa sessizce geç
     return results
 
 
@@ -233,6 +249,7 @@ def hybrid_search(
     use_reranker: bool = True,
     vector_weight: int = 20,
     fts_weight: int = 20,
+    allowed_doc_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Ana Hybrid Search fonksiyonu.
@@ -249,13 +266,17 @@ def hybrid_search(
     n_results : int
         Döndürülecek sonuç sayısı
     doc_id_filter : str | None
-        Belirli bir belgeye sınırla
+        Belirli bir belgeye sınırla (tek dosya modu)
     use_reranker : bool
         Cross-Encoder re-ranking aktif mi
     vector_weight : int
         Vektör aramada kaç aday çekilecek
     fts_weight : int
         FTS aramada kaç aday çekilecek
+    allowed_doc_ids : list[str] | None
+        Havuz filtresi — sadece bu belge kimliklerinde ara.
+        None → tüm belgeler taranır (eski davranış).
+        [] → hiç belge yok, boş sonuç döner.
 
     Returns
     -------
@@ -266,6 +287,10 @@ def hybrid_search(
     """
     logger.info(f"[HybridSearch] Sorgu: '{query[:80]}...' | top_k={n_results}")
 
+    # Havuz tamamen boşsa aramaya gerek yok
+    if allowed_doc_ids is not None and len(allowed_doc_ids) == 0:
+        return []
+
     # 1. Embedding oluştur
     try:
         embeddings = get_embeddings([query])
@@ -275,8 +300,14 @@ def hybrid_search(
         return []
 
     # 2. Paralel olmasa da sırayla iki arama
-    vector_results = _vector_search(q_embedding, n_results=vector_weight, doc_id_filter=doc_id_filter)
-    fts_results = _fulltext_search(query, n_results=fts_weight, doc_id_filter=doc_id_filter)
+    vector_results = _vector_search(
+        q_embedding, n_results=vector_weight,
+        doc_id_filter=doc_id_filter, allowed_doc_ids=allowed_doc_ids,
+    )
+    fts_results = _fulltext_search(
+        query, n_results=fts_weight,
+        doc_id_filter=doc_id_filter, allowed_doc_ids=allowed_doc_ids,
+    )
 
     logger.info(
         f"[HybridSearch] Vektör: {len(vector_results)} sonuç | "

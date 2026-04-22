@@ -551,6 +551,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
 
 // ── ANA BİLEŞEN
 export default function AudioArchiveViewer() {
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentFolderId, setCurrentFolderId] = useState(null);
@@ -679,6 +680,7 @@ export default function AudioArchiveViewer() {
         const formData = new FormData();
         formData.append('file', file);
         if (currentFolderId) formData.append('folder_id', currentFolderId);
+        if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);
         await fetch('/api/archive/direct-upload', { method: 'POST', body: formData });
         fetchArchive();

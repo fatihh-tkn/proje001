@@ -154,7 +154,8 @@ def _build_file_context(
     top_k_candidates: int = 40,
     max_pages: int = 8,
     excluded_file_ids: list[str] = None,
-    allowed_pools: list[str] = None
+    allowed_pools: list[str] = None,
+    user_id: str | None = None,
 ) -> tuple[str, list[dict], dict | None]:
     return _build_semantic_context(
         user_message=user_message,
@@ -162,7 +163,8 @@ def _build_file_context(
         collection_name=collection_name,
         top_k=max_pages,
         excluded_file_ids=excluded_file_ids,
-        allowed_pools=allowed_pools
+        allowed_pools=allowed_pools,
+        user_id=user_id,
     )
 
 
@@ -172,7 +174,8 @@ def _build_semantic_context(
     collection_name: str | None = None,
     top_k: int = None,
     excluded_file_ids: list[str] = None,
-    allowed_pools: list[str] = None
+    allowed_pools: list[str] = None,
+    user_id: str | None = None,
 ) -> tuple[str, list[dict], dict | None]:
     """
     RAG Pipeline — Hybrid Search + Re-Ranking Mimarisi:
@@ -191,12 +194,25 @@ def _build_semantic_context(
         sources: list[dict] = []
         best_ui_action: dict | None = None
 
+        # ── Havuz Filtresi: Kullanıcının erişebildiği belgeler ─────────────
+        # Sistem havuzu (herkese açık) + kullanıcının kendi havuzu birleştirilir.
+        pool_doc_ids: list[str] | None = None
+        from database.sql.session import get_session as _gs2
+        from database.sql.repositories.document_repo import DocumentRepository as _DR2
+        try:
+            with _gs2() as _db2:
+                _repo2 = _DR2(_db2)
+                pool_doc_ids = _repo2.get_pool_doc_ids(user_id)
+        except Exception as _e:
+            print(f"[RAG-POOL] Havuz filtresi alınamadı, tüm belgeler taranacak: {_e}")
+
         # ── Hybrid Search: Vektör + FTS + RRF + Re-Ranking ──────────────
         try:
             hybrid_results = vector_db.hybrid_query(
                 query_text=user_message,
                 n_results=top_k * 2,  # Re-ranking için fazla çek
                 use_reranker=True,
+                allowed_doc_ids=pool_doc_ids,
             )
         except Exception as e:
             print(f"[RAG-HYBRID] Hybrid search hatası, klasik yola düşülüyor: {e}")
@@ -468,10 +484,16 @@ class AIService:
 
         # ── RAG bağlamı ──────────────────────────────────────────────────────
         if file_name:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(
+                _build_file_context, user_message, file_name, collection_name,
+                excluded_file_ids=excluded_files, allowed_pools=allowed_pools, user_id=user_id,
+            )
             system_intro = get_file_qa_prompt(file_name)
         else:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(
+                _build_semantic_context, user_message, collection_name=collection_name,
+                excluded_file_ids=excluded_files, allowed_pools=allowed_pools, user_id=user_id,
+            )
             system_intro = get_general_rag_prompt()
 
         if agent_config:
@@ -680,12 +702,18 @@ class AIService:
         # RAG bağlamı
         ui_action = None
         if file_name:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_file_context, user_message, file_name, collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(
+                _build_file_context, user_message, file_name, collection_name,
+                excluded_file_ids=excluded_files, allowed_pools=allowed_pools, user_id=user_id,
+            )
             system_intro = get_file_qa_prompt(file_name)
         else:
-            rag_context, rag_sources, ui_action = await run_in_threadpool(_build_semantic_context, user_message, collection_name=collection_name, excluded_file_ids=excluded_files, allowed_pools=allowed_pools)
+            rag_context, rag_sources, ui_action = await run_in_threadpool(
+                _build_semantic_context, user_message, collection_name=collection_name,
+                excluded_file_ids=excluded_files, allowed_pools=allowed_pools, user_id=user_id,
+            )
             system_intro = get_general_rag_prompt()
-            
+
         if agent_config:
             if agent_config.get("prompt"):
                 system_intro = f"{agent_config['prompt']}\n\n{system_intro}"

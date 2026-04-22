@@ -1,12 +1,53 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     X, Edit2, Check, FileText, Clock,
-    Shield, LogOut, ChevronRight, BarChart2, ClipboardList
+    Shield, LogOut, ChevronRight, BarChart2, ClipboardList,
+    HardDrive, File,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import AdminEgitimForm from './AdminEgitimForm';
 import UserEgitimDashboard from './UserEgitimDashboard';
 import UserVeriGirisi from './UserVeriGirisi';
+
+/* ── Dairesel Depolama Grafiği ── */
+function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
+    const r = 40;
+    const cx = 56;
+    const cy = 56;
+    const circ = 2 * Math.PI * r;
+    const pct = totalMb > 0 ? Math.min(usedMb / totalMb, 1) : 0;
+    const dash = pct * circ;
+    const gap = circ - dash;
+    const color = pct >= 0.9 ? '#ef4444' : pct >= 0.7 ? '#f59e0b' : '#A01B1B';
+    const fmt = (mb) => mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
+
+    return (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <svg width={112} height={112}>
+                <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth={8} />
+                <circle
+                    cx={cx} cy={cy} r={r} fill="none"
+                    stroke={color} strokeWidth={8}
+                    strokeDasharray={`${dash} ${gap}`}
+                    strokeLinecap="round"
+                    transform={`rotate(-90 ${cx} ${cy})`}
+                    style={{ transition: 'stroke-dasharray 0.6s ease' }}
+                />
+                <text x={cx} y={cy - 8} textAnchor="middle" fill="#f1f5f9" fontSize={12} fontWeight={700}>
+                    {fmt(usedMb)}
+                </text>
+                <text x={cx} y={cy + 6} textAnchor="middle" fill="#64748b" fontSize={9}>
+                    {usedFiles} dosya
+                </text>
+                {totalMb > 0 && (
+                    <text x={cx} y={cy + 18} textAnchor="middle" fill="#334155" fontSize={8}>
+                        / {fmt(totalMb)}
+                    </text>
+                )}
+            </svg>
+        </div>
+    );
+}
 
 const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
@@ -14,6 +55,8 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
 
     const [userData, setUserData] = useState(null);
     const [dashboard, setDashboard] = useState(null);
+    const [quota, setQuota] = useState(null);
+    const [userDocs, setUserDocs] = useState([]);
     const [nameEditing, setNameEditing] = useState(false);
     const [nameValue, setNameValue] = useState('');
     const [nameSaving, setNameSaving] = useState(false);
@@ -37,6 +80,16 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
         fetch(`/api/auth/users/${currentUser.id}/dashboard`)
             .then(r => r.json())
             .then(data => setDashboard(data))
+            .catch(() => { });
+
+        fetch(`/api/archive/quota/${currentUser.id}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data) setQuota(data); })
+            .catch(() => { });
+
+        fetch(`/api/archive/my-documents/${currentUser.id}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data?.items) setUserDocs(data.items); })
             .catch(() => { });
     }, [open, currentUser?.id]);
 
@@ -314,38 +367,85 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                             </div>
                         </section>
 
-                        {/* Son Belgeler */}
-                        {dashboard?.belgeler?.length > 0 && (
-                            <section>
-                                <div style={S.sectionTitle}>
-                                    <FileText size={11} /> Son Yüklenen Belgeler
+                        {/* Depolama Kotası */}
+                        <section>
+                            <div style={S.sectionTitle}>
+                                <HardDrive size={11} /> Depolama Kotası
+                            </div>
+                            <StorageDonut
+                                usedMb={quota?.kullanilan_mb ?? 0}
+                                totalMb={quota?.depolama_limiti_mb ?? 0}
+                                usedFiles={quota?.kullanilan_dosya ?? 0}
+                                totalFiles={quota?.dosya_limiti ?? 0}
+                            />
+                            {quota?.dolu_mu && (
+                                <div style={{
+                                    marginTop: 8, fontSize: 10, color: '#ef4444',
+                                    textAlign: 'center',
+                                }}>
+                                    Kota doldu — yeni dosya yükleyemezsiniz.
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                    {dashboard.belgeler.map((b, i) => (
-                                        <div key={i} style={{
-                                            display: 'flex', alignItems: 'center', gap: 10,
-                                            background: '#0f172a', borderRadius: 8,
-                                            padding: '8px 10px', border: '1px solid #1e293b',
-                                        }}>
-                                            <span style={{
-                                                fontSize: 9, fontWeight: 700, color: '#64748b',
-                                                background: '#1e293b', padding: '2px 6px',
-                                                borderRadius: 4, flexShrink: 0, letterSpacing: '0.05em',
-                                            }}>
-                                                {b.type}
-                                            </span>
-                                            <span style={{
-                                                fontSize: 11, color: '#94a3b8', flex: 1,
-                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                            }}>
-                                                {b.name}
-                                            </span>
-                                            <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>{b.date}</span>
-                                        </div>
-                                    ))}
+                            )}
+                        </section>
+
+                        {/* Yüklenen Dosyalar */}
+                        <section>
+                            <div style={S.sectionTitle}>
+                                <File size={11} /> Yüklediğim Dosyalar
+                                {userDocs.length > 0 && (
+                                    <span style={{
+                                        marginLeft: 'auto', fontSize: 9, fontWeight: 600,
+                                        color: '#475569', background: '#1e293b',
+                                        padding: '1px 7px', borderRadius: 999,
+                                    }}>
+                                        {userDocs.length}
+                                    </span>
+                                )}
+                            </div>
+                            {userDocs.length === 0 ? (
+                                <div style={{
+                                    fontSize: 11, color: '#475569', textAlign: 'center',
+                                    padding: '16px 0',
+                                }}>
+                                    Henüz dosya yüklemediniz.
                                 </div>
-                            </section>
-                        )}
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                    {userDocs.map((doc) => {
+                                        const bytes = doc.file_size ?? 0;
+                                        const sizeStr = bytes >= 1024 * 1024
+                                            ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+                                            : `${(bytes / 1024).toFixed(0)} KB`;
+                                        const ext = (doc.file_type || '').replace('.', '') || '?';
+                                        return (
+                                            <div key={doc.id} style={{
+                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                background: '#0f172a', borderRadius: 8,
+                                                padding: '8px 10px', border: '1px solid #1e293b',
+                                            }}>
+                                                <span style={{
+                                                    fontSize: 9, fontWeight: 700, color: '#64748b',
+                                                    background: '#1e293b', padding: '2px 6px',
+                                                    borderRadius: 4, flexShrink: 0, letterSpacing: '0.05em',
+                                                    textTransform: 'uppercase',
+                                                }}>
+                                                    {ext}
+                                                </span>
+                                                <span style={{
+                                                    fontSize: 11, color: '#94a3b8', flex: 1,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                }}>
+                                                    {doc.filename}
+                                                </span>
+                                                <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>
+                                                    {sizeStr}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </section>
                     </>
                 )}
 

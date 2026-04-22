@@ -188,6 +188,7 @@
   color: var(--th-tab-inactive-text);
   background: transparent;
 }
+
 .th-tab-inactive:hover {
   color: var(--th-tab-inactive-hover-text);
   background: var(--th-tab-inactive-hover-bg);
@@ -210,6 +211,7 @@
   color: var(--th-share-text);
   border: 1px solid var(--th-share-border);
 }
+
 .th-share-btn:hover {
   background: var(--th-share-hover-bg);
   color: var(--th-share-hover-text);
@@ -226,6 +228,7 @@
   border-bottom: 1px solid var(--th-win-bar-border);
   box-shadow: 0 4px 20px var(--th-win-bar-shadow);
 }
+
 .th-win-bar-default:hover {
   filter: brightness(1.05);
 }

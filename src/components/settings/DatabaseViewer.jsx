@@ -10,6 +10,7 @@ import DatabaseDropzone from './database/DatabaseDropzone';
 import DatabaseQuarantine from './database/DatabaseQuarantine';
 import DatabaseMemoryTable from './database/DatabaseMemoryTable';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../utils/archiveEvents';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 
 const BASE = '/api/db';
 const COLLECTION = 'documents';
@@ -64,6 +65,7 @@ const SkeletonRow = () => (
 
 /* ──────────────────────────────────────────────────── */
 const DatabaseViewer = ({ readOnly }) => {
+    const currentUser = useWorkspaceStore(state => state.currentUser);
     const [backendReady, setBackendReady] = useState(null); // null=kontrol ediliyor, true=hazır, false=kapalı
     const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving
     const [useVision, setUseVision] = useState(false);
@@ -420,7 +422,8 @@ const DatabaseViewer = ({ readOnly }) => {
                         temp_path: tempFilePath,
                         final_name: safeFileName,
                         chunk_count: validChunks.length,
-                        chroma_collection: COLLECTION
+                        chroma_collection: COLLECTION,
+                        user_id: currentUser?.id || null,
                     })
                 });
 

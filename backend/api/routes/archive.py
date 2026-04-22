@@ -8,7 +8,7 @@ import os
 import uuid
 import shutil
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -37,6 +37,11 @@ os.makedirs(ARSIV_KLASORU, exist_ok=True)
 
 # ── Pydantic Şemaları ──────────────────────────────────────────────────────────
 
+class KotaGuncelleRequest(BaseModel):
+    dosya_limiti: Optional[int] = None          # None → sınırsız
+    depolama_limiti_mb: Optional[float] = None  # None → sınırsız
+
+
 class KlasorOlusturRequest(BaseModel):
     name: str
     parent_id: Optional[str] = None
@@ -64,11 +69,178 @@ class MetaGuncelleRequest(BaseModel):
 
 # ── API Endpoint'leri ──────────────────────────────────────────────────────────
 
-@router.get("/list")
-def arsiv_listele():
-    """Tüm belge ve klasörleri döner."""
+@router.get("/system-documents")
+def sistem_belgeleri():
+    """Sadece sistem havuzundaki belgeleri döner (herkes erişebilir)."""
+    from database.sql.repositories.document_repo import DocumentRepository
     with get_session() as db:
+        repo = DocumentRepository(db)
+        belgeler = repo.list_system_documents()
+        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+
+
+@router.get("/my-documents/{user_id}")
+def kullanici_belgeleri(user_id: str):
+    """Verilen kullanıcının kendi havuzundaki belgelerini döner."""
+    from database.sql.repositories.document_repo import DocumentRepository
+    with get_session() as db:
+        kullanici = db.get(Kullanici, user_id)
+        if not kullanici:
+            raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+        repo = DocumentRepository(db)
+        belgeler = repo.list_user_documents(user_id)
+        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+
+
+@router.get("/quota/{user_id}")
+def kullanici_kota(user_id: str):
+    """Kullanıcının kota durumunu döner."""
+    from database.sql.repositories.document_repo import DocumentRepository
+    with get_session() as db:
+        kullanici = db.get(Kullanici, user_id)
+        if not kullanici:
+            raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+        repo = DocumentRepository(db)
+        return repo.get_user_quota_info(user_id)
+
+
+class ErisimGuncelleRequest(BaseModel):
+    izin_verilen_kullanicilar: List[str]  # Erişime izin verilen kullanıcı ID listesi
+
+@router.put("/access/{belge_id}")
+def erisim_guncelle(belge_id: str, istek: ErisimGuncelleRequest):
+    """Bir belgeye/klasöre erişebilecek kullanıcıları günceller (admin yetkisi gerekir)."""
+    with get_session() as db:
+        belge = db.get(Belge, belge_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        mevcut_meta = dict(belge.meta or {})
+        mevcut_meta["izin_verilen_kullanicilar"] = istek.izin_verilen_kullanicilar
+        belge.meta = mevcut_meta
+        db.commit()
+        return {"status": "ok", "izin_verilen_kullanicilar": istek.izin_verilen_kullanicilar}
+
+@router.get("/access/{belge_id}")
+def erisim_getir(belge_id: str):
+    """Bir belgenin erişim listesini ve tüm kullanıcıları döner."""
+    with get_session() as db:
+        belge = db.get(Belge, belge_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        izinliler = (belge.meta or {}).get("izin_verilen_kullanicilar", [])
+        tum_kullanicilar = db.scalars(
+            select(Kullanici).where(Kullanici.super_kullanici_mi.is_(False))
+        ).all()
+        return {
+            "belge_id": belge_id,
+            "belge_adi": belge.dosya_adi,
+            "havuz_turu": belge.havuz_turu,
+            "yukleyen_kimlik": belge.yukleyen_kimlik,
+            "izin_verilen_kullanicilar": izinliler,
+            "tum_kullanicilar": [
+                {"id": u.kimlik, "tam_ad": u.tam_ad, "eposta": u.eposta}
+                for u in tum_kullanicilar
+            ],
+        }
+
+@router.put("/quota/{user_id}")
+def kota_guncelle(user_id: str, istek: KotaGuncelleRequest):
+    """Admin: Kullanıcı kotasını günceller. dosya_limiti / depolama_limiti_mb = None → sınırsız."""
+    with get_session() as db:
+        kullanici = db.get(Kullanici, user_id)
+        if not kullanici:
+            raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+        kullanici.dosya_limiti = istek.dosya_limiti
+        kullanici.depolama_limiti_mb = istek.depolama_limiti_mb
+        db.commit()
+        return {
+            "status": "success",
+            "kullanici_kimlik": user_id,
+            "dosya_limiti": kullanici.dosya_limiti,
+            "depolama_limiti_mb": kullanici.depolama_limiti_mb,
+        }
+
+
+def _belge_to_dict(b: Belge, db) -> dict:
+    """Belge modelini API yanıtı dict'ine çevirir (ortak yardımcı)."""
+    meta = b.meta or {}
+    yukleyen_adi = "Bilinmiyor"
+    if b.yukleyen_kimlik:
+        k = db.get(Kullanici, b.yukleyen_kimlik)
+        if k:
+            yukleyen_adi = k.tam_ad
+    parcalar = db.scalars(
+        select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
+    ).all()
+    return {
+        "id": b.kimlik,
+        "filename": b.dosya_adi,
+        "file_type": b.dosya_turu,
+        "file_size": b.dosya_boyutu_bayt,
+        "created_at": b.olusturulma_tarihi,
+        "updated_at": b.guncelleme_tarihi,
+        "is_vectorized": b.vektorlestirildi_mi,
+        "durum": b.durum,
+        "uploader": yukleyen_adi,
+        "havuz_turu": b.havuz_turu,
+        "folder_id": meta.get("klasor_kimlik"),
+        "total_chunks": len(parcalar),
+        "storage_path": b.depolama_yolu,
+        "erisim_politikasi": b.erisim_politikasi,
+        "etiketler": meta.get("etiketler", []),
+        "aciklama": meta.get("aciklama", ""),
+        "izin_verilen_kullanicilar": meta.get("izin_verilen_kullanicilar", []),
+        "meta": {
+            "transcription_status": meta.get("transcription_status") or (
+                "done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower()
+                in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
+                    "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None
+            ),
+            "transcription_language": meta.get("transcription_language"),
+            "transcription_chunk_count": meta.get("transcription_chunk_count"),
+            "transcription_preview": meta.get("transcription_preview"),
+        },
+    }
+
+
+@router.get("/list")
+def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(None, alias="User-Id")):
+    """
+    Belge ve klasörleri döner.
+    Admin → hepsi. Normal kullanıcı → sistem belgeleri + kendi yükledikleri
+    + erişim izni verilmiş belgeler.
+    """
+    effective_user_id = user_id or x_user_id
+
+    with get_session() as db:
+        # Kullanıcı admin mi?
+        is_admin = False
+        if effective_user_id:
+            u = db.get(Kullanici, effective_user_id)
+            if u and u.super_kullanici_mi:
+                is_admin = True
+
         belgeler = db.scalars(select(Belge)).all()
+
+        # Erişim filtresi
+        if effective_user_id and not is_admin:
+            def goruyabilir_mi(b: Belge) -> bool:
+                izinliler = (b.meta or {}).get("izin_verilen_kullanicilar", None)
+
+                if b.havuz_turu == "sistem":
+                    # Sistem dosyası: erişim listesi tanımlanmamışsa herkese açık (varsayılan)
+                    # Tanımlanmışsa sadece listede olan kullanıcılar erişebilir
+                    if izinliler is None or len(izinliler) == 0:
+                        return True
+                    return effective_user_id in izinliler
+
+                # Kullanıcı havuzu: sahibi her zaman erişebilir
+                if b.yukleyen_kimlik == effective_user_id:
+                    return True
+                # Diğerleri sadece izin listesindeyse erişebilir (varsayılan kapalı)
+                return effective_user_id in (izinliler or [])
+
+            belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
         sonuclar = []
         for b in belgeler:
@@ -103,6 +275,7 @@ def arsiv_listele():
                 ],
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
+                "havuz_turu": b.havuz_turu,
                 "etiketler": meta.get("etiketler", []),
                 "aciklama": meta.get("aciklama", ""),
                 # Transkripsiyon verileri (ses/video için)
@@ -471,46 +644,119 @@ def dosya_indir(kimlik: str):
 async def dogrudan_yukle(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    folder_id: str = Form(None)
+    folder_id: str = Form(None),
+    user_id: str = Form(None),
 ):
-    """Dosyayı doğrudan arşive yükler. AV ise transkripsiyon, metin ise vektörizasyon başlatır."""
+    """
+    Dosyayı doğrudan arşive yükler.
+    - user_id verilmezse → sistem havuzuna eklenir.
+    - user_id verilirse → kullanıcı havuzuna eklenir (kota kontrolü yapılır).
+    AV ise transkripsiyon, metin ise vektörizasyon başlatır.
+    """
+    from database.sql.repositories.document_repo import DocumentRepository
+
     os.makedirs(ARSIV_KLASORU, exist_ok=True)
 
+    # ── Havuz, kota ve klasör belirleme ──────────────────────────────────
+    havuz_turu = "sistem"
+    kullanici_klasor_id = None  # normal kullanıcı için otomatik klasör
+
+    if user_id and user_id not in ("null", "undefined", ""):
+        with get_session() as db:
+            kullanici = db.get(Kullanici, user_id)
+            if kullanici:
+                if kullanici.super_kullanici_mi:
+                    havuz_turu = "sistem"
+                    # Admin: folder_id parametresi geçerliyse onu kullan, yoksa kök
+                else:
+                    havuz_turu = "kullanici"
+                    # Kota kontrolü (dosya boyutu henüz bilinmiyor; 0 ile kontrol)
+                    repo = DocumentRepository(db)
+                    izin_var, red_nedeni = repo.check_user_can_upload(user_id, new_file_size_bytes=0)
+                    if not izin_var:
+                        raise HTTPException(status_code=403, detail=red_nedeni)
+
+                    # Kullanıcı adına göre klasör bul veya oluştur
+                    klasor_adi = kullanici.tam_ad or "Kullanıcı"
+                    mevcut = db.scalar(
+                        select(Belge).where(
+                            Belge.dosya_adi == klasor_adi,
+                            Belge.dosya_turu == "folder",
+                        )
+                    )
+                    if mevcut:
+                        kullanici_klasor_id = mevcut.kimlik
+                    else:
+                        yeni_klasor = Belge(
+                            dosya_adi=klasor_adi,
+                            dosya_turu="folder",
+                            durum="folder",
+                            havuz_turu="kullanici",
+                            yukleyen_kimlik=user_id,
+                            meta={},
+                        )
+                        db.add(yeni_klasor)
+                        db.commit()
+                        db.refresh(yeni_klasor)
+                        kullanici_klasor_id = yeni_klasor.kimlik
+
+    # ── Dosyayı diske yaz ─────────────────────────────────────────────
     benzersiz_ad = f"{uuid.uuid4().hex[:8]}_{file.filename}"
     arsiv_yolu = os.path.join(ARSIV_KLASORU, benzersiz_ad)
 
     with open(arsiv_yolu, "wb") as tampon:
         shutil.copyfileobj(file.file, tampon)
 
+    dosya_boyutu = os.path.getsize(arsiv_yolu)
     dosya_uzantisi = (file.filename.split(".")[-1] if "." in file.filename else "unknown").lower()
+
+    # Kullanıcı havuzunda kesin boyut kontrolü
+    if havuz_turu == "kullanici" and user_id:
+        with get_session() as db:
+            repo = DocumentRepository(db)
+            izin_var, red_nedeni = repo.check_user_can_upload(user_id, new_file_size_bytes=dosya_boyutu)
+            if not izin_var:
+                os.remove(arsiv_yolu)
+                raise HTTPException(status_code=403, detail=red_nedeni)
 
     is_av = dosya_uzantisi in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
     is_text = dosya_uzantisi in {"pdf", "txt", "docx", "doc", "pptx", "ppt"}
 
-    meta_dict = {"klasor_kimlik": folder_id} if folder_id and folder_id != "null" else {}
+    # Kullanıcı klasörü varsa onu kullan; admin için form'dan gelen folder_id geçerli
+    effective_folder_id = kullanici_klasor_id or (folder_id if folder_id and folder_id != "null" else None)
+    meta_dict = {"klasor_kimlik": effective_folder_id} if effective_folder_id else {}
     if is_av or is_text:
         meta_dict["transcription_status"] = "pending"
+
+    effective_user_id = user_id if user_id and user_id not in ("null", "undefined", "") else None
 
     with get_session() as db:
         yeni_belge = Belge(
             dosya_adi=file.filename,
             dosya_turu=dosya_uzantisi,
-            dosya_boyutu_bayt=os.path.getsize(arsiv_yolu),
+            dosya_boyutu_bayt=dosya_boyutu,
             depolama_yolu=arsiv_yolu,
+            yukleyen_kimlik=effective_user_id,
             vektorlestirildi_mi=False,
             durum="arsivde",
-            meta=meta_dict
+            meta=meta_dict,
+            havuz_turu=havuz_turu,
         )
         db.add(yeni_belge)
         db.commit()
         db.refresh(yeni_belge)
-        
+
     if is_av:
         background_tasks.add_task(_run_transcription, yeni_belge.kimlik)
     elif is_text:
         background_tasks.add_task(_run_vectorization, yeni_belge.kimlik)
 
-    return {"status": "success", "id": yeni_belge.kimlik, "filename": file.filename}
+    return {
+        "status": "success",
+        "id": yeni_belge.kimlik,
+        "filename": file.filename,
+        "havuz_turu": havuz_turu,
+    }
 
 
 # ── SES / VİDEO TRANSKRİPSİYON ENDPOINT'İ ────────────────────────────────────

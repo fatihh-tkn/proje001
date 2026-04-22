@@ -547,6 +547,7 @@ def archive_document(data: dict):
     chunk_count         = data.get("chunk_count", 0)
     chroma_collection   = data.get("chroma_collection", "yilgenci_collection")
     converted_pdf_path  = data.get("converted_pdf_path")  # PPTX->PDF donusum yolu
+    user_id             = data.get("user_id") or None
 
     if not temp_path or not os.path.exists(temp_path):
         raise HTTPException(status_code=400, detail="Geçici dosya bulunamadı.")
@@ -609,7 +610,48 @@ def archive_document(data: dict):
     try:
         with get_session() as db:
             from sqlalchemy import select
-            from database.sql.models import VektorParcasi
+            from database.sql.models import VektorParcasi, Kullanici
+
+            # ── Kullanıcı bilgisi ve havuz/klasör belirleme ──────────────
+            havuz_turu       = "sistem"
+            klasor_kimlik    = None
+            effective_user_id = None
+
+            if user_id:
+                kullanici = db.get(Kullanici, user_id)
+                if kullanici:
+                    effective_user_id = user_id
+                    if kullanici.super_kullanici_mi:
+                        havuz_turu = "sistem"
+                    else:
+                        havuz_turu = "kullanici"
+                        # Kullanıcı adına göre klasör bul veya oluştur
+                        klasor_adi = kullanici.tam_ad or "Kullanıcı"
+                        mevcut_klasor = db.scalar(
+                            select(Belge).where(
+                                Belge.dosya_adi == klasor_adi,
+                                Belge.dosya_turu == "folder",
+                            )
+                        )
+                        if mevcut_klasor:
+                            klasor_kimlik = mevcut_klasor.kimlik
+                        else:
+                            yeni_klasor = Belge(
+                                dosya_adi=klasor_adi,
+                                dosya_turu="folder",
+                                durum="folder",
+                                havuz_turu="kullanici",
+                                yukleyen_kimlik=user_id,
+                                meta={},
+                            )
+                            db.add(yeni_klasor)
+                            db.commit()
+                            db.refresh(yeni_klasor)
+                            klasor_kimlik = yeni_klasor.kimlik
+
+            if klasor_kimlik:
+                belge_meta["klasor_kimlik"] = klasor_kimlik
+
             existing = db.scalar(
                 select(Belge).where(
                     Belge.dosya_adi == final_name,
@@ -620,11 +662,13 @@ def archive_document(data: dict):
                 existing.depolama_yolu     = primary_path
                 existing.dosya_boyutu_bayt = os.path.getsize(primary_path)
                 existing.durum             = "onaylandi"
+                if effective_user_id:
+                    existing.yukleyen_kimlik = effective_user_id
+                existing.havuz_turu = havuz_turu
                 # meta güncelle (varsa mevcut meta koru)
-                if belge_meta:
-                    mevcut_meta = dict(existing.meta or {})
-                    mevcut_meta.update(belge_meta)
-                    existing.meta = mevcut_meta
+                mevcut_meta = dict(existing.meta or {})
+                mevcut_meta.update(belge_meta)
+                existing.meta = mevcut_meta
                 db.commit()
                 db.refresh(existing)
                 belge_id = existing.kimlik
@@ -638,6 +682,8 @@ def archive_document(data: dict):
                     vektordb_koleksiyon=chroma_collection,
                     vektorlestirildi_mi=True,
                     durum="onaylandi",
+                    yukleyen_kimlik=effective_user_id,
+                    havuz_turu=havuz_turu,
                     meta=belge_meta if belge_meta else None,
                 )
                 db.add(yeni_belge)
