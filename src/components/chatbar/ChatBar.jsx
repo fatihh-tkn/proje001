@@ -211,6 +211,18 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         )
                     );
 
+                    // ── N8N_TRIGGERED: otomasyon tetiklendi bildirimi ────────────
+                    if (ui_action?.command === 'N8N_TRIGGERED') {
+                        const statusMsg = ui_action.status === 'ok'
+                            ? `✅ **${ui_action.workflow}** otomasyonu başarıyla tetiklendi.`
+                            : `⚠️ **${ui_action.workflow}** tetiklenmeye çalışıldı. ${ui_action.detail || ''}`;
+                        setMessages(prev => prev.map(m =>
+                            m.id === aiMsgId
+                                ? { ...m, text: m.text ? m.text + '\n\n' + statusMsg : statusMsg }
+                                : m
+                        ));
+                    }
+
                     // ── OPEN_PDF_AT komutu: koordinatlı PDF viewer ──────────────────
                     if (ui_action?.command === 'OPEN_PDF_AT' && onOpenFile) {
                         const { doc_id, pdf_url, source_file, page, bbox } = ui_action;

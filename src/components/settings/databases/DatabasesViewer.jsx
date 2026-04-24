@@ -7,8 +7,12 @@ import SqlDatabaseViewer from '../SqlDatabaseViewer';
 import GraphDatabaseViewer from './GraphDatabaseViewer';
 import ArchiveDocsViewer from '../archive/ArchiveDocsViewer';
 
-export default function DatabasesViewer() {
-    const [activeTab, setActiveTab] = useState('sql');
+export default function DatabasesViewer({ defaultTab = 'sql' }) {
+    const [activeTab, setActiveTab] = useState(defaultTab);
+
+    React.useEffect(() => {
+        setActiveTab(defaultTab);
+    }, [defaultTab]);
 
     const tabs = [
         { id: 'sql', label: 'İlişkisel SQL', icon: Table },

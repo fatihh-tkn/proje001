@@ -23,7 +23,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { DynamicViewer } from './DynamicViewer';
 import { SNAP_LAYOUTS } from './layoutUtils';
 
-export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximized, onMinimize, onClose, onFocus, onMaximize, onSelectLayout, customZoneClass }) => {
+export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximized, onMinimize, onClose, onFocus, onMaximize, onSelectLayout, customZoneClass, onOpenFile }) => {
 
     const [showSnap, setShowSnap] = useState(false);
     const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
@@ -214,7 +214,7 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
                 className="flex-1 bg-white relative flex items-center justify-center overflow-hidden w-full h-full"
                 onPointerDown={(e) => e.stopPropagation()}
             >
-                <DynamicViewer tab={tab} />
+                <DynamicViewer tab={tab} onOpenFile={onOpenFile} />
             </div>
         </motion.div>
     );

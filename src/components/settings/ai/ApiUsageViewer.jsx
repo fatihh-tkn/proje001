@@ -2,14 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, RefreshCw, LayoutDashboard, List, Monitor, Key, Users, Shield } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from './utils';
 import { TabButton } from './components/TabButton';
-import { DashboardTab } from './tabs/DashboardTab';
-import { LogsTab } from './tabs/LogsTab';
 import { ComputersTab } from './tabs/ComputersTab';
 /* ════════════════════════════════════════════════════════════════════
    Ana Bileşen (Tabs wrapper)
 ═══════════════════════════════════════════════════════════════════ */
 export default function ApiUsageViewer() {
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState('sessions');
     const [data, setData] = useState(null);
     const [backendReady, setBackendReady] = useState(null);
 
@@ -26,7 +24,7 @@ export default function ApiUsageViewer() {
     }, []);
 
     useEffect(() => {
-        if (activeTab === 'dashboard') fetchData();
+        if (activeTab === 'sessions') fetchData();
     }, [activeTab, fetchData]);
 
     // Backend henüz başlatılmadıysa bilgi ekranı göster
@@ -67,24 +65,6 @@ export default function ApiUsageViewer() {
             {/* ── YATAY SEKMELER ── */}
             <div className="flex-none px-6 flex items-center gap-4 border-b border-slate-200/60 bg-white pt-2 overflow-x-auto">
                 <button
-                    onClick={() => setActiveTab('dashboard')}
-                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
-                        ${activeTab === 'dashboard' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
-                    `}
-                >
-                    <LayoutDashboard size={14} /> API Maliyetleri
-                    {activeTab === 'dashboard' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
-                </button>
-                <button
-                    onClick={() => setActiveTab('logs')}
-                    className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
-                        ${activeTab === 'logs' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
-                    `}
-                >
-                    <List size={14} /> Detaylı Loglar
-                    {activeTab === 'logs' && <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91d2c] rounded-t-md" />}
-                </button>
-                <button
                     onClick={() => setActiveTab('sessions')}
                     className={`flex items-center gap-2 px-1 pb-3 text-[12px] font-medium transition-all relative whitespace-nowrap
                         ${activeTab === 'sessions' ? 'text-[#b91d2c]' : 'text-slate-500 hover:text-slate-800'}
@@ -99,8 +79,6 @@ export default function ApiUsageViewer() {
 
             {/* ── İÇERİK ALANI ── */}
             <div className="flex-1 overflow-auto bg-[#f8f9fa] flex flex-col">
-                {activeTab === 'dashboard' && <DashboardTab data={data} />}
-                {activeTab === 'logs' && <LogsTab />}
                 {activeTab === 'sessions' && <ComputersTab />}
 
 

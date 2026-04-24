@@ -9,6 +9,7 @@ export const MODEL_COLORS = {
 };
 
 export const API_BASE = '/api/monitor';
+export const SETTINGS_BASE = '/api/settings';
 
 // ── 5 saniyelik timeout ile fetch ──
 export const fetchWithTimeout = (url, options = {}, timeoutMs = 5000) => {

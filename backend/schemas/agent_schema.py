@@ -26,6 +26,7 @@ class AgentBase(BaseModel):
     widgetColor: Optional[str] = Field(None, alias="widget_color")
     
     allowedRags: Optional[List[str]] = Field(None, alias="allowed_rags")
+    allowedWorkflows: Optional[List[str]] = Field(None, alias="allowed_workflows")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 

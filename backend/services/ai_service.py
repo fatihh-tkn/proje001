@@ -140,6 +140,88 @@ def _fetch_chat_memory(session_id: str, query: str) -> str:
 
 
 
+async def _try_route_and_trigger(user_message: str) -> dict | None:
+    """
+    İşlem Botunu çalıştırır; n8n aksiyonu varsa workflow'u tetikler.
+    Dönüş: {"command": "N8N_TRIGGERED", "workflow": ..., "status": ...} veya None.
+    """
+    import os as _os
+    try:
+        action_agent = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
+        if not action_agent:
+            return None
+
+        allowed_workflows: list[str] = action_agent.get("allowed_workflows") or []
+        if not allowed_workflows:
+            return None  # Hiç workflow atanmamışsa çalıştırma
+
+        # Prompt'a güncel workflow listesini enjekte et
+        raw_prompt = action_agent.get("prompt", "")
+        webhook_line = f"Mevcut n8n webhook'ları: {', '.join(allowed_workflows)}"
+        import re as _re
+        if _re.search(r"Mevcut n8n webhook'ları:", raw_prompt):
+            injected_prompt = _re.sub(r"Mevcut n8n webhook'ları:.*$", webhook_line, raw_prompt, flags=_re.MULTILINE)
+        else:
+            injected_prompt = raw_prompt + f"\n\n{webhook_line}"
+
+        # Geçici olarak prompt'u override et
+        action_agent["prompt"] = injected_prompt
+
+        # LLM karar al (döngüsel import olmadan doğrudan çağır)
+        result = await AIService.route_action(user_message, agent_config_override=action_agent)
+
+        if result.get("action") != "n8n":
+            return None
+
+        webhook_name = result.get("webhook", "").strip()
+        if not webhook_name or webhook_name not in allowed_workflows:
+            return None
+
+        # n8n'de bu isimle workflow bul ve tetikle
+        trigger_result = await _trigger_n8n_by_name(webhook_name, result.get("payload") or {})
+        return {
+            "command": "N8N_TRIGGERED",
+            "workflow": webhook_name,
+            "status": trigger_result.get("status", "triggered"),
+            "detail": trigger_result.get("detail", ""),
+        }
+    except Exception as e:
+        print(f"[ACTION-BOT] route_and_trigger hatası: {e}")
+        return None
+
+
+async def _trigger_n8n_by_name(workflow_name: str, payload: dict) -> dict:
+    """Workflow adına göre DB cache'den ID bulur, n8n execute API'sini çağırır."""
+    try:
+        from database.sql.session import get_session as _gs
+        from database.sql.models import N8nWorkflowCache
+        import os as _os
+
+        workflow_id = None
+        with _gs() as _db:
+            wf = _db.query(N8nWorkflowCache).filter(N8nWorkflowCache.name == workflow_name).first()
+            if wf:
+                workflow_id = wf.id
+
+        if not workflow_id:
+            return {"status": "error", "detail": f"'{workflow_name}' adlı workflow bulunamadı"}
+
+        api_key = _os.getenv("N8N_API_KEY", "")
+        headers = {"accept": "application/json", "Content-Type": "application/json"}
+        if api_key:
+            headers["X-N8N-API-KEY"] = api_key
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            url = f"http://localhost:5678/api/v1/workflows/{workflow_id}/run"
+            resp = await client.post(url, headers=headers, json={"startNodes": [], "destinationNode": "", "runData": payload})
+            if resp.status_code in (200, 201):
+                return {"status": "ok", "detail": "Workflow başarıyla tetiklendi"}
+            else:
+                return {"status": "error", "detail": f"n8n yanıtı: {resp.status_code}"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
 def _truncate(text: str, limit: int = None) -> str:
     limit = limit or SETTINGS.CHUNK_CHAR_LIMIT
     if len(text) <= limit:
@@ -699,6 +781,9 @@ class AIService:
         if user_excluded:
             excluded_files = list(set(excluded_files) | set(user_excluded))
 
+        # ── İşlem Botu: Önce aksiyon kararı al ──────────────────────────
+        n8n_ui_action = await _try_route_and_trigger(user_message)
+
         # RAG bağlamı
         ui_action = None
         if file_name:
@@ -873,8 +958,9 @@ class AIService:
 
             await run_in_threadpool(add_log_to_db, log_entry)
 
-            # done sinyali
-            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': ui_action})}\n\n"
+            # done sinyali — n8n aksiyonu varsa onu önceliklendir
+            final_ui_action = n8n_ui_action if n8n_ui_action else ui_action
+            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': final_ui_action})}\n\n"
 
         except httpx.HTTPStatusError as e:
             end_time    = time.time()
@@ -1035,13 +1121,13 @@ class AIService:
                 return data["choices"][0]["message"]["content"].strip()
 
     @staticmethod
-    async def route_action(user_message: str) -> dict:
+    async def route_action(user_message: str, agent_config_override: dict | None = None) -> dict:
         """
         İşlem Botu: Kullanıcı mesajını analiz eder ve hangi aksiyonun alınması
         gerektiğine karar vererek JSON döndürür.
         Örnek çıktı: {"action": "n8n", "webhook": "rapor_gonder", "payload": {}}
         """
-        agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
+        agent_config = agent_config_override or await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
         if not agent_config:
             fallback_prompt = """Sen bir aksiyon karar motorusun. Kullanıcının mesajını analiz ederek aşağıdaki kararlardan birini ver ve SADECE JSON döndür:
 1. n8n otomasyonu için: {"action": "n8n", "webhook": "<webhook_adi>", "payload": {}}

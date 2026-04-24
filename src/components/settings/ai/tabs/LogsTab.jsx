@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, Cpu, DollarSign, Wifi, Hash } from 'lucide-react';
+import { Search, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, Cpu, DollarSign, Wifi, Hash, Bot } from 'lucide-react';
 import { API_BASE, fetchWithTimeout, formatDate, fmtMs, fmtCost, fmt, getModelColor } from '../utils';
 
 /* ─── Mini badge ──────────────────────────────────────────────────── */
@@ -110,7 +110,7 @@ function LogDetail({ log }) {
                         <AlertCircle size={14} className="text-[#791F1F]" />
                         <span className="text-[10px] font-bold tracking-widest text-[#791F1F] uppercase">Hata Çıktısı</span>
                     </div>
-                    <div className="text-[12px] font-mono text-[#D85A30] break-words leading-relaxed max-h-[150px] overflow-y-auto">
+                    <div className="text-[12px] font-mono text-[#D85A30] break-words leading-relaxed max-h-[150px] overflow-y-auto minimal-scroll">
                         {log.error}
                     </div>
                 </div>
@@ -120,7 +120,7 @@ function LogDetail({ log }) {
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
-export const LogsTab = React.memo(() => {
+export const LogsTab = React.memo(({ agent } = {}) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -131,7 +131,10 @@ export const LogsTab = React.memo(() => {
     const fetchLogs = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetchWithTimeout(`${API_BASE}/logs?limit=50`);
+            const url = agent?.id
+                ? `${API_BASE}/logs?limit=50&agentId=${encodeURIComponent(agent.id)}`
+                : `${API_BASE}/logs?limit=50`;
+            const res = await fetchWithTimeout(url);
             const data = await res.json();
             setLogs(data.logs || []);
         } catch (e) {
@@ -139,7 +142,7 @@ export const LogsTab = React.memo(() => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [agent?.id]);
 
     useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -157,18 +160,27 @@ export const LogsTab = React.memo(() => {
                 (l.response || '').toLowerCase().includes(q)
             );
             const matchModel = modelFilter === 'all' || l.model === modelFilter;
-            return matchSearch && matchModel;
+            const matchAgent = !agent?.id || !l.agentId || l.agentId === agent.id;
+            return matchSearch && matchModel && matchAgent;
         });
-    }, [logs, search, modelFilter]);
+    }, [logs, search, modelFilter, agent?.id]);
 
     const successCount = useMemo(() => filtered.filter(l => l.status === 'success').length, [filtered]);
     const errorCount = filtered.length - successCount;
 
     return (
-        <div className="flex flex-col bg-white h-full w-full overflow-hidden animate-in fade-in duration-300">
+        <div className="flex flex-col bg-white h-full w-full overflow-hidden animate-in fade-in duration-300 minimal-scroll">
 
             {/* ── Toolbar ── */}
             <div className="flex items-center gap-3 px-5 py-3 border-b border-stone-200 bg-stone-50 flex-wrap">
+                {/* Seçili Bot Badge */}
+                {agent && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-stone-200 rounded-md shadow-sm shrink-0">
+                        <Bot size={12} className="text-[#378ADD]" strokeWidth={2.5} />
+                        <span className="text-[10px] font-black text-stone-700 tracking-tight">{agent.name}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ml-0.5 ${agent.active ? 'bg-[#1D9E75]' : 'bg-stone-300'}`} />
+                    </div>
+                )}
                 {/* Arama Kutusu */}
                 <div className="flex items-center bg-white border border-stone-200 rounded-md overflow-hidden focus-within:border-[#378ADD] focus-within:ring-1 focus-within:ring-[#378ADD] transition-all h-[36px] shadow-sm">
                     <div className="pl-3 py-2 pr-2 text-stone-400 flex items-center justify-center shrink-0">
@@ -204,7 +216,7 @@ export const LogsTab = React.memo(() => {
 
                     {/* Açılır Menü */}
                     <div className={`absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-stone-200 rounded-lg shadow-lg overflow-hidden transition-all duration-200 origin-top z-[9999] ${dropdownOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-                        <div className="max-h-[250px] overflow-y-auto mac-horizontal-scrollbar group/menu">
+                        <div className="max-h-[250px] overflow-y-auto minimal-scroll group/menu">
                             <div
                                 onMouseDown={(e) => { e.preventDefault(); setModelFilter('all'); setDropdownOpen(false); }}
                                 className={`px-4 py-3 text-[10px] uppercase font-bold tracking-widest cursor-pointer transition-colors hover:bg-stone-50 hover:text-[#378ADD] ${modelFilter === 'all' ? 'bg-stone-50 text-[#378ADD]' : 'text-stone-600'}`}
@@ -257,7 +269,20 @@ export const LogsTab = React.memo(() => {
             </div>
 
             {/* ── Satırlar ── */}
-            <div className="overflow-y-auto mac-horizontal-scrollbar divide-y divide-stone-100/50">
+            <div
+                className="overflow-y-auto minimal-scroll divide-y divide-stone-100/50"
+                onWheel={(e) => {
+                    const target = e.currentTarget;
+                    const isAtTop = target.scrollTop <= 0;
+                    const isAtBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 2;
+
+                    if (e.deltaY > 0 && !isAtBottom) {
+                        e.stopPropagation();
+                    } else if (e.deltaY < 0 && !isAtTop) {
+                        e.stopPropagation();
+                    }
+                }}
+            >
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-4 opacity-70">
                         <RefreshCw size={28} className="animate-spin text-stone-400" />

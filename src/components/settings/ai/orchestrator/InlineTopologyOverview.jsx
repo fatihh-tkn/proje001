@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { User, Bot, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson, AlertTriangle, Power } from 'lucide-react';
+import { User, Bot, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson, FileCode, AlertTriangle, Power, Loader2 } from 'lucide-react';
 import ApiPayloadPreview from './ApiPayloadPreview';
 
-const PopupPortal = ({ title, iconColor, popupPos, onClose, children }) => ReactDOM.createPortal(
+const PopupPortal = ({ title, icon: Icon = FileJson, iconColor, popupPos, onClose, children }) => ReactDOM.createPortal(
     <>
         <div className="fixed inset-0 z-[9998]" onClick={onClose} />
         <div
@@ -12,7 +12,7 @@ const PopupPortal = ({ title, iconColor, popupPos, onClose, children }) => React
         >
             <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between gap-2 bg-stone-50 rounded-t-xl">
                 <div className="flex items-center gap-2">
-                    <FileJson size={14} strokeWidth={2} style={{ color: iconColor || '#378ADD' }} />
+                    <Icon size={14} strokeWidth={2} style={{ color: iconColor || '#378ADD' }} />
                     <span className="text-[11px] font-black uppercase tracking-widest text-stone-600">{title}</span>
                 </div>
                 <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors text-lg leading-none">×</button>
@@ -31,9 +31,30 @@ const GHOST_DEFS = [
     { id: 'sys_agent_action_001', nodeId: 'action', label: 'İşlem Botu', Icon: Zap },
 ];
 
+// Cubic bezier point at t=0.5
+const bezierMid = (p0, p1, p2, p3) => {
+    const t = 0.5;
+    const mt = 1 - t;
+    return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+};
+
 const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggleAgent }) => {
     const [activePopupNode, setActivePopupNode] = useState(null);
     const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
+
+    // Prompt template state
+    const [prompts, setPrompts] = useState([]);
+    const [loadingPrompts, setLoadingPrompts] = useState(true);
+    const [activePromptEdge, setActivePromptEdge] = useState(null);
+    const [promptPopupPos, setPromptPopupPos] = useState({ x: 0, y: 0 });
+
+    useEffect(() => {
+        fetch('/api/settings/prompts')
+            .then(r => r.json())
+            .then(data => setPrompts(data.prompts || []))
+            .catch(() => {})
+            .finally(() => setLoadingPrompts(false));
+    }, []);
 
     const getAgentById = (id) => allAgents?.find(a => a.id === id);
     const getAgentByKind = (kind) => allAgents?.find(a => a.agentKind === kind);
@@ -78,7 +99,66 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
     const loopY = centerY + 80;
     const showFeedbackLoop = chatbotActive && msgActive;
 
+    // ── Prompt key → kenar eşleştirmesi (gerçek API anahtarlarına göre) ──
+    // Backend: general_rag | file_qa | chat_memory
+    const edgePromptKey = {};
+
+    // User → ilk bot: chat_memory (konuşma hafızası her zaman enjekte edilir)
+    const firstBotNode = visibleNodes.find(n => n.id !== 'user');
+    if (pos.user != null && firstBotNode) {
+        edgePromptKey[`pe_user_${firstBotNode.id}`] = 'chat_memory';
+    }
+
+    // RAG1 (Döküman) → Chat: file_qa
+    if (isRag1Active && pos.chat != null) {
+        edgePromptKey['pe_rag1_chat'] = 'file_qa';
+    }
+
+    // RAG2 (Toplantı) → Chat: general_rag
+    if (isRag2Active && pos.chat != null) {
+        edgePromptKey['pe_rag2_chat'] = 'general_rag';
+    }
+
+    const getPromptForEdge = (edgeId) => {
+        const key = edgePromptKey[edgeId];
+        if (!key) return null;
+        return prompts.find(p => p.key === key) || null;
+    };
+
+    // ── Kenar düğüm listesi ────────────────────────────────────────────
+    // Ana pipeline: ardışık düğümler arası orta nokta
+    const candidatePipelineEdges = [];
+    for (let i = 0; i < visibleNodes.length - 1; i++) {
+        const a = visibleNodes[i].id;
+        const b = visibleNodes[i + 1].id;
+        const id = `pe_${a}_${b}`;
+        candidatePipelineEdges.push({ id, x: (pos[a] + pos[b]) / 2, y: centerY });
+    }
+
+    // RAG bağlantıları — cubic bezier t=0.5 noktası
+    const candidateRagEdges = [];
+    if (isRag1Active && pos.chat != null) {
+        candidateRagEdges.push({
+            id: 'pe_rag1_chat',
+            x: bezierMid(pos.chat - 65, pos.chat - 65, pos.chat - 10, pos.chat - 10),
+            y: bezierMid(centerY - 123, centerY - 82, centerY - 82, centerY - 42),
+        });
+    }
+    if (isRag2Active && pos.chat != null) {
+        candidateRagEdges.push({
+            id: 'pe_rag2_chat',
+            x: bezierMid(pos.chat + 65, pos.chat + 65, pos.chat + 10, pos.chat + 10),
+            y: bezierMid(centerY - 123, centerY - 82, centerY - 82, centerY - 42),
+        });
+    }
+
+    // Sadece gerçek promptu olan kenarları göster
+    const allEdges = [...candidatePipelineEdges, ...candidateRagEdges]
+        .filter(edge => !!edgePromptKey[edge.id]);
+
+    // ── Click handlers ──────────────────────────────────────────────────
     const handleNodeClick = (nodeId, e) => {
+        setActivePromptEdge(null);
         if (activePopupNode === nodeId) { setActivePopupNode(null); return; }
         const rect = e.currentTarget.getBoundingClientRect();
         setPopupPos({ x: rect.right + 12, y: rect.top + rect.height / 2 });
@@ -86,7 +166,18 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
         if (onOpenPayload) onOpenPayload();
     };
 
+    const handlePromptCircleClick = (edgeId, e) => {
+        e.stopPropagation();
+        setActivePopupNode(null);
+        if (activePromptEdge === edgeId) { setActivePromptEdge(null); return; }
+        const rect = e.currentTarget.getBoundingClientRect();
+        setPromptPopupPos({ x: rect.right + 12, y: rect.top + rect.height / 2 });
+        setActivePromptEdge(edgeId);
+        if (onOpenPayload) onOpenPayload();
+    };
+
     const closePopup = () => setActivePopupNode(null);
+    const closePromptPopup = () => setActivePromptEdge(null);
 
     const rectBorder = (agentId) =>
         agent?.id === agentId ? 'border-2 border-[#378ADD]/60 shadow-[0_0_15px_rgba(55,138,221,0.15)] bg-white' : 'border border-[#378ADD]/20 bg-stone-50';
@@ -129,6 +220,37 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
                 </svg>
 
                 <style dangerouslySetInnerHTML={{ __html: `@keyframes dash { to { stroke-dashoffset: -1000; } }` }} />
+
+                {/* ── Prompt düğümleri (oklar üzerindeki küçük daireler) ── */}
+                {allEdges.map(edge => {
+                    const prompt = getPromptForEdge(edge.id);
+                    const isEdgeActive = activePromptEdge === edge.id;
+                    const isRagEdge = edge.id.startsWith('pe_rag');
+                    return (
+                        <div
+                            key={edge.id}
+                            className="absolute z-20 pointer-events-auto"
+                            style={{ left: edge.x, top: edge.y, transform: 'translate(-50%, -50%)' }}
+                        >
+                            <button
+                                onClick={(e) => handlePromptCircleClick(edge.id, e)}
+                                title={prompt?.name || 'Prompt Şablonu'}
+                                className={`w-[26px] h-[26px] rounded-full border-2 flex items-center justify-center transition-all duration-150 shadow-sm
+                                    ${isEdgeActive
+                                        ? 'bg-violet-50 border-violet-400 scale-125 shadow-violet-200'
+                                        : isRagEdge
+                                            ? 'bg-white border-[#378ADD]/40 hover:border-violet-300 hover:bg-violet-50 hover:scale-110'
+                                            : 'bg-white border-stone-300 hover:border-violet-300 hover:bg-violet-50 hover:scale-110'
+                                    }`}
+                            >
+                                {loadingPrompts
+                                    ? <Loader2 size={9} strokeWidth={2.5} className="text-stone-300 animate-spin" />
+                                    : <FileCode size={9} strokeWidth={2.5} className={isEdgeActive ? 'text-violet-600' : 'text-stone-400'} />
+                                }
+                            </button>
+                        </div>
+                    );
+                })}
 
                 {/* User node */}
                 {pos.user != null && (
@@ -212,11 +334,7 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
                 {ghostNodes.length > 0 && (
                     <div
                         className="absolute z-10 flex items-center gap-3 pointer-events-auto"
-                        style={{
-                            bottom: 12,
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                        }}
+                        style={{ bottom: 12, left: '50%', transform: 'translateX(-50%)' }}
                     >
                         <span className="text-[10px] font-black text-stone-400 tracking-widest uppercase whitespace-nowrap">Pasif</span>
                         {ghostNodes.map(({ id, label, Icon }) => (
@@ -235,7 +353,7 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
                 )}
             </div>
 
-            {/* Portal Popups */}
+            {/* ── Bot API popupları ── */}
             {activePopupNode === 'user' && (
                 <PopupPortal title="Ham Kullanıcı İstemi" popupPos={popupPos} onClose={closePopup}>
                     <ApiPayloadPreview agent={{ persona: "Kullanıcının yazdığı ham metin", model: "N/A" }} rags={[]} isUser={true} />
@@ -278,6 +396,51 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
                     )}
                 </PopupPortal>
             )}
+
+            {/* ── Prompt şablonu popup ── */}
+            {activePromptEdge && (() => {
+                const prompt = getPromptForEdge(activePromptEdge);
+                if (!prompt && !loadingPrompts) return null;
+
+                return (
+                    <PopupPortal
+                        title={prompt?.label || 'Prompt Şablonu'}
+                        icon={FileCode}
+                        iconColor="#7C3AED"
+                        popupPos={promptPopupPos}
+                        onClose={closePromptPopup}
+                    >
+                        <div className="flex flex-col bg-stone-50 rounded-b-xl overflow-hidden">
+                            {/* Açıklama satırı */}
+                            {prompt?.desc && (
+                                <div className="px-4 pt-3 pb-2 border-b border-stone-100">
+                                    <p className="text-[10px] font-semibold text-stone-400 leading-relaxed">{prompt.desc}</p>
+                                </div>
+                            )}
+                            {/* Prompt içeriği */}
+                            <div className="px-4 py-3 max-h-[280px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+                                {loadingPrompts ? (
+                                    <div className="flex items-center gap-2 py-6 justify-center">
+                                        <Loader2 size={16} className="animate-spin text-violet-400" />
+                                        <span className="text-[11px] text-stone-400 font-semibold">Yükleniyor...</span>
+                                    </div>
+                                ) : prompt?.value ? (
+                                    <pre className="text-[11px] font-mono text-stone-700 whitespace-pre-wrap leading-relaxed tracking-tight bg-white border border-stone-100 rounded-lg p-3 shadow-sm">
+                                        {prompt.value}
+                                    </pre>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-2 py-6">
+                                        <FileCode size={24} strokeWidth={1.5} className="text-stone-300" />
+                                        <p className="text-[11px] text-stone-400 font-semibold text-center">
+                                            Prompt şablonu boş.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </PopupPortal>
+                );
+            })()}
         </div>
     );
 };

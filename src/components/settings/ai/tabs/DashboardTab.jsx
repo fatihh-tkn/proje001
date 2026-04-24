@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { Activity, AlertCircle, TrendingUp, DollarSign, Zap, Clock, CheckCircle2, MoreHorizontal, ShieldAlert, Coins, Flame, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
+import { Activity, AlertCircle, TrendingUp, DollarSign, Zap, Clock, CheckCircle2, MoreHorizontal, ShieldAlert, Coins, Flame, BarChart3, LineChart as LineChartIcon, RefreshCw, Bot } from 'lucide-react';
 import { CustomTooltip } from '../components/CustomTooltip';
 import { StatCard } from '../components/StatCard';
-import { fmt, fmtMs, fmtCost, getModelColor, MODEL_COLORS } from '../utils';
+import { fmt, fmtMs, fmtCost, getModelColor, MODEL_COLORS, API_BASE, fetchWithTimeout } from '../utils';
 
 /* ─── Mini badge component for Dashboard ─────────────────────────── */
 function Badge({ children, color = 'default' }) {
@@ -20,11 +20,79 @@ function Badge({ children, color = 'default' }) {
     );
 }
 
-export const DashboardTab = React.memo(({ data }) => {
-    const d = data || {};
-    const axisColor = '#94a3b8';
-
+export const DashboardTab = React.memo(({ agent } = {}) => {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState(false);
     const [timeRange, setTimeRange] = useState('15d');
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setFetchError(false);
+        try {
+            const url = agent?.id
+                ? `${API_BASE}/dashboard?agentId=${encodeURIComponent(agent.id)}`
+                : `${API_BASE}/dashboard`;
+            const res = await fetchWithTimeout(url);
+            const json = await res.json();
+            setData(json || {});
+        } catch (err) {
+            console.warn('Dashboard fetch fail', err);
+            setFetchError(true);
+            setData({});
+        } finally {
+            setLoading(false);
+        }
+    }, [agent?.id]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const d = data || {};
+    const costsArray = Array.isArray(d.costs) ? d.costs : [];
+
+    // HOOK MUST BE BEFORE ANY RETURNS!
+    const chartData = React.useMemo(() => {
+        if (costsArray.length === 0) return [];
+
+        let sliceLength = costsArray.length;
+        if (timeRange === '12h') sliceLength = Math.max(1, Math.floor(costsArray.length / 30));
+        if (timeRange === '1d') sliceLength = Math.max(1, Math.floor(costsArray.length / 15));
+        if (timeRange === '7d') sliceLength = Math.min(7, costsArray.length);
+        if (timeRange === '15d') sliceLength = Math.min(15, costsArray.length);
+        if (timeRange === '30d') sliceLength = Math.min(30, costsArray.length);
+
+        return costsArray.slice(-sliceLength);
+    }, [timeRange, costsArray]);
+
+    if (loading) {
+        return (
+            <div className="w-full min-h-[400px] flex flex-col items-center justify-center gap-4 bg-stone-50">
+                <RefreshCw size={24} className="text-stone-400 animate-spin" />
+                <span className="text-[12px] font-bold uppercase tracking-widest text-stone-500">Maliyetler Yükleniyor...</span>
+            </div>
+        );
+    }
+
+    if (fetchError && (!data || Object.keys(data).length === 0)) {
+        return (
+            <div className="w-full min-h-[400px] flex flex-col items-center justify-center gap-4 bg-stone-50">
+                <Activity size={28} className="text-amber-500" />
+                <span className="text-[12px] font-bold uppercase tracking-widest text-stone-500">Sunucu Bağlantısı Kurulamadı</span>
+                <p className="text-[11px] text-stone-400 max-w-[280px] text-center">API sunucusu yanıt vermiyor. Veriler yüklendiğinde burada görüntülenecek.</p>
+                <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-lg text-[11px] font-bold text-stone-600 hover:bg-stone-50 transition-colors mt-2 shadow-sm">
+                    <RefreshCw size={12} /> Tekrar Dene
+                </button>
+            </div>
+        );
+    }
+
+    const axisColor = '#94a3b8';
+    const requestsArray = Array.isArray(d.requests) ? d.requests : [];
+    const errorsArray = Array.isArray(d.errors) ? d.errors : [];
+    const modelCostsArray = Array.isArray(d.modelCosts) ? d.modelCosts : [];
+    const topModelsArray = Array.isArray(d.topModels) ? d.topModels : [];
 
     const ERROR_CATALOG = {
         '401': { label: 'Yetki (API Anahtarı)', desc: 'Geçersiz veya süresi dolmuş anahtar', color: '#D85A30' },
@@ -38,20 +106,6 @@ export const DashboardTab = React.memo(({ data }) => {
 
     const getErrorMeta = (name) => ERROR_CATALOG[String(name).toLowerCase()] || { label: `Tanımsız Kod (${name})`, desc: 'Sistemsel Kesinti', color: '#a8a29e' };
 
-    const chartData = React.useMemo(() => {
-        const source = d.costs || [];
-        if (source.length === 0) return [];
-
-        let sliceLength = source.length;
-        if (timeRange === '12h') sliceLength = Math.max(1, Math.floor(source.length / 30));
-        if (timeRange === '1d') sliceLength = Math.max(1, Math.floor(source.length / 15));
-        if (timeRange === '7d') sliceLength = Math.min(7, source.length);
-        if (timeRange === '15d') sliceLength = Math.min(15, source.length);
-        if (timeRange === '30d') sliceLength = Math.min(30, source.length);
-
-        return source.slice(-sliceLength);
-    }, [timeRange, d.costs]);
-
     const timeOptions = [
         { id: '12h', label: '12 Saatlik' },
         { id: '1d', label: 'Günlük' },
@@ -61,8 +115,31 @@ export const DashboardTab = React.memo(({ data }) => {
     ];
 
     return (
-        <div className="w-full h-full overflow-y-auto bg-stone-50 animate-in fade-in duration-300 mac-horizontal-scrollbar">
+        <div
+            className="w-full h-full overflow-y-auto bg-stone-50 animate-in fade-in duration-300 minimal-scroll"
+            onWheel={(e) => {
+                const target = e.currentTarget;
+                const isAtTop = target.scrollTop <= 0;
+                const isAtBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 2;
+
+                if (e.deltaY > 0 && !isAtBottom) {
+                    e.stopPropagation();
+                } else if (e.deltaY < 0 && !isAtTop) {
+                    e.stopPropagation();
+                }
+            }}
+        >
             <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+
+                {/* ── AJAN FİLTRE BADGE'İ ── */}
+                {agent && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-stone-200 rounded-lg shadow-sm w-fit">
+                        <Bot size={13} className="text-[#378ADD]" strokeWidth={2.5} />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Filtre:</span>
+                        <span className="text-[11px] font-black text-stone-700 tracking-tight">{agent.name}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ml-1 ${agent.active ? 'bg-[#1D9E75]' : 'bg-stone-300'}`} />
+                    </div>
+                )}
 
                 {/* ── ÜST SATIR: İstatistik Kartları ── */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -111,21 +188,21 @@ export const DashboardTab = React.memo(({ data }) => {
                     <div className="lg:col-span-4 bg-white rounded-xl border border-stone-200 shadow-sm p-6 flex flex-col">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-[12px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2.5">
-                                <div className={`p-1.5 rounded-lg flex items-center justify-center ${(d.errors?.length || 0) > 0 ? "bg-[#FCEBEB] text-[#791F1F]" : "bg-[#EAF3DE] text-[#3B6D11]"}`}>
+                                <div className={`p-1.5 rounded-lg flex items-center justify-center ${errorsArray.length > 0 ? "bg-[#FCEBEB] text-[#791F1F]" : "bg-[#EAF3DE] text-[#3B6D11]"}`}>
                                     <ShieldAlert size={14} strokeWidth={2.5} />
                                 </div>
                                 Hata Analizi
                             </h3>
                         </div>
 
-                        {(d.errors?.length ?? 0) === 0 ? (
+                        {errorsArray.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center py-10 bg-stone-50 rounded-lg border border-stone-200 border-dashed mt-2">
                                 <CheckCircle2 size={28} className="text-[#1D9E75] mb-2 opacity-80" />
                                 <span className="text-[11px] font-bold tracking-widest uppercase text-[#3B6D11]">Sistem Stabil</span>
                             </div>
                         ) : (
                             (() => {
-                                const processedErrors = (d.errors || []).map(err => {
+                                const processedErrors = errorsArray.map(err => {
                                     const meta = getErrorMeta(err.name);
                                     return { ...err, displayName: meta.label, desc: meta.desc, color: meta.color };
                                 });
@@ -142,7 +219,7 @@ export const DashboardTab = React.memo(({ data }) => {
                                             </ResponsiveContainer>
                                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                                 <span className="text-[20px] font-black text-stone-700 leading-none">
-                                                    {processedErrors.reduce((s, e) => s + e.value, 0)}
+                                                    {processedErrors.reduce((s, e) => s + (e.value || 0), 0)}
                                                 </span>
                                                 <span className="text-[10px] font-bold tracking-widest text-[#791F1F] mt-1 uppercase">Müdahale</span>
                                             </div>
@@ -178,7 +255,7 @@ export const DashboardTab = React.memo(({ data }) => {
 
                         {/* Bütçe Payı (Stacked Bar) */}
                         <div className="h-2.5 w-full rounded-md overflow-hidden flex ring-1 ring-stone-200 mb-6">
-                            {(d.modelCosts || []).slice(0, 6).map((model, idx) => (
+                            {modelCostsArray.slice(0, 6).map((model, idx) => (
                                 <div
                                     key={idx}
                                     className="h-full transition-all duration-1000 hover:opacity-80 cursor-default border-r border-white/20 last:border-0"
@@ -190,7 +267,7 @@ export const DashboardTab = React.memo(({ data }) => {
 
                         {/* Finansal Bloklar */}
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 flex-1 content-start">
-                            {(d.modelCosts || []).slice(0, 6).map((model, idx) => (
+                            {modelCostsArray.slice(0, 6).map((model, idx) => (
                                 <div key={idx} className="p-4 bg-stone-50 border border-stone-200 rounded-lg flex flex-col justify-between hover:bg-stone-100 transition-colors group">
                                     <div className="flex items-center gap-2 mb-3">
                                         <div className="w-2 h-2 rounded-sm shadow-sm" style={{ backgroundColor: getModelColor(model.name) }} />
@@ -198,7 +275,7 @@ export const DashboardTab = React.memo(({ data }) => {
                                     </div>
                                     <div>
                                         <div className="text-[15px] font-black text-stone-700 group-hover:scale-105 transition-transform origin-left">{fmtCost(model.cost)}</div>
-                                        <div className="text-[10px] font-bold tracking-widest uppercase text-stone-400 mt-1">%{model.percent} Tüketim</div>
+                                        <div className="text-[10px] font-bold tracking-widest uppercase text-stone-400 mt-1">%{model.percent || 0} Tüketim</div>
                                     </div>
                                 </div>
                             ))}
@@ -216,16 +293,16 @@ export const DashboardTab = React.memo(({ data }) => {
                             </h3>
                         </div>
                         <div className="space-y-5">
-                            {(d.topModels || []).slice(0, 5).map((model, idx) => (
+                            {topModelsArray.slice(0, 5).map((model, idx) => (
                                 <div key={idx} className="group">
                                     <div className="flex justify-between items-baseline mb-2">
                                         <div className="flex items-center gap-2 max-w-[70%]">
                                             <span className="text-[11px] font-bold truncate text-stone-700 group-hover:text-[#378ADD] transition-colors">{model.name}</span>
                                         </div>
-                                        <span className="text-[10px] font-bold tracking-wider text-stone-400">%{model.percent}</span>
+                                        <span className="text-[10px] font-bold tracking-wider text-stone-400">%{model.percent || 0}</span>
                                     </div>
                                     <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                                        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${model.percent}%`, backgroundColor: getModelColor(model.name) }} />
+                                        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${model.percent || 0}%`, backgroundColor: getModelColor(model.name) }} />
                                     </div>
                                 </div>
                             ))}
@@ -244,7 +321,7 @@ export const DashboardTab = React.memo(({ data }) => {
                             Günlük İşlem Trafiği
                         </h3>
                         <div className="flex flex-wrap gap-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider bg-stone-50 p-2 rounded-lg border border-stone-200">
-                            {Array.from(new Set((d.requests || []).flatMap(day => Object.keys(day.models || {})))).map(model => (
+                            {Array.from(new Set(requestsArray.flatMap(day => Object.keys(day.models || {})))).map(model => (
                                 <span key={model} className="flex items-center gap-1.5 px-1.5">
                                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getModelColor(model) }} />
                                     {model}
@@ -255,7 +332,7 @@ export const DashboardTab = React.memo(({ data }) => {
                     </div>
                     {(() => {
                         // Her gün için toplam success/error hesapla
-                        const chartData = (d.requests || []).map(day => ({
+                        const chartData = requestsArray.map(day => ({
                             date: day.date,
                             success: Object.values(day.models || {}).reduce((s, v) => s + (v?.success || 0), 0),
                             error: Object.values(day.models || {}).reduce((s, v) => s + (v?.error || 0), 0),

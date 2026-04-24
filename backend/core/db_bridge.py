@@ -166,6 +166,7 @@ def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]
             "model": agent.model,
             "provider": agent.provider,
             "allowed_rags": agent.allowed_rags,
+            "allowed_workflows": agent.allowed_workflows or [],
             "strict_fact_check": agent.strict_fact_check,
             "chat_history_length": agent.chat_history_length,
             "can_ask_follow_up": agent.can_ask_follow_up,

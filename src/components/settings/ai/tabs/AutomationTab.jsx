@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Webhook, Activity, Clock, Server, CheckCircle2, XCircle, Search, Filter, ExternalLink, Play, SlidersHorizontal, ArrowUpDown, KeyRound, AlertCircle, Save } from 'lucide-react';
+import { Webhook, Activity, Clock, Server, CheckCircle2, XCircle, Search, Filter, ExternalLink, Play, SlidersHorizontal, ArrowUpDown, KeyRound, AlertCircle, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export const AutomationTab = () => {
     const [workflows, setWorkflows] = useState([]);
@@ -10,6 +10,10 @@ export const AutomationTab = () => {
     const [authError, setAuthError] = useState('');
     const [isActionLoading, setIsActionLoading] = useState(false);
     const [isCachedData, setIsCachedData] = useState(false);
+    const [triggeringId, setTriggeringId] = useState(null);
+    const [triggerResults, setTriggerResults] = useState({});
+    const [expandedPayload, setExpandedPayload] = useState(null);
+    const [payloadInputs, setPayloadInputs] = useState({});
 
     const fetchWorkflows = async (showLoader = true) => {
         if (showLoader) setIsLoading(true);
@@ -96,6 +100,26 @@ export const AutomationTab = () => {
             setWorkflows(prev => prev.map(w => w.id === id ? { ...w, active: currentStatus, status: currentStatus ? 'healthy' : 'stopped' } : w));
         } finally {
             setIsActionLoading(false);
+        }
+    };
+
+    const triggerWorkflow = async (wk) => {
+        if (isCachedData || triggeringId) return;
+        setTriggeringId(wk.id);
+        setTriggerResults(prev => ({ ...prev, [wk.id]: null }));
+        try {
+            const savedKey = localStorage.getItem('n8n_api_key') || '';
+            const headers = { 'Content-Type': 'application/json', ...(savedKey ? { 'x-n8n-api-key': savedKey } : {}) };
+            let payload = {};
+            try { payload = JSON.parse(payloadInputs[wk.id] || '{}'); } catch { payload = {}; }
+            const res = await fetch(`/api/n8n/workflows/${wk.id}/run`, { method: 'POST', headers, body: JSON.stringify(payload) });
+            const data = await res.json();
+            setTriggerResults(prev => ({ ...prev, [wk.id]: data.success ? 'ok' : 'error' }));
+        } catch {
+            setTriggerResults(prev => ({ ...prev, [wk.id]: 'error' }));
+        } finally {
+            setTriggeringId(null);
+            setTimeout(() => setTriggerResults(prev => ({ ...prev, [wk.id]: null })), 4000);
         }
     };
 
@@ -279,70 +303,120 @@ export const AutomationTab = () => {
                                     <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase">Tetikleyici</th>
                                     <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase">Durum</th>
                                     <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase text-right">Başarı Oranı</th>
-                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase text-center w-24">Aksiyon</th>
+                                    <th className="px-4 py-3 text-[9px] font-bold tracking-widest text-stone-400 uppercase text-center w-36">Aksiyon</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredWorkflows.map((wk, index) => (
-                                    <tr key={wk.id} className={`${index !== filteredWorkflows.length - 1 ? 'border-b border-stone-100' : ''} hover:bg-stone-50/50 transition-colors group ${isCachedData ? 'opacity-90' : ''}`}>
-                                        <td className={`px-4 py-4 text-center ${isCachedData ? 'cursor-not-allowed' : 'cursor-pointer'}`} onClick={() => toggleWorkflowStatus(wk.id, wk.active)}>
-                                            <div className={`w-8 h-4 rounded-full relative inline-block align-middle transition-colors duration-300 ${wk.active ? (isCachedData ? 'bg-[#1D9E75]/50' : 'bg-[#1D9E75]') : 'bg-stone-300'}`}>
-                                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 shadow-sm ${wk.active ? 'right-0.5' : 'left-0.5'}`}></div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border 
-                                                    ${wk.status === 'offline' ? 'bg-stone-100 border-stone-200 text-stone-400'
-                                                        : wk.status === 'healthy' ? 'bg-[#378ADD]/10 border-[#378ADD]/20 text-[#378ADD]'
-                                                            : 'bg-[#FCEBEB] border-[#FCEBEB]/50 text-[#791F1F]'}`}>
-                                                    <Webhook size={14} />
+                                    <React.Fragment key={wk.id}>
+                                        <tr className={`${index !== filteredWorkflows.length - 1 ? 'border-b border-stone-100' : ''} hover:bg-stone-50/50 transition-colors group ${isCachedData ? 'opacity-90' : ''}`}>
+                                            <td className={`px-4 py-4 text-center ${isCachedData ? 'cursor-not-allowed' : 'cursor-pointer'}`} onClick={() => toggleWorkflowStatus(wk.id, wk.active)}>
+                                                <div className={`w-8 h-4 rounded-full relative inline-block align-middle transition-colors duration-300 ${wk.active ? (isCachedData ? 'bg-[#1D9E75]/50' : 'bg-[#1D9E75]') : 'bg-stone-300'}`}>
+                                                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 shadow-sm ${wk.active ? 'right-0.5' : 'left-0.5'}`}></div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[11px] font-black text-stone-700 group-hover:text-[#378ADD] transition-colors cursor-pointer" onClick={() => openInN8n(wk.id)}>{wk.name}</p>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-[9px] font-medium text-stone-400 font-mono tracking-wide">{wk.id}</span>
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {wk.tags && wk.tags.map(tag => (
-                                                                <span key={tag} className="px-1.5 py-0.5 rounded border border-stone-200 bg-stone-100 text-[8px] font-bold text-stone-500 uppercase">{tag}</span>
-                                                            ))}
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border 
+                                                    ${wk.status === 'offline' ? 'bg-stone-100 border-stone-200 text-stone-400'
+                                                            : wk.status === 'healthy' ? 'bg-[#378ADD]/10 border-[#378ADD]/20 text-[#378ADD]'
+                                                                : 'bg-[#FCEBEB] border-[#FCEBEB]/50 text-[#791F1F]'}`}>
+                                                        <Webhook size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] font-black text-stone-700 group-hover:text-[#378ADD] transition-colors cursor-pointer" onClick={() => openInN8n(wk.id)}>{wk.name}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[9px] font-medium text-stone-400 font-mono tracking-wide">{wk.id}</span>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {wk.tags && wk.tags.map(tag => (
+                                                                    <span key={tag} className="px-1.5 py-0.5 rounded border border-stone-200 bg-stone-100 text-[8px] font-bold text-stone-500 uppercase">{tag}</span>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-stone-50 border border-stone-200 text-[10px] font-semibold text-stone-600">
-                                                <Clock size={10} className={wk.trigger === 'Webhook' ? 'text-[#378ADD]' : 'text-stone-400'} />
-                                                {wk.trigger}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <p className="text-[11px] font-bold text-stone-600">{wk.lastRun || "Henüz tetiklenmedi"}</p>
-                                            <p className="text-[10px] text-stone-400 mt-0.5">{wk.executionsCount} işlem</p>
-                                        </td>
-                                        <td className="px-4 py-4 text-right">
-                                            <div className="flex flex-col items-end">
-                                                <span className={`text-[11px] font-black ${wk.successRate === 100 ? 'text-[#3B6D11]' : wk.successRate > 50 ? 'text-[#854F0B]' : 'text-[#791F1F]'}`}>
-                                                    %{wk.successRate || 0}
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-stone-50 border border-stone-200 text-[10px] font-semibold text-stone-600">
+                                                    <Clock size={10} className={wk.trigger === 'Webhook' ? 'text-[#378ADD]' : 'text-stone-400'} />
+                                                    {wk.trigger}
                                                 </span>
-                                                <div className="w-16 h-1 mt-1 bg-stone-100 rounded-full overflow-hidden">
-                                                    <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-[#EAF3DE]' : wk.successRate > 50 ? 'bg-[#FAEEDA]' : 'bg-[#FCEBEB]'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <p className="text-[11px] font-bold text-stone-600">{wk.lastRun || "Henüz tetiklenmedi"}</p>
+                                                <p className="text-[10px] text-stone-400 mt-0.5">{wk.executionsCount} işlem</p>
+                                            </td>
+                                            <td className="px-4 py-4 text-right">
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`text-[11px] font-black ${wk.successRate === 100 ? 'text-[#3B6D11]' : wk.successRate > 50 ? 'text-[#854F0B]' : 'text-[#791F1F]'}`}>
+                                                        %{wk.successRate || 0}
+                                                    </span>
+                                                    <div className="w-16 h-1 mt-1 bg-stone-100 rounded-full overflow-hidden">
+                                                        <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-[#EAF3DE]' : wk.successRate > 50 ? 'bg-[#FAEEDA]' : 'bg-[#FCEBEB]'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => openInN8n(wk.id)}
-                                                    className="w-7 h-7 rounded-md bg-white border border-stone-200 flex items-center justify-center text-stone-400 hover:text-[#378ADD] hover:border-[#378ADD] transition-all shadow-sm"
-                                                    title="Düzenle"
-                                                >
-                                                    <ExternalLink size={12} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    {/* Manuel Tetikle */}
+                                                    <button
+                                                        onClick={() => triggerWorkflow(wk)}
+                                                        disabled={!!triggeringId || isCachedData}
+                                                        title="Manuel Tetikle"
+                                                        className={`w-7 h-7 rounded-md border flex items-center justify-center transition-all shadow-sm text-[10px] font-bold ${triggerResults[wk.id] === 'ok' ? 'bg-[#EAF3DE] border-[#EAF3DE] text-[#3B6D11]' :
+                                                                triggerResults[wk.id] === 'error' ? 'bg-[#FCEBEB] border-[#FCEBEB] text-[#791F1F]' :
+                                                                    triggeringId === wk.id ? 'bg-stone-50 border-stone-200 text-[#378ADD]' :
+                                                                        'bg-white border-stone-200 text-stone-400 hover:text-[#1D9E75] hover:border-[#1D9E75] opacity-0 group-hover:opacity-100'
+                                                            }`}
+                                                    >
+                                                        {triggeringId === wk.id ? <Loader2 size={11} className="animate-spin" /> :
+                                                            triggerResults[wk.id] === 'ok' ? <CheckCircle2 size={11} /> :
+                                                                triggerResults[wk.id] === 'error' ? <XCircle size={11} /> :
+                                                                    <Play size={11} />}
+                                                    </button>
+                                                    {/* Payload toggle */}
+                                                    <button
+                                                        onClick={() => setExpandedPayload(expandedPayload === wk.id ? null : wk.id)}
+                                                        title="Payload Düzenle"
+                                                        className="w-7 h-7 rounded-md bg-white border border-stone-200 flex items-center justify-center text-stone-400 hover:text-[#854F0B] hover:border-[#854F0B] transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        {expandedPayload === wk.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                                                    </button>
+                                                    {/* n8n'de aç */}
+                                                    <button
+                                                        onClick={() => openInN8n(wk.id)}
+                                                        className="w-7 h-7 rounded-md bg-white border border-stone-200 flex items-center justify-center text-stone-400 hover:text-[#378ADD] hover:border-[#378ADD] transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                                                        title="n8n'de Düzenle"
+                                                    >
+                                                        <ExternalLink size={11} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {/* Payload satırı */}
+                                        {expandedPayload === wk.id && (
+                                            <tr key={`${wk.id}-payload`}>
+                                                <td colSpan={6} className="px-6 py-3 bg-stone-50 border-b border-stone-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500 shrink-0">JSON Payload</span>
+                                                        <input
+                                                            value={payloadInputs[wk.id] || '{}'}
+                                                            onChange={e => setPayloadInputs(prev => ({ ...prev, [wk.id]: e.target.value }))}
+                                                            placeholder='{"key": "value"}'
+                                                            className="flex-1 bg-white border border-stone-200 rounded-md px-3 py-1.5 text-[11px] font-mono text-stone-700 focus:outline-none focus:border-[#854F0B] focus:ring-1 focus:ring-[#854F0B]/20 transition-all"
+                                                        />
+                                                        <button
+                                                            onClick={() => triggerWorkflow(wk)}
+                                                            disabled={!!triggeringId || isCachedData}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1D9E75] text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-[#178060] transition-all shrink-0"
+                                                        >
+                                                            <Play size={11} /> Tetikle
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>

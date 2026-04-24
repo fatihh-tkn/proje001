@@ -16,7 +16,7 @@ const AiOrchestratorViewer = lazy(() => import('../settings/ai/AiOrchestratorVie
 const MeetingUploadViewer = lazy(() => import('../settings/meetings/MeetingUploadViewer'));
 const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
 
-export const DynamicViewer = ({ tab }) => {
+export const DynamicViewer = ({ tab, onOpenFile }) => {
     return (
         <Suspense fallback={
             <div className="flex flex-col items-center justify-center w-full h-full text-slate-400">
@@ -37,13 +37,13 @@ export const DynamicViewer = ({ tab }) => {
 
             {(tab.type === 'doc' || tab.type === 'docx') && <DocxViewer url={tab.url} title={tab.title} />}
             {(tab.type === 'xls' || tab.type === 'xlsx') && <ExcelViewer url={tab.url} title={tab.title} />}
-            {tab.type === 'databases-viewer' && <DatabasesViewer />}
+            {tab.type === 'databases-viewer' && <DatabasesViewer defaultTab={tab.meta?.defaultTab || 'sql'} />}
             {tab.type === 'database' && <DatabaseViewer />}
             {tab.type === 'api-usage' && <ApiUsageViewer />}
             {tab.type === 'archive-docs' && <ArchiveDocsViewer />}
             {tab.type === 'image-viewer' && <ImageViewer url={tab.url} title={tab.title} bbox={tab.meta?.bbox} />}
             {tab.type === 'n8n' && <N8nViewer />}
-            {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer defaultAgentId={tab.defaultAgentId} defaultMainTab={tab.meta?.defaultMainTab} />}
+            {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer defaultAgentId={tab.defaultAgentId} defaultMainTab={tab.meta?.defaultMainTab} onOpenFile={onOpenFile} />}
             {tab.type === 'meetings' && <MeetingUploadViewer />}
             {tab.type === 'auth' && <AuthViewer />}
 

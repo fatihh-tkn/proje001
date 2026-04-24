@@ -209,6 +209,31 @@ async def get_workflows(request: Request, db: Session = Depends(get_db)):
         return {"success": True, "is_cached": True, "workflows": formatted}
 
 
+@router.post("/workflows/{workflow_id}/run", summary="Bir n8n iş akışını manuel olarak tetikler")
+async def run_workflow(workflow_id: str, request: Request):
+    api_key = request.headers.get("x-n8n-api-key") or os.getenv("N8N_API_KEY", "")
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    headers = {"accept": "application/json", "Content-Type": "application/json"}
+    if api_key:
+        headers["X-N8N-API-KEY"] = api_key
+
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"http://localhost:5678/api/v1/workflows/{workflow_id}/run"
+            response = await client.post(url, headers=headers, json=body, timeout=10.0)
+            if response.status_code in (200, 201):
+                return {"success": True, "status": "triggered", "data": response.json()}
+            else:
+                return {"success": False, "error": f"n8n Hata Kodu ({response.status_code})"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @router.post("/workflows/{workflow_id}/toggle", summary="Bir n8n iş akışını (workflow) aktif veya pasif yapar")
 async def toggle_workflow(workflow_id: str, request: Request):
     api_key = request.headers.get("x-n8n-api-key") or os.getenv("N8N_API_KEY", "")

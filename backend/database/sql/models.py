@@ -567,6 +567,8 @@ class AIAgent(Base):
     
     # Hangi RAG koleksiyonlarına yetkili? JSON array (örn: ["rag_1", "rag_2"])
     allowed_rags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Router ajan için izin verilen n8n workflow isimleri JSON array (örn: ["rapor_gonder", "gorev_olustur"])
+    allowed_workflows: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("ix_ai_agents_ad", "ad"),

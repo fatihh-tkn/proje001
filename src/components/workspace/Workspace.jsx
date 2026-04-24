@@ -598,6 +598,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                             activeId={activeDragId}
                                             isMaximized={false}
                                             customZoneClass={zoneClass}
+                                            onOpenFile={onOpenFile}
                                             onMinimize={() => {
                                                 if (tab.id === 'n8n-viewer') {
                                                     if (onCloseTab) onCloseTab(tab.id, null, { keepAlive: true });
@@ -640,6 +641,7 @@ const Workspace = ({ tabs = [], activeTabId, maximizedTabId, onMinimize, onClose
                                     isActive={true}
                                     isMaximized={true}
                                     isDraggingGhost={false}
+                                    onOpenFile={onOpenFile}
                                     onMinimize={() => {
                                         if (onMaximizeTab) onMaximizeTab(maxTab.id);
                                         if (maxTab.id === 'n8n-viewer') {

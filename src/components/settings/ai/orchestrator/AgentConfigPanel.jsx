@@ -1,6 +1,111 @@
-import React, { useState } from 'react';
-import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
+
+/* ── İşlem Botu için n8n Workflow Seçici ─────────────────────────── */
+function RouterWorkflowPanel({ selectedItem, updateAgent }) {
+    const [workflows, setWorkflows] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+
+    const fetchWorkflows = async () => {
+        setLoading(true);
+        setError(false);
+        try {
+            const savedKey = localStorage.getItem('n8n_api_key') || '';
+            const headers = savedKey ? { 'x-n8n-api-key': savedKey } : {};
+            const res = await fetch('/api/n8n/workflows', { headers });
+            const data = await res.json();
+            if (data.success && data.workflows) {
+                setWorkflows(data.workflows);
+            } else {
+                setError(true);
+            }
+        } catch {
+            setError(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchWorkflows(); }, []);
+
+    const allowedWorkflows = selectedItem.allowedWorkflows || [];
+
+    const toggleWorkflow = (wf) => {
+        const isSelected = allowedWorkflows.includes(wf.name);
+        const newList = isSelected
+            ? allowedWorkflows.filter(n => n !== wf.name)
+            : [...allowedWorkflows, wf.name];
+
+        updateAgent('allowedWorkflows', newList);
+
+        // Prompt içindeki webhook listesini otomatik güncelle
+        const webhookLine = newList.length > 0
+            ? `Mevcut n8n webhook'ları: ${newList.join(', ')}`
+            : `Mevcut n8n webhook'ları: (henüz seçilmedi)`;
+        const updatedPrompt = (selectedItem.prompt || '').replace(
+            /Mevcut n8n webhook'ları:.*$/m,
+            webhookLine
+        );
+        updateAgent('prompt', updatedPrompt);
+    };
+
+    return (
+        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-stone-100 bg-[#4E4EBA]/5">
+                <div className="flex items-center gap-2">
+                    <Webhook size={13} className="text-[#4E4EBA]" />
+                    <span className="text-[10px] font-black text-[#4E4EBA] uppercase tracking-widest">n8n Tetikleyici Workflow'lar</span>
+                </div>
+                <button onClick={fetchWorkflows} className="p-1 rounded text-stone-400 hover:text-[#4E4EBA] hover:bg-stone-100 transition-colors">
+                    <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+                </button>
+            </div>
+            <div className="p-5">
+                {loading ? (
+                    <div className="flex items-center gap-2 text-stone-400 text-[11px] py-2">
+                        <Loader2 size={14} className="animate-spin" /> n8n workflow'ları çekiliyor...
+                    </div>
+                ) : error ? (
+                    <div className="flex items-center gap-2 text-[#854F0B] text-[11px] bg-[#FAEEDA] rounded-lg px-3 py-2.5">
+                        <AlertCircle size={13} /> n8n sunucusuna bağlanılamadı. API anahtarını kontrol edin.
+                    </div>
+                ) : workflows.length === 0 ? (
+                    <p className="text-[11px] text-stone-400 py-2">n8n'de aktif workflow bulunamadı.</p>
+                ) : (
+                    <div className="space-y-1.5">
+                        {workflows.map(wf => {
+                            const isSelected = allowedWorkflows.includes(wf.name);
+                            return (
+                                <div
+                                    key={wf.id}
+                                    onClick={() => toggleWorkflow(wf)}
+                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs cursor-pointer transition-all ${isSelected
+                                        ? 'bg-white border-[#4E4EBA]/30 text-stone-700 font-bold shadow-sm ring-1 ring-[#4E4EBA]/10'
+                                        : 'bg-stone-50 border-stone-100/50 text-stone-500 font-medium hover:bg-stone-100'
+                                    }`}
+                                >
+                                    {isSelected
+                                        ? <CheckCircle2 size={16} className="text-[#4E4EBA] shrink-0" strokeWidth={2.5} />
+                                        : <div className="w-4 h-4 rounded-full border-2 border-stone-300 shrink-0 bg-white" />
+                                    }
+                                    <span className="flex-1">{wf.name}</span>
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${wf.active ? 'bg-[#1D9E75]' : 'bg-stone-300'}`} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+                {allowedWorkflows.length > 0 && (
+                    <p className="text-[10px] text-stone-400 mt-3 tracking-tight">
+                        <span className="font-bold text-[#4E4EBA]">{allowedWorkflows.length}</span> workflow seçili — prompt otomatik güncellendi.
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
 
 const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) => {
     const [fetchedModels, setFetchedModels] = React.useState([]);
@@ -245,7 +350,12 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                 </div>
             )}
 
-            {/* ── KUTU 5: Akıllı Denetim (sadece chatbot) ── */}
+            {/* ── KUTU 5: n8n Tetikleyiciler (sadece router/işlem botu) ── */}
+            {selectedItem.agentKind === 'router' && (
+                <RouterWorkflowPanel selectedItem={selectedItem} updateAgent={updateAgent} />
+            )}
+
+            {/* ── KUTU 6: Akıllı Denetim (sadece chatbot) ── */}
             {selectedItem.agentKind === 'chatbot' && (
                 <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
                     <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
