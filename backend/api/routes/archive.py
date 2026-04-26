@@ -11,23 +11,14 @@ import shutil
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from database.sql.session import get_session
 from database.uow import UnitOfWork
 from database.sql.models import Belge, Kullanici, VektorParcasi
+from core.logger import get_logger
 
-# -- Logger kurulumu (bridge.py ile ayni UTF-8 guvencesi) --------------------
-_handler = logging.StreamHandler()
-_handler.setLevel(logging.DEBUG)
-_handler.stream = open(_handler.stream.fileno(), mode='w', encoding='utf-8', closefd=False)
-_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s - %(message)s'))
-
-logger = logging.getLogger('archive')
-logger.setLevel(logging.DEBUG)
-if not logger.handlers:
-    logger.addHandler(_handler)
-# ---------------------------------------------------------------------------
+logger = get_logger("routes.archive")
 
 router = APIRouter()
 
@@ -38,33 +29,33 @@ os.makedirs(ARSIV_KLASORU, exist_ok=True)
 # ── Pydantic Şemaları ──────────────────────────────────────────────────────────
 
 class KotaGuncelleRequest(BaseModel):
-    dosya_limiti: Optional[int] = None          # None → sınırsız
-    depolama_limiti_mb: Optional[float] = None  # None → sınırsız
+    dosya_limiti: Optional[int] = Field(default=None, ge=0)
+    depolama_limiti_mb: Optional[float] = Field(default=None, ge=0)
 
 
 class KlasorOlusturRequest(BaseModel):
-    name: str
-    parent_id: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    parent_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class BelgeTasiRequest(BaseModel):
-    belge_kimlik: str
-    hedef_klasor_kimlik: Optional[str] = None
+    belge_kimlik: str = Field(..., max_length=128)
+    hedef_klasor_kimlik: Optional[str] = Field(default=None, max_length=128)
 
 
 class YenidenAdlandirRequest(BaseModel):
-    kimlik: str
-    yeni_ad: str
+    kimlik: str = Field(..., max_length=128)
+    yeni_ad: str = Field(..., min_length=1, max_length=255)
 
 
 class TopluSilRequest(BaseModel):
-    ids: List[str]
+    ids: List[str] = Field(..., min_length=1, max_length=200)
 
 
 class MetaGuncelleRequest(BaseModel):
-    kimlik: str
-    etiketler: Optional[List[str]] = None
-    aciklama: Optional[str] = None
+    kimlik: str = Field(..., max_length=128)
+    etiketler: Optional[List[str]] = Field(default=None, max_length=50)
+    aciklama: Optional[str] = Field(default=None, max_length=5000)
 
 
 # ── API Endpoint'leri ──────────────────────────────────────────────────────────

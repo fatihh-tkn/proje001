@@ -3,11 +3,13 @@ from sqlalchemy import MetaData, Table, select, func
 from database.sql.session import engine
 from database.sql.session import get_session
 from database.sql.models import VektorParcasi, BilgiIliskisi
+from core.logger import get_logger
 
 # Geriye dönük uyumluluk kısayolları
 Node = VektorParcasi
 Relation = BilgiIliskisi
 
+logger = get_logger("routes.sql_explorer")
 router = APIRouter()
 
 # Türkçe tablo adı → eski koddaki tablo adı eşleştirme sözlüğü (gösterim amaçlı)
@@ -284,8 +286,9 @@ def get_schema():
                     row_count = conn.execute(
                         text(f'SELECT COUNT(*) FROM "{table_name}"')
                     ).scalar() or 0
-                except Exception:
-                    row_count = -1   # Erisim hatasi varsa -1 dondur
+                except Exception as _ce:
+                    logger.debug("Tablo satır sayısı alınamadı [%s]: %s", table_name, _ce)
+                    row_count = -1   # Erişim hatası varsa -1 döndür
 
                 results.append(
                     {
@@ -448,8 +451,8 @@ def repair_image_paths():
                 for entry in os.listdir(ARCHIVE_DIR):
                     if entry.startswith("images_") and belge_adi_no_ext in entry:
                         candidate_dirs.insert(0, os.path.join(ARCHIVE_DIR, entry))
-            except Exception:
-                pass
+            except Exception as _le:
+                logger.debug("Arşiv dizini okunamadı [%s]: %s", ARCHIVE_DIR, _le)
 
             found_path = None
             for d in candidate_dirs:

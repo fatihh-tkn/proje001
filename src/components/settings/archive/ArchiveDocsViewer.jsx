@@ -8,6 +8,7 @@ import {
     Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
     Mic, Loader2, AlertCircle, GripVertical, Users2
 } from 'lucide-react';
+import { useErrorStore } from '../../../store/errorStore';
 
 /* ── Klasör İkonu ──────────────────────────────────────────────────── */
 function FolderIcon({ isUserFolder, uploaderName, size = 64 }) {
@@ -432,6 +433,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     const [saving, setSaving] = useState(false);
     const [txFullText, setTxFullText] = useState('');
     const [txLoading, setTxLoading] = useState(false);
+    const addToast = useErrorStore((s) => s.addToast);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
@@ -451,7 +453,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                 fetch(`/api/archive/transcript/${doc.id}`)
                     .then(r => r.ok ? r.json() : null)
                     .then(data => { if (data?.full_text) setTxFullText(data.full_text); })
-                    .catch(() => { })
+                    .catch((e) => console.warn('[ArchiveDetail] Transkript alınamadı:', e.message))
                     .finally(() => setTxLoading(false));
             }
         }
@@ -464,32 +466,53 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
         const newTags = [...tags, tag.trim()];
         setTags(newTags);
         setTagInput('');
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-        });
-        onTagUpdate?.(doc.id, newTags);
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onTagUpdate?.(doc.id, newTags);
+        } catch (e) {
+            setTags(tags); // geri al
+            addToast({ type: 'error', message: 'Etiket eklenemedi.' });
+            console.error('[ArchiveDetail] addTag hatası:', e.message);
+        }
     };
 
     const removeTag = async (tag) => {
         const newTags = tags.filter(t => t !== tag);
         setTags(newTags);
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-        });
-        onTagUpdate?.(doc.id, newTags);
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onTagUpdate?.(doc.id, newTags);
+        } catch (e) {
+            setTags(tags); // geri al
+            addToast({ type: 'error', message: 'Etiket silinemedi.' });
+            console.error('[ArchiveDetail] removeTag hatası:', e.message);
+        }
     };
 
     const saveDesc = async () => {
         setSaving(true);
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
-        });
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            addToast({ type: 'success', message: 'Açıklama kaydedildi.' });
+        } catch (e) {
+            addToast({ type: 'error', message: 'Açıklama kaydedilemedi.' });
+            console.error('[ArchiveDetail] saveDesc hatası:', e.message);
+        }
         setSaving(false);
         setDescEditing(false);
         onDescUpdate?.(doc.id, desc);

@@ -1,7 +1,6 @@
 import os
 import shutil
 import uuid
-import logging
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from services.processor import analyze_pdf_with_vision
@@ -9,25 +8,48 @@ from services.memory import memory_engine
 from database.sql.session import get_session
 from database.uow import UnitOfWork
 from database.sql.models import Belge
+from core.logger import get_logger
 
-# -- Logger kurulumu ----------------------------------------------------------
-# Windows'ta terminaller farkli karakter setleri kullanabilir (cp1254 gibi).
-# StreamHandler'a UTF-8 zorunlu yaparak UnicodeEncodeError'i sifirdan onleriz.
-_handler = logging.StreamHandler()
-_handler.setLevel(logging.DEBUG)
-_handler.stream = open(_handler.stream.fileno(), mode='w', encoding='utf-8', closefd=False)
-_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s - %(message)s'))
-
-logger = logging.getLogger('bridge')
-logger.setLevel(logging.DEBUG)
-if not logger.handlers:
-    logger.addHandler(_handler)
-# -----------------------------------------------------------------------------
+logger = get_logger("bridge")
 
 router = APIRouter()
 
 UPLOAD_DIR = "./temp_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Dosya boyutu limitleri (bayt)
+_MAX_SIZE = {
+    "pdf": 50 * 1024 * 1024,
+    "doc": 50 * 1024 * 1024, "docx": 50 * 1024 * 1024,
+    "ppt": 50 * 1024 * 1024, "pptx": 50 * 1024 * 1024,
+    "xls": 50 * 1024 * 1024, "xlsx": 50 * 1024 * 1024,
+    "mp3": 200 * 1024 * 1024, "wav": 200 * 1024 * 1024,
+    "mp4": 200 * 1024 * 1024, "ogg": 200 * 1024 * 1024,
+    "m4a": 200 * 1024 * 1024, "flac": 200 * 1024 * 1024,
+    "jpg": 20 * 1024 * 1024, "jpeg": 20 * 1024 * 1024,
+    "png": 20 * 1024 * 1024, "webp": 20 * 1024 * 1024,
+    "txt": 10 * 1024 * 1024,
+}
+_DEFAULT_MAX_SIZE = 50 * 1024 * 1024
+
+_ALLOWED_EXTENSIONS = set(_MAX_SIZE.keys())
+
+
+def _validate_upload(filename: str, contents: bytes) -> None:
+    """Dosya uzantısı ve boyutunu doğrular; geçersizse HTTPException fırlatır."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Desteklenmeyen dosya türü: .{ext}. Kabul edilenler: {', '.join(sorted(_ALLOWED_EXTENSIONS))}",
+        )
+    limit = _MAX_SIZE.get(ext, _DEFAULT_MAX_SIZE)
+    if len(contents) > limit:
+        mb = limit // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f".{ext} dosyaları için maksimum boyut {mb} MB'dir.",
+        )
 
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
@@ -42,6 +64,7 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
 
         # Dosyayı diske yaz (blocking I/O → threadpool)
         contents = await file.read()
+        _validate_upload(safe_filename, contents)
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: open(file_path, "wb").write(contents)
@@ -82,8 +105,8 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
             "converted_pdf_path": converted_pdf_path,
         }
     except Exception as e:
-        import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Dosya analiz hatası [%s]: %s", file.filename if file else "?", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Dosya analiz edilemedi: {str(e)}")
 
 @router.get("/progress/{task_id}")
 def get_progress(task_id: str):
@@ -277,10 +300,14 @@ def save_to_db(data: dict):
                 if eski_parcalar:
                     eski_chroma_ids = [p.chromadb_kimlik for p in eski_parcalar]
                     eski_graf_ids = [str(p.kimlik) for p in eski_parcalar]
-                    try: vector_db.delete_documents(b.vektordb_koleksiyon or coll_name, eski_chroma_ids)
-                    except: pass
-                    try: graph_db.remove_nodes(eski_graf_ids)
-                    except: pass
+                    try:
+                        vector_db.delete_documents(b.vektordb_koleksiyon or coll_name, eski_chroma_ids)
+                    except Exception as _ce:
+                        logger.warning("Eski ChromaDB kayıtları silinemedi: %s", _ce)
+                    try:
+                        graph_db.remove_nodes(eski_graf_ids)
+                    except Exception as _ge:
+                        logger.warning("Eski graf düğümleri silinemedi: %s", _ge)
                     for p in eski_parcalar: db.delete(p)
                     db.flush()
                 # Belge güncelleme verisi
@@ -531,8 +558,10 @@ def save_to_db(data: dict):
 
             uow.register_after_commit(update_networkx)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Veritabani kayit hatasi (UoW Rollback tetiklendi)")
+        logger.error("Veritabanı kayıt hatası (UoW Rollback tetiklendi): %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Veritabanı Kayıt Hatası: {str(e)}")
 
     return {"status": "success", "message": f"{file_name} kalıcı hafızaya eklendi!"}
@@ -716,7 +745,10 @@ def archive_document(data: dict):
                     db.commit()
                     logger.info("Chunk image_path guncellendi: %d kayit, belge=%s", updated, belge_id)
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Arşiv-belge DB kayıt hatası [%s]: %s", final_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Veritabanı kaydı hatası: {str(e)}")
 
     return {

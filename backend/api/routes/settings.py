@@ -236,8 +236,9 @@ def delete_session_full(session_id: str):
         col = f"chat_mem_{session_id}".replace("-", "_")
         if col in vector_db.list_collections():
             vector_db.delete_collection(col)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log = __import__("logging").getLogger("routes.settings")
+        _log.warning("Session vektör koleksiyonu silinemedi [%s]: %s", session_id, _e)
 
     return {"ok": True}
 
@@ -261,8 +262,9 @@ def delete_all_sessions():
         for col in vector_db.list_collections():
             if col.startswith("chat_mem_"):
                 vector_db.delete_collection(col)
-    except Exception:
-        pass
+    except Exception as _e:
+        _log = __import__("logging").getLogger("routes.settings")
+        _log.warning("Tüm session vektör koleksiyonları temizlenemedi: %s", _e)
 
     return {"ok": True}
 

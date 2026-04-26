@@ -74,7 +74,9 @@ export const useWorkspaceStore = create((set, get) => ({
 
     // Özel Davranış: N8n sekmesi kapanırken motoru da kapat
     if (id === 'n8n-viewer' && !options.keepAlive) {
-      try { fetch('/api/n8n/stop', { method: 'POST' }); } catch { }
+      fetch('/api/n8n/stop', { method: 'POST' }).catch((e) =>
+        console.warn('[N8n] Durdurma isteği başarısız:', e.message)
+      );
     }
 
     // Son kapatılanlar listesine ekle

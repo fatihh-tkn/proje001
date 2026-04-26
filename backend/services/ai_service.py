@@ -1,11 +1,16 @@
+import asyncio
 import httpx
 import uuid
 import time
 import json
+import logging
 from datetime import datetime
 from typing import AsyncGenerator
 from fastapi.concurrency import run_in_threadpool
 from core.db_bridge import get_user_models, add_log_to_db, get_ai_agent
+from core.logger import get_logger
+
+logger = get_logger("ai_service")
 from core.prompts import (
     get_file_qa_prompt,
     get_general_rag_prompt,
@@ -14,6 +19,33 @@ from core.prompts import (
     build_gemini_contents,
     build_openai_messages
 )
+async def _post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_retries: int = 3,
+    **kwargs,
+) -> httpx.Response:
+    """429 ve 5xx hataları için exponential backoff retry (2s → 4s → 8s, maks 3 deneme)."""
+    delays = (2.0, 4.0, 8.0)
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.post(url, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            if attempt < max_retries and exc.response.status_code in (429, 500, 502, 503, 504):
+                delay = delays[min(attempt, len(delays) - 1)]
+                logger.warning(
+                    "AI API geçici hata [HTTP %d], %.0fs sonra yeniden deneniyor (%d/%d)",
+                    exc.response.status_code, delay, attempt + 1, max_retries,
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
 def _get_user_excluded_files(user_id: str | None) -> list[str]:
     """Kullanıcının meta verisinden erişimi kapalı dosyaların SQL ID'lerini döner."""
     if not user_id:
@@ -108,7 +140,7 @@ def _save_to_history(
             ids=[f"msg_{uuid.uuid4().hex[:8]}"]
         )
     except Exception as e:
-        print(f"[CHAT-RAG SAVE ERROR]: {e}")
+        logger.warning("[CHAT-RAG SAVE] Sohbet hafızası kaydedilemedi: %s", e)
 
 def clear_session_history(session_id: str) -> None:
     from database.sql.session import get_session
@@ -121,8 +153,8 @@ def clear_session_history(session_id: str) -> None:
         from database.vector.pgvector_db import vector_db
         safe_col_name = f"chat_mem_{session_id}".replace("-", "_")
         vector_db.delete_collection(safe_col_name)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning("Sohbet vektör koleksiyonu silinemedi [%s]: %s", session_id, _e)
 
 def _fetch_chat_memory(session_id: str, query: str) -> str:
     try:
@@ -134,7 +166,7 @@ def _fetch_chat_memory(session_id: str, query: str) -> str:
             if docs:
                 return "\n\n".join(docs)
     except Exception as e:
-        print(f"[CHAT-RAG QUERY ERROR]: {e}")
+        logger.warning("[CHAT-RAG QUERY] Sohbet hafızası sorgulanamadı: %s", e)
     return ""
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -186,7 +218,7 @@ async def _try_route_and_trigger(user_message: str) -> dict | None:
             "detail": trigger_result.get("detail", ""),
         }
     except Exception as e:
-        print(f"[ACTION-BOT] route_and_trigger hatası: {e}")
+        logger.warning("[ACTION-BOT] route_and_trigger hatası: %s", e)
         return None
 
 
@@ -286,7 +318,7 @@ def _build_semantic_context(
                 _repo2 = _DR2(_db2)
                 pool_doc_ids = _repo2.get_pool_doc_ids(user_id)
         except Exception as _e:
-            print(f"[RAG-POOL] Havuz filtresi alınamadı, tüm belgeler taranacak: {_e}")
+            logger.warning("[RAG-POOL] Havuz filtresi alınamadı, tüm belgeler taranacak: %s", _e)
 
         # ── Hybrid Search: Vektör + FTS + RRF + Re-Ranking ──────────────
         try:
@@ -297,7 +329,7 @@ def _build_semantic_context(
                 allowed_doc_ids=pool_doc_ids,
             )
         except Exception as e:
-            print(f"[RAG-HYBRID] Hybrid search hatası, klasik yola düşülüyor: {e}")
+            logger.warning("[RAG-HYBRID] Hybrid search hatası, klasik yola düşülüyor: %s", e)
             hybrid_results = []
 
         if hybrid_results:
@@ -309,7 +341,8 @@ def _build_semantic_context(
                 try:
                     from database.graph.networkx_db import chunk_graph
                     expanded_ids = chunk_graph.expand(hybrid_ids)
-                except Exception:
+                except Exception as _e:
+                    logger.warning("[RAG] Graf genişletme başarısız, ham ID'ler kullanılıyor: %s", _e)
                     expanded_ids = hybrid_ids
 
                 # DocumentRepository ile zengin bağlam
@@ -433,7 +466,8 @@ def _build_semantic_context(
                 try:
                     from database.graph.networkx_db import chunk_graph
                     expanded_ids = chunk_graph.expand(filtered_ids)
-                except Exception:
+                except Exception as _e:
+                    logger.warning("[RAG] Dosya modu graf genişletme başarısız: %s", _e)
                     expanded_ids = filtered_ids
 
                 with get_session() as db:
@@ -500,13 +534,13 @@ def _build_semantic_context(
                         })
 
             except Exception as ex:
-                print(f"[RAG-SEMANTIC] Hata - Koleksiyon {col}: {ex}")
+                logger.warning("[RAG-SEMANTIC] Koleksiyon sorgu hatası [%s]: %s", col, ex)
                 continue
 
         return "\n\n---\n\n".join(parts), sources, best_ui_action
 
     except Exception as e:
-        print(f"[RAG-HYBRID] Genel Hata: {e}")
+        logger.error("[RAG] Genel hata: %s", e, exc_info=True)
         return "", [], None
 
 
@@ -619,10 +653,11 @@ class AIService:
                             "temperature": temperature
                         }
                     }
-                    response = await client.post(
-                        url, headers={"Content-Type": "application/json"}, json=payload
+                    response = await _post_with_retry(
+                        client, url,
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
                     )
-                    response.raise_for_status()
                     data = response.json()
 
                     try:
@@ -637,7 +672,8 @@ class AIService:
                     provider_label = "Google Gemini"
 
                 else:
-                    response = await client.post(
+                    response = await _post_with_retry(
+                        client,
                         "https://api.openai.com/v1/chat/completions",
                         headers={
                             "Authorization": f"Bearer {api_key}",
@@ -649,7 +685,6 @@ class AIService:
                             "temperature": temperature
                         },
                     )
-                    response.raise_for_status()
                     data = response.json()
 
                     reply_text     = data["choices"][0]["message"]["content"]
@@ -733,6 +768,7 @@ class AIService:
             return f"❌ API Hatası: {error_msg}", False, [], None
 
         except Exception as e:
+            logger.error("AI yanıt hatası [session=%s]: %s", session_id, e, exc_info=True)
             return f"❌ Sistemsel hata oluştu: {str(e)}", False, [], None
 
     # ── STREAMING ─────────────────────────────────────────────────────────────
@@ -996,6 +1032,7 @@ class AIService:
             yield f"data: {json.dumps({'type': 'error', 'text': f'❌ API Hatası: {error_msg}'})}\n\n"
 
         except Exception as e:
+            logger.error("AI stream hatası [session=%s]: %s", session_id, e, exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'text': f'❌ Sistemsel hata: {str(e)}'})}\n\n"
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -1039,8 +1076,11 @@ class AIService:
                     "contents": [{"parts": [{"text": user_prompt}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1051,12 +1091,12 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
-                response.raise_for_status()
                 data = response.json()
                 return data["choices"][0]["message"]["content"].strip()
 
@@ -1099,8 +1139,11 @@ class AIService:
                     "contents": [{"parts": [{"text": bot_reply}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1111,12 +1154,12 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": bot_reply}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
-                response.raise_for_status()
                 data = response.json()
                 return data["choices"][0]["message"]["content"].strip()
 
@@ -1175,8 +1218,11 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                     "contents": [{"parts": [{"text": user_input}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1187,13 +1233,13 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                     {"role": "system", "content": full_system},
                     {"role": "user", "content": user_input}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature,
                           "response_format": {"type": "json_object"}},
                 )
-                response.raise_for_status()
                 data = response.json()
                 raw_text = data["choices"][0]["message"]["content"].strip()
 
@@ -1206,7 +1252,8 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         import json as _json
         try:
             return _json.loads(raw_text)
-        except Exception:
+        except Exception as _e:
+            logger.debug("JSON aksiyon ayrıştırma başarısız, 'none' döndürülüyor: %s | raw=%s", _e, raw_text[:100])
             return {"action": "none", "raw": raw_text}
 
 
