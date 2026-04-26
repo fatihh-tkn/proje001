@@ -6,7 +6,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image
 
 from services.file_parser import file_parser
+from core.logger import get_logger
 
+logger = get_logger("routes.files")
 router = APIRouter()
 
 
@@ -81,6 +83,5 @@ async def crop_image(
             return StreamingResponse(buf, media_type="image/png")
 
     except Exception as e:
-        print(f"[CROP ERROR] {e}")
-        # Kesme işleminde hesaplamalı hata olursa tam resmi döndür
+        logger.warning("Resim kırpma hatası [%s]: %s", image_path, e)
         return FileResponse(image_path)

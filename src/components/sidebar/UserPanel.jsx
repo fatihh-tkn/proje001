@@ -5,6 +5,7 @@ import {
     HardDrive, File, MessageSquare, ChevronDown
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useErrorStore } from '../../store/errorStore';
 import AdminEgitimForm from './AdminEgitimForm';
 import UserEgitimDashboard from './UserEgitimDashboard';
 import UserVeriGirisi from './UserVeriGirisi';
@@ -52,6 +53,7 @@ function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
 const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const setCurrentUser = useWorkspaceStore(state => state.setCurrentUser);
+    const addToast = useErrorStore((s) => s.addToast);
 
     const [userData, setUserData] = useState(null);
     const [dashboard, setDashboard] = useState(null);
@@ -71,27 +73,27 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
         setNameValue(currentUser.tam_ad || '');
 
         fetch('/api/auth/users')
-            .then(r => r.json())
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
             .then(users => {
                 const u = users.find(x => x.id === currentUser.id);
                 if (u) setUserData(u);
             })
-            .catch(() => { });
+            .catch((e) => console.warn('[UserPanel] Kullanıcı listesi alınamadı:', e.message));
 
         fetch(`/api/auth/users/${currentUser.id}/dashboard`)
-            .then(r => r.json())
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
             .then(data => setDashboard(data))
-            .catch(() => { });
+            .catch((e) => console.warn('[UserPanel] Dashboard alınamadı:', e.message));
 
         fetch(`/api/archive/quota/${currentUser.id}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => { if (data) setQuota(data); })
-            .catch(() => { });
+            .catch((e) => console.warn('[UserPanel] Kota bilgisi alınamadı:', e.message));
 
         fetch(`/api/archive/my-documents/${currentUser.id}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => { if (data?.items) setUserDocs(data.items); })
-            .catch(() => { });
+            .catch((e) => console.warn('[UserPanel] Kullanıcı belgeleri alınamadı:', e.message));
     }, [open, currentUser?.id]);
 
     // Panel dışına tıklayınca kapat
@@ -125,8 +127,14 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
             if (res.ok) {
                 setCurrentUser({ ...currentUser, tam_ad: trimmed });
                 setUserData(prev => prev ? { ...prev, name: trimmed } : prev);
+                addToast({ type: 'success', message: 'Profil güncellendi.' });
+            } else {
+                addToast({ type: 'error', message: 'Profil güncellenemedi.' });
             }
-        } catch (_) { }
+        } catch (e) {
+            console.error('[UserPanel] Profil kayıt hatası:', e);
+            addToast({ type: 'error', message: 'Sunucuya bağlanılamadı.' });
+        }
         setNameSaving(false);
         setNameEditing(false);
     };

@@ -60,9 +60,9 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
 
     useEffect(() => {
         fetch('/api/settings/prompts')
-            .then(r => r.json())
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
             .then(data => setPrompts(data.prompts || []))
-            .catch(() => {})
+            .catch((e) => console.warn('[InlineTopology] Prompt listesi alınamadı:', e.message))
             .finally(() => setLoadingPrompts(false));
     }, []);
 

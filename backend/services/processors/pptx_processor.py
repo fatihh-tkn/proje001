@@ -22,6 +22,9 @@ import os
 import uuid
 import shutil
 import subprocess
+from core.logger import get_logger
+
+logger = get_logger("processors.pptx")
 
 try:
     import fitz
@@ -370,8 +373,8 @@ def _classify_shape(shape) -> str:
         ast = shape.auto_shape_type
         if ast is not None and 43 <= int(ast) <= 66:
             return "callout"
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Shape auto_shape_type okunamadı: %s", _e)
 
     return "callout"  # varsayılan: placeholder dışı text box = callout
 
@@ -442,8 +445,8 @@ def _extract_picture_shapes(slide) -> list[dict]:
         try:
             if shape.shape_type in pic_types:
                 is_pic = True
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Shape type kontrolü başarısız: %s", _e)
 
         if not is_pic:
             # XML tag ile kontrol (p:pic)
@@ -451,8 +454,8 @@ def _extract_picture_shapes(slide) -> list[dict]:
                 from pptx.oxml.ns import qn
                 if shape._element.tag == qn("p:pic"):
                     is_pic = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("XML tag kontrolü başarısız: %s", _e)
 
         if is_pic:
             left = shape.left  or 0
@@ -560,8 +563,8 @@ def _get_notes(slide) -> str:
         if tf:
             lines = [ln for ln in tf.text.strip().splitlines() if ln.strip()]
             return "\n".join(lines)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Slayt notları okunamadı: %s", _e)
     return ""
 
 

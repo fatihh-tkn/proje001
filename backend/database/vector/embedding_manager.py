@@ -97,8 +97,8 @@ def _resolve_model_key() -> str:
         cfg_val = getattr(settings, "EMBEDDING_MODEL", "").strip()
         if cfg_val and cfg_val in EMBEDDING_MODELS:
             return cfg_val
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Config'den embedding_model okunamadı: %s", _e)
 
     # Veritabanından oku (lazy import — döngüsel importu önlemek için)
     try:
@@ -235,8 +235,8 @@ def _get_openai_client():
         try:
             from core.config import settings
             api_key = settings.OPENAI_API_KEY
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("OpenAI API key config'den okunamadı: %s", _e)
     
     if not api_key:
         raise ValueError("OpenAI embedding modeli için OPENAI_API_KEY ortam değişkeni veya config ayarı gereklidir.")

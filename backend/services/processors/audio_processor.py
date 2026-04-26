@@ -224,8 +224,9 @@ def _preprocess_audio(raw_audio_path: str) -> str:
         )
         try:
             os.unlink(clean_path)
-        except Exception:
-            pass
+        except Exception as _ue:
+            import logging as _logging
+            _logging.getLogger("processors.audio").debug("Geçici ses dosyası silinemedi [%s]: %s", clean_path, _ue)
         return raw_audio_path
 
     clean_size = os.path.getsize(clean_path)

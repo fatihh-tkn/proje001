@@ -1,12 +1,17 @@
+import asyncio
+import json
 import subprocess
 import os
 import psutil
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database.sql.session import get_db
 from database.sql.models import N8nWorkflowCache
+from core.logger import get_logger
 
+logger = get_logger("routes.n8n")
 router = APIRouter()
 
 N8N_PROCESS = None
@@ -25,6 +30,51 @@ def get_status():
             # Process devrede ama port yanit vermiyor = npx su an paketi indiriyor veya nodejs ServerBoot evresinde.
             return {"status": "installing", "pid": N8N_PROCESS.pid}
     return {"status": "stopped"}
+
+@router.get("/status/stream", summary="n8n başlatılana kadar SSE ile durum yayınlar")
+async def stream_n8n_status():
+    """N8n hazır olana kadar (maks 120s) her 2s'de durum değişikliklerini SSE ile iter."""
+    async def _generate():
+        deadline = 120
+        elapsed = 0
+        last_status = None
+
+        while elapsed < deadline:
+            global N8N_PROCESS
+            current_status = "stopped"
+            extra: dict = {}
+
+            if N8N_PROCESS and N8N_PROCESS.poll() is None:
+                try:
+                    async with httpx.AsyncClient() as _c:
+                        await _c.get("http://localhost:5678", timeout=1.0)
+                    current_status = "running"
+                    extra = {"pid": N8N_PROCESS.pid}
+                except Exception:
+                    current_status = "installing"
+                    extra = {"pid": N8N_PROCESS.pid}
+
+            if current_status != last_status:
+                last_status = current_status
+                yield f"data: {json.dumps({'status': current_status, **extra})}\n\n"
+                if current_status == "running":
+                    return
+
+            await asyncio.sleep(2)
+            elapsed += 2
+
+        yield f"data: {json.dumps({'status': 'timeout'})}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 @router.post("/start", summary="n8n motorunu arka planda başlatır")
 def start_n8n():
@@ -64,6 +114,7 @@ def stop_n8n():
             N8N_PROCESS = None
             return {"status": "stopped"}
         except Exception as e:
+            logger.error("n8n durdurma hatası: %s", e, exc_info=True)
             return {"status": "error", "message": str(e)}
     return {"status": "not_running"}
 
@@ -215,8 +266,8 @@ async def run_workflow(workflow_id: str, request: Request):
     body = {}
     try:
         body = await request.json()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Workflow run body ayrıştırılamadı, boş payload kullanılıyor: %s", _e)
 
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     if api_key:

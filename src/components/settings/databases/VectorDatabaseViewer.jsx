@@ -76,7 +76,8 @@ export default function VectorDatabaseViewer() {
                     setFiles(Array.from(uniqueFiles).map((fileName, idx) => ({ id: `gen_file_${idx}`, file: fileName })));
                 }
             }
-        } catch {
+        } catch (e) {
+            console.warn('[VectorDB] Kayıtlar alınamadı:', e.message);
             setBackendReady(false);
             setFiles([]);
             setAllVectors([]);
