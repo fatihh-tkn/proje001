@@ -17,6 +17,40 @@ router = APIRouter()
 UPLOAD_DIR = "./temp_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Dosya boyutu limitleri (bayt)
+_MAX_SIZE = {
+    "pdf": 50 * 1024 * 1024,
+    "doc": 50 * 1024 * 1024, "docx": 50 * 1024 * 1024,
+    "ppt": 50 * 1024 * 1024, "pptx": 50 * 1024 * 1024,
+    "xls": 50 * 1024 * 1024, "xlsx": 50 * 1024 * 1024,
+    "mp3": 200 * 1024 * 1024, "wav": 200 * 1024 * 1024,
+    "mp4": 200 * 1024 * 1024, "ogg": 200 * 1024 * 1024,
+    "m4a": 200 * 1024 * 1024, "flac": 200 * 1024 * 1024,
+    "jpg": 20 * 1024 * 1024, "jpeg": 20 * 1024 * 1024,
+    "png": 20 * 1024 * 1024, "webp": 20 * 1024 * 1024,
+    "txt": 10 * 1024 * 1024,
+}
+_DEFAULT_MAX_SIZE = 50 * 1024 * 1024
+
+_ALLOWED_EXTENSIONS = set(_MAX_SIZE.keys())
+
+
+def _validate_upload(filename: str, contents: bytes) -> None:
+    """Dosya uzantısı ve boyutunu doğrular; geçersizse HTTPException fırlatır."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Desteklenmeyen dosya türü: .{ext}. Kabul edilenler: {', '.join(sorted(_ALLOWED_EXTENSIONS))}",
+        )
+    limit = _MAX_SIZE.get(ext, _DEFAULT_MAX_SIZE)
+    if len(contents) > limit:
+        mb = limit // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f".{ext} dosyaları için maksimum boyut {mb} MB'dir.",
+        )
+
 # --- 1. KÖPRÜ: ÖĞÜTME VE KARANTİNA ---
 @router.post("/upload-and-analyze")
 async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Form(False), task_id: str = Form(None), whisper_model: str = Form("large-v3"), whisper_device: str = Form("cuda")):
@@ -30,6 +64,7 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
 
         # Dosyayı diske yaz (blocking I/O → threadpool)
         contents = await file.read()
+        _validate_upload(safe_filename, contents)
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: open(file_path, "wb").write(contents)

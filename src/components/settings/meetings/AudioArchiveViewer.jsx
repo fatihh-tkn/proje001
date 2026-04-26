@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
+import { useErrorStore } from '../../../store/errorStore';
 import { FileCard } from '../../ui/file-card-collections';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
@@ -124,6 +125,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
     const [txLoading, setTxLoading] = useState(false);
     const [txPercent, setTxPercent] = useState(0);
     const [showCancelPanel, setShowCancelPanel] = useState(false);
+    const addToast = useErrorStore((s) => s.addToast);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
@@ -145,7 +147,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                     .then(data => {
                         if (data?.full_text) setTxFullText(data.full_text);
                     })
-                    .catch(() => { })
+                    .catch((e) => console.warn('[AudioArchive] Transkript alınamadı:', e.message))
                     .finally(() => setTxLoading(false));
             }
         }
@@ -174,7 +176,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                         onTranscribeComplete?.(doc_id_for_poll);
                     }
                 }
-            } catch { }
+            } catch (e) {
+                console.warn('[AudioArchive] Progress poll hatası:', e.message);
+            }
         }, 1000);
         return () => clearInterval(timer);
     }, [status_for_poll, doc_id_for_poll, file_type_for_poll, onTranscribeComplete]);
@@ -186,35 +190,53 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
         const newTags = [...tags, tag.trim()];
         setTags(newTags);
         setTagInput('');
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-        });
-        onTagUpdate?.(doc.id, newTags);
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onTagUpdate?.(doc.id, newTags);
+        } catch (e) {
+            setTags(tags);
+            addToast({ type: 'error', message: 'Etiket eklenemedi.' });
+        }
     };
 
     const removeTag = async (tag) => {
         const newTags = tags.filter(t => t !== tag);
         setTags(newTags);
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-        });
-        onTagUpdate?.(doc.id, newTags);
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onTagUpdate?.(doc.id, newTags);
+        } catch (e) {
+            setTags(tags);
+            addToast({ type: 'error', message: 'Etiket silinemedi.' });
+        }
     };
 
     const saveDesc = async () => {
         setSaving(true);
-        await fetch('/api/archive/meta', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
-        });
+        try {
+            const res = await fetch('/api/archive/meta', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            addToast({ type: 'success', message: 'Açıklama kaydedildi.' });
+            onDescUpdate?.(doc.id, desc);
+        } catch (e) {
+            addToast({ type: 'error', message: 'Açıklama kaydedilemedi.' });
+        }
         setSaving(false);
         setDescEditing(false);
-        onDescUpdate?.(doc.id, desc);
     };
 
     const { Icon, color, bg } = getFileVisual(doc.file_type);
