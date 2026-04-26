@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import uuid
 import time
@@ -18,6 +19,33 @@ from core.prompts import (
     build_gemini_contents,
     build_openai_messages
 )
+async def _post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_retries: int = 3,
+    **kwargs,
+) -> httpx.Response:
+    """429 ve 5xx hataları için exponential backoff retry (2s → 4s → 8s, maks 3 deneme)."""
+    delays = (2.0, 4.0, 8.0)
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.post(url, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            if attempt < max_retries and exc.response.status_code in (429, 500, 502, 503, 504):
+                delay = delays[min(attempt, len(delays) - 1)]
+                logger.warning(
+                    "AI API geçici hata [HTTP %d], %.0fs sonra yeniden deneniyor (%d/%d)",
+                    exc.response.status_code, delay, attempt + 1, max_retries,
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
 def _get_user_excluded_files(user_id: str | None) -> list[str]:
     """Kullanıcının meta verisinden erişimi kapalı dosyaların SQL ID'lerini döner."""
     if not user_id:
@@ -625,10 +653,11 @@ class AIService:
                             "temperature": temperature
                         }
                     }
-                    response = await client.post(
-                        url, headers={"Content-Type": "application/json"}, json=payload
+                    response = await _post_with_retry(
+                        client, url,
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
                     )
-                    response.raise_for_status()
                     data = response.json()
 
                     try:
@@ -643,7 +672,8 @@ class AIService:
                     provider_label = "Google Gemini"
 
                 else:
-                    response = await client.post(
+                    response = await _post_with_retry(
+                        client,
                         "https://api.openai.com/v1/chat/completions",
                         headers={
                             "Authorization": f"Bearer {api_key}",
@@ -655,7 +685,6 @@ class AIService:
                             "temperature": temperature
                         },
                     )
-                    response.raise_for_status()
                     data = response.json()
 
                     reply_text     = data["choices"][0]["message"]["content"]
@@ -1047,8 +1076,11 @@ class AIService:
                     "contents": [{"parts": [{"text": user_prompt}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1059,12 +1091,12 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
-                response.raise_for_status()
                 data = response.json()
                 return data["choices"][0]["message"]["content"].strip()
 
@@ -1107,8 +1139,11 @@ class AIService:
                     "contents": [{"parts": [{"text": bot_reply}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1119,12 +1154,12 @@ class AIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": bot_reply}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
-                response.raise_for_status()
                 data = response.json()
                 return data["choices"][0]["message"]["content"].strip()
 
@@ -1183,8 +1218,11 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                     "contents": [{"parts": [{"text": user_input}]}],
                     "generationConfig": {"temperature": temperature}
                 }
-                response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-                response.raise_for_status()
+                response = await _post_with_retry(
+                    client, url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
                 data = response.json()
                 try:
                     raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1195,13 +1233,13 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                     {"role": "system", "content": full_system},
                     {"role": "user", "content": user_input}
                 ]
-                response = await client.post(
+                response = await _post_with_retry(
+                    client,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature,
                           "response_format": {"type": "json_object"}},
                 )
-                response.raise_for_status()
                 data = response.json()
                 raw_text = data["choices"][0]["message"]["content"].strip()
 

@@ -58,7 +58,7 @@ function App() {
 
   // Global N8n Boot Logic
   useEffect(() => {
-    let pollInterval = null;
+    let evtSource = null;
 
     const handleOpenWorkspace = async () => {
       // 1. Zaten çalışıyorsa anında aç
@@ -87,28 +87,37 @@ function App() {
         return;
       }
 
-      // 3. Çalışana kadar bekle
-      pollInterval = setInterval(async () => {
+      // 3. Çalışana kadar SSE ile bekle (polling yerine sunucu itişi)
+      evtSource = new EventSource('/api/n8n/status/stream');
+      evtSource.onmessage = (event) => {
         try {
-          const res = await fetch('/api/n8n/status');
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'running') {
-              clearInterval(pollInterval);
-              setIsN8nBooting(false);
-              handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
-            }
+          const data = JSON.parse(event.data);
+          if (data.status === 'running') {
+            evtSource.close();
+            evtSource = null;
+            setIsN8nBooting(false);
+            handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
+          } else if (data.status === 'timeout' || data.status === 'stopped') {
+            evtSource.close();
+            evtSource = null;
+            setIsN8nBooting(false);
+            addToast({ type: 'error', message: 'Otomasyon motoru başlatılamadı.' });
           }
         } catch (e) {
-          console.warn('[N8n] Poll hatası:', e.message);
+          console.warn('[N8n] SSE mesaj ayrıştırma hatası:', e.message);
         }
-      }, 2000);
+      };
+      evtSource.onerror = () => {
+        if (evtSource) { evtSource.close(); evtSource = null; }
+        setIsN8nBooting(false);
+        addToast({ type: 'error', message: 'Otomasyon durumu alınamadı.' });
+      };
     };
 
     window.addEventListener('open-n8n-workspace', handleOpenWorkspace);
     return () => {
       window.removeEventListener('open-n8n-workspace', handleOpenWorkspace);
-      if (pollInterval) clearInterval(pollInterval);
+      if (evtSource) evtSource.close();
     };
   }, [handleOpenFile, setIsN8nBooting, addToast]);
 
