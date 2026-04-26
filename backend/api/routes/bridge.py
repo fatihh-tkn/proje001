@@ -1,7 +1,6 @@
 import os
 import shutil
 import uuid
-import logging
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from services.processor import analyze_pdf_with_vision
@@ -9,20 +8,9 @@ from services.memory import memory_engine
 from database.sql.session import get_session
 from database.uow import UnitOfWork
 from database.sql.models import Belge
+from core.logger import get_logger
 
-# -- Logger kurulumu ----------------------------------------------------------
-# Windows'ta terminaller farkli karakter setleri kullanabilir (cp1254 gibi).
-# StreamHandler'a UTF-8 zorunlu yaparak UnicodeEncodeError'i sifirdan onleriz.
-_handler = logging.StreamHandler()
-_handler.setLevel(logging.DEBUG)
-_handler.stream = open(_handler.stream.fileno(), mode='w', encoding='utf-8', closefd=False)
-_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s - %(message)s'))
-
-logger = logging.getLogger('bridge')
-logger.setLevel(logging.DEBUG)
-if not logger.handlers:
-    logger.addHandler(_handler)
-# -----------------------------------------------------------------------------
+logger = get_logger("bridge")
 
 router = APIRouter()
 
@@ -82,8 +70,8 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
             "converted_pdf_path": converted_pdf_path,
         }
     except Exception as e:
-        import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Dosya analiz hatası [%s]: %s", file.filename if file else "?", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Dosya analiz edilemedi: {str(e)}")
 
 @router.get("/progress/{task_id}")
 def get_progress(task_id: str):
@@ -277,10 +265,14 @@ def save_to_db(data: dict):
                 if eski_parcalar:
                     eski_chroma_ids = [p.chromadb_kimlik for p in eski_parcalar]
                     eski_graf_ids = [str(p.kimlik) for p in eski_parcalar]
-                    try: vector_db.delete_documents(b.vektordb_koleksiyon or coll_name, eski_chroma_ids)
-                    except: pass
-                    try: graph_db.remove_nodes(eski_graf_ids)
-                    except: pass
+                    try:
+                        vector_db.delete_documents(b.vektordb_koleksiyon or coll_name, eski_chroma_ids)
+                    except Exception as _ce:
+                        logger.warning("Eski ChromaDB kayıtları silinemedi: %s", _ce)
+                    try:
+                        graph_db.remove_nodes(eski_graf_ids)
+                    except Exception as _ge:
+                        logger.warning("Eski graf düğümleri silinemedi: %s", _ge)
                     for p in eski_parcalar: db.delete(p)
                     db.flush()
                 # Belge güncelleme verisi
@@ -531,8 +523,10 @@ def save_to_db(data: dict):
 
             uow.register_after_commit(update_networkx)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Veritabani kayit hatasi (UoW Rollback tetiklendi)")
+        logger.error("Veritabanı kayıt hatası (UoW Rollback tetiklendi): %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Veritabanı Kayıt Hatası: {str(e)}")
 
     return {"status": "success", "message": f"{file_name} kalıcı hafızaya eklendi!"}
@@ -716,7 +710,10 @@ def archive_document(data: dict):
                     db.commit()
                     logger.info("Chunk image_path guncellendi: %d kayit, belge=%s", updated, belge_id)
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Arşiv-belge DB kayıt hatası [%s]: %s", final_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Veritabanı kaydı hatası: {str(e)}")
 
     return {

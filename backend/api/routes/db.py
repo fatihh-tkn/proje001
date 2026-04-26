@@ -9,7 +9,9 @@ from schemas.chroma_schema import (
     QueryRequest,
 )
 from database.vector.pgvector_db import vector_db
+from core.logger import get_logger
 
+logger = get_logger("routes.db")
 router = APIRouter()
 
 
@@ -19,7 +21,8 @@ def list_collections() -> dict[str, list[str]]:
     try:
         return {"collections": vector_db.list_collections()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Koleksiyon listesi alınamadı: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Vektör veritabanına erişilemiyor.")
 
 
 @router.get("/collections/{name}", summary="Koleksiyon bilgisi")
@@ -28,7 +31,8 @@ def get_collection_info(name: str) -> dict[str, Any]:
     try:
         return vector_db.get_collection_info(name)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning("Koleksiyon bilgisi alınamadı [%s]: %s", name, e)
+        raise HTTPException(status_code=404, detail=f"Koleksiyon bulunamadı: {name}")
 
 
 @router.post("/documents", summary="Koleksiyona doküman ekle")
@@ -45,7 +49,8 @@ def add_documents(body: AddDocumentsRequest) -> dict[str, Any]:
             ids=body.ids,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Doküman eklenemedi [%s]: %s", body.collection, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Dokümanlar vektör veritabanına eklenemedi.")
 
 
 @router.post("/query", summary="Koleksiyona sorgu at")
@@ -58,7 +63,8 @@ def query_collection(body: QueryRequest) -> dict[str, Any]:
             n_results=body.n_results,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Koleksiyon sorgusu başarısız [%s]: %s", body.collection, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Vektör sorgusu gerçekleştirilemedi.")
 
 
 @router.delete("/collections", summary="Koleksiyonu sil")
@@ -67,7 +73,9 @@ def delete_collection(body: DeleteCollectionRequest) -> dict[str, str]:
     try:
         return vector_db.delete_collection(body.collection)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning("Koleksiyon silinemedi [%s]: %s", body.collection, e)
+        raise HTTPException(status_code=404, detail=f"Koleksiyon bulunamadı veya silinemedi: {body.collection}")
+
 
 @router.delete("/documents", summary="Belirli dokümanları sil")
 def delete_documents(body: DeleteDocumentsRequest) -> dict[str, Any]:
@@ -75,7 +83,9 @@ def delete_documents(body: DeleteDocumentsRequest) -> dict[str, Any]:
     try:
         return vector_db.delete_documents(body.collection, body.ids)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning("Dokümanlar silinemedi [%s]: %s", body.collection, e)
+        raise HTTPException(status_code=404, detail="Belirtilen dokümanlar bulunamadı veya silinemedi.")
+
 
 @router.get("/collections/{name}/content", summary="Koleksiyondaki vektör/dokümanları getir")
 def get_documents_in_collection(name: str, limit: int = 100) -> dict[str, Any]:
@@ -83,4 +93,5 @@ def get_documents_in_collection(name: str, limit: int = 100) -> dict[str, Any]:
     try:
         return vector_db.get_documents(name, limit)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Doküman içeriği alınamadı [%s]: %s", name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Koleksiyon içeriği okunamadı: {name}")

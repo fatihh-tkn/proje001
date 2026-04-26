@@ -6,7 +6,9 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from database.sql.session import get_db
 from database.sql.models import N8nWorkflowCache
+from core.logger import get_logger
 
+logger = get_logger("routes.n8n")
 router = APIRouter()
 
 N8N_PROCESS = None
@@ -64,6 +66,7 @@ def stop_n8n():
             N8N_PROCESS = None
             return {"status": "stopped"}
         except Exception as e:
+            logger.error("n8n durdurma hatası: %s", e, exc_info=True)
             return {"status": "error", "message": str(e)}
     return {"status": "not_running"}
 
@@ -215,8 +218,8 @@ async def run_workflow(workflow_id: str, request: Request):
     body = {}
     try:
         body = await request.json()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Workflow run body ayrıştırılamadı, boş payload kullanılıyor: %s", _e)
 
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     if api_key:
