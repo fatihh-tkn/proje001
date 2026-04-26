@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Clock, Search, ChevronRight, Plus, UserPlus, LayoutDashboard, BookOpen, Zap, Shield } from 'lucide-react';
-import InlineUserDashboard from './InlineUserDashboard';
+import InlineUserDashboard, { RestrictionsModal } from './InlineUserDashboard';
 import SapEgitimAdminPaneli from './SapEgitimAdminPaneli';
 import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
 
@@ -13,7 +13,6 @@ export default function AuthViewer() {
 
     const tabs = [
         { id: 'users', label: 'Kullanıcılar', icon: Users },
-        { id: 'audit', label: 'Sistem Kayıtları', icon: Clock },
         { id: 'egitim_yonetimi', label: 'Eğitim Yönetim Paneli', icon: BookOpen },
     ];
 
@@ -24,7 +23,7 @@ export default function AuthViewer() {
                 <div>
                     <h2 className="text-[14px] font-semibold text-slate-800 flex items-center gap-2">
                         <Users className="text-[#b91d2c]" size={18} />
-                        Kullanıcı ve Rol Yönetimi
+                        Eğitim Yöneticisi
                     </h2>
                     <p className="text-[11px] text-slate-500 mt-1">Sisteme girenleri, model kullanım haklarını ve logları yönetin.</p>
                 </div>
@@ -61,7 +60,6 @@ export default function AuthViewer() {
             {/* CONTENT */}
             <div className="flex-1 overflow-auto p-6">
                 {activeTab === 'users' && <UsersTab />}
-                {activeTab === 'audit' && <AuditTab />}
                 {activeTab === 'egitim_yonetimi' && <SapEgitimAdminPaneli />}
             </div>
 
@@ -79,6 +77,7 @@ function UsersTab() {
     const [expandedUserId, setExpandedUserId] = useState(null);
     const [editingRoleId, setEditingRoleId] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [restrictionsUser, setRestrictionsUser] = useState(null);
 
     useEffect(() => {
         fetch('/api/auth/users')
@@ -171,6 +170,10 @@ function UsersTab() {
                                     return (
                                         <tr
                                             onClick={() => toggleExpand(user.id)}
+                                            onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                setRestrictionsUser({ id: user.id, name: user.name });
+                                            }}
                                             className={`border-b border-stone-100 transition-colors cursor-pointer group ${rowBg}`}
                                         >
                                             {/* Ad */}
@@ -266,171 +269,18 @@ function UsersTab() {
                     </tbody>
                 </table>
             </div>
+
+            {restrictionsUser && (
+                <RestrictionsModal
+                    userId={restrictionsUser.id}
+                    userName={restrictionsUser.name}
+                    onClose={() => setRestrictionsUser(null)}
+                />
+            )}
         </div>
     );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   DENETİM KAYITLARI SEKMESİ
-───────────────────────────────────────────────────────────── */
-function AuditTab() {
-    const [data, setData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    const fetchLive = () => {
-        fetch('/api/auth/audit/live-dashboard')
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            })
-            .then(resData => {
-                if (resData.overview && Array.isArray(resData.users) && Array.isArray(resData.timeline)) {
-                    setData(resData);
-                } else {
-                    console.error("Unexpected dashboard shape:", resData);
-                }
-                setIsLoading(false);
-            })
-            .catch(err => {
-                console.error("Dashboard fetch err:", err);
-                setIsLoading(false);
-            });
-    };
-
-    useEffect(() => {
-        fetchLive();
-        const interval = setInterval(fetchLive, 5000); // 5 sec live refresh
-        return () => clearInterval(interval);
-    }, []);
-
-    if (isLoading && !data) {
-        return (
-            <div className="flex flex-col items-center justify-center h-64 text-stone-400 w-full">
-                <div className="w-8 h-8 rounded-full border-4 border-stone-100 border-t-[#378ADD] animate-spin mb-4" />
-                <h3 className="text-[13px] font-semibold text-stone-700 animate-pulse">Sistem Verileri Derleniyor...</h3>
-            </div>
-        );
-    }
-
-    if (!data) return null;
-
-    const { overview, users, timeline } = data;
-
-    return (
-        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-5xl mx-auto">
-            {/* OVERVIEW CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex justify-center items-center">
-                        <Users size={18} />
-                    </div>
-                    <div>
-                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Şu An Aktif Kullanıcı</p>
-                        <h4 className="text-[18px] font-bold text-stone-800">{overview.online_users}</h4>
-                    </div>
-                </div>
-                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex justify-center items-center">
-                        <Shield size={18} />
-                    </div>
-                    <div>
-                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Başarısız Giriş Denemesi</p>
-                        <h4 className="text-[18px] font-bold text-stone-800">{overview.failed_logins} <span className="text-[10px] text-red-500 font-normal ml-1">/ bugün</span></h4>
-                    </div>
-                </div>
-                <div className="bg-white border text-left border-stone-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex justify-center items-center">
-                        <Zap size={18} />
-                    </div>
-                    <div>
-                        <p className="text-[11px] text-stone-500 font-medium tracking-wide uppercase">Sistem API Sinyali</p>
-                        <h4 className="text-[18px] font-bold text-stone-800">{overview.total_signals} <span className="text-[10px] text-stone-400 font-normal ml-1">istek</span></h4>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px]">
-                {/* USERS TABLE */}
-                <div className="lg:col-span-2 bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-4 border-b border-stone-200 flex justify-between items-center bg-stone-50/50">
-                        <h3 className="text-[11px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2"><LayoutDashboard size={14} className="text-[#378ADD]" /> Kullanıcı Analizleri</h3>
-                        <span className="text-[10px] text-stone-400 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Canlı Takip</span>
-                    </div>
-                    <div className="flex-1 overflow-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-stone-50 text-[10px] uppercase text-stone-500 font-medium tracking-wide sticky top-0 z-10 border-b border-stone-200">
-                                <tr>
-                                    <th className="px-4 py-2.5">Kullanıcı</th>
-                                    <th className="px-4 py-2.5">Eğilim / Tab</th>
-                                    <th className="px-4 py-2.5">API İs.</th>
-                                    <th className="px-4 py-2.5">Token</th>
-                                    <th className="px-4 py-2.5">Süre</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-stone-100 text-[11px] text-stone-600">
-                                {users.map((u, i) => (
-                                    <tr key={i} className="hover:bg-stone-50 transition-colors">
-                                        <td className="px-4 py-2.5 font-medium text-stone-900 flex items-center gap-2">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-stone-300'}`} />
-                                            {u.name}
-                                        </td>
-                                        <td className="px-4 py-2.5 max-w-[120px] truncate text-stone-500" title={u.favorite_tab}>{u.favorite_tab}</td>
-                                        <td className="px-4 py-2.5 text-[#378ADD] font-semibold">{u.api_requests}</td>
-                                        <td className="px-4 py-2.5 text-[#7F77DD] font-semibold">{u.total_tokens.toLocaleString()}</td>
-                                        <td className="px-4 py-2.5 text-stone-500">{u.session_duration}</td>
-                                    </tr>
-                                ))}
-                                {users.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="text-center py-6 text-stone-400 italic">Kayıt bulunamadı.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* TIMELINE */}
-                <div className="bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-4 border-b border-stone-200 flex justify-between items-center bg-stone-50/50">
-                        <h3 className="text-[11px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2"><Clock size={14} className="text-[#378ADD]" /> Canlı Akış</h3>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {timeline.length === 0 ? (
-                            <div className="h-full flex items-center justify-center text-[11px] text-stone-400 italic">Hareket yok...</div>
-                        ) : (
-                            timeline.map((evt, idx) => {
-                                const timeStr = evt.time.split('T')[1]?.substring(0, 5) || evt.time;
-                                return (
-                                    <div key={idx} className="flex gap-3 text-[11px]">
-                                        <div className="w-[35px] shrink-0 text-stone-400 font-mono text-[10px] mt-0.5 text-right">{timeStr}</div>
-                                        <div className="flex flex-col relative w-full pb-3 border-l-2 border-stone-100 pl-3">
-                                            <div
-                                                className="absolute -left-[5px] top-[2px] w-2 h-2 rounded-full border-2 border-white shadow-sm"
-                                                style={{
-                                                    backgroundColor: evt.color === 'red' ? '#FCEBEB' : evt.color === 'emerald' ? '#EAF3DE' : '#E6F1FB',
-                                                    outline: `2px solid ${evt.color === 'red' ? '#791F1F' : evt.color === 'emerald' ? '#3B6D11' : '#0C447C'}`
-                                                }}
-                                            />
-                                            <span className="font-semibold text-stone-800">{evt.user}</span>
-                                            <span className="text-stone-500 leading-tight">
-                                                {evt.action.replace("LOGIN_SUCCESS", "Sisteme girdi")
-                                                    .replace("LOGIN_FAILED_", "Hatalı Giriş: ")
-                                                    .replace("TAB_VIEW", "Sekme geçişi: ")
-                                                    .replace("LOGOUT", "Sistemden çıkış yaptı")}
-                                                {evt.detail && <span className="font-bold whitespace-nowrap ml-1 text-stone-600">[{evt.detail.substring(0, 20)}]</span>}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 /* UserDashboardModal kaldırıldı — yerini InlineUserDashboard aldı */
 function _UNUSED_UserDashboardModal({ user, onClose }) {

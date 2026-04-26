@@ -26,6 +26,38 @@ function App() {
   const activeTabId = activeWorkspace?.activeTabId || null;
   const maximizedTabId = activeWorkspace?.maximizedTabId || null;
 
+  // PC Heartbeat — login olunca PC'yi sisteme kaydet, 60 sn'de bir güncelle
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const getPcId = () => {
+      let fp = localStorage.getItem('_pc_fp');
+      if (!fp) { fp = 'pc_' + Math.random().toString(36).substr(2, 12); localStorage.setItem('_pc_fp', fp); }
+      return fp;
+    };
+    const getTabId = () => {
+      let tok = sessionStorage.getItem('_tab_tok');
+      if (!tok) { tok = 'tab_' + Math.random().toString(36).substr(2, 12); sessionStorage.setItem('_tab_tok', tok); }
+      return tok;
+    };
+
+    const sendHeartbeat = () => {
+      fetch('/api/monitor/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pc_id: getPcId(),
+          tab_id: getTabId(),
+          user_id: currentUser?.id || null,
+        }),
+      }).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const timer = setInterval(sendHeartbeat, 60_000);
+    return () => clearInterval(timer);
+  }, [isLoggedIn, currentUser?.id]);
+
   // Audit: Sekme Görüntüleme Loglayıcı
   useEffect(() => {
     if (activeTabId && currentUser) {

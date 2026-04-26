@@ -51,6 +51,10 @@ def _run_schema_migrations(eng) -> None:
     migrations = [
         # VektorParcasi: chunk metadata (image_path, page_width, page_height, type vb.)
         "ALTER TABLE vektor_parcalari ADD COLUMN IF NOT EXISTS meta JSONB",
+        # BilgisayarOturumu: eski kurulumlar için eksik sütunlar
+        "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS bilgisayar_adi VARCHAR(255)",
+        "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS tarayici VARCHAR(256)",
+        "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS son_aktivite_tarihi VARCHAR(32)",
     ]
     with eng.connect() as conn:
         for stmt in migrations:
@@ -72,6 +76,9 @@ def init_db() -> None:
     for attempt in range(1, max_attempts + 1):
         try:
             logger.info(f"Veritabanı bağlantısı deneniyor... ({attempt}/{max_attempts})")
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.commit()
             Base.metadata.create_all(bind=engine)
             _run_schema_migrations(engine)
             logger.info("Veritabanı hazır.")

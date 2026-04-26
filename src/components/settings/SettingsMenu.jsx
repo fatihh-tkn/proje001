@@ -14,9 +14,6 @@ const THEMES = [
 const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFiles, currentTheme = 'dark', currentBasePath = '', isCollapsed, onOpenFile, currentUser }) => {
     const [activeSection, setActiveSection] = useState(null);
     const [basePath, setBasePath] = useState(currentBasePath);
-    const [isAiExpanded, setIsAiExpanded] = useState(false);
-    const [isDbExpanded, setIsDbExpanded] = useState(false);
-    const [isMetricsExpanded, setIsMetricsExpanded] = useState(false);
     const menuRef = useRef(null);
 
     const canSeeTab = (_key) => {
@@ -89,284 +86,62 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                         )}
 
                         {canSeeTab('ui_database') && (
-                            <div className="my-2 border-t border-[#2d2d2d] pt-2">
-                                <div
-                                    className="px-4 py-1 text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 flex items-center justify-between cursor-pointer hover:text-white/60 transition-colors"
-                                    onClick={() => setIsDbExpanded(!isDbExpanded)}
-                                >
-                                    <div className="flex items-center gap-1.5">
-                                        <Database size={12} /> Veritabanı
-                                    </div>
-                                    {isDbExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                </div>
-                                <AnimatePresence>
-                                    {isDbExpanded && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="overflow-hidden flex flex-col"
-                                        >
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'databases-sql',
-                                                            title: 'SQL Veritabanı',
-                                                            type: 'databases-viewer',
-                                                            meta: { defaultTab: 'sql' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <HardDrive size={14} className="text-slate-400 shrink-0" />
-                                                <span>SQL Veritabanı</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'databases-vector',
-                                                            title: 'Vektör Veritabanı',
-                                                            type: 'databases-viewer',
-                                                            meta: { defaultTab: 'vector' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Archive size={14} className="text-indigo-400 shrink-0" />
-                                                <span>Vektör Veritabanı</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'databases-graph',
-                                                            title: 'Graf Veritabanı',
-                                                            type: 'databases-viewer',
-                                                            meta: { defaultTab: 'graph' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Activity size={14} className="text-rose-400 shrink-0" />
-                                                <span>Graf Veritabanı</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'databases-archive',
-                                                            title: 'Arşiv',
-                                                            type: 'databases-viewer',
-                                                            meta: { defaultTab: 'archive' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Palette size={14} className="text-yellow-400 shrink-0" />
-                                                <span>Arşiv</span>
-                                            </button>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'databases-viewer',
+                                            title: 'Veritabanı',
+                                            type: 'databases-viewer',
+                                            meta: { defaultTab: 'sql' }
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <Database size={14} className="text-slate-500 shrink-0" />
+                                <span>Veritabanı</span>
+                            </button>
                         )}
 
                         {canSeeTab('ui_ai_orchestrator') && (
-                            <div className="my-2 border-t border-[#2d2d2d] pt-2">
-                                <div
-                                    className="px-4 py-1 text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 flex items-center justify-between cursor-pointer hover:text-white/60 transition-colors"
-                                    onClick={() => setIsAiExpanded(!isAiExpanded)}
-                                >
-                                    <div className="flex items-center gap-1.5">
-                                        <Bot size={12} /> Yapay Zeka Merkezi
-                                    </div>
-                                    {isAiExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                </div>
-                                <AnimatePresence>
-                                    {isAiExpanded && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="overflow-hidden flex flex-col"
-                                        >
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-architecture-center',
-                                                            title: 'Mimari Merkezi',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'architecture' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Layers size={14} className="text-indigo-400 shrink-0" />
-                                                <span>Mimari Merkezi</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-automation-center',
-                                                            title: 'Otomasyon',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'automation' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Webhook size={14} className="text-rose-400 shrink-0" />
-                                                <span>Otomasyon</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-playground-center',
-                                                            title: 'Ai Playground',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'playground' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <MessageSquareText size={14} className="text-teal-400 shrink-0" />
-                                                <span>Playground</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-rag-calib',
-                                                            title: 'RAG Kalibrasyon',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'rag_calib' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Database size={14} className="text-blue-400 shrink-0" />
-                                                <span>RAG Kalibrasyon</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-prompts',
-                                                            title: 'Prompt Şablonları',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'prompts' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <FileCog size={14} className="text-orange-400 shrink-0" />
-                                                <span>Prompt Şablonları</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-sessions',
-                                                            title: 'Geçmiş Oturumlar',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'sessions' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Archive size={14} className="text-emerald-400 shrink-0" />
-                                                <span>Geçmiş Oturumlar</span>
-                                            </button>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'ai-architecture-center',
+                                            title: 'Agent Yöneticisi',
+                                            type: 'ai-orchestrator',
+                                            meta: { defaultMainTab: 'architecture' }
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <Bot size={14} className="text-indigo-400 shrink-0" />
+                                <span>Agent Yöneticisi</span>
+                            </button>
                         )}
 
                         {canSeeTab('ui_metrics') && (
-                            <div className="my-2 border-t border-[#2d2d2d] pt-2">
-                                <div
-                                    className="px-4 py-1 text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 flex items-center justify-between cursor-pointer hover:text-white/60 transition-colors"
-                                    onClick={() => setIsMetricsExpanded(!isMetricsExpanded)}
-                                >
-                                    <div className="flex items-center gap-1.5">
-                                        <Cpu size={12} /> İzleme & Metrikler
-                                    </div>
-                                    {isMetricsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                </div>
-                                <AnimatePresence>
-                                    {isMetricsExpanded && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="overflow-hidden flex flex-col"
-                                        >
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'api-usage-settings',
-                                                            title: 'Sistem Metrikleri',
-                                                            type: 'api-usage',
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Activity size={14} className="text-pink-500 shrink-0" />
-                                                <span>Sistem Metrikleri</span>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (onOpenFile) {
-                                                        onOpenFile({
-                                                            id: 'ai-system-logs',
-                                                            title: 'Sistem Kayıtları',
-                                                            type: 'ai-orchestrator',
-                                                            meta: { defaultMainTab: 'logs' }
-                                                        });
-                                                    }
-                                                    onClose();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
-                                            >
-                                                <Terminal size={14} className="text-slate-400 shrink-0" />
-                                                <span>Sistem Kayıtları</span>
-                                            </button>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'api-usage-settings',
+                                            title: 'Sistem Yöneticisi',
+                                            type: 'api-usage',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <Cpu size={14} className="text-pink-500 shrink-0" />
+                                <span>Sistem Yöneticisi</span>
+                            </button>
                         )}
 
                         {canSeeTab('ui_auth') && (
@@ -375,7 +150,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                                     if (onOpenFile) {
                                         onOpenFile({
                                             id: 'auth-settings',
-                                            title: 'Kullanıcı ve Rol Yönetimi',
+                                            title: 'Eğitim Yöneticisi',
                                             type: 'auth',
                                         });
                                     }
@@ -384,7 +159,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                                 className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80`}
                             >
                                 <Users size={14} className="text-slate-500 shrink-0" />
-                                <span>Kullanıcı ve Rol Yönetimi</span>
+                                <span>Eğitim Yöneticisi</span>
                             </button>
                         )}
 

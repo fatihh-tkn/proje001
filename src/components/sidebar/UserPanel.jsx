@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     X, Edit2, Check, FileText, Clock,
     Shield, LogOut, ChevronRight, BarChart2, ClipboardList,
-    HardDrive, File,
+    HardDrive, File, MessageSquare, ChevronDown
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import AdminEgitimForm from './AdminEgitimForm';
@@ -60,8 +60,9 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
     const [nameEditing, setNameEditing] = useState(false);
     const [nameValue, setNameValue] = useState('');
     const [nameSaving, setNameSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('profil'); // 'profil', 'egitim', 'admin'
+    const [activeTab, setActiveTab] = useState('profil'); // 'profil', 'egitim', 'talepler'
     const [egitimSubTab, setEgitimSubTab] = useState('dashboard'); // 'dashboard' | 'veriGirisi'
+    const [expandedTalepIndex, setExpandedTalepIndex] = useState(null);
     const panelRef = useRef(null);
 
     // Kullanıcı verisi + dashboard — panel açıldığında çek
@@ -257,6 +258,16 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                     }}
                 >
                     Eğitimlerim
+                </button>
+                <button
+                    onClick={() => setActiveTab('talepler')}
+                    style={{
+                        padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
+                        color: activeTab === 'talepler' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
+                        borderBottom: activeTab === 'talepler' ? '2px solid #10b981' : '2px solid transparent'
+                    }}
+                >
+                    Taleplerim
                 </button>
 
                 {/* Bilgi Girişi butonu — sadece eğitim sekmesi açıkken görünür */}
@@ -454,6 +465,71 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                         {egitimSubTab === 'dashboard' && <UserEgitimDashboard currentUser={currentUser} />}
                         {egitimSubTab === 'veriGirisi' && <UserVeriGirisi currentUser={currentUser} />}
                     </>
+                )}
+
+                {activeTab === 'talepler' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={S.sectionTitle}>
+                            <MessageSquare size={11} /> Sisteme İletilen Talepler
+                        </div>
+                        {!dashboard?.talepler || dashboard.talepler.length === 0 ? (
+                            <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '16px 0' }}>
+                                Henüz bir talep oluşturmadınız.
+                            </div>
+                        ) : (
+                            dashboard.talepler.map((talep, i) => {
+                                const isExpanded = expandedTalepIndex === i;
+                                const durumColor = talep.renk === 'emerald' ? '#10b981' : talep.renk === 'amber' ? '#f59e0b' : '#ef4444';
+                                const durumBg = talep.renk === 'emerald' ? 'rgba(16,185,129,0.1)' : talep.renk === 'amber' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
+                                
+                                return (
+                                    <div key={i} style={{
+                                        background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8,
+                                        overflow: 'hidden', transition: 'all 0.2s'
+                                    }}>
+                                        <div 
+                                            onClick={() => setExpandedTalepIndex(isExpanded ? null : i)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '12px 14px', cursor: 'pointer', background: isExpanded ? 'rgba(255,255,255,0.02)' : 'transparent'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                                                <div style={{
+                                                    width: 8, height: 8, borderRadius: '50%', background: durumColor, flexShrink: 0
+                                                }} />
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {talep.baslik || 'İsimsiz Talep'}
+                                                    </div>
+                                                    <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+                                                        {talep.tarih}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                                <span style={{
+                                                    fontSize: 9, fontWeight: 700, color: durumColor, background: durumBg,
+                                                    padding: '2px 8px', borderRadius: 999, letterSpacing: '0.05em', textTransform: 'uppercase'
+                                                }}>
+                                                    {talep.durum}
+                                                </span>
+                                                <ChevronDown size={14} style={{ color: '#475569', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }} />
+                                            </div>
+                                        </div>
+                                        {isExpanded && (
+                                            <div style={{
+                                                padding: '0 14px 14px 32px', fontSize: 11, color: '#94a3b8', lineHeight: 1.5,
+                                                borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10
+                                            }}>
+                                                {talep.mesaj}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
                 )}
 
 

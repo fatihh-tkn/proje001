@@ -3,14 +3,34 @@
 const BASE = "/api/chat/";
 const STREAM_BASE = "/api/chat/stream";
 
-const getDeviceId = () => {
-  let deviceId = localStorage.getItem('device_id');
-  if (!deviceId) {
-    deviceId = 'node_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem('device_id', deviceId);
+/**
+ * PC parmak izi — localStorage'da kalıcı, aynı tarayıcı profili = aynı PC.
+ * Farklı bilgisayarlarda farklı localStorage → farklı PC tanınır.
+ */
+const getPcFingerprint = () => {
+  let fp = localStorage.getItem('_pc_fp');
+  if (!fp) {
+    fp = 'pc_' + Math.random().toString(36).substr(2, 12);
+    localStorage.setItem('_pc_fp', fp);
   }
-  return deviceId;
+  return fp;
 };
+
+/**
+ * Sekme token'ı — sessionStorage'da, her sekme/pencere ayrı oturum.
+ * Sekme kapanınca düşer → backend idle cleanup ile aktif_mi=False yapılır.
+ */
+const getTabToken = () => {
+  let tok = sessionStorage.getItem('_tab_tok');
+  if (!tok) {
+    tok = 'tab_' + Math.random().toString(36).substr(2, 12);
+    sessionStorage.setItem('_tab_tok', tok);
+  }
+  return tok;
+};
+
+/** Eski kod uyumu için (mac alanı artık pc_id'yi taşıyor) */
+const getDeviceId = getPcFingerprint;
 
 // ── Klasik (tek seferlik) fonksiyonlar ──────────────────────────────────────
 
@@ -22,7 +42,13 @@ export const sendMessageToAI = async (message, sessionId = "default_chat") => {
     const response = await fetch(BASE, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId, mac: getDeviceId() }),
+      body: JSON.stringify({
+        message,
+        session_id: sessionId,
+        mac: getPcFingerprint(),
+        pc_id: getPcFingerprint(),
+        tab_id: getTabToken(),
+      }),
     });
     if (!response.ok) throw new Error(`Sunucu Hatası: ${response.status}`);
     const data = await response.json();
@@ -43,7 +69,14 @@ export const sendMessageToAI = async (message, sessionId = "default_chat") => {
  */
 export const sendMessageWithFile = async (message, fileName, collectionName = null, sessionId = "default_chat") => {
   try {
-    const body = { message, file_name: fileName, session_id: sessionId, mac: getDeviceId() };
+    const body = {
+      message,
+      file_name: fileName,
+      session_id: sessionId,
+      mac: getPcFingerprint(),
+      pc_id: getPcFingerprint(),
+      tab_id: getTabToken(),
+    };
     if (collectionName) body.collection_name = collectionName;
 
     const response = await fetch(BASE, {
@@ -71,6 +104,7 @@ export const sendMessageWithFile = async (message, fileName, collectionName = nu
  * SSE stream ile yanıt alır.
  * @param {string}   message
  * @param {string}   sessionId
+ * @param {string|null} userId
  * @param {object}   callbacks  - { onChunk(text), onDone({rag_used, rag_sources}), onError(text) }
  * @param {object}   fileOpts   - { fileName, collectionName } (opsiyonel)
  */
@@ -85,7 +119,9 @@ export const sendMessageStream = async (
     const body = {
       message,
       session_id: sessionId,
-      mac: getDeviceId(),
+      mac: getPcFingerprint(),
+      pc_id: getPcFingerprint(),
+      tab_id: getTabToken(),
     };
     if (userId) body.user_id = userId;
     if (fileOpts?.fileName) body.file_name = fileOpts.fileName;
@@ -96,6 +132,13 @@ export const sendMessageStream = async (
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+
+    // 429 = oturum limiti aşıldı
+    if (response.status === 429) {
+      const err = await response.json().catch(() => ({}));
+      onError?.(err.detail || "Bu bilgisayarda en fazla 5 eşzamanlı oturum açılabilir.");
+      return;
+    }
 
     if (!response.ok) {
       onError?.(`Sunucu Hatası: ${response.status}`);

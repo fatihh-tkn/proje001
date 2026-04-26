@@ -1,19 +1,24 @@
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional
 from datetime import datetime
 import time
 import uuid
+import asyncio
+import json
 
 from core.db_bridge import (
     init_db, add_log_to_db, get_logs_from_db, clear_logs_from_db,
     get_user_models, add_user_model, delete_user_model
 )
 from services.monitor_service import (
-    AI_MODELS, calc_cost, get_dashboard_stats, get_sessions_stats, 
-    get_computers_stats, verify_custom_model_api, 
-    set_computer_alias, remove_computer_alias
+    AI_MODELS, calc_cost, get_dashboard_stats, get_sessions_stats,
+    get_computers_stats, verify_custom_model_api,
+    set_computer_alias, remove_computer_alias,
+    get_user_consumption,
 )
+from services.session_service import get_pcs_with_sessions, deactivate_session, heartbeat as session_heartbeat
+from services.storage_service import get_storage_overview, get_user_documents, update_user_quota
 
 # Artık no-op; gerçek init main.py lifespan'ında yapılıyor
 init_db()
@@ -66,14 +71,92 @@ async def get_dashboard(project_id: Optional[str] = None):
 # ── Ham Log Listesi ──────────────────────────────────────────────────────────
 
 @router.get("/logs")
-async def get_logs(limit: int = Query(100, le=1000), project_id: Optional[str] = None):
-    logs = get_logs_from_db(limit=limit, project_id=project_id)
+async def get_logs(
+    limit: int = Query(200, le=2000),
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    model: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    logs = get_logs_from_db(
+        limit=limit,
+        project_id=project_id,
+        user_id=user_id,
+        model=model,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+    )
     return {"logs": logs, "total": len(logs)}
+
+
+@router.get("/logs/stream")
+async def stream_logs(
+    user_id: Optional[str] = None,
+    model: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    """
+    SSE stream: ilk yanıtta son 200 logu gönderir, sonra 3 sn'de bir
+    yeni logları (since_id'den sonraki) push eder.
+    """
+    async def event_generator():
+        # İlk snapshot
+        logs = get_logs_from_db(
+            limit=200,
+            user_id=user_id, model=model, status=status,
+            date_from=date_from, date_to=date_to, search=search,
+        )
+        last_id = logs[0]["id"] if logs else None
+        payload = json.dumps({"type": "snapshot", "logs": logs})
+        yield f"data: {payload}\n\n"
+
+        # Polling — yeni loglar gelince push et
+        while True:
+            await asyncio.sleep(3)
+            try:
+                new_logs = get_logs_from_db(
+                    limit=50,
+                    user_id=user_id, model=model, status=status,
+                    date_from=date_from, date_to=date_to, search=search,
+                    since_id=last_id,
+                )
+                if new_logs:
+                    last_id = new_logs[0]["id"]
+                    payload = json.dumps({"type": "new", "logs": new_logs})
+                    yield f"data: {payload}\n\n"
+                else:
+                    yield "data: {\"type\":\"ping\"}\n\n"
+            except Exception:
+                yield "data: {\"type\":\"ping\"}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @router.delete("/logs")
 async def clear_logs():
     clear_logs_from_db()
     return {"ok": True, "message": "Tüm loglar temizlendi."}
+
+
+# ── Kullanıcı Tüketimi ────────────────────────────────────────────────────────
+
+@router.get("/user-usage")
+async def get_user_usage():
+    """Kullanıcı bazlı AI tüketim özeti (token, maliyet, istek, modeller)."""
+    users = get_user_consumption()
+    return {"users": users, "total": len(users)}
 
 
 # ── Sessions Endpoint ────────────────────────────────────────────────────────
@@ -125,6 +208,82 @@ async def delete_session(session_id: str):
         db.execute(stmt)
         db.commit()
     clear_session_history(session_id)
+    return {"ok": True}
+
+
+# ── PC + Oturum Yönetimi ──────────────────────────────────────────────────────
+
+@router.get("/pcs")
+async def get_pcs():
+    """PC listesi ve her PC'nin aktif / toplam oturum bilgisi."""
+    pcs = get_pcs_with_sessions()
+    return {"pcs": pcs}
+
+
+@router.post("/heartbeat")
+async def pc_heartbeat(body: dict, request: Request):
+    """
+    Uygulama açıkken frontend tarafından periyodik olarak çağrılır.
+    PC'yi bilgisayar_oturumlari tablosuna kaydeder / son aktiviteyi günceller.
+    Hiçbir zaman hata döndürmez — bloklamaz.
+    """
+    pc_id = (body.get("pc_id") or body.get("mac") or "").strip()
+    tab_id = (body.get("tab_id") or "").strip()
+    if not pc_id or not tab_id:
+        return {"ok": False, "reason": "pc_id veya tab_id eksik"}
+    client_ip = request.client.host if request.client else None
+    try:
+        session_heartbeat(
+            pc_id=pc_id,
+            tab_id=tab_id,
+            user_id=body.get("user_id"),
+            ip=client_ip,
+        )
+    except Exception:
+        pass  # Heartbeat asla istemciyi bloklamaz
+    return {"ok": True}
+
+
+@router.delete("/pcs/{pc_id}/sessions/{session_kimlik}")
+async def kick_pc_session(pc_id: str, session_kimlik: str):  # noqa: ARG001 pc_id URL yapısı için
+    """Belirtilen oturumu admin olarak sonlandırır."""
+    ok = deactivate_session(session_kimlik)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Oturum bulunamadı")
+    return {"ok": True}
+
+
+# ── Depolama / Belge Kotası ───────────────────────────────────────────────────
+
+@router.get("/storage")
+async def get_storage():
+    """Sistem geneli + kullanıcı bazlı depolama özeti."""
+    return get_storage_overview()
+
+
+@router.get("/storage/{user_id}/documents")
+async def get_storage_user_documents(user_id: str):
+    """Bir kullanıcının yüklediği tüm belgelerin detayı."""
+    docs = get_user_documents(user_id)
+    return {"documents": docs, "count": len(docs)}
+
+
+@router.patch("/storage/{user_id}/quota")
+async def patch_storage_quota(user_id: str, body: dict):
+    """
+    Kullanıcı kotasını günceller.
+    body: { "quota_mb": 500.0, "quota_files": 100 }
+    Negatif (-1) gönderilirse sınırsız (NULL) olur.
+    """
+    quota_mb = body.get("quota_mb")
+    quota_files = body.get("quota_files")
+    ok = update_user_quota(
+        user_id=user_id,
+        quota_mb=float(quota_mb) if quota_mb is not None else None,
+        quota_files=int(quota_files) if quota_files is not None else None,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
     return {"ok": True}
 
 

@@ -41,7 +41,14 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         db.add(yeni_kullanici)
         db.commit()
         db.refresh(yeni_kullanici)
-        return {"mesaj": "Kayıt başarılı", "kimlik": yeni_kullanici.kimlik}
+        return {
+            "mesaj": "Kayıt başarılı",
+            "id": yeni_kullanici.kimlik,
+            "tam_ad": yeni_kullanici.tam_ad,
+            "eposta": yeni_kullanici.eposta,
+            "meta": yeni_kullanici.meta or {},
+            "super": False,
+        }
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kullanılıyor.")
@@ -102,6 +109,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         "mesaj": "Giriş başarılı",
         "id": kullanici.kimlik,
         "tam_ad": kullanici.tam_ad,
+        "eposta": kullanici.eposta,
         "meta": kullanici.meta or {},
         "super": kullanici.super_kullanici_mi or False
     }
@@ -262,8 +270,8 @@ def get_user_dashboard(user_id: str, db: Session = Depends(get_db)):
     ])
     
     talepler = meta.get("talepler", [
-        {"mesaj": "Pazarlama analiz modeline erişim izni talep ediyorum.", "durum": "Onaylandı", "tarih": "12 Mart", "renk": "emerald"},
-        {"mesaj": "Grafik çizim AI aracı kotasının artırılması gerekiyor.", "durum": "İncelemede", "tarih": "Bugün", "renk": "amber"}
+        {"baslik": "Model Erişimi Talebi", "mesaj": "Pazarlama analiz modeline erişim izni talep ediyorum.", "durum": "Onaylandı", "tarih": "12 Mart", "renk": "emerald"},
+        {"baslik": "Kota Artırımı İsteği", "mesaj": "Grafik çizim AI aracı kotasının artırılması gerekiyor.", "durum": "İncelemede", "tarih": "Bugün", "renk": "amber"}
     ])
     
     return {
@@ -271,6 +279,68 @@ def get_user_dashboard(user_id: str, db: Session = Depends(get_db)):
         "belgeler": recent_docs,
         "talepler": talepler
     }
+
+@router.get("/users/{user_id}/file-access")
+def get_user_file_access(user_id: str, db: Session = Depends(get_db)):
+    user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+        
+    belgeler = db.query(Belge).filter(Belge.dosya_turu != 'folder').all()
+    res = []
+    for b in belgeler:
+        meta = b.meta or {}
+        izinliler = meta.get("izin_verilen_kullanicilar", [])
+        
+        # If havuz_turu is "sistem" and izinliler is empty, it means open to all by default, so true.
+        # Otherwise, check if user_id is in izinliler.
+        if b.havuz_turu == "sistem" and not izinliler:
+            has_access = True
+        else:
+            has_access = user_id in izinliler
+            
+        res.append({
+            "id": b.kimlik,
+            "filename": b.dosya_adi,
+            "is_vectorized": b.vektorlestirildi_mi,
+            "has_access": has_access
+        })
+    return res
+
+class FileAccessUpdate(BaseModel):
+    file_id: str
+    has_access: bool
+
+@router.put("/users/{user_id}/file-access")
+def update_user_file_access(user_id: str, req: FileAccessUpdate, db: Session = Depends(get_db)):
+    user = db.query(Kullanici).filter(Kullanici.kimlik == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+        
+    belge = db.query(Belge).filter(Belge.kimlik == req.file_id).first()
+    if not belge:
+        raise HTTPException(status_code=404, detail="Belge bulunamadı")
+        
+    meta = dict(belge.meta or {})
+    izinliler = meta.get("izin_verilen_kullanicilar", [])
+    
+    if req.has_access:
+        if user_id not in izinliler:
+            izinliler.append(user_id)
+    else:
+        # If it was a system file with no restrictions, we must explicitly add all OTHER users to restrict this user?
+        # That's too complex. If izinliler is empty and havuz_turu == sistem, we populate it with everyone except this user.
+        if belge.havuz_turu == "sistem" and not izinliler:
+            tum_kullanicilar = db.query(Kullanici.kimlik).filter(Kullanici.super_kullanici_mi == False).all()
+            izinliler = [u[0] for u in tum_kullanicilar if u[0] != user_id]
+        else:
+            if user_id in izinliler:
+                izinliler.remove(user_id)
+                
+    meta["izin_verilen_kullanicilar"] = izinliler
+    belge.meta = meta
+    db.commit()
+    return {"status": "ok"}
 
 @router.get("/users/{user_id}/permissions-context")
 def get_permissions_context(user_id: str, db: Session = Depends(get_db)):

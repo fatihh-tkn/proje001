@@ -31,6 +31,7 @@ class LogRepository:
     def add(
         self,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
         status: str = "success",
@@ -49,6 +50,7 @@ class LogRepository:
     ) -> ApiLog:
         log = ApiLog(
             oturum_kimlik=session_id,
+            kullanici_kimlik=user_id,
             tedarikci=provider,
             model=model,
             durum=status,
@@ -72,14 +74,39 @@ class LogRepository:
     def list_logs(
         self,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        model: Optional[str] = None,
         status: Optional[str] = None,
-        limit: int = 100,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        search: Optional[str] = None,
+        since_id: Optional[str] = None,
+        limit: int = 200,
     ) -> list[ApiLog]:
         stmt = select(ApiLog).order_by(desc(ApiLog.olusturulma_tarihi)).limit(limit)
         if session_id:
             stmt = stmt.where(ApiLog.oturum_kimlik == session_id)
-        if status:
-            stmt = stmt.where(ApiLog.durum == status)
+        if user_id:
+            stmt = stmt.where(ApiLog.kullanici_kimlik == user_id)
+        if model:
+            stmt = stmt.where(ApiLog.model == model)
+        if status == "error":
+            stmt = stmt.where(ApiLog.durum != "success")
+        elif status == "success":
+            stmt = stmt.where(ApiLog.durum == "success")
+        if date_from:
+            stmt = stmt.where(ApiLog.olusturulma_tarihi >= date_from)
+        if date_to:
+            stmt = stmt.where(ApiLog.olusturulma_tarihi <= date_to)
+        if search:
+            term = f"%{search}%"
+            stmt = stmt.where(
+                (ApiLog.istek_onizleme.ilike(term)) | (ApiLog.yanit_onizleme.ilike(term))
+            )
+        if since_id:
+            # since_id'den sonra eklenen yeni logları getir (SSE için)
+            sub = select(ApiLog.olusturulma_tarihi).where(ApiLog.kimlik == since_id).scalar_subquery()
+            stmt = stmt.where(ApiLog.olusturulma_tarihi > sub)
         return list(self._main_db.scalars(stmt).all())
 
     def get_stats(self) -> dict:

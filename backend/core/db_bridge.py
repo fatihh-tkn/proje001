@@ -38,6 +38,7 @@ def add_log_to_db(log_entry: dict) -> None:
         repo = LogRepository(db)
         repo.add(
             session_id=session_id,
+            user_id=log_entry.get("user_id") or log_entry.get("userId"),
             provider=log_entry.get("provider"),
             model=log_entry.get("model"),
             status=log_entry.get("status", "success"),
@@ -90,9 +91,64 @@ def get_all_logs_for_dashboard(project_id: Optional[str] = None) -> list[dict]:
 
 
 # -- get_logs_from_db ---------------------------------------------------------
-def get_logs_from_db(limit: int = 100, project_id: Optional[str] = None) -> list[dict]:
-    logs = get_all_logs_for_dashboard(project_id)
-    return logs[:limit]
+def get_logs_from_db(
+    limit: int = 200,
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    model: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    since_id: Optional[str] = None,
+) -> list[dict]:
+    from database.sql.models import Kullanici
+    with get_session() as db:
+        repo = LogRepository(db)
+        logs = repo.list_logs(
+            user_id=user_id,
+            model=model,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            search=search,
+            since_id=since_id,
+            limit=limit,
+        )
+        # Kullanıcı adlarını tek sorguda çek
+        user_ids = {l.kullanici_kimlik for l in logs if l.kullanici_kimlik}
+        user_map: dict[str, dict] = {}
+        if user_ids:
+            users = db.query(Kullanici).filter(Kullanici.kimlik.in_(user_ids)).all()
+            user_map = {u.kimlik: {"name": u.tam_ad, "email": u.eposta} for u in users}
+
+        result = []
+        for log in logs:
+            u_info = user_map.get(log.kullanici_kimlik, {})
+            result.append({
+                "id": log.kimlik,
+                "timestamp": log.olusturulma_tarihi,
+                "provider": log.tedarikci or "unknown",
+                "model": log.model or "unknown",
+                "promptTokens": log.istek_token or 0,
+                "completionTokens": log.yanit_token or 0,
+                "totalTokens": log.toplam_token or 0,
+                "duration": log.sure_ms or 0,
+                "status": log.durum,
+                "cost": log.maliyet_usd or 0.0,
+                "sessionId": log.oturum_kimlik or "default",
+                "userId": log.kullanici_kimlik,
+                "userName": u_info.get("name"),
+                "userEmail": u_info.get("email"),
+                "projectId": project_id or "default",
+                "role": "assistant",
+                "error": log.hata_kodu,
+                "request": log.istek_onizleme or "",
+                "response": log.yanit_onizleme or "",
+                "ip": log.ip_adresi or "unknown",
+                "mac": log.mac_adresi or "unknown",
+            })
+        return result
 
 
 # -- clear_logs_from_db -------------------------------------------------------

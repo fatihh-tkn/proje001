@@ -38,3 +38,49 @@ export const formatDate = (isoString) => {
     });
 };
 
+// ── MB / GB / KB formatlayıcı (sayı: MB cinsinden gelir) ──
+export const formatMB = (mb) => {
+    if (mb == null || mb === 0) return '0 MB';
+    if (mb < 1) return `${(mb * 1024).toFixed(1)} KB`;
+    if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+    return `${mb.toFixed(1)} MB`;
+};
+
+// ── Bytes → KB/MB/GB ──
+export const formatBytes = (b) => {
+    if (!b) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0; let v = b;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
+};
+
+// ── Doluluk yüzdesine göre renk ──
+export const getQuotaColor = (pct) => {
+    if (pct >= 90) return '#ef4444'; // kırmızı
+    if (pct >= 70) return '#f59e0b'; // sarı
+    if (pct >= 40) return '#3b82f6'; // mavi
+    return '#1D9E75';                // yeşil
+};
+
+export const formatRelativeTime = (dateStr) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return `${diffSec} sn önce`;
+    if (diffMin < 60) return `${diffMin} dk önce`;
+    if (diffHour < 24) return `${diffHour} sa önce`;
+    if (diffDay < 7) return `${diffDay} gün önce`;
+    return formatDate(dateStr);
+};
+
+export const truncatedText = (text, maxLength = 60) => {
+    if (!text) return '-';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+};

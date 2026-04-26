@@ -7,13 +7,11 @@ import { ModelsTab } from './tabs/ModelsTab';
 import { DashboardTab } from './tabs/DashboardTab';
 import { LogsTab } from './tabs/LogsTab';
 import InlineTopologyOverview from './orchestrator/InlineTopologyOverview';
-import RagChatPlayground from './orchestrator/RagChatPlayground';
 import AgentChromeTabBar from './orchestrator/AgentChromeTabBar';
 import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import { AutomationTab } from './tabs/AutomationTab';
-import { RagCalibrationTab } from './tabs/RagCalibrationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
-import { SessionManagerTab } from './tabs/SessionManagerTab';
+
 import { DEFAULT_AGENTS } from './orchestrator/constants';
 
 class ErrorBoundary extends React.Component {
@@ -284,6 +282,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 </ErrorBoundary>
                                             </div>
                                         )}
+
                                     </div>
 
                                     {/* Sağ Taraf: API Anahtarı Paneli */}
@@ -427,10 +426,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                     </div>
                 )}
                 {activeMainTab === 'automation' && <AutomationTab />}
-                {activeMainTab === 'playground' && <RagChatPlayground defaultAgent={selectedItem} />}
-                {activeMainTab === 'rag_calib' && <RagCalibrationTab />}
                 {activeMainTab === 'prompts' && <PromptTemplatesTab />}
-                {activeMainTab === 'sessions' && <SessionManagerTab />}
             </div>
 
 

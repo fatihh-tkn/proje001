@@ -3,7 +3,8 @@ import {
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { BookOpen, FileText, Award, Clock, Layers, MapPin, User, Calendar, Tag } from 'lucide-react';
+import { BookOpen, FileText, Award, Clock, Layers, MapPin, User, Calendar, Tag, Lock, X, Check, Search, ShieldAlert } from 'lucide-react';
+import ReactDOM from 'react-dom';
 
 /* ─── Renk Sabitleri ─────────────────────────────── */
 const C = {
@@ -46,6 +47,122 @@ const StoneTooltip = ({ active, payload, label }) => {
     );
 };
 
+export const RestrictionsModal = ({ userId, userName, onClose }) => {
+    const [files, setFiles] = useState(null);
+    const [search, setSearch] = useState('');
+    const [updating, setUpdating] = useState(null); // id of file being updated
+
+    useEffect(() => {
+        fetch(`/api/auth/users/${userId}/file-access`)
+            .then(r => r.json())
+            .then(data => setFiles(data))
+            .catch(() => setFiles([]));
+    }, [userId]);
+
+    const toggleAccess = async (fileId, currentAccess) => {
+        setUpdating(fileId);
+        const newAccess = !currentAccess;
+        try {
+            await fetch(`/api/auth/users/${userId}/file-access`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_id: fileId, has_access: newAccess })
+            });
+            setFiles(prev => prev.map(f => f.id === fileId ? { ...f, has_access: newAccess } : f));
+        } catch (error) {
+            console.error("Erişim güncellenemedi", error);
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    const filtered = (files || []).filter(f => f.filename.toLowerCase().includes(search.toLowerCase()));
+
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9500] flex items-center justify-center bg-stone-900/40 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-[480px] flex flex-col overflow-hidden max-h-[85vh] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-5 py-4 border-b border-stone-100 flex items-start justify-between bg-stone-50/50">
+                    <div>
+                        <h3 className="text-[14px] font-bold text-stone-900 flex items-center gap-2">
+                            <Lock size={16} className="text-red-500" /> {userName} - Dosya Kısıtlamaları
+                        </h3>
+                        <p className="text-[11px] text-stone-500 mt-1">Kullanıcının sistemdeki dosyalara erişimini yönetin.</p>
+                    </div>
+                    <button onClick={onClose} className="p-1 hover:bg-stone-200 rounded-md text-stone-400 transition-colors">
+                        <X size={16} />
+                    </button>
+                </div>
+
+                {/* Search */}
+                <div className="px-5 py-3 border-b border-stone-100">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus-within:bg-white focus-within:border-stone-300 transition-colors">
+                        <Search size={14} className="text-stone-400" />
+                        <input
+                            type="text"
+                            placeholder="Dosya ara..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="flex-1 bg-transparent text-[12px] outline-none text-stone-700"
+                        />
+                    </div>
+                </div>
+
+                {/* List */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                    {!files ? (
+                        <div className="flex flex-col items-center justify-center py-10 gap-2">
+                            <div className="w-5 h-5 rounded-full border-2 border-stone-300 border-t-red-500 animate-spin" />
+                            <span className="text-[11px] text-stone-400">Dosyalar yükleniyor...</span>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="text-center py-10 text-[11px] text-stone-400 italic">Eşleşen dosya bulunamadı.</div>
+                    ) : filtered.map(f => {
+                        const isLocked = !f.is_vectorized;
+                        return (
+                            <div key={f.id} className={`flex items-center justify-between p-3 rounded-xl border ${isLocked ? 'bg-stone-50 border-stone-100 opacity-70' : f.has_access ? 'bg-white border-stone-200' : 'bg-red-50/30 border-red-100'}`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isLocked ? 'bg-stone-200 text-stone-500' : f.has_access ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>
+                                        {isLocked ? <Lock size={14} /> : <FileText size={14} />}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[12px] font-semibold text-stone-800 truncate" title={f.filename}>{f.filename}</p>
+                                        <p className="text-[10px] text-stone-400 mt-0.5">
+                                            {isLocked ? (
+                                                <span className="text-stone-500 font-medium flex items-center gap-1"><ShieldAlert size={10} /> Yapay Zekada Aktif Değil (Kilitli)</span>
+                                            ) : f.has_access ? (
+                                                <span className="text-emerald-600 font-medium flex items-center gap-1"><Check size={10} /> Erişimi Açık</span>
+                                            ) : (
+                                                <span className="text-red-500 font-medium flex items-center gap-1"><X size={10} /> Erişimi Kapalı</span>
+                                            )}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="shrink-0 pl-3">
+                                    {isLocked ? (
+                                        <button disabled className="px-3 py-1.5 text-[10px] font-bold text-stone-400 bg-stone-100 rounded-md cursor-not-allowed">
+                                            Kilitli
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => toggleAccess(f.id, f.has_access)}
+                                            disabled={updating === f.id}
+                                            className={`w-20 py-1.5 text-[10px] font-bold rounded-md transition-colors ${updating === f.id ? 'opacity-50 cursor-not-allowed' : ''} ${f.has_access ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'}`}
+                                        >
+                                            {updating === f.id ? '...' : f.has_access ? 'Erişimi Kapat' : 'Erişimi Aç'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 /* ─── Ana Bileşen ────────────────────────────────── */
 export default function InlineUserDashboard({ userId, userName, userStatus, onStatusChange, onDelete }) {
     const [data, setData] = useState(null);
@@ -53,6 +170,7 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState(userStatus || 'Aktif');
     const [confirming, setConfirming] = useState(false);
+    const [restrictionsOpen, setRestrictionsOpen] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -284,6 +402,12 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                                 >
                                     {status === 'Aktif' ? 'Hesabı Askıya Al' : 'Hesabı Aktifleştir'}
                                 </button>
+                                <button
+                                    onClick={() => setRestrictionsOpen(true)}
+                                    className="text-[11px] font-medium px-3 py-1.5 rounded-md border bg-white border-stone-200 text-stone-700 hover:bg-stone-50 transition-colors flex items-center gap-1.5"
+                                >
+                                    <Lock size={12} className="text-red-500" /> Kısıtlamalar
+                                </button>
                                 {!confirming ? (
                                     <button
                                         onClick={() => setConfirming(true)}
@@ -313,6 +437,14 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                     </>
                 )}
             </div>
+            
+            {restrictionsOpen && (
+                <RestrictionsModal
+                    userId={userId}
+                    userName={userName}
+                    onClose={() => setRestrictionsOpen(false)}
+                />
+            )}
         </div>
     );
 }

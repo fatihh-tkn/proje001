@@ -13,6 +13,9 @@ class ChatMessage(BaseModel):
     # Bilgisayar tanımlayıcıları
     ip: str | None = None
     mac: str | None = None
+    # PC parmak izi (localStorage) ve sekme token'ı (sessionStorage)
+    pc_id: str | None = None
+    tab_id: str | None = None
 
 
 class ChatResponse(BaseModel):

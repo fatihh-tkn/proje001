@@ -259,6 +259,95 @@ def get_computers_stats() -> list[dict]:
     return result
 
 
+def get_user_consumption() -> list[dict]:
+    """
+    Kullanıcı bazlı AI tüketim özeti.
+    api_loglari + kullanicilar LEFT JOIN → GROUP BY kullanici_kimlik
+    """
+    from database.sql.session import get_session
+    from database.sql.models import ApiLogu as ApiLog, Kullanici
+    from sqlalchemy import func
+
+    with get_session() as db:
+        # Aggregate query
+        agg = (
+            db.query(
+                ApiLog.kullanici_kimlik,
+                func.count(ApiLog.kimlik).label("total_requests"),
+                func.coalesce(func.sum(ApiLog.toplam_token), 0).label("total_tokens"),
+                func.coalesce(func.sum(ApiLog.maliyet_usd), 0.0).label("total_cost"),
+                func.coalesce(func.avg(ApiLog.sure_ms), 0).label("avg_duration"),
+                func.min(ApiLog.olusturulma_tarihi).label("first_at"),
+                func.max(ApiLog.olusturulma_tarihi).label("last_at"),
+            )
+            .group_by(ApiLog.kullanici_kimlik)
+            .all()
+        )
+
+        # Error counts
+        err_agg = (
+            db.query(
+                ApiLog.kullanici_kimlik,
+                func.count(ApiLog.kimlik).label("err_count"),
+            )
+            .filter(ApiLog.durum != "success")
+            .group_by(ApiLog.kullanici_kimlik)
+            .all()
+        )
+        err_map = {r[0]: r[1] for r in err_agg}
+
+        # Model lists per user
+        model_rows = (
+            db.query(ApiLog.kullanici_kimlik, ApiLog.model)
+            .filter(ApiLog.model.isnot(None))
+            .distinct()
+            .all()
+        )
+        model_map: dict = {}
+        for uid, m in model_rows:
+            model_map.setdefault(uid, [])
+            if m and m not in model_map[uid]:
+                model_map[uid].append(m)
+
+        # User info map
+        user_ids = {r[0] for r in agg if r[0]}
+        users = db.query(Kullanici).filter(Kullanici.kimlik.in_(user_ids)).all()
+        user_info = {
+            u.kimlik: {
+                "name": u.tam_ad,
+                "email": u.eposta,
+                "role": "Sistem Yöneticisi" if u.super_kullanici_mi else "Standart Kullanıcı",
+                "status": "Aktif" if u.aktif_mi else "Askıya Alındı",
+                "department": (u.meta or {}).get("department"),
+            }
+            for u in users
+        }
+
+        result = []
+        for row in agg:
+            uid = row.kullanici_kimlik
+            info = user_info.get(uid, {})
+            result.append({
+                "user_id": uid,
+                "name": info.get("name") or "Anonim / Sistem",
+                "email": info.get("email") or "—",
+                "role": info.get("role") or "—",
+                "status": info.get("status") or "—",
+                "department": info.get("department"),
+                "total_requests": int(row.total_requests or 0),
+                "error_count": int(err_map.get(uid, 0)),
+                "total_tokens": int(row.total_tokens or 0),
+                "total_cost": round(float(row.total_cost or 0.0), 6),
+                "avg_duration_ms": int(row.avg_duration or 0),
+                "first_at": row.first_at,
+                "last_at": row.last_at,
+                "models_used": model_map.get(uid, []),
+            })
+
+        result.sort(key=lambda x: -x["total_cost"])
+        return result
+
+
 def set_computer_alias(mac: str, ip: str, name: str) -> None:
     _computer_aliases[f"{mac}_{ip}"] = name
 

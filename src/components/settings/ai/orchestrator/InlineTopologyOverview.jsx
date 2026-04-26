@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { User, Bot, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson, FileCode, AlertTriangle, Power, Loader2 } from 'lucide-react';
+import { User, Bot, Zap, MessageSquareText, FileText, Video, PencilLine, FileJson, FileCode, AlertTriangle, Power, Loader2, SlidersHorizontal } from 'lucide-react';
 import ApiPayloadPreview from './ApiPayloadPreview';
+import { RagCalibrationTab } from '../tabs/RagCalibrationTab';
 
-const PopupPortal = ({ title, icon: Icon = FileJson, iconColor, popupPos, onClose, children }) => ReactDOM.createPortal(
+const PopupPortal = ({ title, icon: Icon = FileJson, iconColor, popupPos, onClose, width = 340, anchor = 'middle', children }) => ReactDOM.createPortal(
     <>
         <div className="fixed inset-0 z-[9998]" onClick={onClose} />
         <div
-            className="fixed z-[9999] w-[340px] rounded-xl border border-stone-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col"
-            style={{ left: popupPos.x, top: popupPos.y, transform: 'translateY(-50%)' }}
+            className="fixed z-[9999] rounded-xl border border-stone-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col"
+            style={{
+                left: popupPos.x,
+                top: popupPos.y,
+                width,
+                transform: anchor === 'middle' ? 'translateY(-50%)' : 'none',
+            }}
         >
             <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between gap-2 bg-stone-50 rounded-t-xl">
                 <div className="flex items-center gap-2">
@@ -47,6 +53,10 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
     const [loadingPrompts, setLoadingPrompts] = useState(true);
     const [activePromptEdge, setActivePromptEdge] = useState(null);
     const [promptPopupPos, setPromptPopupPos] = useState({ x: 0, y: 0 });
+
+    // RAG ayarları popup state
+    const [ragSettingsOpen, setRagSettingsOpen] = useState(false);
+    const [ragSettingsPos, setRagSettingsPos] = useState({ x: 0, y: 0 });
 
     useEffect(() => {
         fetch('/api/settings/prompts')
@@ -179,6 +189,25 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
     const closePopup = () => setActivePopupNode(null);
     const closePromptPopup = () => setActivePromptEdge(null);
 
+    const handleRagSettingsClick = (e) => {
+        e.stopPropagation();
+        setActivePopupNode(null);
+        setActivePromptEdge(null);
+        if (ragSettingsOpen) { setRagSettingsOpen(false); return; }
+        const rect = e.currentTarget.getBoundingClientRect();
+        const POPUP_W = 440;
+        const margin = 12;
+        // Sağa açılması ekrandan taşacaksa sola çevir
+        const overflowsRight = rect.right + margin + POPUP_W > window.innerWidth;
+        const x = overflowsRight ? Math.max(margin, rect.left - margin - POPUP_W) : rect.right + margin;
+        // Pop-up dökümanın hizasında, üstten aç (uzayabilir)
+        const y = Math.min(rect.top, window.innerHeight - 100);
+        setRagSettingsPos({ x, y });
+        setRagSettingsOpen(true);
+        if (onOpenPayload) onOpenPayload();
+    };
+    const closeRagSettings = () => setRagSettingsOpen(false);
+
     const rectBorder = (agentId) =>
         agent?.id === agentId ? 'border-2 border-[#378ADD]/60 shadow-[0_0_15px_rgba(55,138,221,0.15)] bg-white' : 'border border-[#378ADD]/20 bg-stone-50';
     const chatBorderClass = agent?.id === 'sys_agent_chatbot_001'
@@ -274,10 +303,14 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
 
                 {/* DB nodes */}
                 {isRag1Active && pos.chat != null && (
-                    <div className="absolute z-10 flex flex-col items-center pointer-events-none" style={{ left: pos.chat - 65, top: centerY - 145, transform: 'translate(-50%, -50%)' }}>
-                        <div className="w-[56px] h-[48px] rounded-xl bg-white border border-[#378ADD]/30 flex items-center justify-center shadow-sm">
+                    <div className="absolute z-10 flex flex-col items-center pointer-events-auto" style={{ left: pos.chat - 65, top: centerY - 145, transform: 'translate(-50%, -50%)' }}>
+                        <button
+                            onClick={handleRagSettingsClick}
+                            title="RAG Ayarları"
+                            className={`w-[56px] h-[48px] rounded-xl bg-white border flex items-center justify-center shadow-sm transition-all ${ragSettingsOpen ? 'border-[#378ADD] ring-2 ring-[#378ADD]/30 -translate-y-0.5 shadow-md' : 'border-[#378ADD]/30 hover:border-[#378ADD]/70 hover:-translate-y-0.5 hover:shadow-md'}`}
+                        >
                             <FileText size={16} strokeWidth={2.5} className="text-[#378ADD]" />
-                        </div>
+                        </button>
                         <span className="mt-2 text-[10px] font-bold text-stone-400 tracking-widest uppercase">Döküman</span>
                     </div>
                 )}
@@ -394,6 +427,21 @@ const InlineTopologyOverview = ({ agent, allAgents, rags, onOpenPayload, onToggl
                             </p>
                         </div>
                     )}
+                </PopupPortal>
+            )}
+
+            {/* ── RAG Ayarları popup ── */}
+            {ragSettingsOpen && (
+                <PopupPortal
+                    title="RAG Kalibrasyon"
+                    icon={SlidersHorizontal}
+                    iconColor="#378ADD"
+                    popupPos={ragSettingsPos}
+                    width={440}
+                    anchor="top"
+                    onClose={closeRagSettings}
+                >
+                    <RagCalibrationTab />
                 </PopupPortal>
             )}
 

@@ -1,356 +1,306 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, Cpu, DollarSign, Wifi, Hash, Bot } from 'lucide-react';
-import { API_BASE, fetchWithTimeout, formatDate, fmtMs, fmtCost, fmt, getModelColor } from '../utils';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Activity, Filter, Box, CheckCircle2, AlertCircle, Clock, Trash2, X, User } from 'lucide-react';
+import { API_BASE, fetchWithTimeout, formatRelativeTime, truncatedText, getModelColor, fmtCost } from '../utils';
+import { LogDetailPanel } from '../components/LogDetailPanel';
 
-/* ─── Mini badge ──────────────────────────────────────────────────── */
-function Badge({ children, color = 'default' }) {
-    const colors = {
-        success: 'bg-[#EAF3DE] text-[#3B6D11] border-[#EAF3DE]/50',
-        error: 'bg-[#FCEBEB] text-[#791F1F] border-[#FCEBEB]/50',
-        warn: 'bg-[#FAEEDA] text-[#854F0B] border-[#FAEEDA]/50',
-        default: 'bg-stone-100 text-stone-600 border-stone-200',
-    };
-    return (
-        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-widest border ${colors[color]}`}>
-            {children}
-        </span>
-    );
-}
-
-/* ─── Expanded detail row ─────────────────────────────────────────── */
-function LogDetail({ log }) {
-    const [expandReq, setExpandReq] = useState(false);
-    const [expandRes, setExpandRes] = useState(false);
-
-    const isReqLong = (log.request && log.request.length > 300) || (log.request && log.request.split('\n').length > 5);
-    const isResLong = (log.response && log.response.length > 300) || (log.response && log.response.split('\n').length > 5);
-
-    return (
-        <div className="bg-stone-50 px-6 py-5 border-t border-stone-200 animate-in slide-in-from-top-2 duration-300 shadow-inner">
-            {/* Metadata Tek Satır Haritası */}
-            <div className="flex flex-wrap items-center gap-6 mb-6">
-                {[
-                    { icon: Wifi, label: 'IP', value: log.ip || '—' },
-                    { icon: Hash, label: 'MAC', value: log.mac || '—' },
-                    { icon: Clock, label: 'Süre', value: fmtMs(log.duration) },
-                    { icon: DollarSign, label: 'Maliyet', value: fmtCost(log.cost) },
-                ].map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-center gap-2">
-                        <Icon size={14} className="text-stone-400 opacity-80" />
-                        <span className="text-[10px] text-stone-500 font-bold tracking-widest uppercase">{label}</span>
-                        <span className="text-[12px] font-mono text-stone-700 font-bold ml-1">{value}</span>
-                    </div>
-                ))}
-
-                {/* Token Özeti */}
-                <div className="flex items-center gap-2 ml-auto">
-                    <span className="text-[10px] text-stone-500 font-bold tracking-widest uppercase">Token</span>
-                    <span className="text-[12px] font-mono text-stone-700 font-bold ml-1 flex items-center gap-1.5">
-                        <span className="text-[#378ADD]">{fmt(log.promptTokens || 0)}</span>
-                        <span className="text-stone-400/60">+</span>
-                        <span className="text-[#1D9E75]">{fmt(log.completionTokens || 0)}</span>
-                        <span className="text-stone-400/60">=</span>
-                        <span className="text-stone-900 font-black">{fmt(log.totalTokens)}</span>
-                    </span>
-                </div>
-            </div>
-
-            {/* Prompt + Response (Split Content Structure) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative">
-                {/* Ayrım çizgisi (sadece LG'de) */}
-                <div className="hidden lg:block absolute left-1/2 top-0 bottom-0 w-px bg-stone-200 -translate-x-1/2" />
-
-                {/* İstek kısmı */}
-                <div className="lg:pr-4">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="w-2 h-2 rounded-full bg-[#378ADD]" />
-                        <span className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">İstek (Prompt)</span>
-                        {isReqLong && (
-                            <button onClick={() => setExpandReq(!expandReq)} className="ml-auto text-stone-400 hover:text-[#378ADD] focus:outline-none transition-colors group cursor-pointer" title="Genişlet/Daralt">
-                                <ChevronDown size={16} className={`transition-transform duration-300 ${expandReq ? 'rotate-180 text-[#378ADD]' : 'group-hover:scale-110'}`} />
-                            </button>
-                        )}
-                    </div>
-                    <div className="relative">
-                        <div className={`text-[12px] font-mono text-stone-700 leading-relaxed whitespace-pre-wrap break-words transition-all duration-300 ${expandReq ? 'max-h-none overflow-visible' : 'max-h-[160px] overflow-hidden'} selection:bg-[#378ADD]/10`}>
-                            {log.request || '—'}
-                        </div>
-                        {isReqLong && !expandReq && (
-                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-stone-50 via-stone-50/80 to-transparent pointer-events-none" />
-                        )}
-                    </div>
-                </div>
-
-                {/* Yanıt kısmı */}
-                <div className="lg:pl-4">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="w-2 h-2 rounded-full bg-[#1D9E75]" />
-                        <span className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Yanıt (Response)</span>
-                        {isResLong && (
-                            <button onClick={() => setExpandRes(!expandRes)} className="ml-auto text-stone-400 hover:text-[#1D9E75] focus:outline-none transition-colors group cursor-pointer" title="Genişlet/Daralt">
-                                <ChevronDown size={16} className={`transition-transform duration-300 ${expandRes ? 'rotate-180 text-[#1D9E75]' : 'group-hover:scale-110'}`} />
-                            </button>
-                        )}
-                    </div>
-                    <div className="relative">
-                        <div className={`text-[12px] font-mono text-stone-700 leading-relaxed whitespace-pre-wrap break-words transition-all duration-300 ${expandRes ? 'max-h-none overflow-visible' : 'max-h-[160px] overflow-hidden'} selection:bg-[#1D9E75]/10`}>
-                            {log.response || '—'}
-                        </div>
-                        {isResLong && !expandRes && (
-                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-stone-50 via-stone-50/80 to-transparent pointer-events-none" />
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Hata detayı */}
-            {log.status !== 'success' && log.error && (
-                <div className="mt-8 pt-6 border-t border-[#FCEBEB]">
-                    <div className="flex items-center gap-2 mb-3">
-                        <AlertCircle size={14} className="text-[#791F1F]" />
-                        <span className="text-[10px] font-bold tracking-widest text-[#791F1F] uppercase">Hata Çıktısı</span>
-                    </div>
-                    <div className="text-[12px] font-mono text-[#D85A30] break-words leading-relaxed max-h-[150px] overflow-y-auto minimal-scroll">
-                        {log.error}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-/* ─── Main component ─────────────────────────────────────────────── */
-export const LogsTab = React.memo(({ agent } = {}) => {
+export const LogsTab = ({ compact = false, filterUser = null, onClearUserFilter }) => {
     const [logs, setLogs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState('');
-    const [modelFilter, setModelFilter] = useState('all');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const [expandedLogId, setExpandedLogId] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [selectedLog, setSelectedLog] = useState(null);
+    const [filters, setFilters] = useState({
+        search: '',
+        model: '',
+        status: ''
+    });
 
-    const fetchLogs = useCallback(async () => {
-        setLoading(true);
-        try {
-            const url = agent?.id
-                ? `${API_BASE}/logs?limit=50&agentId=${encodeURIComponent(agent.id)}`
-                : `${API_BASE}/logs?limit=50`;
-            const res = await fetchWithTimeout(url);
-            const data = await res.json();
-            setLogs(data.logs || []);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+    const [clearing, setClearing] = useState(false);
+
+    // Stream bağlantısı
+    const streamRef = useRef(null);
+    const bufferRef = useRef("");
+
+    const connectStream = useCallback(() => {
+        const query = new URLSearchParams();
+        if (filters.search) query.append('search', filters.search);
+        if (filters.model) query.append('model', filters.model);
+        if (filters.status) query.append('status', filters.status);
+        if (filterUser?.id) query.append('user_id', filterUser.id);
+
+        const url = `${API_BASE}/logs/stream?${query.toString()}`;
+
+        // Abort previous
+        if (streamRef.current) {
+            streamRef.current.abort();
         }
-    }, [agent?.id]);
 
-    useEffect(() => { fetchLogs(); }, [fetchLogs]);
+        const controller = new AbortController();
+        streamRef.current = controller;
+        setIsConnected(false);
 
-    const models = useMemo(() => {
-        const set = new Set(logs.map(l => l.model).filter(Boolean));
-        return Array.from(set).sort();
-    }, [logs]);
+        fetch(url, { signal: controller.signal })
+            .then(async (res) => {
+                setIsConnected(true);
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        bufferRef.current += decoder.decode(value, { stream: true });
+                        const lines = bufferRef.current.split('\n');
+                        bufferRef.current = lines.pop() || "";
+                        
+                        for (const line of lines) {
+                            if (!line.trim().startsWith('data:')) continue;
+                            const raw = line.replace(/^data:\s*/, '');
+                            if (!raw) continue;
+                            
+                            try {
+                                const evt = JSON.parse(raw);
+                                if (evt.type === 'snapshot') {
+                                    setLogs(evt.logs || []);
+                                } else if (evt.type === 'new' && evt.logs) {
+                                    setLogs(prev => {
+                                        // Yeni gelenler başa eklenecek, sondan düşülecek (max 1000 filan tutalım)
+                                        const combined = [...evt.logs, ...prev];
+                                        return combined.slice(0, 1000);
+                                    });
+                                }
+                            } catch (e) {
+                                // ignore parse error
+                            }
+                        }
+                    }
+                } catch (e) {
+                    if (e.name !== 'AbortError') {
+                        console.error('Log stream okuma hatası:', e);
+                        setIsConnected(false);
+                    }
+                }
+            })
+            .catch(e => {
+                if (e.name !== 'AbortError') {
+                    console.error('Log stream bağlantı hatası:', e);
+                    setIsConnected(false);
+                }
+            });
 
-    const filtered = useMemo(() => {
-        const q = search.toLowerCase();
-        return logs.filter(l => {
-            const matchSearch = !search || (
-                (l.model || '').toLowerCase().includes(q) ||
-                (l.request || '').toLowerCase().includes(q) ||
-                (l.response || '').toLowerCase().includes(q)
-            );
-            const matchModel = modelFilter === 'all' || l.model === modelFilter;
-            const matchAgent = !agent?.id || !l.agentId || l.agentId === agent.id;
-            return matchSearch && matchModel && matchAgent;
-        });
-    }, [logs, search, modelFilter, agent?.id]);
+    }, [filters, filterUser]);
 
-    const successCount = useMemo(() => filtered.filter(l => l.status === 'success').length, [filtered]);
-    const errorCount = filtered.length - successCount;
+    useEffect(() => {
+        // Debounce search filter
+        const timer = setTimeout(() => {
+            connectStream();
+        }, 500);
+        return () => {
+            clearTimeout(timer);
+            if (streamRef.current) streamRef.current.abort();
+        };
+    }, [connectStream]);
+
+    const handleClearLogs = async () => {
+        if (!window.confirm("Tüm log kayıtlarını temizlemek istediğinize emin misiniz? Bu işlem geri alınamaz.")) return;
+        setClearing(true);
+        try {
+            await fetchWithTimeout(`${API_BASE}/logs`, { method: 'DELETE' });
+            setLogs([]);
+        } catch (e) {
+            console.error("Loglar silinemedi:", e);
+        } finally {
+            setClearing(false);
+        }
+    };
 
     return (
-        <div className="flex flex-col bg-white h-full w-full overflow-hidden animate-in fade-in duration-300 minimal-scroll">
-
-            {/* ── Toolbar ── */}
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-stone-200 bg-stone-50 flex-wrap">
-                {/* Seçili Bot Badge */}
-                {agent && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-stone-200 rounded-md shadow-sm shrink-0">
-                        <Bot size={12} className="text-[#378ADD]" strokeWidth={2.5} />
-                        <span className="text-[10px] font-black text-stone-700 tracking-tight">{agent.name}</span>
-                        <div className={`w-1.5 h-1.5 rounded-full ml-0.5 ${agent.active ? 'bg-[#1D9E75]' : 'bg-stone-300'}`} />
+        <div className="flex flex-col h-full bg-[#f8f9fa] p-4 relative font-sans animate-in fade-in duration-300 w-full">
+            {/* Header — compact modda sadece canlı badge + temizle butonu */}
+            <div className={`flex flex-wrap items-center justify-between gap-3 ${compact ? 'mb-3' : 'mb-6'}`}>
+                {!compact && (
+                    <div>
+                        <h3 className="text-[14px] font-bold text-slate-800 flex items-center gap-2">
+                            <Activity size={18} className="text-[#b91d2c]" />
+                            Canlı İstek Logları
+                        </h3>
+                        <p className="text-[12px] text-slate-500 mt-1">
+                            Uygulama genelindeki tüm AI isteklerini canlı olarak izleyin.
+                        </p>
                     </div>
                 )}
-                {/* Arama Kutusu */}
-                <div className="flex items-center bg-white border border-stone-200 rounded-md overflow-hidden focus-within:border-[#378ADD] focus-within:ring-1 focus-within:ring-[#378ADD] transition-all h-[36px] shadow-sm">
-                    <div className="pl-3 py-2 pr-2 text-stone-400 flex items-center justify-center shrink-0">
-                        <Search size={14} />
-                    </div>
-                    <input
-                        className="w-56 bg-transparent border-none outline-none text-[11px] font-bold text-stone-700 placeholder:text-stone-400/70 py-1.5"
-                        placeholder="Model, prompt veya yanıt ara..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                    />
-                </div>
-
-                {/* Özel Model Filtreleme Dropdown */}
-                <div
-                    className="relative h-[36px] z-20 group menu-container"
-                    tabIndex={0}
-                    onBlur={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget)) {
-                            setDropdownOpen(false);
-                        }
-                    }}
-                >
-                    <div
-                        onClick={() => setDropdownOpen(!dropdownOpen)}
-                        className={`flex items-center justify-between h-full bg-white border ${dropdownOpen ? 'border-[#378ADD] ring-1 ring-[#378ADD]' : 'border-stone-200 hover:border-stone-300'} rounded-md cursor-pointer pl-3 pr-2 w-48 transition-all shadow-sm`}
-                    >
-                        <span className={`text-[10px] font-bold uppercase tracking-widest truncate transition-colors ${dropdownOpen ? 'text-[#378ADD]' : 'text-stone-500'}`}>
-                            {modelFilter === 'all' ? 'TÜM MODELLER' : modelFilter}
+                <div className="flex items-center gap-2 ml-auto">
+                    {isConnected ? (
+                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Canlı
                         </span>
-                        <ChevronDown size={14} className={`text-stone-400 transition-transform ${dropdownOpen ? 'rotate-180 text-[#378ADD]' : ''}`} />
-                    </div>
-
-                    {/* Açılır Menü */}
-                    <div className={`absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-stone-200 rounded-lg shadow-lg overflow-hidden transition-all duration-200 origin-top z-[9999] ${dropdownOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-                        <div className="max-h-[250px] overflow-y-auto minimal-scroll group/menu">
-                            <div
-                                onMouseDown={(e) => { e.preventDefault(); setModelFilter('all'); setDropdownOpen(false); }}
-                                className={`px-4 py-3 text-[10px] uppercase font-bold tracking-widest cursor-pointer transition-colors hover:bg-stone-50 hover:text-[#378ADD] ${modelFilter === 'all' ? 'bg-stone-50 text-[#378ADD]' : 'text-stone-600'}`}
-                            >
-                                TÜM MODELLER
-                            </div>
-                            <div className="border-t border-stone-100" />
-                            {models.map(m => (
-                                <div
-                                    key={m}
-                                    onMouseDown={(e) => { e.preventDefault(); setModelFilter(m); setDropdownOpen(false); }}
-                                    className={`px-4 py-3 text-[11px] font-bold font-mono cursor-pointer transition-colors truncate hover:bg-stone-50 hover:text-[#378ADD] ${modelFilter === m ? 'bg-stone-50 text-[#378ADD]' : 'text-stone-600'}`}
-                                >
-                                    {m}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="ml-auto flex items-center gap-4">
-                    {/* İstatistikler */}
-                    {!loading && (
-                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
-                            <span className="flex items-center gap-1.5 text-[#3B6D11]">
-                                <CheckCircle2 size={12} /> {successCount}
-                            </span>
-                            <span className="text-stone-300">/</span>
-                            <span className="flex items-center gap-1.5 text-[#791F1F]">
-                                <AlertCircle size={12} /> {errorCount}
-                            </span>
-                            <span className="text-stone-200 font-normal">|</span>
-                            <span className="text-stone-400">{filtered.length} kayıt</span>
-                        </div>
+                    ) : (
+                        <span className="flex items-center gap-1 text-[10px] text-amber-600 font-bold px-2 py-0.5 bg-amber-50 rounded-full border border-amber-100">
+                            <Activity size={10} className="animate-spin" /> Bağlanıyor...
+                        </span>
                     )}
                     <button
-                        onClick={fetchLogs}
-                        className="p-1.5 rounded-md text-stone-400 hover:text-[#378ADD] hover:bg-stone-100 transition-colors cursor-pointer"
+                        onClick={handleClearLogs}
+                        disabled={clearing}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-lg transition-colors text-[11px] font-semibold"
                     >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        {clearing ? <Activity size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        Temizle
                     </button>
                 </div>
             </div>
 
-            {/* ── Tablo başlığı ── */}
-            <div className="grid grid-cols-[130px_90px_160px_1fr_1fr_90px_90px_30px] gap-0 px-6 py-3 border-b border-stone-200 bg-stone-50">
-                {['Tarih', 'Durum', 'Model', 'Prompt', 'Yanıt', 'Token', 'Süre', ''].map((h, i) => (
-                    <span key={i} className="text-[10px] font-bold uppercase tracking-widest text-stone-400">{h}</span>
-                ))}
+            {/* Kullanıcı filtresi bandı */}
+            {filterUser && (
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-[#378ADD]/10 border border-[#378ADD]/30 rounded-lg">
+                    <User size={12} className="text-[#378ADD] shrink-0" strokeWidth={2.5} />
+                    <span className="text-[11px] font-bold text-[#378ADD] flex-1 truncate">
+                        {filterUser.name || filterUser.email} — logları
+                    </span>
+                    {onClearUserFilter && (
+                        <button
+                            onClick={onClearUserFilter}
+                            className="p-0.5 rounded text-[#378ADD] hover:text-[#1a4f8a] transition-colors shrink-0"
+                            title="Filtreyi temizle"
+                        >
+                            <X size={12} strokeWidth={2.5} />
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Filtreler */}
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                        type="text"
+                        placeholder="İstek, yanıt, IP, MAC ara..."
+                        className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#b91d2c] focus:ring-1 focus:ring-[#b91d2c] transition-all"
+                        value={filters.search}
+                        onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                    />
+                </div>
+
+                <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <select
+                        className="appearance-none pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-700 focus:outline-none focus:border-[#b91d2c] focus:ring-1 focus:ring-[#b91d2c] transition-all font-semibold"
+                        value={filters.model}
+                        onChange={(e) => setFilters(f => ({ ...f, model: e.target.value }))}
+                    >
+                        <option value="">Tüm Modeller</option>
+                        <option value="gpt-4">gpt-4</option>
+                        <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                        <option value="claude-3-opus">claude-3-opus</option>
+                        <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                        <option value="gemma3:4b">gemma3:4b</option>
+                    </select>
+                </div>
+
+                <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <select
+                        className="appearance-none pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-700 focus:outline-none focus:border-[#b91d2c] focus:ring-1 focus:ring-[#b91d2c] transition-all font-semibold"
+                        value={filters.status}
+                        onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
+                    >
+                        <option value="">Tüm Durumlar</option>
+                        <option value="success">Başarılı</option>
+                        <option value="error">Hatalı</option>
+                    </select>
+                </div>
             </div>
 
-            {/* ── Satırlar ── */}
-            <div
-                className="overflow-y-auto minimal-scroll divide-y divide-stone-100/50"
-                onWheel={(e) => {
-                    const target = e.currentTarget;
-                    const isAtTop = target.scrollTop <= 0;
-                    const isAtBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 2;
-
-                    if (e.deltaY > 0 && !isAtBottom) {
-                        e.stopPropagation();
-                    } else if (e.deltaY < 0 && !isAtTop) {
-                        e.stopPropagation();
-                    }
-                }}
-            >
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24 gap-4 opacity-70">
-                        <RefreshCw size={28} className="animate-spin text-stone-400" />
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Yükleniyor...</span>
-                    </div>
-                ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-24 gap-3 opacity-70">
-                        <Search size={28} strokeWidth={1} className="text-stone-400" />
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">Log bulunamadı</span>
-                    </div>
-                ) : (
-                    filtered.map(log => {
-                        const isOpen = expandedLogId === log.id;
-                        return (
-                            <React.Fragment key={log.id}>
-                                <div
-                                    onClick={() => setExpandedLogId(isOpen ? null : log.id)}
-                                    className={`grid grid-cols-[130px_90px_160px_1fr_1fr_90px_90px_30px] gap-0 px-6 py-4 cursor-pointer transition-colors duration-150 items-center
-                                        ${isOpen ? 'bg-stone-50' : 'hover:bg-stone-50/50'}`}
-                                >
-                                    {/* Tarih */}
-                                    <span className="text-[11px] font-bold text-stone-500 truncate pr-2">{formatDate(log.timestamp)}</span>
-
-                                    {/* Durum */}
-                                    <div>
-                                        {log.status === 'success'
-                                            ? <Badge color="success"><CheckCircle2 size={10} strokeWidth={2.5} /> OK</Badge>
-                                            : <Badge color="error"><AlertCircle size={10} strokeWidth={2.5} /> HATA</Badge>
-                                        }
-                                    </div>
-
-                                    {/* Model */}
-                                    <div className="flex items-center gap-2 min-w-0 pr-2">
-                                        <span className="w-2 h-2 rounded-sm shadow-sm shrink-0" style={{ backgroundColor: getModelColor(log.model) }} />
-                                        <span className="text-[11px] font-bold uppercase tracking-wider text-stone-700 truncate">{log.model}</span>
-                                    </div>
-
-                                    {/* Prompt önizleme */}
-                                    <span className="text-[11px] text-stone-500 truncate pr-6 font-medium">{log.request || '—'}</span>
-
-                                    {/* Response önizleme */}
-                                    <span className="text-[11px] text-stone-500 truncate pr-6 font-medium">{log.response || '—'}</span>
-
-                                    {/* Token */}
-                                    <span className="text-[11px] font-mono font-bold text-stone-700 text-right pr-4">
-                                        {fmt(log.totalTokens)}<span className="text-stone-400 font-bold ml-1 text-[9px] tracking-widest uppercase">tk</span>
-                                    </span>
-
-                                    {/* Süre */}
-                                    <div className="pr-4 text-right">
-                                        <Badge color={log.duration > 2000 ? 'warn' : 'default'}>
-                                            {fmtMs(log.duration)}
-                                        </Badge>
-                                    </div>
-
-                                    {/* Chevron */}
-                                    <div className={`text-stone-400 transition-transform duration-200 flex justify-end ${isOpen ? 'rotate-90 text-[#378ADD]' : ''}`}>
-                                        <ChevronRight size={16} />
-                                    </div>
-                                </div>
-
-                                {/* Detay alanı */}
-                                {isOpen && <LogDetail log={log} />}
-                            </React.Fragment>
-                        );
-                    })
-                )}
+            {/* Tablo */}
+            <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                <div className="overflow-x-auto flex-1">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+                            <tr>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-16 text-center">Durum</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-32">Model</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">İstek (Prompt)</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">Süre</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">Token</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">Zaman</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {logs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                                        <Activity className="mx-auto mb-3 opacity-50" size={32} />
+                                        <p className="text-[13px] font-semibold">Gösterilecek log kaydı bulunamadı.</p>
+                                        <p className="text-[11px] mt-1">Uygulamadan AI isteği yapıldıkça burada listelenecektir.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                logs.map(log => {
+                                    const isError = log.status !== 'success';
+                                    return (
+                                        <tr 
+                                            key={log.id} 
+                                            onClick={() => setSelectedLog(log)}
+                                            className="hover:bg-slate-50 cursor-pointer transition-colors group"
+                                        >
+                                            <td className="px-4 py-3 text-center">
+                                                {isError ? (
+                                                    <AlertCircle size={16} className="text-red-500 mx-auto" />
+                                                ) : (
+                                                    <CheckCircle2 size={16} className="text-emerald-500 mx-auto" />
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div 
+                                                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold border"
+                                                    style={{ 
+                                                        color: getModelColor(log.model), 
+                                                        borderColor: `${getModelColor(log.model)}40`, 
+                                                        backgroundColor: `${getModelColor(log.model)}10` 
+                                                    }}
+                                                >
+                                                    <Box size={10} />
+                                                    {log.model}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-[12px] text-slate-600 font-mono">
+                                                {isError ? (
+                                                    <span className="text-red-600 font-semibold">{log.error || 'Hata Oluştu'}</span>
+                                                ) : (
+                                                    truncatedText(log.request, 80) || <span className="text-slate-400 italic">Boş istek</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-[12px] font-mono text-slate-500 text-right">
+                                                {log.duration || 0} ms
+                                            </td>
+                                            <td className="px-4 py-3 text-[12px] font-mono text-slate-500 text-right">
+                                                <span className="text-slate-700 font-bold">{log.totalTokens || 0}</span>
+                                            </td>
+                                            <td className="px-4 py-3 text-[11px] text-slate-500 text-right flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                                <Clock size={12} className="opacity-60" />
+                                                {formatRelativeTime(log.timestamp)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            {/* Detay Paneli */}
+            {selectedLog && (
+                <>
+                    <div 
+                        className="fixed inset-0 bg-slate-900/20 z-40 animate-in fade-in duration-200"
+                        onClick={() => setSelectedLog(null)}
+                    />
+                    <LogDetailPanel log={selectedLog} onClose={() => setSelectedLog(null)} />
+                </>
+            )}
+
         </div>
     );
-});
+};
