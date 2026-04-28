@@ -185,22 +185,48 @@ def list_sessions(limit: int = 100, search: str = ""):
     with get_session() as db:
         stmt = select(SohbetOturumu).order_by(desc(SohbetOturumu.olusturulma_tarihi)).limit(limit)
         sessions = db.scalars(stmt).all()
+        session_ids = [s.kimlik for s in sessions]
+
+        msg_counts = {}
+        last_messages = {}
+        token_totals = {}
+
+        if session_ids:
+            # 1. Message counts
+            mc_rows = db.execute(
+                select(SohbetMesaji.oturum_kimlik, func.count(SohbetMesaji.kimlik))
+                .where(SohbetMesaji.oturum_kimlik.in_(session_ids))
+                .group_by(SohbetMesaji.oturum_kimlik)
+            ).all()
+            msg_counts = {r[0]: r[1] for r in mc_rows}
+
+            # 2. Token totals
+            tok_rows = db.execute(
+                select(ApiLogu.oturum_kimlik, func.sum(ApiLogu.toplam_token))
+                .where(ApiLogu.oturum_kimlik.in_(session_ids))
+                .group_by(ApiLogu.oturum_kimlik)
+            ).all()
+            token_totals = {r[0]: r[1] or 0 for r in tok_rows}
+
+            # 3. Last messages
+            subq = (
+                select(SohbetMesaji.oturum_kimlik, func.max(SohbetMesaji.olusturulma_tarihi).label("max_date"))
+                .where(SohbetMesaji.oturum_kimlik.in_(session_ids))
+                .group_by(SohbetMesaji.oturum_kimlik)
+                .subquery()
+            )
+            lm_rows = db.execute(
+                select(SohbetMesaji.oturum_kimlik, SohbetMesaji.icerik)
+                .join(subq, (SohbetMesaji.oturum_kimlik == subq.c.oturum_kimlik) & (SohbetMesaji.olusturulma_tarihi == subq.c.max_date))
+            ).all()
+            # If a session has multiple messages with the same max timestamp, one will overwrite another. That's fine.
+            last_messages = {r[0]: r[1] for r in lm_rows}
 
         result = []
         for s in sessions:
-            msg_count = db.scalar(
-                select(func.count()).where(SohbetMesaji.oturum_kimlik == s.kimlik)
-            ) or 0
-            last_msg = db.scalar(
-                select(SohbetMesaji.icerik)
-                .where(SohbetMesaji.oturum_kimlik == s.kimlik)
-                .order_by(desc(SohbetMesaji.olusturulma_tarihi))
-                .limit(1)
-            ) or ""
-            token_total = db.scalar(
-                select(func.sum(ApiLogu.toplam_token))
-                .where(ApiLogu.oturum_kimlik == s.kimlik)
-            ) or 0
+            msg_count = msg_counts.get(s.kimlik, 0)
+            last_msg = last_messages.get(s.kimlik, "")
+            token_total = token_totals.get(s.kimlik, 0)
 
             title = s.baslik or s.kimlik
             if search and search.lower() not in title.lower() and search.lower() not in last_msg.lower():
