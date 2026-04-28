@@ -27,6 +27,13 @@ const ChatInputArea = ({
     const [availableModels, setAvailableModels] = React.useState([]);
 
     React.useEffect(() => {
+        if (!isSideOpen) {
+            setIsCommandsOpen(false);
+            setIsModelMenuOpen(false);
+        }
+    }, [isSideOpen]);
+
+    React.useEffect(() => {
         fetch('/api/monitor/catalog')
             .then(res => res.json())
             .then(data => {

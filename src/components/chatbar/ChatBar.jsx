@@ -362,6 +362,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         isChatScrolling={isChatScrolling}
                         messagesEndRef={messagesEndRef}
                         handleNewChat={handleNewChat}
+                        setInputValue={setInputValue}
+                        setIsExpanded={setIsExpanded}
                     />
 
                     {/* ALT KISIM (Input ve Hızlı Aksiyonlar) */}

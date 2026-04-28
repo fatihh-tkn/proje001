@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, FileText, Database } from 'lucide-react';
+import { Plus, FileText, Database, Copy, Pencil, Check } from 'lucide-react';
 import AILogo from '../../assets/logo-kapali.png';
 
 // ── Canlı yazma imleci animasyonu ────────────────────────────────────────────
@@ -20,8 +20,23 @@ if (typeof document !== 'undefined' && !document.getElementById('blink-style')) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MessageList = ({
-    messages, isTyping, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, handleNewChat
+    messages, isTyping, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, handleNewChat,
+    setInputValue, setIsExpanded
 }) => {
+    const [copiedId, setCopiedId] = React.useState(null);
+
+    const handleCopy = (e, text, id) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const handleEdit = (e, text) => {
+        e.stopPropagation();
+        if (setInputValue) setInputValue(text);
+        if (setIsExpanded) setIsExpanded(true);
+    };
     return (
         <div className="flex-1 relative overflow-hidden transition-all duration-500">
             <div
@@ -49,7 +64,7 @@ const MessageList = ({
                                         </div>
                                     )}
 
-                                    <div className="flex flex-col gap-1 no-toggle min-w-0">
+                                    <div className="flex flex-col gap-1 no-toggle min-w-0 group relative">
                                         {/* Kullanıcı mesajında dosya chip'i */}
                                         {!isAI && msg.fileContext && (
                                             <div className="flex justify-end">
@@ -82,11 +97,21 @@ const MessageList = ({
                                                 </p>
                                             )}
 
-                                            {/* Zaman damgası — streaming bitince göster */}
+                                            {/* Zaman damgası ve Aksiyonlar — streaming bitince göster */}
                                             {!msg.isStreaming && (
-                                                <span className="text-[10px] mt-1.5 block text-right tracking-wide font-medium text-stone-400">
-                                                    {msg.time}
-                                                </span>
+                                                <div className={`flex items-center mt-1.5 transition-all ${isAI ? 'justify-between' : 'justify-between flex-row-reverse'}`}>
+                                                    <div className={`opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2`}>
+                                                        <button onClick={(e) => handleCopy(e, msg.text, msg.id)} className="text-stone-400 hover:text-[#378ADD] transition-colors focus:outline-none" title="Kopyala">
+                                                            {copiedId === msg.id ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+                                                        </button>
+                                                        <button onClick={(e) => handleEdit(e, msg.text)} className="text-stone-400 hover:text-[#378ADD] transition-colors focus:outline-none" title="Metni Düzenle">
+                                                            <Pencil size={12} />
+                                                        </button>
+                                                    </div>
+                                                    <span className="text-[10px] tracking-wide font-medium text-stone-400">
+                                                        {msg.time}
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
 
