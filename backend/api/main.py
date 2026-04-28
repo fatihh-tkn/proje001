@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, n8n, orchestrator, meetings, auth, embedding, egitim, settings
+from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, n8n, orchestrator, meetings, auth, embedding, egitim, settings, talepler
 
 api_router = APIRouter()
 
@@ -24,3 +24,4 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(embedding.router, prefix="/embedding", tags=["embedding"])
 api_router.include_router(egitim.router, prefix="/egitim", tags=["LMS Education"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+api_router.include_router(talepler.router, prefix="/talepler", tags=["talepler"])

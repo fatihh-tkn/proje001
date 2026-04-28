@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
@@ -160,6 +160,25 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             >
                                 <Users size={14} className="text-slate-500 shrink-0" />
                                 <span>Eğitim Yöneticisi</span>
+                            </button>
+                        )}
+
+                        {(currentUser?.super || currentUser?.meta?.ui_request_management === true) && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'talep-yonetim',
+                                            title: 'Kullanıcı Talepleri',
+                                            type: 'talep-yonetim',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <Inbox size={14} className="text-emerald-500 shrink-0" />
+                                <span>Kullanıcı Talepleri</span>
                             </button>
                         )}
 

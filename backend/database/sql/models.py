@@ -748,6 +748,44 @@ class KullaniciEgitimAtama(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 9.5 KULLANICI TALEPLERİ KATMANI
+#     kullanici_talepleri
+# ═══════════════════════════════════════════════════════════════════
+
+class KullaniciTalebi(Base):
+    """
+    Kullanıcıların yöneticilere ilettiği talepler (erişim, kota, eğitim, hata, diğer).
+    Yönetici durum ve not güncelleyebilir; tarihçe denetim_izleri tablosuna düşer.
+    """
+    __tablename__ = "kullanici_talepleri"
+
+    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kullanici_kimlik: Mapped[str] = mapped_column(
+        String(36), ForeignKey("kullanicilar.kimlik", ondelete="CASCADE"), nullable=False
+    )
+    baslik: Mapped[str] = mapped_column(String(200), nullable=False)
+    mesaj: Mapped[str] = mapped_column(Text, nullable=False)
+    # 'erisim' | 'kota' | 'egitim' | 'hata' | 'diger'
+    kategori: Mapped[str] = mapped_column(String(32), nullable=False, default="diger")
+    # 'dusuk' | 'orta' | 'yuksek'
+    oncelik: Mapped[str] = mapped_column(String(16), nullable=False, default="orta")
+    # 'incelemede' | 'onaylandi' | 'reddedildi' | 'tamamlandi'
+    durum: Mapped[str] = mapped_column(String(16), nullable=False, default="incelemede")
+    yonetici_notu: Mapped[str | None] = mapped_column(Text, nullable=True)
+    yonetici_kimlik: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("kullanicilar.kimlik", ondelete="SET NULL"), nullable=True
+    )
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+    guncelleme_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+    __table_args__ = (
+        Index("ix_kullanici_talepleri_kullanici_kimlik", "kullanici_kimlik"),
+        Index("ix_kullanici_talepleri_durum", "durum"),
+        Index("ix_kullanici_talepleri_olusturulma_tarihi", "olusturulma_tarihi"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
 # GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
 # ═══════════════════════════════════════════════════════════════════
 User        = Kullanici
