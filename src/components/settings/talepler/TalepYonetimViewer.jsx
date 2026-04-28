@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Inbox, Search, RefreshCw, Trash2, Check, X, Clock, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Inbox, Search, RefreshCw, Trash2, Check, X, Clock, AlertTriangle, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { useErrorStore } from '../../../store/errorStore';
 
@@ -221,7 +221,12 @@ export default function TalepYonetimViewer() {
                                             }`}
                                         >
                                             <td className="px-6 py-2.5 font-medium text-slate-800 max-w-xs truncate">
-                                                {t.baslik}
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    {t.resim_var_mi && (
+                                                        <ImageIcon size={12} className="text-emerald-600 shrink-0" title="Görsel ek var" />
+                                                    )}
+                                                    {t.baslik}
+                                                </span>
                                             </td>
                                             <td className="px-3 py-2.5 text-slate-600">{t.kullanici_adi || '—'}</td>
                                             <td className="px-3 py-2.5 text-slate-500 capitalize">{t.kategori}</td>
@@ -331,6 +336,20 @@ function TalepDetayDrawer({ talep, onClose, onGuncelle, onSil }) {
                         {talep.mesaj}
                     </div>
                 </div>
+
+                {talep.resim_url && (
+                    <div>
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Görsel Eki</div>
+                        <a href={talep.resim_url} target="_blank" rel="noopener noreferrer" className="block">
+                            <img
+                                src={talep.resim_url}
+                                alt="Talep eki"
+                                className="w-full max-h-72 object-contain rounded-md border border-slate-200 bg-black"
+                            />
+                        </a>
+                        <div className="text-[10px] text-slate-400 mt-1">Tam boyut için tıklayın</div>
+                    </div>
+                )}
 
                 <div>
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Mevcut Durum</div>

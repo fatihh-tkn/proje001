@@ -775,6 +775,7 @@ class KullaniciTalebi(Base):
     yonetici_kimlik: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("kullanicilar.kimlik", ondelete="SET NULL"), nullable=True
     )
+    resim_yolu: Mapped[str | None] = mapped_column(String(512), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
     guncelleme_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
 

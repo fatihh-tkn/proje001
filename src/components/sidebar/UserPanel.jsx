@@ -565,6 +565,26 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                                                 borderTop: '1px solid rgba(255,255,255,0.05)'
                                             }}>
                                                 <div>{talep.mesaj}</div>
+                                                {talep.resim_url && (
+                                                    <a
+                                                        href={talep.resim_url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ display: 'block', marginTop: 8 }}
+                                                    >
+                                                        <img
+                                                            src={talep.resim_url}
+                                                            alt="Talep eki"
+                                                            style={{
+                                                                width: '100%', maxHeight: 180,
+                                                                objectFit: 'contain',
+                                                                borderRadius: 6,
+                                                                background: '#000',
+                                                                border: '1px solid #1e293b',
+                                                            }}
+                                                        />
+                                                    </a>
+                                                )}
                                                 {talep.yonetici_notu && (
                                                     <div style={{
                                                         marginTop: 8, padding: '8px 10px',

@@ -55,6 +55,8 @@ def _run_schema_migrations(eng) -> None:
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS bilgisayar_adi VARCHAR(255)",
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS tarayici VARCHAR(256)",
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS son_aktivite_tarihi VARCHAR(32)",
+        # KullaniciTalebi: resim eki desteği
+        "ALTER TABLE kullanici_talepleri ADD COLUMN IF NOT EXISTS resim_yolu VARCHAR(512)",
     ]
     with eng.connect() as conn:
         for stmt in migrations:
