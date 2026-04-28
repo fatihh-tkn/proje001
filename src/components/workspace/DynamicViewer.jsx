@@ -15,6 +15,7 @@ const N8nViewer = lazy(() => import('../settings/n8n/N8nViewer'));
 const AiOrchestratorViewer = lazy(() => import('../settings/ai/AiOrchestratorViewer'));
 const MeetingUploadViewer = lazy(() => import('../settings/meetings/MeetingUploadViewer'));
 const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
+const TalepYonetimViewer = lazy(() => import('../settings/talepler/TalepYonetimViewer'));
 
 export const DynamicViewer = ({ tab, onOpenFile }) => {
     return (
@@ -46,8 +47,9 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
             {tab.type === 'ai-orchestrator' && <AiOrchestratorViewer defaultAgentId={tab.defaultAgentId} defaultMainTab={tab.meta?.defaultMainTab} onOpenFile={onOpenFile} />}
             {tab.type === 'meetings' && <MeetingUploadViewer />}
             {tab.type === 'auth' && <AuthViewer />}
+            {tab.type === 'talep-yonetim' && <TalepYonetimViewer />}
 
-            {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     X, Edit2, Check, FileText, Clock,
     Shield, LogOut, ChevronRight, BarChart2, ClipboardList,
-    HardDrive, File, MessageSquare, ChevronDown
+    HardDrive, File, MessageSquare, ChevronDown, Plus
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useErrorStore } from '../../store/errorStore';
 import AdminEgitimForm from './AdminEgitimForm';
 import UserEgitimDashboard from './UserEgitimDashboard';
 import UserVeriGirisi from './UserVeriGirisi';
+import TalepGonderModal from './TalepGonderModal';
 
 /* ── Dairesel Depolama Grafiği ── */
 function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
@@ -65,7 +66,17 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
     const [activeTab, setActiveTab] = useState('profil'); // 'profil', 'egitim', 'talepler'
     const [egitimSubTab, setEgitimSubTab] = useState('dashboard'); // 'dashboard' | 'veriGirisi'
     const [expandedTalepIndex, setExpandedTalepIndex] = useState(null);
+    const [talepler, setTalepler] = useState([]);
+    const [talepModalOpen, setTalepModalOpen] = useState(false);
     const panelRef = useRef(null);
+
+    const refreshTalepler = React.useCallback(() => {
+        if (!currentUser?.id) return;
+        fetch(`/api/talepler/benim?kullanici_kimlik=${currentUser.id}`)
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+            .then(data => setTalepler(Array.isArray(data) ? data : []))
+            .catch((e) => console.warn('[UserPanel] Talepler alınamadı:', e.message));
+    }, [currentUser?.id]);
 
     // Kullanıcı verisi + dashboard — panel açıldığında çek
     useEffect(() => {
@@ -94,7 +105,9 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
             .then(r => r.ok ? r.json() : null)
             .then(data => { if (data?.items) setUserDocs(data.items); })
             .catch((e) => console.warn('[UserPanel] Kullanıcı belgeleri alınamadı:', e.message));
-    }, [open, currentUser?.id]);
+
+        refreshTalepler();
+    }, [open, currentUser?.id, refreshTalepler]);
 
     // Panel dışına tıklayınca kapat
     useEffect(() => {
@@ -477,25 +490,46 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
 
                 {activeTab === 'talepler' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div style={S.sectionTitle}>
-                            <MessageSquare size={11} /> Sisteme İletilen Talepler
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={S.sectionTitle}>
+                                <MessageSquare size={11} /> Sisteme İletilen Talepler
+                            </div>
+                            <button
+                                onClick={() => setTalepModalOpen(true)}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                    padding: '5px 10px', fontSize: 10, fontWeight: 700,
+                                    background: 'rgba(16,185,129,0.12)',
+                                    color: '#10b981',
+                                    border: '1px solid rgba(16,185,129,0.35)',
+                                    borderRadius: 6, cursor: 'pointer',
+                                }}
+                            >
+                                <Plus size={11} /> Yeni Talep
+                            </button>
                         </div>
-                        {!dashboard?.talepler || dashboard.talepler.length === 0 ? (
+                        {talepler.length === 0 ? (
                             <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '16px 0' }}>
                                 Henüz bir talep oluşturmadınız.
                             </div>
                         ) : (
-                            dashboard.talepler.map((talep, i) => {
+                            talepler.map((talep, i) => {
                                 const isExpanded = expandedTalepIndex === i;
-                                const durumColor = talep.renk === 'emerald' ? '#10b981' : talep.renk === 'amber' ? '#f59e0b' : '#ef4444';
-                                const durumBg = talep.renk === 'emerald' ? 'rgba(16,185,129,0.1)' : talep.renk === 'amber' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
-                                
+                                const renkHaritasi = {
+                                    emerald: { c: '#10b981', bg: 'rgba(16,185,129,0.1)' },
+                                    amber:   { c: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+                                    red:     { c: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+                                    sky:     { c: '#38bdf8', bg: 'rgba(56,189,248,0.1)' },
+                                    slate:   { c: '#94a3b8', bg: 'rgba(148,163,184,0.1)' },
+                                };
+                                const palet = renkHaritasi[talep.renk] || renkHaritasi.slate;
+
                                 return (
-                                    <div key={i} style={{
+                                    <div key={talep.id || i} style={{
                                         background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8,
                                         overflow: 'hidden', transition: 'all 0.2s'
                                     }}>
-                                        <div 
+                                        <div
                                             onClick={() => setExpandedTalepIndex(isExpanded ? null : i)}
                                             style={{
                                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -504,7 +538,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                                         >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
                                                 <div style={{
-                                                    width: 8, height: 8, borderRadius: '50%', background: durumColor, flexShrink: 0
+                                                    width: 8, height: 8, borderRadius: '50%', background: palet.c, flexShrink: 0
                                                 }} />
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -517,20 +551,33 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                                                 <span style={{
-                                                    fontSize: 9, fontWeight: 700, color: durumColor, background: durumBg,
+                                                    fontSize: 9, fontWeight: 700, color: palet.c, background: palet.bg,
                                                     padding: '2px 8px', borderRadius: 999, letterSpacing: '0.05em', textTransform: 'uppercase'
                                                 }}>
-                                                    {talep.durum}
+                                                    {talep.durum_etiket || talep.durum}
                                                 </span>
                                                 <ChevronDown size={14} style={{ color: '#475569', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }} />
                                             </div>
                                         </div>
                                         {isExpanded && (
                                             <div style={{
-                                                padding: '0 14px 14px 32px', fontSize: 11, color: '#94a3b8', lineHeight: 1.5,
-                                                borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10
+                                                padding: '10px 14px 14px 32px', fontSize: 11, color: '#94a3b8', lineHeight: 1.5,
+                                                borderTop: '1px solid rgba(255,255,255,0.05)'
                                             }}>
-                                                {talep.mesaj}
+                                                <div>{talep.mesaj}</div>
+                                                {talep.yonetici_notu && (
+                                                    <div style={{
+                                                        marginTop: 8, padding: '8px 10px',
+                                                        background: 'rgba(245,158,11,0.06)',
+                                                        border: '1px solid rgba(245,158,11,0.2)',
+                                                        borderRadius: 6, color: '#fcd34d',
+                                                    }}>
+                                                        <div style={{ fontSize: 9, fontWeight: 700, marginBottom: 3, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                                            Yönetici Notu
+                                                        </div>
+                                                        {talep.yonetici_notu}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -561,6 +608,13 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                     Oturumu Kapat
                 </button>
             </div>
+
+            <TalepGonderModal
+                open={talepModalOpen}
+                onClose={() => setTalepModalOpen(false)}
+                currentUser={currentUser}
+                onSubmitted={() => refreshTalepler()}
+            />
         </div>
     );
 };

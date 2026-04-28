@@ -269,11 +269,41 @@ def get_user_dashboard(user_id: str, db: Session = Depends(get_db)):
         {"isim": "İleri Seviye Prompt Mühendisliği", "durum": "%60 Devam Ediyor", "renk": "amber"}
     ])
     
-    talepler = meta.get("talepler", [
-        {"baslik": "Model Erişimi Talebi", "mesaj": "Pazarlama analiz modeline erişim izni talep ediyorum.", "durum": "Onaylandı", "tarih": "12 Mart", "renk": "emerald"},
-        {"baslik": "Kota Artırımı İsteği", "mesaj": "Grafik çizim AI aracı kotasının artırılması gerekiyor.", "durum": "İncelemede", "tarih": "Bugün", "renk": "amber"}
-    ])
-    
+    # Gerçek talepler kullanici_talepleri tablosundan okunur
+    from database.sql.models import KullaniciTalebi
+    DURUM_RENK = {
+        "incelemede": "amber",
+        "onaylandi": "emerald",
+        "reddedildi": "red",
+        "tamamlandi": "sky",
+    }
+    DURUM_ETIKET = {
+        "incelemede": "İncelemede",
+        "onaylandi": "Onaylandı",
+        "reddedildi": "Reddedildi",
+        "tamamlandi": "Tamamlandı",
+    }
+    talep_satirlari = (
+        db.query(KullaniciTalebi)
+        .filter(KullaniciTalebi.kullanici_kimlik == user_id)
+        .order_by(KullaniciTalebi.olusturulma_tarihi.desc())
+        .all()
+    )
+    talepler = [
+        {
+            "id": t.kimlik,
+            "baslik": t.baslik,
+            "mesaj": t.mesaj,
+            "kategori": t.kategori,
+            "oncelik": t.oncelik,
+            "durum": DURUM_ETIKET.get(t.durum, t.durum),
+            "yonetici_notu": t.yonetici_notu,
+            "tarih": (t.olusturulma_tarihi or "").split("T")[0],
+            "renk": DURUM_RENK.get(t.durum, "slate"),
+        }
+        for t in talep_satirlari
+    ]
+
     return {
         "egitimler": egitimler,
         "belgeler": recent_docs,
