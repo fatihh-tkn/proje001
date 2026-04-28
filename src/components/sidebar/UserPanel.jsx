@@ -51,7 +51,7 @@ function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
     );
 }
 
-const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
+const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil' }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const setCurrentUser = useWorkspaceStore(state => state.setCurrentUser);
     const addToast = useErrorStore((s) => s.addToast);
@@ -63,7 +63,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
     const [nameEditing, setNameEditing] = useState(false);
     const [nameValue, setNameValue] = useState('');
     const [nameSaving, setNameSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('profil'); // 'profil', 'egitim', 'talepler'
+    const [activeTab, setActiveTab] = useState(initialTab); // 'profil', 'egitim', 'talepler'
     const [egitimSubTab, setEgitimSubTab] = useState('dashboard'); // 'dashboard' | 'veriGirisi'
     const [expandedTalepIndex, setExpandedTalepIndex] = useState(null);
     const [talepler, setTalepler] = useState([]);
@@ -77,6 +77,14 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
             .then(data => setTalepler(Array.isArray(data) ? data : []))
             .catch((e) => console.warn('[UserPanel] Talepler alınamadı:', e.message));
     }, [currentUser?.id]);
+
+    // Panel her açıldığında, UserMenu'den seçilen sekmeye geç
+    useEffect(() => {
+        if (open) {
+            setActiveTab(initialTab);
+            if (initialTab === 'egitim') setEgitimSubTab('dashboard');
+        }
+    }, [open, initialTab]);
 
     // Kullanıcı verisi + dashboard — panel açıldığında çek
     useEffect(() => {
@@ -163,11 +171,10 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
         .toUpperCase()
         .slice(0, 2);
 
-    // Sidebar genişliğine göre panel pozisyonu
+    // Sidebar genişliğine göre panel pozisyonu — panel daima sidebarın 3 katı (288 × 3)
     const sidebarW = isCollapsed ? 68 : 288;
-    const isExpanded = activeTab === 'egitim' || activeTab === 'admin';
-    const panelWidthStr = isExpanded ? '600px' : '300px';
-    const panelWidthNum = isExpanded ? 600 : 300;
+    const panelWidthNum = 288 * 3; // 864px sabit
+    const panelWidthStr = `${panelWidthNum}px`;
 
     // ── Stil sabitleri (inline — Tailwind sınıfları sidebar karanlık temasıyla çakışıyor)
     const S = {
@@ -290,26 +297,6 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
                 >
                     Taleplerim
                 </button>
-
-                {/* Bilgi Girişi butonu — sadece eğitim sekmesi açıkken görünür */}
-                {activeTab === 'egitim' && (
-                    <button
-                        onClick={() => setEgitimSubTab(egitimSubTab === 'veriGirisi' ? 'dashboard' : 'veriGirisi')}
-                        style={{
-                            marginLeft: 'auto',
-                            display: 'inline-flex', alignItems: 'center', gap: 5,
-                            padding: '5px 10px', fontSize: 10, fontWeight: 600,
-                            borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
-                            border: '1px solid',
-                            background: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.15)' : 'transparent',
-                            color: egitimSubTab === 'veriGirisi' ? '#60a5fa' : '#64748b',
-                            borderColor: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.4)' : '#334155',
-                        }}
-                    >
-                        <ClipboardList size={11} />
-                        Bilgi Girişi
-                    </button>
-                )}
             </div>
 
             {/* ── BODY ── */}
@@ -483,6 +470,39 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed }) => {
 
                 {activeTab === 'egitim' && (
                     <>
+                        {/* Sayfa içi alt-sekme: Dashboard / Bilgi Girişi */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <button
+                                onClick={() => setEgitimSubTab('dashboard')}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    padding: '6px 12px', fontSize: 11, fontWeight: 600,
+                                    borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+                                    border: '1px solid',
+                                    background: egitimSubTab === 'dashboard' ? 'rgba(55,138,221,0.15)' : 'transparent',
+                                    color: egitimSubTab === 'dashboard' ? '#60a5fa' : '#64748b',
+                                    borderColor: egitimSubTab === 'dashboard' ? 'rgba(55,138,221,0.4)' : '#334155',
+                                }}
+                            >
+                                <BarChart2 size={12} />
+                                Dashboard
+                            </button>
+                            <button
+                                onClick={() => setEgitimSubTab('veriGirisi')}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    padding: '6px 12px', fontSize: 11, fontWeight: 600,
+                                    borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+                                    border: '1px solid',
+                                    background: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.15)' : 'transparent',
+                                    color: egitimSubTab === 'veriGirisi' ? '#60a5fa' : '#64748b',
+                                    borderColor: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.4)' : '#334155',
+                                }}
+                            >
+                                <ClipboardList size={12} />
+                                Bilgi Girişi
+                            </button>
+                        </div>
                         {egitimSubTab === 'dashboard' && <UserEgitimDashboard currentUser={currentUser} />}
                         {egitimSubTab === 'veriGirisi' && <UserVeriGirisi currentUser={currentUser} />}
                     </>
