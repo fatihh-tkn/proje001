@@ -487,6 +487,9 @@ def save_to_db(data: dict):
                     for row in db.scalars(select(VektorParcasi).where(VektorParcasi.chromadb_kimlik.in_(chunked_sem_ids))).all():
                         sem_nodes[row.chromadb_kimlik] = row
 
+                # Performans optimizasyonu: O(n) liste araması yerine O(1) set kullanımı
+                added_semantic_edges = set()
+
                 for chroma_id, neighbors in semantic_neighbors.items():
                     src_pk = id_to_pk.get(chroma_id)
                     if not src_pk: continue
@@ -497,9 +500,10 @@ def save_to_db(data: dict):
                             # Sadece Tek Yönlü eklenecek (Depolama Maliyeti %50 tasarruf, RAM'de çift yönlü açılacak)
                             s, t = min(src_pk, tgt.kimlik), max(src_pk, tgt.kimlik)
                             new_edge = BilgiIliskisi(kaynak_parca_kimlik=s, hedef_parca_kimlik=t, iliski_turu="semantik_benzerlik", agirlik=w)
-                            # Çakışma ve tekrarları önlemek için edges_to_add listesinde aynı (s, t, tur) varmı bakmak yerine
-                            # basit filter ile liste kontrolü:
-                            if not any(e.kaynak_parca_kimlik == s and e.hedef_parca_kimlik == t and e.iliski_turu == "semantik_benzerlik" for e in edges_to_add):
+
+                            # O(1) hızında kontrol ve ekleme
+                            if (s, t) not in added_semantic_edges:
+                                added_semantic_edges.add((s, t))
                                 edges_to_add.append(new_edge)
 
             # 3g. Mantıksal kenarlar
