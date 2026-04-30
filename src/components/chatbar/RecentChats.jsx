@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, ChevronDown, Plus, Loader2, Trash2 } from 'lucide-react';
+import { mutate } from '../../api/client';
 
 const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, handleLoadSession, currentSessionId }) => {
     const [sessions, setSessions] = useState([]);
@@ -28,16 +29,17 @@ const RecentChats = ({ isSideOpen, isChatsOpen, setIsChatsOpen, handleNewChat, h
 
     const handleDelete = async (e, sessionId) => {
         e.stopPropagation();
+        const session = sessions.find(s => s.sessionId === sessionId);
+        const title = session ? getChatTitle(session) : sessionId;
         setDeletingId(sessionId);
         try {
-            await fetch(`/api/monitor/sessions/${sessionId}`, { method: 'DELETE' });
+            await mutate.remove(`/api/monitor/sessions/${sessionId}`, null, {
+                subject: 'Sohbet oturumu', detail: title,
+            });
             setSessions((prev) => prev.filter(s => s.sessionId !== sessionId));
             if (sessionId === currentSessionId) handleNewChat();
-        } catch (err) {
-            console.error("Sohbet silinemedi:", err);
-        } finally {
-            setDeletingId(null);
-        }
+        } catch { /* mutate toast attı */ }
+        setDeletingId(null);
     };
 
     const getChatTitle = (session) => {

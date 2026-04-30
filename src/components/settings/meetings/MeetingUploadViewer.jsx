@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Upload, Trash2, Play, Loader2, CheckCircle2, AlertCircle, FileAudio, X } from 'lucide-react';
+import { mutate } from '../../../api/client';
 
 const API = 'http://localhost:8000/api/meetings';
 
@@ -59,26 +60,22 @@ const MeetingUploadViewer = () => {
         try {
             const form = new FormData();
             form.append('file', file);
-            const res = await fetch(`${API}/upload`, { method: 'POST', body: form });
-            if (!res.ok) {
-                const d = await res.json();
-                throw new Error(d.detail || 'Yükleme hatası');
-            }
+            await mutate.upload(`${API}/upload`, form, {
+                subject: 'Toplantı kaydı', detail: file.name, rawBody: true, showLoading: true,
+            });
             await fetchMeetings();
-        } catch (e) {
-            setError(e.message);
-        } finally {
-            setUploading(false);
-        }
+        } catch { /* mutate toast attı */ }
+        setUploading(false);
     };
 
     const deleteMeeting = async (id) => {
+        const m = meetings.find(x => x.id === id);
         try {
-            await fetch(`${API}/${id}`, { method: 'DELETE' });
-            setMeetings(prev => prev.filter(m => m.id !== id));
-        } catch (e) {
-            setError('Silme başarısız: ' + e.message);
-        }
+            await mutate.remove(`${API}/${id}`, null, {
+                subject: 'Toplantı kaydı', detail: m?.title,
+            });
+            setMeetings(prev => prev.filter(x => x.id !== id));
+        } catch { /* mutate toast attı */ }
     };
 
     const handleDrop = (e) => {
