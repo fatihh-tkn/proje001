@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder, Settings, User,
-    ChevronsRight, ChevronsLeft, Files, LayoutGrid, Webhook
+    ChevronsRight, ChevronsLeft, Files, LayoutGrid, Webhook, Search, X
 } from 'lucide-react';
 
 import FullLogoImage from '../../assets/logo-acik.png';
@@ -25,6 +25,12 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const [userMenuOpen,  setUserMenuOpen]  = useState(false);
     const [userPanelOpen, setUserPanelOpen] = useState(false);
     const [userPanelInitialTab, setUserPanelInitialTab] = useState('profil');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [matchedFileIds, setMatchedFileIds] = useState(new Set());
+    const [matchedFolderIds, setMatchedFolderIds] = useState(new Set());
+    const searchInputRef = useRef(null);
+    const searchOpenedFolders = useRef(new Set()); // aramadan dolayı açılan klasörler
+    const popupWasOpenRef = useRef(false);
 
     const hasPermission = (key, defaultVal = true) => {
         if (!currentUser) return defaultVal;
@@ -66,6 +72,58 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
     useArchiveChangedListener(fetchArchive);
 
+    useEffect(() => {
+        if (!searchQuery.trim()) {
+            // Ref'i snapshot'la ÖNCE güncelle, sonra state'i functional updater ile kapat
+            const toClose = new Set(searchOpenedFolders.current);
+            searchOpenedFolders.current = new Set();
+            if (toClose.size > 0) {
+                setOpenFolders(prev => {
+                    const next = { ...prev };
+                    toClose.forEach(id => { next[id] = false; });
+                    return next;
+                });
+            }
+            setMatchedFileIds(new Set());
+            setMatchedFolderIds(new Set());
+            return;
+        }
+
+        const q = searchQuery.toLocaleLowerCase('tr-TR');
+        const map = {};
+        archiveData.forEach(item => { map[item.id] = item; });
+
+        const fileMatches = new Set();
+        const folderMatches = new Set();
+
+        archiveData.forEach(item => {
+            if (item.file_type !== 'folder' && item.filename?.toLocaleLowerCase('tr-TR').includes(q)) {
+                fileMatches.add(`archive_${item.id}`);
+                let cur = item;
+                while (cur.folder_id && map[cur.folder_id]) {
+                    folderMatches.add(`archive_${cur.folder_id}`);
+                    cur = map[cur.folder_id];
+                }
+            }
+        });
+
+        // Önce snapshot al, sonra ref'i güncelle — updater fonksiyon geç çağrılsa bile snapshot'ı okur
+        const prevOpened = new Set(searchOpenedFolders.current);
+        searchOpenedFolders.current = folderMatches;
+
+        setOpenFolders(prev => {
+            const next = { ...prev };
+            prevOpened.forEach(id => {
+                if (!folderMatches.has(id)) next[id] = false;
+            });
+            folderMatches.forEach(id => { next[id] = true; });
+            return next;
+        });
+
+        setMatchedFileIds(fileMatches);
+        setMatchedFolderIds(folderMatches);
+    }, [searchQuery, archiveData]);
+
     const getArchiveTree = () => {
         if (!archiveData || archiveData.length === 0) return [];
 
@@ -104,15 +162,24 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
         setOpenFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
     };
 
+    const handleSidebarMouseDown = () => {
+        // mousedown anında popup'ın açık olup olmadığını kaydet
+        // (click geldiğinde React re-render ile state değişmiş olabilir)
+        popupWasOpenRef.current = settingsOpen || userMenuOpen || userPanelOpen;
+    };
+
     const handleSidebarClick = (e) => {
         if (isCollapsed) {
             setIsCollapsed(false);
-        } else {
-            // Açıkken, içerikteki buton, link veya listeye tıklanmıyorsa kapansın.
-            const isInteractive = e.target.closest('button, a, input, .cursor-pointer, li, .interactive, summary');
-            if (!isInteractive) {
-                setIsCollapsed(true);
-            }
+            return;
+        }
+
+        // mousedown anında popup açıksa sidebar'ı kapatma
+        if (popupWasOpenRef.current) return;
+
+        const isInteractive = e.target.closest('button, a, input, .cursor-pointer, li, .interactive, summary');
+        if (!isInteractive) {
+            setIsCollapsed(true);
         }
     };
 
@@ -121,7 +188,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
     return (
         <aside className={`relative ${isCollapsed ? 'w-[68px]' : 'w-72'} font-sans transition-all duration-300 ease-in-out flex h-screen shrink-0 z-20 cursor-default`}
-            style={{ background: 'linear-gradient(180deg, #1a1a1c 0%, #161618 100%)', borderRight: '1px solid #2a2a2d' }}
+            style={{ background: 'linear-gradient(180deg, #1c1917 0%, #161310 100%)', borderRight: '1px solid #292524' }}
         >
             {/* SettingsMenu — overflow-hidden dışında, doğrudan aside içinde */}
             <SettingsMenu
@@ -138,6 +205,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 isOpen={userMenuOpen}
                 onClose={() => setUserMenuOpen(false)}
                 onSelect={(tabId) => {
+                    // Tüm seçimler yan panele (yarım pencere) düşer.
+                    // İçerikler UserPanel.jsx'te tab başına render ediliyor.
                     setUserPanelInitialTab(tabId);
                     setUserPanelOpen(true);
                 }}
@@ -168,6 +237,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
             />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
+                onMouseDown={handleSidebarMouseDown}
                 onClick={handleSidebarClick}
             >
                 {/* ── LOGO HEADER ── */}
@@ -208,6 +278,32 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     </div>
                 </div>
 
+                {/* ── ARAMA ÇUBUĞU ── */}
+                {!isCollapsed && (
+                    <div className="shrink-0 px-3 pb-2">
+                        <div className="flex items-center gap-1.5 bg-slate-800/50 border border-slate-700/50 rounded-[3px] px-2 py-1.5 focus-within:border-[#DC2626]/60 transition-colors">
+                            <Search size={13} className="text-slate-500 shrink-0" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                placeholder="Dosya ara..."
+                                className="flex-1 bg-transparent text-[12px] text-slate-300 placeholder-slate-600 outline-none min-w-0"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={e => { e.stopPropagation(); setSearchQuery(''); }}
+                                    className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* ── İÇERİK ALANI ── */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-3
                     [&::-webkit-scrollbar]:w-1
@@ -223,7 +319,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                             className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
                             style={{ borderRadius: 0 }}
                         >
-                            <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#A01B1B] transition-colors" />
+                            <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#DC2626] transition-colors" />
                             <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
                                 Sistemde hiç dosya bulunumadı.<br />
                                 <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
@@ -245,6 +341,9 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                 setOpenFolders={setOpenFolders}
                                 onOpenFile={onOpenFile}
                                 tabs={tabs}
+                                searchQuery={searchQuery}
+                                matchedFileIds={matchedFileIds}
+                                matchedFolderIds={matchedFolderIds}
                             />
                         ))}
                     </div>
@@ -298,8 +397,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         }}
                         className={`flex items-center justify-center bg-slate-800/60 border cursor-pointer transition-all duration-200 rounded-sm
                             ${(userMenuOpen || userPanelOpen)
-                                ? 'border-[#A01B1B]/60 bg-slate-800 text-white'
-                                : 'border-slate-700/50 hover:border-[#A01B1B]/60 hover:bg-slate-800'}
+                                ? 'border-[#DC2626]/60 bg-slate-800 text-white'
+                                : 'border-slate-700/50 hover:border-[#DC2626]/60 hover:bg-slate-800'}
                             ${isCollapsed ? 'w-11 h-11' : 'w-9 h-9'}
                         `}
                         title={currentUser?.tam_ad || 'Kullanıcı'}

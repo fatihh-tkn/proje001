@@ -186,7 +186,7 @@ const DatabaseMemoryTable = ({
 
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'record', id: recordId }); }}
-                                            className="p-1 rounded hover:bg-[#FCEBEB] hover:text-[#791F1F] text-stone-300 transition-all"
+                                            className="p-1 rounded hover:bg-[#FEF2F2] hover:text-[#991B1B] text-stone-300 transition-all"
                                         >
                                             <Trash2 size={12} />
                                         </button>
@@ -297,7 +297,7 @@ const DatabaseMemoryTable = ({
                                                                             <div
                                                                                 key={vector.id}
                                                                                 className={`relative group/v flex items-start gap-3 pl-12 pr-5 py-2.5 border-b border-stone-50 transition-colors
-                                                                                        ${deleteConfirm?.id === vector.id ? 'bg-[#FCEBEB]/50' : 'hover:bg-stone-50/80'}`}
+                                                                                        ${deleteConfirm?.id === vector.id ? 'bg-[#FEF2F2]/50' : 'hover:bg-stone-50/80'}`}
                                                                             >
                                                                                 {/* Numara */}
                                                                                 <div className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border border-stone-200 bg-white text-[9px] font-bold text-stone-400 flex items-center justify-center group-hover/v:border-[#378ADD]/40 group-hover/v:text-[#378ADD] transition-colors">

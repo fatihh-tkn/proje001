@@ -30,7 +30,7 @@ const VdbFileList = ({ filesToRender, selectedFileId, handleFileSelect, handleDe
                             )}
                             {isSelected && <ChevronRight size={14} className="shrink-0 text-white/70" />}
                             <div
-                                className="absolute right-8 p-1 bg-white rounded text-[#791F1F] opacity-0 group-hover:opacity-100 hover:bg-[#FCEBEB] transition-all border border-stone-200 shadow-sm"
+                                className="absolute right-8 p-1 bg-white rounded text-[#991B1B] opacity-0 group-hover:opacity-100 hover:bg-[#FEF2F2] transition-all border border-stone-200 shadow-sm"
                                 onClick={(e) => handleDeleteFile(f.file, f.id, e)}
                             >
                                 <Trash2 size={12} />

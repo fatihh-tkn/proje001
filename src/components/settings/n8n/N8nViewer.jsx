@@ -125,7 +125,7 @@ const N8nViewer = () => {
                 {/* Durdur */}
                 <button
                     onClick={handleStop}
-                    className="h-7 px-3 rounded-full font-semibold text-[11px] flex items-center gap-1.5 bg-[#FCEBEB]/10 text-[#FCEBEB] hover:bg-[#FCEBEB]/20 transition-all"
+                    className="h-7 px-3 rounded-full font-semibold text-[11px] flex items-center gap-1.5 bg-[#FEF2F2]/10 text-[#FEF2F2] hover:bg-[#FEF2F2]/20 transition-all"
                     title="Motoru Durdur"
                 >
                     <Square size={12} fill="currentColor" />

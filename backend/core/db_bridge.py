@@ -55,6 +55,10 @@ def add_log_to_db(log_entry: dict) -> None:
             rag_kullanildi_mi=bool(log_entry.get("rag_used", False)),
             rag_dosya_adi=log_entry.get("rag_file") or None,
         )
+        # KRİTİK: get_session() exit'te otomatik commit etmiyor — flush'lanan log
+        # kaydının kalıcı olması için açıkça commit et. Bu satır eksikti; api_loglari
+        # tablosu hiç dolmuyordu → loglar / sohbet listesi / kullanım maliyeti boş.
+        db.commit()
 
 
 # -- get_all_logs_for_dashboard -----------------------------------------------
@@ -156,6 +160,7 @@ def clear_logs_from_db() -> None:
     with get_session() as db:
         repo = LogRepository(db)
         repo.clear_all()
+        db.commit()
 
 # No-op clear_logs_from_db was here, but properly handled above
 

@@ -15,6 +15,13 @@ export default defineConfig({
       }
     }
   },
+  resolve: {
+    // Prevent multiple Three.js instances (react-force-graph-3d bundles its own Three)
+    dedupe: ['three'],
+  },
+  optimizeDeps: {
+    exclude: ['three'],
+  },
   build: {
     rollupOptions: {
       output: {

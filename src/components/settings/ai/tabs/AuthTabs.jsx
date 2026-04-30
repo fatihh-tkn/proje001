@@ -48,8 +48,8 @@ export function UsersTab() {
                                     </span>
                                 </td>
                                 <td className="p-4 px-5">
-                                    <span className={`px-2.5 py-1.5 rounded-md text-[9px] uppercase tracking-widest flex items-center gap-1.5 w-max ${user.status === 'Aktif' ? 'bg-[#EAF3DE] text-[#3B6D11] border border-[#EAF3DE]/60' : 'bg-[#FCEBEB] text-[#791F1F] border border-[#FCEBEB]/60'}`}>
-                                        <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-[#791F1F]'}`}></div>
+                                    <span className={`px-2.5 py-1.5 rounded-md text-[9px] uppercase tracking-widest flex items-center gap-1.5 w-max ${user.status === 'Aktif' ? 'bg-[#EAF3DE] text-[#3B6D11] border border-[#EAF3DE]/60' : 'bg-[#FEF2F2] text-[#991B1B] border border-[#FEF2F2]/60'}`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Aktif' ? 'bg-[#3B6D11]' : 'bg-[#991B1B]'}`}></div>
                                         {user.status}
                                     </span>
                                 </td>

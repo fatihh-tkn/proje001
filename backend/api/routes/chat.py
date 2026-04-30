@@ -10,6 +10,12 @@ from core.logger import get_logger
 class RevisePromptRequest(BaseModel):
     message: str
 
+
+class FollowupRequest(BaseModel):
+    user_message: str
+    bot_reply: str
+    max_count: int = 2
+
 logger = get_logger("routes.chat")
 router = APIRouter()
 
@@ -49,6 +55,7 @@ async def send_message(request: Request, payload: ChatMessage):
             ip=payload.ip or client_ip,
             mac=payload.pc_id or payload.mac or "00:00:00:00",
             user_id=payload.user_id,
+            command=payload.command,
         )
         return ChatResponse(
             reply=reply_text,
@@ -80,6 +87,7 @@ async def send_message_stream(request: Request, payload: ChatMessage):
             ip=payload.ip or client_ip,
             mac=payload.pc_id or payload.mac or "00:00:00:00",
             user_id=payload.user_id,
+            command=payload.command,
         ),
         media_type="text/event-stream",
         headers={
@@ -117,6 +125,24 @@ async def revise_message_endpoint(payload: RevisePromptRequest):
     except Exception as e:
         logger.error("Mesaj revize hatası: %s", e, exc_info=True)
         return {"success": False, "error": "Mesaj revize edilirken sunucu hatası oluştu."}
+
+@router.post("/followups")
+async def followups_endpoint(payload: FollowupRequest):
+    """
+    Kullanıcının son mesajına ve bot cevabına bakarak takip sorusu önerileri
+    üretir. Chatbot ajanında can_ask_follow_up false ise boş liste döner.
+    """
+    try:
+        questions = await AIService.suggest_followups(
+            user_message=payload.user_message,
+            bot_reply=payload.bot_reply,
+            max_count=max(1, min(payload.max_count, 4)),
+        )
+        return {"success": True, "questions": questions}
+    except Exception as e:
+        logger.error("Takip sorusu üretim hatası: %s", e, exc_info=True)
+        return {"success": False, "questions": []}
+
 
 @router.post("/route-action")
 async def route_action_endpoint(payload: RevisePromptRequest):

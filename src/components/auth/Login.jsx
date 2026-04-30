@@ -328,29 +328,29 @@ const Login = ({ onLogin }) => {
                                     initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                                     className={`relative mb-4 rounded-md text-sm font-semibold shadow-sm border overflow-hidden
                                         ${errorType === 'suspended' ? 'bg-amber-50 border-amber-300'
-                                        : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
-                                        : errorType === 'starting' ? 'bg-slate-50 border-slate-200'
-                                        : errorType === 'limit' ? 'bg-orange-50 border-orange-200'
-                                        : 'bg-red-50 border-red-200'}`}
+                                            : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
+                                                : errorType === 'starting' ? 'bg-slate-50 border-slate-200'
+                                                    : errorType === 'limit' ? 'bg-orange-50 border-orange-200'
+                                                        : 'bg-red-50 border-red-200'}`}
                                 >
                                     <div className={`h-1 w-full ${errorType === 'suspended' ? 'bg-amber-400'
                                         : errorType === 'not_found' ? 'bg-blue-400'
-                                        : errorType === 'starting' ? 'bg-slate-400'
-                                        : errorType === 'limit' ? 'bg-orange-400'
-                                        : 'bg-red-400'}`} />
+                                            : errorType === 'starting' ? 'bg-slate-400'
+                                                : errorType === 'limit' ? 'bg-orange-400'
+                                                    : 'bg-red-400'}`} />
                                     <div className="flex items-start gap-3 p-3">
                                         <span className="text-xl shrink-0 mt-0.5">
                                             {errorType === 'suspended' ? '⚠️'
                                                 : errorType === 'not_found' ? '🔍'
-                                                : errorType === 'starting' ? '⏳'
-                                                : errorType === 'limit' ? '🔒'
-                                                : '🔐'}
+                                                    : errorType === 'starting' ? '⏳'
+                                                        : errorType === 'limit' ? '🔒'
+                                                            : '🔐'}
                                         </span>
                                         <span className={`leading-snug text-[12px] ${errorType === 'suspended' ? 'text-amber-800'
                                             : errorType === 'not_found' ? 'text-blue-700'
-                                            : errorType === 'starting' ? 'text-slate-600'
-                                            : errorType === 'limit' ? 'text-orange-700'
-                                            : 'text-red-600'}`}>
+                                                : errorType === 'starting' ? 'text-slate-600'
+                                                    : errorType === 'limit' ? 'text-orange-700'
+                                                        : 'text-red-600'}`}>
                                             {error}
                                         </span>
                                     </div>
@@ -380,24 +380,6 @@ const Login = ({ onLogin }) => {
                                             ))}
                                         </AnimatePresence>
                                     </div>
-
-                                    {/* Oturum doluluk göstergesi */}
-                                    {quickSessions.length > 0 && (
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full rounded-full transition-all duration-500"
-                                                    style={{
-                                                        width: `${(quickSessions.length / MAX_SESSIONS) * 100}%`,
-                                                        backgroundColor: quickSessions.length >= MAX_SESSIONS ? '#ef4444' : '#3b82f6',
-                                                    }}
-                                                />
-                                            </div>
-                                            <span className="text-[10px] font-bold text-slate-400 shrink-0">
-                                                {quickSessions.length}/{MAX_SESSIONS}
-                                            </span>
-                                        </div>
-                                    )}
 
                                     <div className="flex items-center gap-3 mt-1">
                                         <div className="flex-1 h-px bg-slate-100" />

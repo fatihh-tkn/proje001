@@ -11,6 +11,7 @@ import DatabaseQuarantine from './database/DatabaseQuarantine';
 import DatabaseMemoryTable from './database/DatabaseMemoryTable';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../utils/archiveEvents';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useErrorStore } from '../../store/errorStore';
 
 const BASE = '/api/db';
 const COLLECTION = 'documents';
@@ -66,6 +67,7 @@ const SkeletonRow = () => (
 /* ──────────────────────────────────────────────────── */
 const DatabaseViewer = ({ readOnly }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
+    const addToast = useErrorStore((s) => s.addToast);
     const [backendReady, setBackendReady] = useState(null); // null=kontrol ediliyor, true=hazır, false=kapalı
     const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving
     const [useVision, setUseVision] = useState(false);
@@ -271,6 +273,7 @@ const DatabaseViewer = ({ readOnly }) => {
                 let errMsg = `Hata: Sunucu ${xhr.status} döndü.`;
                 try { const errData = JSON.parse(xhr.responseText); errMsg = errData.detail || errMsg; } catch (_) { }
                 setChunks([{ id: 'error-1', text: errMsg, page: 1, x: 0, y: 0 }]);
+                addToast({ type: 'error', message: `Dosya analiz hatası (${xhr.status}): ${errMsg}`, duration: 6000 });
                 setPhase('staged');
             }
         };
@@ -279,7 +282,9 @@ const DatabaseViewer = ({ readOnly }) => {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             setProgress(100);
             setSkeletonChunks(0);
-            setChunks([{ id: 'error-1', text: `Ağ hatası veya bağlantı koptu.`, page: 1, x: 0, y: 0 }]);
+            const errMsg = 'Ağ hatası veya bağlantı koptu.';
+            setChunks([{ id: 'error-1', text: errMsg, page: 1, x: 0, y: 0 }]);
+            addToast({ type: 'error', message: errMsg, duration: 6000 });
             setPhase('staged');
         };
 
@@ -474,7 +479,9 @@ const DatabaseViewer = ({ readOnly }) => {
 
             await fetchRecords(); // Listeyi SQL'den taze çeker
         } catch (err) {
-            setSaveError(err.message || 'Kayıt sırasında hata oluştu.');
+            const msg = err.message || 'Kayıt sırasında hata oluştu.';
+            setSaveError(msg);
+            addToast({ type: 'error', message: `Vektörleştirme hatası: ${msg}`, duration: 8000 });
             setPhase('staged');
         }
     };
@@ -493,28 +500,27 @@ const DatabaseViewer = ({ readOnly }) => {
 
             if (res.ok) {
                 if (expandedRecord === rec.id) setExpandedRecord(null);
-                await fetchRecords(); // Tabloyu tazeleyelim
+                await fetchRecords();
                 dispatchArchiveChanged();
             } else {
                 const err = await res.json().catch(() => ({}));
-                alert(`Dosya silinemedi: ${err.detail || res.statusText}`);
+                const msg = `Dosya silinemedi: ${err.detail || res.statusText}`;
+                addToast({ type: 'error', message: msg, duration: 6000 });
             }
         } catch (err) {
             console.error("Record deletion failed:", err);
-            alert("Dosya silinirken hata oluştu.");
+            addToast({ type: 'error', message: 'Dosya silinirken hata oluştu.', duration: 6000 });
         }
     };
 
     const handleDeleteVector = async (recId, vectorId) => {
         setDeleteConfirm(null);
         try {
-            // /api/chunk/{id} endpoint'i parça bazlı atomik silme yapar (re-linking dahil)
             const res = await fetch(`/api/chunk/${encodeURIComponent(vectorId)}`, {
                 method: 'DELETE',
             });
 
             if (res.ok) {
-                // UI'ı anlık güncelle
                 setRecordVectors(prev => {
                     const updated = { ...prev };
                     if (updated[recId]) {
@@ -522,14 +528,14 @@ const DatabaseViewer = ({ readOnly }) => {
                     }
                     return updated;
                 });
-                await fetchRecords(); // İstatistikleri (parça sayısı) güncelle
+                await fetchRecords();
             } else {
                 const err = await res.json().catch(() => ({}));
-                alert(`Parça silinemedi: ${err.detail || res.statusText}`);
+                addToast({ type: 'error', message: `Parça silinemedi: ${err.detail || res.statusText}`, duration: 6000 });
             }
         } catch (err) {
             console.error("Vector item deletion error", err);
-            alert("Parça silinirken hata oluştu.");
+            addToast({ type: 'error', message: 'Parça silinirken hata oluştu.', duration: 6000 });
         }
     };
 
@@ -665,7 +671,7 @@ const DatabaseViewer = ({ readOnly }) => {
                                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
                                 <div className="w-full max-w-[420px] rounded-2xl overflow-hidden border border-stone-200 shadow-sm animate-in fade-in zoom-in-95 duration-200 bg-white flex flex-col">
                                     <div className="p-5 border-b border-stone-100 flex items-start gap-4 relative bg-stone-50/30">
-                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-stone-300 hover:text-[#791F1F] transition-colors p-1"><X size={16} /></button>
+                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-stone-300 hover:text-[#991B1B] transition-colors p-1"><X size={16} /></button>
 
                                         <div className="w-12 h-12 rounded-xl bg-white border border-stone-200 shadow-sm flex items-center justify-center shrink-0">
                                             {pendingMediaFile.type?.startsWith('video/') ? (

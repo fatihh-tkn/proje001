@@ -50,7 +50,11 @@ class PgVectorDB(VectorDBProvider):
                     parca.vektor_verisi = vec
                     if not parca.icerik:
                         parca.icerik = doc_text[:1000]
-                    # meta yoksa güncelle
+                    if not parca.sinir_kutusu:
+                        parca.sinir_kutusu = (
+                            meta.get("sinir_kutusu")
+                            or (str(meta.get("bbox")) if meta.get("bbox") else None)
+                        )
                     if not parca.meta:
                         meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
                         if meta_to_save:
@@ -64,13 +68,26 @@ class PgVectorDB(VectorDBProvider):
                     # Tam metadata'yı JSON olarak kaydet (image_path, page_width, page_height, zoom_factor, type vb.)
                     meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
 
+                    source = (meta.get("source") or "").strip()
+                    page   = meta.get("page", 0)
+                    el_nm  = (meta.get("element_name") or "").strip()
+                    if el_nm:
+                        konum = f"{source} | Eleman: {el_nm}" if source else f"Eleman: {el_nm}"
+                    elif source:
+                        konum = f"{source} | Sayfa {page}"
+                    else:
+                        konum = f"Sayfa {page}"
+                    sinir = (
+                        meta.get("sinir_kutusu")
+                        or (str(meta.get("bbox")) if meta.get("bbox") else None)
+                    )
                     yeni_parca = VektorParcasi(
                         belge_kimlik=belge_kimlik,
                         chromadb_kimlik=chroma_id,
                         icerik=doc_text[:1000],
-                        konum_imi=f"Sayfa {meta.get('page', 0)}",
-                        sayfa_no=meta.get("page", 0),
-                        sinir_kutusu=str(meta.get("bbox", "")) if meta.get("bbox") else None,
+                        konum_imi=konum,
+                        sayfa_no=page,
+                        sinir_kutusu=sinir,
                         meta=meta_to_save if meta_to_save else None,
                         embedding_modeli=get_active_model_key(),
                         vektor_verisi=vec
@@ -101,29 +118,37 @@ class PgVectorDB(VectorDBProvider):
 
         with get_session() as db:
             for q_emb in q_embeddings:
-                stmt = select(VektorParcasi).where(VektorParcasi.vektor_verisi.is_not(None))
-                
+                dist_col = VektorParcasi.vektor_verisi.cosine_distance(q_emb).label("dist")
+                stmt = (
+                    select(VektorParcasi, dist_col)
+                    .where(VektorParcasi.vektor_verisi.is_not(None))
+                )
+
                 if where and "sql_doc_id" in where:
                     stmt = stmt.where(VektorParcasi.belge_kimlik == where["sql_doc_id"])
                 elif where and "sqlite_doc_id" in where:
                     stmt = stmt.where(VektorParcasi.belge_kimlik == where["sqlite_doc_id"])
-                    
-                # PostgreSQL vektör sıralaması
-                stmt = stmt.order_by(VektorParcasi.vektor_verisi.cosine_distance(q_emb)).limit(n_results)
-                
-                rows = list(db.scalars(stmt).all())
-                
+
+                stmt = stmt.order_by(dist_col).limit(n_results)
+                rows = db.execute(stmt).all()
+
                 ids_row = []
                 dist_row = []
                 docs_row = []
                 meta_row = []
-                
-                for r in rows:
+
+                for row in rows:
+                    r, dist = row[0], float(row[1])
                     ids_row.append(r.chromadb_kimlik)
-                    dist_row.append(0.5) 
+                    dist_row.append(dist)
                     docs_row.append(r.icerik or "")
-                    meta_row.append({"sql_doc_id": r.belge_kimlik, "sqlite_doc_id": r.belge_kimlik, "page": r.sayfa_no, "source": r.konum_imi})
-                
+                    meta_row.append({
+                        "sql_doc_id": r.belge_kimlik,
+                        "sqlite_doc_id": r.belge_kimlik,
+                        "page": r.sayfa_no,
+                        "source": r.konum_imi,
+                    })
+
                 res_ids.append(ids_row)
                 res_distances.append(dist_row)
                 res_documents.append(docs_row)

@@ -38,6 +38,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -322,6 +323,8 @@ class VektorParcasi(Base):
     # Bu parçanın RAG sorgularında kaç kez getirildiği
     tiklanma_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     vektor_verisi: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    # Full-Text Search tsvector (trigger tarafından otomatik güncellenir)
+    arama_vektoru: Mapped[object | None] = mapped_column(TSVECTOR, nullable=True)
     # En son hangi sorguda kullanıldığı
     son_sorgulanma_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
@@ -785,6 +788,32 @@ class KullaniciTalebi(Base):
     )
 
 
+class ZliRapor(Base):
+    """
+    Sistemde yüklü Z'li (Z'tipi ABAP) raporlar. Hızlı aksiyon "Z'li Rapor Sorgusu"
+    burada arar; eşleşen rapor yoksa kullanıcı KullaniciTalebi (kategori='zli_rapor')
+    olarak yeni rapor talebi açabilir.
+    """
+    __tablename__ = "zli_raporlar"
+
+    kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kod: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)            # ör. ZMM_STOK_LIST
+    ad: Mapped[str] = mapped_column(String(200), nullable=False)                          # ör. "Stok Listesi"
+    aciklama: Mapped[str] = mapped_column(Text, nullable=False)                           # raporun ne işe yaradığı
+    modul: Mapped[str | None] = mapped_column(String(32), nullable=True)                  # MM/PP/SD/FI...
+    kullanim_alani: Mapped[str | None] = mapped_column(Text, nullable=True)               # nerede kullanılır
+    parametreler: Mapped[dict | None] = mapped_column(JSON, nullable=True)                # input alan listesi
+    aktif_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+    guncelleme_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
+
+    __table_args__ = (
+        Index("ix_zli_raporlar_kod", "kod"),
+        Index("ix_zli_raporlar_modul", "modul"),
+        Index("ix_zli_raporlar_aktif", "aktif_mi"),
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 # GERİYE DÖNÜK UYUMLULUK KISAYOLLARI
 # ═══════════════════════════════════════════════════════════════════
@@ -823,4 +852,54 @@ class N8nWorkflowCache(Base):
     
     cached_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 11. HATA KAYITLARI KATMANI
+# ═══════════════════════════════════════════════════════════════════
+
+class Hata(Base):
+    """
+    Sistemdeki tanımlı hatalar (admin tarafından eklenir).
+    AI hata çözümü sırasında veritabanından eşleşme aranır.
+    """
+    __tablename__ = "hatalar"
+
+    kimlik:           Mapped[str]           = mapped_column(String(36), primary_key=True, default=_uuid)
+    hata_kodu:        Mapped[str]           = mapped_column(String(64), nullable=False, index=True)
+    baslik:           Mapped[str]           = mapped_column(String(512), nullable=False)
+    modul:            Mapped[str | None]    = mapped_column(String(64), nullable=True)
+    severity:         Mapped[str]           = mapped_column(String(16), default="medium")  # low|medium|high|critical
+    sebep:            Mapped[str | None]    = mapped_column(Text, nullable=True)
+    adimlar:          Mapped[list | None]   = mapped_column(JSON, default=list, nullable=True)  # [{title, tcode, detail}]
+    dokumanlar:       Mapped[list | None]   = mapped_column(JSON, default=list, nullable=True)  # [{name, page}]
+    olusturan_id:     Mapped[str | None]    = mapped_column(String(36), ForeignKey("kullanicilar.kimlik", ondelete="SET NULL"), nullable=True)
+    olusturulma:      Mapped[str]           = mapped_column(String(64), default=_simdi)
+
+    __table_args__ = (
+        Index("ix_hatalar_kod_modul", "hata_kodu", "modul"),
+    )
+
+
+class KullaniciHataKaydi(Base):
+    """
+    Kullanıcının chat'te 'Hata Çözümü' modunda aldığı ve kaydetmek istediği çözümler.
+    Geçmişe dönük bakabilmek + benzer hatalarda tekrar gösterebilmek için.
+    """
+    __tablename__ = "kullanici_hata_kayitlari"
+
+    kimlik:           Mapped[str]           = mapped_column(String(36), primary_key=True, default=_uuid)
+    kullanici_id:     Mapped[str]           = mapped_column(String(36), ForeignKey("kullanicilar.kimlik", ondelete="CASCADE"), nullable=False, index=True)
+    hata_kodu:        Mapped[str | None]    = mapped_column(String(64), nullable=True, index=True)
+    baslik:           Mapped[str]           = mapped_column(String(512), nullable=False)
+    modul:            Mapped[str | None]    = mapped_column(String(64), nullable=True)
+    severity:         Mapped[str | None]    = mapped_column(String(16), nullable=True)
+    ozet:             Mapped[str | None]    = mapped_column(Text, nullable=True)
+    cevap_json:       Mapped[dict | None]   = mapped_column(JSON, default=dict, nullable=True)  # ErrorSolution payload
+    oturum_id:        Mapped[str | None]    = mapped_column(String(64), nullable=True)
+    kayit_tarihi:     Mapped[str]           = mapped_column(String(64), default=_simdi, index=True)
+
+    __table_args__ = (
+        Index("ix_user_error_user_date", "kullanici_id", "kayit_tarihi"),
     )

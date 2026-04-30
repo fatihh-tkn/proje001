@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef, Suspense, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Network, RefreshCw, Loader2, Info, X, Pause, Play, Filter } from 'lucide-react';
+import ForceGraph3D from 'react-force-graph-3d';
 
-const ForceGraph3D = React.lazy(() => import('react-force-graph-3d'));
+const MEDIA_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm']);
 
 const GraphDatabaseViewer = () => {
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -21,7 +22,6 @@ const GraphDatabaseViewer = () => {
     const fgRef = useRef();
 
     // PERFORMANS: Array'i döngü dışına çıkararak garbage collector kasmasını önlüyoruz
-    const MEDIA_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm']);
     const isMedia = useCallback((type) => MEDIA_EXTS.has((type || '').toLowerCase()), []);
 
     const fetchGraph = async () => {
@@ -32,7 +32,12 @@ const GraphDatabaseViewer = () => {
                 const data = await res.json();
 
                 const degreeMap = {};
-                data.edges.forEach(e => {
+                const validIds = new Set(data.nodes.map(n => n.id));
+
+                // Sadece geçerli node'lara sahip kenarları al (Aksi takdirde ForceGraph motoru çöker)
+                const validEdges = data.edges.filter(e => validIds.has(e.source) && validIds.has(e.target));
+
+                validEdges.forEach(e => {
                     degreeMap[e.source] = (degreeMap[e.source] || 0) + 1;
                     degreeMap[e.target] = (degreeMap[e.target] || 0) + 1;
                 });
@@ -54,7 +59,7 @@ const GraphDatabaseViewer = () => {
 
                         return { ...n, val: sizeVal, degree: degree };
                     }),
-                    links: data.edges.map(e => ({
+                    links: validEdges.map(e => ({
                         source: e.source,
                         target: e.target,
                         weight: e.weight || 1,
@@ -90,11 +95,11 @@ const GraphDatabaseViewer = () => {
             return;
         }
 
-        const isMedia = (type) => ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((type || '').toLowerCase());
+        const checkMedia = (type) => MEDIA_EXTS.has((type || '').toLowerCase());
 
         const filteredNodes = rawGraphData.nodes.filter(n => {
-            if (filterType === 'media') return isMedia(n.file_type);
-            if (filterType === 'text') return !isMedia(n.file_type);
+            if (filterType === 'media') return checkMedia(n.file_type);
+            if (filterType === 'text') return !checkMedia(n.file_type);
             return true;
         });
 
@@ -259,56 +264,49 @@ const GraphDatabaseViewer = () => {
                         <span className="text-sm font-semibold text-stone-500 tracking-wide">Graf Yükleniyor...</span>
                     </div>
                 ) : (
-                    <Suspense fallback={
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="w-8 h-8 border-[3px] border-[#378ADD] border-t-transparent rounded-full animate-spin" />
-                            <span className="text-sm text-stone-500 animate-pulse">3D Motor Yükleniyor...</span>
-                        </div>
-                    }>
-                        <ForceGraph3D
-                            ref={fgRef}
-                            graphData={graphData}
-                            nodeLabel="content"
-                            nodeVal="val"
-                            nodeResolution={32}
+                    <ForceGraph3D
+                        ref={fgRef}
+                        graphData={graphData}
+                        nodeLabel="content"
+                        nodeVal="val"
+                        nodeResolution={32}
 
-                            // ── NODE OPACITY (Soluklaştırma) ──
-                            nodeOpacity={1}
-                            nodeColor={node => {
-                                const defaultColor = isMedia(node.file_type) ? '#4F46E5' : '#E11D48'; // Indigo & Rose
+                        // ── NODE OPACITY (Soluklaştırma) ──
+                        nodeOpacity={1}
+                        nodeColor={node => {
+                            const defaultColor = isMedia(node.file_type) ? '#4F46E5' : '#E11D48'; // Indigo & Rose
 
-                                // Hiçbir şey seçili değilse herkes normal
-                                if (highlightNodes.size === 0) return defaultColor;
+                            // Hiçbir şey seçili değilse herkes normal
+                            if (highlightNodes.size === 0) return defaultColor;
 
-                                // Seçili ana node
-                                if (selectedNode && node.id === selectedNode.id) return '#10B981'; // Zümrüt Yeşili (Dikkat Çekici)
+                            // Seçili ana node
+                            if (selectedNode && node.id === selectedNode.id) return '#10B981'; // Zümrüt Yeşili (Dikkat Çekici)
 
-                                // Komşu node'lar: ana rengi korur ama biraz dikkat çekebilir
-                                if (highlightNodes.has(node.id)) return defaultColor;
+                            // Komşu node'lar: ana rengi korur ama biraz dikkat çekebilir
+                            if (highlightNodes.has(node.id)) return defaultColor;
 
-                                // İlgisiz düğümler tamamen soluk-gri olur
-                                return 'rgba(200, 203, 212, 0.1)';
-                            }}
+                            // İlgisiz düğümler tamamen soluk-gri olur
+                            return 'rgba(200, 203, 212, 0.1)';
+                        }}
 
-                            // ── LINK OPACITY (Soluklaştırma) ──
-                            linkWidth={link => highlightLinks.has(link) ? 2 : 1}
-                            linkColor={link => {
-                                if (highlightNodes.size === 0) return 'rgba(148, 163, 184, 0.4)'; // Slate-400 yari saydam
-                                if (highlightLinks.has(link)) return '#F59E0B'; // Kehribar (Amber) - çok dikkat çekici
-                                return 'rgba(226, 232, 240, 0.05)'; // Seçimsizken neredeyse görünmez
-                            }}
-                            linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
-                            linkDirectionalParticleWidth={1.5}
+                        // ── LINK OPACITY (Soluklaştırma) ──
+                        linkWidth={link => highlightLinks.has(link) ? 2 : 1}
+                        linkColor={link => {
+                            if (highlightNodes.size === 0) return 'rgba(148, 163, 184, 0.4)'; // Slate-400 yari saydam
+                            if (highlightLinks.has(link)) return '#F59E0B'; // Kehribar (Amber) - çok dikkat çekici
+                            return 'rgba(226, 232, 240, 0.05)'; // Seçimsizken neredeyse görünmez
+                        }}
+                        linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
+                        linkDirectionalParticleWidth={1.5}
 
-                            onNodeClick={handleNodeClick}
-                            onBackgroundClick={clearSelection}
-                            onNodeHover={(node) => setHoverNode(node || null)}
-                            backgroundColor="#ffffff"
-                            nodeRelSize={4}
-                            warmupTicks={100}
-                            cooldownTicks={150}
-                        />
-                    </Suspense>
+                        onNodeClick={handleNodeClick}
+                        onBackgroundClick={clearSelection}
+                        onNodeHover={(node) => setHoverNode(node || null)}
+                        backgroundColor="#ffffff"
+                        nodeRelSize={4}
+                        warmupTicks={100}
+                        cooldownTicks={150}
+                    />
                 )}
             </div>
 

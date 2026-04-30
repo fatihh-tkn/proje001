@@ -9,7 +9,7 @@ import { fmt, fmtMs, fmtCost, getModelColor, MODEL_COLORS, API_BASE, fetchWithTi
 function Badge({ children, color = 'default' }) {
     const colors = {
         success: 'bg-[#EAF3DE] text-[#3B6D11] border-[#EAF3DE]/50',
-        error: 'bg-[#FCEBEB] text-[#791F1F] border-[#FCEBEB]/50',
+        error: 'bg-[#FEF2F2] text-[#991B1B] border-[#FEF2F2]/50',
         warn: 'bg-[#FAEEDA] text-[#854F0B] border-[#FAEEDA]/50',
         default: 'bg-stone-100 text-stone-600 border-stone-200',
     };
@@ -96,7 +96,7 @@ export const DashboardTab = React.memo(({ agent } = {}) => {
 
     const ERROR_CATALOG = {
         '401': { label: 'Yetki (API Anahtarı)', desc: 'Geçersiz veya süresi dolmuş anahtar', color: '#D85A30' },
-        '403': { label: 'Erişim Engeli', desc: 'Bölgesel veya lisans engeli', color: '#791F1F' },
+        '403': { label: 'Erişim Engeli', desc: 'Bölgesel veya lisans engeli', color: '#991B1B' },
         '429': { label: 'Hız Sınırı (Limit)', desc: 'Çok fazla istek, kota aşıldı', color: '#EF9F27' },
         '500': { label: 'AI Sunucu Çöktü', desc: 'İç sistem hatası', color: '#6b7280' },
         '502': { label: 'Ağ Geçidi Hatası', desc: 'Sağlayıcı bağlantısı koptu', color: '#4b5563' },
@@ -188,7 +188,7 @@ export const DashboardTab = React.memo(({ agent } = {}) => {
                     <div className="lg:col-span-4 bg-white rounded-xl border border-stone-200 shadow-sm p-6 flex flex-col">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-[12px] font-medium text-stone-600 uppercase tracking-wide flex items-center gap-2.5">
-                                <div className={`p-1.5 rounded-lg flex items-center justify-center ${errorsArray.length > 0 ? "bg-[#FCEBEB] text-[#791F1F]" : "bg-[#EAF3DE] text-[#3B6D11]"}`}>
+                                <div className={`p-1.5 rounded-lg flex items-center justify-center ${errorsArray.length > 0 ? "bg-[#FEF2F2] text-[#991B1B]" : "bg-[#EAF3DE] text-[#3B6D11]"}`}>
                                     <ShieldAlert size={14} strokeWidth={2.5} />
                                 </div>
                                 Hata Analizi
@@ -221,7 +221,7 @@ export const DashboardTab = React.memo(({ agent } = {}) => {
                                                 <span className="text-[20px] font-black text-stone-700 leading-none">
                                                     {processedErrors.reduce((s, e) => s + (e.value || 0), 0)}
                                                 </span>
-                                                <span className="text-[10px] font-bold tracking-widest text-[#791F1F] mt-1 uppercase">Müdahale</span>
+                                                <span className="text-[10px] font-bold tracking-widest text-[#991B1B] mt-1 uppercase">Müdahale</span>
                                             </div>
                                         </div>
                                         <div className="space-y-1.5 mt-4 bg-stone-50 p-2 rounded-lg border border-stone-100">
@@ -351,7 +351,7 @@ export const DashboardTab = React.memo(({ agent } = {}) => {
 
                                         {/* Barlar */}
                                         <Bar dataKey="success" name="Başarılı" fill="#1D9E75" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={600} />
-                                        <Bar dataKey="error" name="Hatalı" fill="#791F1F" fillOpacity={0.8} radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={600} />
+                                        <Bar dataKey="error" name="Hatalı" fill="#991B1B" fillOpacity={0.8} radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={600} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>

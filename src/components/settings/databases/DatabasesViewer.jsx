@@ -6,6 +6,7 @@ import VectorDatabaseViewer from './VectorDatabaseViewer';
 import SqlDatabaseViewer from '../SqlDatabaseViewer';
 import GraphDatabaseViewer from './GraphDatabaseViewer';
 import ArchiveDocsViewer from '../archive/ArchiveDocsViewer';
+import ErrorBoundary from '../../ErrorBoundary';
 
 export default function DatabasesViewer({ defaultTab = 'sql' }) {
     const [activeTab, setActiveTab] = useState(defaultTab);
@@ -70,7 +71,11 @@ export default function DatabasesViewer({ defaultTab = 'sql' }) {
                     <VectorDatabaseViewer />
                 </div>
                 <div className={`w-full h-full ${activeTab === 'graph' ? 'block' : 'hidden'}`}>
-                    <GraphDatabaseViewer />
+                    {activeTab === 'graph' && (
+                        <ErrorBoundary compact>
+                            <GraphDatabaseViewer />
+                        </ErrorBoundary>
+                    )}
                 </div>
                 <div className={`w-full h-full ${activeTab === 'archive' ? 'block' : 'hidden'}`}>
                     <ArchiveDocsViewer />

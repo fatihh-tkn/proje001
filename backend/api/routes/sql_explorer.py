@@ -480,6 +480,73 @@ def repair_image_paths():
     }
 
 
+@router.post("/regenerate-images", summary="PPTX belgelerinin slayt görsellerini yeniden üret")
+def regenerate_images(doc_id: str | None = None):
+    """
+    Her PPTX belgesinin orijinal_yol'undan PPTX'i bulur ve
+    python-pptx + Pillow renderer'ı ile her slaydı PNG olarak yeniden üretir.
+    PowerPoint COM veya LibreOffice gerektirmez.
+
+    Tek belge için: ?doc_id=<kimlik>
+    """
+    import os
+    from database.sql.models import Belge
+    from services.processors.pptx_renderer import render_pptx_to_pngs
+
+    regenerated = 0
+    skipped = 0
+    errors = []
+
+    with get_session() as db:
+        stmt = select(Belge)
+        if doc_id:
+            stmt = stmt.where(Belge.kimlik == doc_id)
+        belgeler = db.scalars(stmt).all()
+
+        for belge in belgeler:
+            dosya_adi = belge.dosya_adi or ""
+            if not dosya_adi.lower().endswith((".pptx", ".ppt")):
+                skipped += 1
+                continue
+
+            meta = dict(belge.meta or {})
+            orijinal_yol = meta.get("orijinal_yol", "")
+            pptx_path = None
+            if orijinal_yol and os.path.exists(orijinal_yol):
+                pptx_path = os.path.abspath(orijinal_yol)
+
+            if not pptx_path:
+                errors.append(f"{dosya_adi}: PPTX bulunamadı (yol: {orijinal_yol})")
+                continue
+
+            try:
+                base_name = os.path.splitext(os.path.basename(pptx_path))[0]
+                image_dir = os.path.join(os.path.dirname(pptx_path), f"images_{base_name}")
+                produced = render_pptx_to_pngs(pptx_path, image_dir)
+
+                if not produced:
+                    errors.append(f"{dosya_adi}: hiç slayt üretilemedi")
+                    continue
+
+                meta["images_yolu"] = os.path.abspath(image_dir)
+                belge.meta = meta
+                regenerated += 1
+                logger.info(f"[Regenerate] {dosya_adi}: {len(produced)} slayt üretildi")
+            except Exception as e:
+                errors.append(f"{dosya_adi}: {e}")
+
+        if regenerated:
+            db.commit()
+
+    return {
+        "status": "ok",
+        "regenerated": regenerated,
+        "skipped": skipped,
+        "errors": errors,
+        "mesaj": f"{regenerated} belgenin görselleri yeniden üretildi.",
+    }
+
+
 @router.post("/documents/{doc_id}/approve", summary="Karantinadaki belgeyi onayla")
 def approve_document(doc_id: str):
     from database.sql.models import Belge
@@ -683,17 +750,22 @@ def integrity_report():
 @router.get("/documents/{doc_id}/chunks", summary="Belirli bir belgenin tüm vektör parçacıklarını getir")
 def get_document_chunks(doc_id: str):
     """
-    Belirli bir dosyaya (Belgeye) ait tüm vektör parçacıklarını 
+    Belirli bir dosyaya (Belgeye) ait tüm vektör parçacıklarını
     hızlıca SQL üzerinden (vektor_parcalari tablosundan) döner.
     Bu, frontend'de tüm vektörleri ChromaDB'den çekmeyi engeller.
     """
+    import os as _os
+    from database.sql.models import Belge
+
     with get_session() as db:
-        parcalar = db.scalars(
-            select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
-        ).all()
-        
+        stmt = select(VektorParcasi, Belge.dosya_adi, Belge.meta).outerjoin(
+            Belge, VektorParcasi.belge_kimlik == Belge.kimlik
+        ).where(VektorParcasi.belge_kimlik == doc_id)
+
+        rows = db.execute(stmt).all()
+
         results = []
-        for p in parcalar:
+        for p, d_name, d_meta in rows:
             bbox_str = p.sinir_kutusu or ""
             x_val, y_val = 0, 0
             if bbox_str and bbox_str != "0,0,0,0":
@@ -705,40 +777,56 @@ def get_document_chunks(doc_id: str):
                     except ValueError:
                         pass
             chunk_meta = p.meta or {}
+
+            belge_meta = d_meta or {}
+            images_yolu = belge_meta.get("images_yolu", "")
+            sayfa = p.sayfa_no or 1
+            has_page_images = bool(
+                images_yolu
+                and _os.path.isfile(_os.path.join(images_yolu, f"page_{sayfa}.png"))
+            )
+
             raw_meta = {
-                "page": p.sayfa_no or 1,
+                "source": d_name or "Bilinmeyen Dosya",
+                "page": sayfa,
                 "bbox": bbox_str,
+                "sql_doc_id": str(p.belge_kimlik) if p.belge_kimlik else None,
+                "has_page_images": has_page_images,
                 **{
                     k: v for k, v in chunk_meta.items()
                     if k not in ("sql_doc_id", "sqlite_doc_id") and v != ""
                 },
             }
+            if chunk_meta.get("bbox") and not bbox_str:
+                raw_meta["bbox"] = str(chunk_meta["bbox"])
+
             results.append({
                 "id": p.chromadb_kimlik,
                 "text": p.icerik,
-                "page": p.sayfa_no or 1,
+                "file": d_name or "Bilinmeyen Dosya",
+                "page": sayfa,
                 "x": x_val,
                 "y": y_val,
                 "rawMeta": raw_meta,
             })
-            
+
     return {"chunks": results, "total": len(results)}
 
 
 @router.get("/chunks", summary="Sistemdeki tüm parçacıkları limitli getir (Vektör Ayarları UI için)")
 def get_all_global_chunks(limit: int = 1000):
+    import os as _os
     with get_session() as db:
-        # join with Belge to get filename
         from database.sql.models import Belge
-        # query chunks
-        stmt = select(VektorParcasi, Belge.dosya_adi).outerjoin(
+        # Belge.meta'yı da çekiyoruz (images_yolu kontrolü için)
+        stmt = select(VektorParcasi, Belge.dosya_adi, Belge.meta).outerjoin(
             Belge, VektorParcasi.belge_kimlik == Belge.kimlik
         ).limit(limit)
-        
+
         rows = db.execute(stmt).all()
-        
+
         results = []
-        for p, d_name in rows:
+        for p, d_name, d_meta in rows:
             # Koordinat çıkarma (sinir_kutusu genelde "x,y,w,h" formatındadır)
             x_val, y_val = 0, 0
             bbox_str = p.sinir_kutusu if p.sinir_kutusu else ""
@@ -750,13 +838,24 @@ def get_all_global_chunks(limit: int = 1000):
                         y_val = int(float(parts[1]))
                     except ValueError:
                         pass
-                        
-                # meta kolonundan tam metadata'yı al (image_path, page_width, page_height, zoom_factor, type vb.)
+
             chunk_meta = p.meta or {}
+
+            # Belge'nin arşiv görsel dizini var mı ve disk üzerinde erişilebilir mi?
+            belge_meta   = d_meta or {}
+            images_yolu  = belge_meta.get("images_yolu", "")
+            sayfa        = p.sayfa_no or 1
+            has_page_images = bool(
+                images_yolu
+                and _os.path.isfile(_os.path.join(images_yolu, f"page_{sayfa}.png"))
+            )
+
             raw_meta = {
                 "source": d_name or "Bilinmeyen Dosya",
-                "page": p.sayfa_no or 1,
+                "page": sayfa,
                 "bbox": bbox_str,
+                "sql_doc_id": str(p.belge_kimlik) if p.belge_kimlik else None,
+                "has_page_images": has_page_images,
                 # Kaydedilmiş tam metadata alanlarını üst üste yaz;
                 # boş string değerler mevcut sinir_kutusu veya image_path'i ezmez
                 **{
@@ -772,10 +871,10 @@ def get_all_global_chunks(limit: int = 1000):
                 "id": p.chromadb_kimlik,
                 "text": p.icerik,
                 "file": d_name or "Bilinmeyen Dosya",
-                "page": p.sayfa_no or 1,
+                "page": sayfa,
                 "x": x_val,
                 "y": y_val,
                 "rawMeta": raw_meta,
             })
-            
+
     return {"chunks": results, "total": len(results)}

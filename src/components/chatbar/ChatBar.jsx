@@ -1,14 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronsRight, ChevronsLeft } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { sendMessageStream } from '../../api/chatService';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useErrorStore } from '../../store/errorStore';
 
 import RecentChats from './RecentChats';
 import MessageList from './MessageList';
 import ChatInputArea from './ChatInputArea';
 
+const MAX_ATTACH = 5;
+const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+
+const CHAT_WIDTH_KEY = 'chatBar:width';
+const CHAT_WIDTH_MIN = 360;        // px — fazla daralırsa mesaj baloncukları kırılır
+const CHAT_WIDTH_DEFAULT = 540;    // 540px
+const CHAT_WIDTH_MAX_RATIO = 0.7;  // ekran genişliğinin %70'inden büyük olamaz
+
 const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
+    const addToast = useErrorStore(state => state.addToast);
     const [isChatsOpen, setIsChatsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [messages, setMessages] = useState([]);
@@ -16,26 +25,107 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const [isTyping, setIsTyping] = useState(false);
     const [currentSessionId, setCurrentSessionId] = useState(`session_${Date.now()}`);
 
-    // Sürüklenen dosya state'i
-    const [droppedFile, setDroppedFile] = useState(null);
+    const [attachedFiles, setAttachedFiles] = useState([]); // { id, name, type, url, size, source }
     const [isDragOver, setIsDragOver] = useState(false);
+    const [activeCommand, setActiveCommand] = useState(null);
 
     const [isChatScrolling, setIsChatScrolling] = useState(false);
     const [isTextareaScrolling, setIsTextareaScrolling] = useState(false);
     const chatScrollTimeout = useRef(null);
     const textareaScrollTimeout = useRef(null);
-
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
-
-    // Streaming AI mesajının ID'sini tutuyoruz
     const streamingMsgIdRef = useRef(null);
+    const abortControllerRef = useRef(null);
+
+    // ── Yeniden boyutlandırma (sola doğru sürükleyerek genişlet) ──────────
+    const [chatWidth, setChatWidth] = useState(() => {
+        try {
+            const stored = parseInt(localStorage.getItem(CHAT_WIDTH_KEY) || '', 10);
+            if (Number.isFinite(stored) && stored >= CHAT_WIDTH_MIN) return stored;
+        } catch (_) { /* localStorage erişilemez (private mode vb.) */ }
+        return CHAT_WIDTH_DEFAULT;
+    });
+    const [isResizing, setIsResizing] = useState(false);
+    const dragStateRef = useRef(null); // { startX, startWidth }
+
+    const clampWidth = (w) => {
+        const max = Math.max(CHAT_WIDTH_MIN, Math.floor(window.innerWidth * CHAT_WIDTH_MAX_RATIO));
+        return Math.min(Math.max(w, CHAT_WIDTH_MIN), max);
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+        const onMove = (e) => {
+            const st = dragStateRef.current;
+            if (!st) return;
+            // Sol kenara yapışık handle: imleç sola hareket → genişlik artar
+            const next = clampWidth(st.startWidth + (st.startX - e.clientX));
+            setChatWidth(next);
+        };
+        const onUp = () => {
+            setIsResizing(false);
+            dragStateRef.current = null;
+            try { localStorage.setItem(CHAT_WIDTH_KEY, String(chatWidth)); } catch (_) { /* yok say */ }
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        const prevCursor = document.body.style.cursor;
+        const prevSelect = document.body.style.userSelect;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            document.body.style.cursor = prevCursor;
+            document.body.style.userSelect = prevSelect;
+        };
+    }, [isResizing, chatWidth]);
+
+    useEffect(() => {
+        const onResize = () => setChatWidth(w => clampWidth(w));
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+
+    const startResize = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragStateRef.current = { startX: e.clientX, startWidth: chatWidth };
+        setIsResizing(true);
+    };
+
+    const resetWidth = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = clampWidth(CHAT_WIDTH_DEFAULT);
+        setChatWidth(next);
+        try { localStorage.setItem(CHAT_WIDTH_KEY, String(next)); } catch (_) { /* yok say */ }
+    };
+
+    // ── Dosya ekleme yardımcıları ──────────────────────────────────────────
+    const addAttachedFiles = (incoming) => {
+        setAttachedFiles(prev => {
+            const existingIds = new Set(prev.map(f => f.id));
+            const fresh = incoming.filter(f => !existingIds.has(f.id));
+            const canAdd = MAX_ATTACH - prev.length;
+            if (fresh.length > canAdd) {
+                addToast({ type: 'error', message: `En fazla ${MAX_ATTACH} dosya ekleyebilirsiniz. ${fresh.length - canAdd} dosya eklenmedi.` });
+            }
+            return [...prev, ...fresh.slice(0, canAdd)];
+        });
+    };
+
+    const removeAttachedFile = (id) => setAttachedFiles(prev => prev.filter(f => f.id !== id));
+    const clearAttachedFiles = () => setAttachedFiles([]);
+    // ──────────────────────────────────────────────────────────────────────
 
     const handleNewChat = () => {
         setMessages([]);
         setInputValue('');
         setIsExpanded(false);
-        setDroppedFile(null);
+        clearAttachedFiles();
+        setActiveCommand(null);
         setCurrentSessionId(`session_${Date.now()}`);
         setIsSideOpen(true);
         setTimeout(() => { if (textareaRef.current) textareaRef.current.focus(); }, 300);
@@ -61,11 +151,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         if (!isSideOpen) {
             setIsSideOpen(true);
         } else {
-            // Mesaj balonlarına veya interaktif elemanlara tıklanınca kapanma
             const isNoToggle = e.target.closest('.no-toggle, button, input, textarea, a, summary');
-            if (!isNoToggle) {
-                setIsSideOpen(false);
-            }
+            if (!isNoToggle) setIsSideOpen(false);
         }
     };
 
@@ -93,11 +180,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isTyping]);
 
-    // Panel kapandığında, geçmiş menüsünü de kapat
     useEffect(() => {
-        if (!isSideOpen) {
-            setIsChatsOpen(false);
-        }
+        if (!isSideOpen) setIsChatsOpen(false);
     }, [isSideOpen]);
 
     useEffect(() => {
@@ -113,7 +197,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         }
     }, [inputValue, isExpanded, isSideOpen]);
 
-    // ── DRAG & DROP HANDLERS ─────────────────────────────────────────────────
+    // ── Drag & Drop ────────────────────────────────────────────────────────
     const handleDragOver = (e) => {
         if (e.dataTransfer.types.includes('application/json')) {
             e.preventDefault();
@@ -124,185 +208,211 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     };
 
     const handleDragLeave = (e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
-            setIsDragOver(false);
-        }
+        if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false);
     };
 
     const handleDrop = (e) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
-
         const raw = e.dataTransfer.getData('application/json');
         if (!raw) return;
-
         try {
             const fileData = JSON.parse(raw);
             if (fileData.type && fileData.type !== 'folder') {
-                setDroppedFile({
+                addAttachedFiles([{
+                    id: fileData.id || `drop_${Date.now()}`,
                     name: fileData.title || fileData.name,
                     type: fileData.type,
                     url: fileData.url || '',
-                });
+                    size: null,
+                    source: 'archive',
+                }]);
                 setTimeout(() => { if (textareaRef.current) textareaRef.current.focus(); }, 150);
             }
         } catch (_) { }
     };
-    // ────────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────
 
-    const handleSendMessage = async () => {
-        if (inputValue.trim() === '' || isTyping) return;
+    const handleSendMessage = async (overrideText) => {
+        const textPayload = overrideText ?? inputValue;
+        if (textPayload.trim() === '' || isTyping) return;
 
-        const textPayload = inputValue;
-        const fileContext = droppedFile ? { ...droppedFile } : null;
+        const filesSnapshot = [...attachedFiles];
 
         const userMsg = {
             id: Date.now(),
             text: textPayload,
             sender: 'user',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            fileContext,
+            attachedFiles: filesSnapshot.length ? filesSnapshot : undefined,
         };
 
-        // Boş streaming placeholder ekle
         const aiMsgId = Date.now() + 1;
         streamingMsgIdRef.current = aiMsgId;
+        const startedAt = Date.now();
         const aiPlaceholder = {
-            id: aiMsgId,
-            text: '',
-            sender: 'ai',
-            isError: false,
-            isStreaming: true,   // ← animasyon için flag
+            id: aiMsgId, text: '', sender: 'ai',
+            isError: false, isStreaming: true,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            ragUsed: false,
-            ragSources: [],
+            ragUsed: false, ragSources: [],
+            // Düşünme süreci paneli için meta
+            startedAt,
+            completedAt: null,
+            command: activeCommand ? { id: activeCommand.id, label: activeCommand.label } : null,
+            attachedFileNames: filesSnapshot.length ? filesSnapshot.map(f => f.name) : [],
+            userQuery: textPayload,
         };
 
         setMessages((prev) => [...prev, userMsg, aiPlaceholder]);
-        setInputValue('');
-        setIsExpanded(false);
+        if (!overrideText) { setInputValue(''); setIsExpanded(false); }
         setIsTyping(true);
+        clearAttachedFiles();
 
-        const fileOpts = fileContext ? { fileName: fileContext.name } : null;
+        // Dosya seçenekleri: tek dosya → file_name, çoklu → file_names
+        const fileOpts = filesSnapshot.length === 1
+            ? { fileName: filesSnapshot[0].name }
+            : filesSnapshot.length > 1
+                ? { fileNames: filesSnapshot.map(f => f.name) }
+                : null;
+
+        const commandOpts = activeCommand ? { commandId: activeCommand.id } : null;
+        setActiveCommand(null);
+
+        // Yeni stream için yeni AbortController — kullanıcı durdur basarsa abort()
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         await sendMessageStream(
             textPayload,
             currentSessionId,
             currentUser?.id,
             {
-                // Her gelen chunk'ı streaming mesajına ekle
                 onChunk: (chunk) => {
                     setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === aiMsgId
-                                ? { ...m, text: m.text + chunk }
-                                : m
-                        )
+                        prev.map((m) => m.id === aiMsgId ? { ...m, text: m.text + chunk } : m)
                     );
                 },
-                // Stream bitti — isStreaming kapat, RAG kaynakları sekme olarak aç
-                onDone: ({ rag_used, rag_sources, ui_action }) => {
+                onReplace: (newText) => {
+                    // Mesaj Revize Botu cevabı revize ettiğinde tüm baloncuk metni
+                    // güncellenmiş haliyle değiştirilir.
                     setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === aiMsgId
-                                ? { ...m, isStreaming: false, ragUsed: rag_used, ragSources: rag_sources }
-                                : m
-                        )
+                        prev.map((m) => m.id === aiMsgId ? { ...m, text: newText, wasRevised: true } : m)
+                    );
+                },
+                onDone: ({ rag_used, rag_sources, ui_action, model, provider, prompt_tokens, completion_tokens, duration_ms }) => {
+                    setMessages((prev) =>
+                        prev.map((m) => m.id === aiMsgId
+                            ? { ...m, isStreaming: false, ragUsed: rag_used, ragSources: rag_sources, completedAt: Date.now(), model, provider, promptTokens: prompt_tokens, completionTokens: completion_tokens, backendDurationMs: duration_ms }
+                            : m)
                     );
 
-                    // ── N8N_TRIGGERED: otomasyon tetiklendi bildirimi ────────────
                     if (ui_action?.command === 'N8N_TRIGGERED') {
                         const statusMsg = ui_action.status === 'ok'
                             ? `✅ **${ui_action.workflow}** otomasyonu başarıyla tetiklendi.`
                             : `⚠️ **${ui_action.workflow}** tetiklenmeye çalışıldı. ${ui_action.detail || ''}`;
                         setMessages(prev => prev.map(m =>
-                            m.id === aiMsgId
-                                ? { ...m, text: m.text ? m.text + '\n\n' + statusMsg : statusMsg }
-                                : m
+                            m.id === aiMsgId ? { ...m, text: m.text ? m.text + '\n\n' + statusMsg : statusMsg } : m
                         ));
                     }
 
-                    // ── OPEN_PDF_AT komutu: koordinatlı PDF viewer ──────────────────
+                    // Sekme açma sadece backend açıkça OPEN_PDF_AT istemişse (kullanıcı
+                    // belirli bir dosya hakkında soru sorduğunda set ediliyor).
+                    // Genel RAG'da sekme açmıyoruz — kullanıcı kaynak chip'lerine
+                    // tıklayarak istediğini açar.
                     if (ui_action?.command === 'OPEN_PDF_AT' && onOpenFile) {
                         const { doc_id, pdf_url, source_file, page, bbox } = ui_action;
-                        const url = doc_id
-                            ? `/api/archive/file/${doc_id}`
-                            : pdf_url || '';
-
+                        const url = doc_id ? `/api/archive/file/${doc_id}` : pdf_url || '';
                         if (url) {
                             const nameMatch = (source_file || '').match(/[^/\\]+$/);
                             const name = nameMatch ? nameMatch[0] : (source_file || 'Belge');
                             const tabKey = `pdf-${doc_id || name}-p${page || 1}`;
-
                             onOpenFile({
                                 id: tabKey,
                                 title: `📍 ${name}${page ? ` – Slayt ${page}` : ''}`,
-                                type: 'pdf',
-                                url,
-                                meta: {
-                                    page: page || 1,
-                                    highlightPage: page || 1,
-                                    bbox: bbox || null,
-                                },
+                                type: 'pdf', url,
+                                meta: { page: page || 1, highlightPage: page || 1, bbox: bbox || null },
                             });
                         }
-                    } else if (rag_used && rag_sources && rag_sources.length > 0 && onOpenFile) {
-                        // ── Fallback: koordinatsız kaynak açma (eski davranış) ──────
-                        const openedKeys = new Set();
-
-                        rag_sources.forEach(sourceObj => {
-                            if (typeof sourceObj === 'string') return;
-                            if (!sourceObj.page || sourceObj.page === 0) return;
-
-                            const key = `${sourceObj.file}_p${sourceObj.page}`;
-                            if (openedKeys.has(key)) return;
-                            openedKeys.add(key);
-
-                            const nameMatch = sourceObj.file.match(/[^/\\]+$/);
-                            const name = nameMatch ? nameMatch[0] : sourceObj.file;
-                            const extMatch = name.match(/\.([^.]+)$/);
-                            const ext = extMatch ? extMatch[1].toLowerCase() : 'pdf';
-
-                            const url = sourceObj.doc_id
-                                ? `/api/archive/file/${sourceObj.doc_id}`
-                                : '';
-
-                            onOpenFile({
-                                id: key,
-                                title: `${name} – Slayt ${sourceObj.page}`,
-                                type: ext === 'pptx' || ext === 'ppt' ? 'pdf' : ext,
-                                url,
-                                meta: {
-                                    page: sourceObj.page,
-                                    highlightPage: sourceObj.page,
-                                    bbox: sourceObj.bbox || null,
-                                }
-                            });
-                        });
                     }
 
                     setIsTyping(false);
                     streamingMsgIdRef.current = null;
-                },
 
-                // Hata — mesaj güncelle
+                    // Dinamik takip sorusu önerileri (Grok-stili). Mesaj balonunun altında
+                    // chip olarak gösterilir; AI'ın metin gövdesine eklenmez.
+                    (async () => {
+                        try {
+                            // En güncel AI metnini state'ten oku
+                            const finalAi = await new Promise((resolve) => {
+                                setMessages(prev => {
+                                    resolve((prev.find(m => m.id === aiMsgId)?.text) || '');
+                                    return prev;
+                                });
+                            });
+                            if (!finalAi || finalAi.length < 20) return;
+                            const res = await fetch('/api/chat/followups', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_message: textPayload,
+                                    bot_reply: finalAi,
+                                    max_count: 2,
+                                }),
+                            });
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            const qs = Array.isArray(data?.questions) ? data.questions.filter(Boolean) : [];
+                            if (qs.length === 0) return;
+                            setMessages(prev => prev.map(m =>
+                                m.id === aiMsgId ? { ...m, followups: qs } : m
+                            ));
+                        } catch (_) { /* sessizce yut */ }
+                    })();
+                },
                 onError: (errText) => {
                     setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === aiMsgId
-                                ? { ...m, text: errText, isStreaming: false, isError: true }
-                                : m
-                        )
+                        prev.map((m) => m.id === aiMsgId
+                            ? { ...m, text: errText, isStreaming: false, isError: true }
+                            : m)
                     );
                     setIsTyping(false);
                     streamingMsgIdRef.current = null;
+                    abortControllerRef.current = null;
+                },
+                onAbort: () => {
+                    // Kullanıcı durdurma butonuna bastı: o ana kadarki yanıtı koru,
+                    // streaming bayrağını düşür, "(durduruldu)" notu ekle.
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== aiMsgId) return m;
+                        const stub = m.text?.trim()
+                            ? m.text + '\n\n_— Yanıt durduruldu —_'
+                            : '_Yanıt başlamadan durduruldu._';
+                        return { ...m, text: stub, isStreaming: false, isAborted: true, completedAt: Date.now() };
+                    }));
+                    setIsTyping(false);
+                    streamingMsgIdRef.current = null;
+                    abortControllerRef.current = null;
                 },
             },
             fileOpts,
+            commandOpts,
+            controller.signal,
         );
+    };
 
-        setDroppedFile(null);
+    const handleStop = () => {
+        const c = abortControllerRef.current;
+        if (c && !c.signal.aborted) {
+            c.abort();
+        }
+    };
+
+    const handleEditAndResend = (msgId, newText) => {
+        const idx = messages.findIndex(m => m.id === msgId);
+        if (idx === -1) return;
+        setMessages(messages.slice(0, idx));
+        handleSendMessage(newText);
     };
 
     const handleKeyDown = (e) => {
@@ -318,26 +428,45 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] ${isSideOpen ? 'w-[27rem] cursor-default' : 'w-[68px] cursor-pointer hover:bg-stone-100'} relative bg-stone-50 border-l border-stone-200 shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
-                ${isDragOver ? 'border-[#378ADD] bg-[#E6F1FB]/40' : 'border-stone-200'}
+            style={isSideOpen ? { width: `${chatWidth}px` } : undefined}
+            className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans
+                ${isResizing ? '' : 'transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]'}
+                ${isSideOpen ? 'cursor-default' : 'w-[68px] cursor-pointer hover:bg-stone-100'}
+                relative bg-gradient-to-b from-stone-50 to-stone-100/30 border-l shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
+                ${isDragOver ? 'border-[#DC2626]/40 bg-[#FEF2F2]/30' : 'border-stone-200'}
             `}
         >
-            {/* Drop overlay göstergesi */}
+            {/* Sol kenar tutamak — sürükleyerek genişlet, çift tıkla sıfırla */}
+            {isSideOpen && (
+                <div
+                    onMouseDown={startResize}
+                    onDoubleClick={resetWidth}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Sürükleyerek genişliği ayarla (çift tıkla sıfırla)"
+                    className={`no-toggle absolute top-0 left-0 h-full w-1.5 z-30 cursor-col-resize group
+                        ${isResizing ? '' : 'transition-colors duration-150'}`}
+                >
+                    {/* görünür ince çubuk (hover/aktif durumunda kırmızı) */}
+                    <div className={`absolute inset-y-0 left-0 w-px transition-colors
+                        ${isResizing ? 'bg-[#DC2626]' : 'bg-transparent group-hover:bg-[#DC2626]/50'}
+                    `} />
+                </div>
+            )}
             {isDragOver && (
                 <div className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none">
-                    <div className="bg-white/90 border-2 border-dashed border-[#378ADD] rounded-2xl px-8 py-6 flex flex-col items-center gap-2 shadow-xl">
+                    <div className="bg-white/90 border-2 border-dashed border-[#DC2626]/50 rounded-2xl px-8 py-6 flex flex-col items-center gap-2 shadow-xl">
                         <span className="text-3xl">📎</span>
-                        <p className="text-sm font-semibold text-[#378ADD]">Dosyayı buraya bırak</p>
-                        <p className="text-xs text-stone-400">Bu dosya hakkında soru sorabilirsin</p>
+                        <p className="text-sm font-semibold text-[#DC2626]">Dosyayı buraya bırak</p>
+                        <p className="text-xs text-stone-400">
+                            {attachedFiles.length >= MAX_ATTACH
+                                ? `Maksimum ${MAX_ATTACH} dosya limitine ulaşıldı`
+                                : 'Bu dosya hakkında soru sorabilirsin'}
+                        </p>
                     </div>
                 </div>
             )}
 
-
-
-            {/* 2. ANA İÇERİK ALANI */}
             <div className="flex-1 flex flex-col min-w-0 h-full relative w-full bg-gradient-to-b from-stone-50 to-stone-100/30">
-                {/* ÜST KISIM */}
                 <RecentChats
                     isSideOpen={isSideOpen}
                     isChatsOpen={isChatsOpen}
@@ -347,13 +476,11 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     currentSessionId={currentSessionId}
                 />
 
-                {/* İÇERİK ALANLARI (Tıklanması veya Odaklanılması geçmişi kapatır) */}
                 <div
                     className="flex-1 flex flex-col min-w-0 overflow-hidden"
                     onClickCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
                     onFocusCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
                 >
-                    {/* ORTA KISIM (Mesajlar Alanı) */}
                     <MessageList
                         messages={messages}
                         isTyping={isTyping}
@@ -362,11 +489,12 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         isChatScrolling={isChatScrolling}
                         messagesEndRef={messagesEndRef}
                         handleNewChat={handleNewChat}
-                        setInputValue={setInputValue}
-                        setIsExpanded={setIsExpanded}
+                        onEditAndResend={handleEditAndResend}
+                        onSendFollowup={(q) => handleSendMessage(q)}
+                        currentUser={currentUser}
+                        currentSessionId={currentSessionId}
                     />
 
-                    {/* ALT KISIM (Input ve Hızlı Aksiyonlar) */}
                     <ChatInputArea
                         isSideOpen={isSideOpen}
                         inputValue={inputValue}
@@ -378,9 +506,15 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         handleTextareaScroll={handleTextareaScroll}
                         isTextareaScrolling={isTextareaScrolling}
                         textareaRef={textareaRef}
-                        droppedFile={droppedFile}
-                        onClearFile={() => setDroppedFile(null)}
+                        attachedFiles={attachedFiles}
+                        onAddFiles={addAttachedFiles}
+                        onRemoveFile={removeAttachedFile}
+                        maxAttach={MAX_ATTACH}
+                        maxBytes={MAX_BYTES}
                         isTyping={isTyping}
+                        onStop={handleStop}
+                        activeCommand={activeCommand}
+                        setActiveCommand={setActiveCommand}
                     />
                 </div>
             </div>

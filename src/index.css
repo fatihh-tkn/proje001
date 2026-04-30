@@ -6,30 +6,30 @@
 :root,
 [data-theme="dark"] {
   /* Header */
-  --th-header-bg: rgba(22, 22, 24, 0.92);
-  --th-header-border: #2a2a2d;
+  --th-header-bg: rgba(22, 19, 15, 0.92);
+  --th-header-border: #292524;
   /* Tab container */
-  --th-tab-wrap-bg: rgba(38, 38, 42, 0.7);
-  --th-tab-wrap-ring: rgba(55, 55, 58, 0.7);
+  --th-tab-wrap-bg: rgba(36, 33, 29, 0.7);
+  --th-tab-wrap-ring: rgba(50, 46, 42, 0.7);
   /* Tab renkler */
-  --th-tab-active-bg: #A01B1B;
+  --th-tab-active-bg: #DC2626;
   --th-tab-active-shadow: rgba(160, 27, 27, 0.35);
   --th-tab-active-ring: #8a1717;
   --th-tab-inactive-text: #6b7280;
   --th-tab-inactive-hover-text: #9ca3af;
   --th-tab-inactive-hover-bg: rgba(255, 255, 255, 0.05);
   /* Kapat butonu */
-  --th-close-wrap-border: #2a2a2d;
-  --th-close-wrap-bg: rgba(38, 38, 42, 0.4);
+  --th-close-wrap-border: #292524;
+  --th-close-wrap-bg: rgba(36, 33, 29, 0.4);
   /* Paylaş butonu */
-  --th-share-bg: #1c1c1e;
+  --th-share-bg: #1c1917;
   --th-share-text: #6b7280;
-  --th-share-border: #2a2a2d;
+  --th-share-border: #292524;
   --th-share-hover-bg: rgba(255, 255, 255, 0.04);
   --th-share-hover-text: #9ca3af;
   /* Ghost durum kutusu */
-  --th-ghost-bg: rgba(38, 38, 42, 0.4);
-  --th-ghost-border: rgba(55, 55, 58, 0.6);
+  --th-ghost-bg: rgba(36, 33, 29, 0.4);
+  --th-ghost-border: rgba(50, 46, 42, 0.6);
   --th-ghost-text: #64748b;
   /* Pencere başlık barı */
   --th-win-bar: linear-gradient(to right, rgba(138, 23, 23, 0.87), rgba(181, 32, 32, 0.87));
@@ -43,7 +43,7 @@
   --th-header-border: rgba(226, 232, 240, 0.9);
   --th-tab-wrap-bg: rgba(241, 245, 249, 0.8);
   --th-tab-wrap-ring: rgba(203, 213, 225, 0.8);
-  --th-tab-active-bg: #A01B1B;
+  --th-tab-active-bg: #DC2626;
   --th-tab-active-shadow: rgba(160, 27, 27, 0.25);
   --th-tab-active-ring: #8a1717;
   --th-tab-inactive-text: #64748b;

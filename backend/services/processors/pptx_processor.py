@@ -78,9 +78,18 @@ def convert_pptx_to_pdf(pptx_path: str, output_dir: str) -> str | None:
                 print(f"[PPTX->PDF] LibreOffice başarısız: {result.stderr[:200]}")
         except Exception as e:
             print(f"[PPTX->PDF] LibreOffice hatası: {e}")
-    else:
-        print("[PPTX->PDF] Dönüştürücü bulunamadı — yalnızca metin chunking.")
 
+    # Son çare: python-pptx + Pillow renderer fallback
+    try:
+        from services.processors.pptx_renderer import render_pptx_to_pdf
+        result_pdf = render_pptx_to_pdf(pptx_path, target_pdf)
+        if result_pdf and os.path.exists(result_pdf):
+            print(f"[PPTX->PDF] Renderer fallback başarılı: {result_pdf}")
+            return result_pdf
+    except Exception as e:
+        print(f"[PPTX->PDF] Renderer fallback hatası: {e}")
+
+    print("[PPTX->PDF] Hiçbir dönüştürücü çalışmadı.")
     return None
 
 

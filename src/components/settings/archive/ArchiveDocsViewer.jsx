@@ -79,6 +79,7 @@ const getFileVisual = (fileType) => {
     if (['mp4', 'avi', 'mov'].includes(t)) return { Icon: Film, color: 'text-pink-500', bg: 'bg-pink-50', border: 'border-pink-100' };
     if (['mp3', 'wav', 'ogg'].includes(t)) return { Icon: Music, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
     if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
+    if (t === 'bpmn') return { Icon: FileCode, color: 'text-teal-500', bg: 'bg-teal-50', border: 'border-teal-100' };
     return { Icon: File, color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100' };
 };
 
@@ -1195,7 +1196,7 @@ export default function ArchiveDocsViewer() {
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white text-[11px] font-medium rounded-md transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
-                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv" />
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv,.bpmn" />
                     </div>
                 </div>
 

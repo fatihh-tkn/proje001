@@ -580,7 +580,10 @@ def meta_guncelle(istek: MetaGuncelleRequest):
 
 @router.get("/file/{kimlik}")
 def dosya_getir(kimlik: str):
-    """Dosyayı tarayıcıda önizlemek için stream eder."""
+    """Dosyayı tarayıcıda önizlemek için stream eder.
+    PPT/PPTX için: meta.pdf_yolu varsa veya orijinal dosyanın yanında .pdf
+    bulunuyorsa onu döndürür (frontend PDF Viewer kullandığı için).
+    """
     with get_session() as db:
         belge = db.get(Belge, kimlik)
         if not belge or not belge.depolama_yolu:
@@ -591,14 +594,28 @@ def dosya_getir(kimlik: str):
         import mimetypes
         import urllib.parse
 
-        mime_type, _ = mimetypes.guess_type(belge.dosya_adi)
+        serve_path = belge.depolama_yolu
+        serve_name = belge.dosya_adi
+
+        if (belge.dosya_turu or "").lower() in ("pptx", "ppt"):
+            meta = belge.meta or {}
+            candidate = meta.get("pdf_yolu") or ""
+            if not candidate or not os.path.exists(candidate):
+                derived = os.path.splitext(belge.depolama_yolu)[0] + ".pdf"
+                if os.path.exists(derived):
+                    candidate = derived
+            if candidate and os.path.exists(candidate):
+                serve_path = candidate
+                serve_name = os.path.splitext(belge.dosya_adi)[0] + ".pdf"
+
+        mime_type, _ = mimetypes.guess_type(serve_name)
         if not mime_type:
             mime_type = "application/octet-stream"
 
-        encoded_filename = urllib.parse.quote(belge.dosya_adi)
+        encoded_filename = urllib.parse.quote(serve_name)
 
         return FileResponse(
-            path=belge.depolama_yolu,
+            path=serve_path,
             media_type=mime_type,
             headers={"Content-Disposition": f"inline; filename*=utf-8''{encoded_filename}"}
         )

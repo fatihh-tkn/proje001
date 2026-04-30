@@ -21,52 +21,52 @@ const MOD_OPTS = ['', 'FI', 'CO', 'MM', 'SD', 'HR', 'PP', 'ABAP', 'Fiori', 'Diğ
 const css = {
     section: {
         background: '#0f172a', border: '0.5px solid #2a2a2d',
-        borderRadius: 8, padding: '12px 14px', marginBottom: 10,
+        borderRadius: 10, padding: '18px 20px', marginBottom: 14,
     },
     secTitle: {
-        fontSize: 11, fontWeight: 500, color: '#f1f5f9',
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2,
+        fontSize: 15, fontWeight: 600, color: '#f1f5f9',
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4,
     },
     stepNum: {
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 18, height: 18, borderRadius: '50%',
-        background: '#334155', color: '#e2e8f0', fontSize: 9, fontWeight: 600, flexShrink: 0,
+        width: 24, height: 24, borderRadius: '50%',
+        background: '#334155', color: '#e2e8f0', fontSize: 12, fontWeight: 600, flexShrink: 0,
     },
-    hint: { fontSize: 9, color: '#64748b', marginBottom: 10 },
+    hint: { fontSize: 12, color: '#64748b', marginBottom: 14 },
     label: {
-        fontSize: 9, color: '#94a3b8', textTransform: 'uppercase',
-        letterSpacing: '0.04em', fontWeight: 500, marginBottom: 3,
+        fontSize: 12, color: '#94a3b8', textTransform: 'uppercase',
+        letterSpacing: '0.04em', fontWeight: 500, marginBottom: 5,
     },
     input: {
         width: '100%', background: '#1e293b', border: '1px solid #334155',
-        color: '#f1f5f9', padding: '7px 8px', borderRadius: 4,
-        fontSize: 11, outline: 'none', fontFamily: 'sans-serif',
+        color: '#f1f5f9', padding: '10px 12px', borderRadius: 6,
+        fontSize: 14, outline: 'none', fontFamily: 'sans-serif',
     },
     select: {
         width: '100%', background: '#1e293b', border: '1px solid #334155',
-        color: '#f1f5f9', padding: '7px 8px', borderRadius: 4,
-        fontSize: 11, outline: 'none', fontFamily: 'sans-serif', cursor: 'pointer',
+        color: '#f1f5f9', padding: '10px 12px', borderRadius: 6,
+        fontSize: 14, outline: 'none', fontFamily: 'sans-serif', cursor: 'pointer',
     },
     entryCard: {
-        background: '#1e293b', borderRadius: 6, padding: '10px 12px', marginBottom: 8,
+        background: '#1e293b', borderRadius: 8, padding: '14px 16px', marginBottom: 10,
     },
     entryHead: {
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10,
     },
     entryTitle: {
-        fontSize: 9, fontWeight: 500, color: '#94a3b8',
+        fontSize: 12, fontWeight: 600, color: '#94a3b8',
         textTransform: 'uppercase', letterSpacing: '0.04em',
     },
     removeBtn: {
         background: 'transparent', border: 'none', color: '#64748b',
-        cursor: 'pointer', fontSize: 14, padding: '2px 6px', borderRadius: 4,
+        cursor: 'pointer', fontSize: 18, padding: '4px 8px', borderRadius: 4,
         lineHeight: 1, fontFamily: 'sans-serif',
     },
     addBtn: {
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         width: '100%', background: 'transparent',
         border: '0.5px dashed #475569', color: '#64748b',
-        fontSize: 10, padding: '7px 10px', borderRadius: 6,
+        fontSize: 13, padding: '10px 14px', borderRadius: 8,
         cursor: 'pointer', fontFamily: 'sans-serif', transition: 'all 0.15s',
     },
 };
@@ -269,17 +269,17 @@ export default function UserVeriGirisi({ currentUser }) {
         <div style={{ fontFamily: 'sans-serif', padding: '0 0 1rem' }}>
 
             {/* ─── Başlık ─── */}
-            <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '0.5px solid #2a2a2d' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', marginBottom: 2 }}>
+            <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '0.5px solid #2a2a2d' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>
                     Bilgilerimi Gir
                 </div>
-                <div style={{ fontSize: 9, color: '#64748b' }}>
+                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
                     Kişisel bilgilerini, kullandığın modülleri ve dış eğitim/sertifikalarını buradan girebilirsin.
                 </div>
                 <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
                     background: 'rgba(55,138,221,0.12)', color: '#60a5fa', border: '1px solid rgba(55,138,221,0.3)',
-                    fontSize: 9, padding: '2px 7px', borderRadius: 4, marginTop: 6,
+                    fontSize: 11, padding: '3px 10px', borderRadius: 4, marginTop: 8,
                 }}>● Kullanıcı bilgi girişi</span>
             </div>
 
@@ -323,7 +323,7 @@ export default function UserVeriGirisi({ currentUser }) {
             <div style={css.section}>
                 <div style={css.secTitle}><span style={css.stepNum}>2</span>Kullandığım modüller</div>
                 <div style={css.hint}>Aktif olarak kullandığın tüm SAP modüllerini işaretle · birden fazla seçebilirsin</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {MODULES.map(m => {
                         const active = selectedModules.includes(m);
                         const c = MOD_COLORS[m];
@@ -332,7 +332,7 @@ export default function UserVeriGirisi({ currentUser }) {
                                 key={m}
                                 onClick={() => toggleMod(m)}
                                 style={{
-                                    fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                                    fontSize: 13, padding: '8px 14px', borderRadius: 6, cursor: 'pointer',
                                     fontFamily: 'sans-serif', transition: 'all 0.15s',
                                     background: active ? c.bg : '#1e293b',
                                     color: active ? c.text : '#64748b',
@@ -351,7 +351,7 @@ export default function UserVeriGirisi({ currentUser }) {
                 <div style={css.secTitle}>
                     <span style={css.stepNum}>3</span>
                     Dışarıdan aldığım eğitimler
-                    <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 4 }}>Dış</span>
+                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 6 }}>Dış</span>
                 </div>
                 <div style={css.hint}>Udemy, Coursera, openSAP gibi platformlardan aldığın eğitimler</div>
 
@@ -378,7 +378,7 @@ export default function UserVeriGirisi({ currentUser }) {
                 <div style={css.secTitle}>
                     <span style={css.stepNum}>4</span>
                     Dış sertifikalar
-                    <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 4 }}>Dış</span>
+                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 6 }}>Dış</span>
                 </div>
                 <div style={css.hint}>SAP, PMI, Microsoft gibi kurumlardan aldığın sertifikalar</div>
 
@@ -401,10 +401,10 @@ export default function UserVeriGirisi({ currentUser }) {
             </div>
 
             {/* ─── Aksiyonlar ─── */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, paddingTop: 12, borderTop: '0.5px solid #2a2a2d' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, paddingTop: 16, borderTop: '0.5px solid #2a2a2d' }}>
                 {toast && (
-                    <span style={{ marginRight: 'auto', fontSize: 10, color: '#34d399', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <CheckCircle size={12} /> Bilgiler kaydedildi
+                    <span style={{ marginRight: 'auto', fontSize: 13, color: '#34d399', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle size={16} /> Bilgiler kaydedildi
                     </span>
                 )}
                 {!toast && <span style={{ marginRight: 'auto' }} />}
@@ -412,8 +412,8 @@ export default function UserVeriGirisi({ currentUser }) {
                 <button
                     style={{
                         background: 'transparent', color: '#94a3b8',
-                        border: '0.5px solid #475569', fontSize: 10,
-                        padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'sans-serif',
+                        border: '0.5px solid #475569', fontSize: 13,
+                        padding: '9px 18px', borderRadius: 6, cursor: 'pointer', fontFamily: 'sans-serif',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.color = '#f1f5f9'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
@@ -426,7 +426,7 @@ export default function UserVeriGirisi({ currentUser }) {
                     disabled={loading}
                     style={{
                         background: loading ? '#94a3b8' : '#378ADD', color: '#fff', border: 'none',
-                        fontSize: 11, fontWeight: 500, padding: '7px 16px',
+                        fontSize: 14, fontWeight: 600, padding: '10px 24px',
                         borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'sans-serif',
                     }}
                     onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#185FA5'; }}

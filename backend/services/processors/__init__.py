@@ -30,72 +30,78 @@ def dispatch(
 ) -> list[dict]:
     """
     Dosya uzantısına göre doğru parser'ı seçer ve chunk listesi döner.
+    İçsel parser hataları yakalanır; boş liste yerine hata chunk'ı döner.
     """
     ext = ext.lower().lstrip(".")
+    basename = original_name or os.path.basename(file_path)
 
-    if ext == "bpmn":
-        from services.bpmn_processor import parse_bpmn
-        return parse_bpmn(file_path, original_name=original_name)
-
-    if ext in ("pdf",):
-        from services.processor import analyze_pdf_with_vision
-        return analyze_pdf_with_vision(file_path, use_vision=use_vision, original_name=original_name)
-
-    if ext in ("pptx", "ppt"):
-        from services.processors.pptx_processor import parse_pptx
-        return parse_pptx(file_path, original_name=original_name, use_vision=use_vision)
-
-    if ext in ("png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"):
-        from services.processors.image_processor import parse_image
-        return parse_image(file_path, original_name=original_name)
-
-    if ext in ("xlsx", "xls", "csv"):
-        # Excel / CSV dosyaları vektörleştirilmez — sadece arşivleme ve görüntüleme.
-        basename = original_name or os.path.basename(file_path)
+    def _err_chunk(msg: str) -> list[dict]:
         return [{
-            "id":   f"archive-only-{uuid.uuid4()}",
-            "text": (
-                f"[ARŞİV] {basename} dosyası yapay zeka ile işlenmemiştir. "
-                f"Bu dosya ({ext.upper()}) yalnızca görüntüleme ve arşivleme amacıyla kaydedilmiştir. "
-                f"İçeriği hakkında soru soramazsınız, ancak dosyayı arşivden açarak tabloları inceleyebilirsiniz."
-            ),
-            "metadata": {
-                "source":        basename,
-                "type":          "archive_only",
-                "ext":           ext,
-                "is_searchable": False,
-                "page":          0,
-                "chunk_index":   0,
-            }
+            "id": f"error-{uuid.uuid4()}",
+            "text": msg,
+            "metadata": {"source": basename, "type": "error", "page": 0},
         }]
 
-    if ext in ("txt", "md", "docx", "doc"):
-        from services.processors.text_processor import parse_text
-        return parse_text(file_path, original_name=original_name)
+    try:
+        if ext == "bpmn":
+            from services.bpmn_processor import parse_bpmn
+            return parse_bpmn(file_path, original_name=original_name)
 
-    # ── Ses ve Video → Whisper Transkripsiyon ──────────────────────
-    if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
-               "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
-        from services.processors.audio_processor import parse_audio
-        res = parse_audio(file_path, original_name=original_name, task_id=task_id, model_name=whisper_model, whisper_device=whisper_device)
+        if ext in ("pdf",):
+            from services.processor import analyze_pdf_with_vision
+            return analyze_pdf_with_vision(file_path, use_vision=use_vision, original_name=original_name)
 
-        # parse_audio bazen dict {"chunks": [...]}, bazen düz list döndürür.
-        # Her iki durumu da güvenle işle:
-        if isinstance(res, dict):
-            chunks_out = res.get("chunks", [])
-        elif isinstance(res, list):
-            chunks_out = res
-        else:
-            chunks_out = []
+        if ext in ("pptx", "ppt"):
+            from services.processors.pptx_processor import parse_pptx
+            return parse_pptx(file_path, original_name=original_name, use_vision=use_vision)
 
-        # Chunk listesi tamamen boşsa tek bir hata chunk'ı ekle (UI'da boş ekran yerine mesaj görünsün)
-        if not chunks_out:
-            chunks_out = [{
-                "id":   f"empty-audio-{uuid.uuid4()}",
-                "text": f"[{original_name or os.path.basename(file_path)}] Ses/video dosyasından içerik çıkarılamadı.",
-                "metadata": {"source": original_name or os.path.basename(file_path), "type": "error", "ext": ext, "page": 0}
+        if ext in ("png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"):
+            from services.processors.image_processor import parse_image
+            return parse_image(file_path, original_name=original_name)
+
+        if ext in ("xlsx", "xls", "csv"):
+            return [{
+                "id":   f"archive-only-{uuid.uuid4()}",
+                "text": (
+                    f"[ARŞİV] {basename} dosyası yapay zeka ile işlenmemiştir. "
+                    f"Bu dosya ({ext.upper()}) yalnızca görüntüleme ve arşivleme amacıyla kaydedilmiştir. "
+                    f"İçeriği hakkında soru soramazsınız, ancak dosyayı arşivden açarak tabloları inceleyebilirsiniz."
+                ),
+                "metadata": {
+                    "source":        basename,
+                    "type":          "archive_only",
+                    "ext":           ext,
+                    "is_searchable": False,
+                    "page":          0,
+                    "chunk_index":   0,
+                }
             }]
-        return chunks_out
+
+        if ext in ("txt", "md", "docx", "doc"):
+            from services.processors.text_processor import parse_text
+            return parse_text(file_path, original_name=original_name)
+
+        if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
+                   "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
+            from services.processors.audio_processor import parse_audio
+            res = parse_audio(file_path, original_name=original_name, task_id=task_id,
+                              model_name=whisper_model, whisper_device=whisper_device)
+            if isinstance(res, dict):
+                chunks_out = res.get("chunks", [])
+            elif isinstance(res, list):
+                chunks_out = res
+            else:
+                chunks_out = []
+            if not chunks_out:
+                chunks_out = _err_chunk(f"[{basename}] Ses/video dosyasından içerik çıkarılamadı.")
+            return chunks_out
+
+    except Exception as parser_err:
+        import logging as _log
+        _log.getLogger("dispatch").error(
+            "Parser hatası [%s / .%s]: %s", basename, ext, parser_err, exc_info=True
+        )
+        return _err_chunk(f"[{basename}] Dosya işlenirken hata: {parser_err}")
 
     # Bilinmeyen format
     basename = original_name or os.path.basename(file_path)

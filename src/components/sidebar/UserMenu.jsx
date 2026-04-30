@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, BarChart2, MessageSquare } from 'lucide-react';
+import { X, User, BarChart2, MessageSquare, AlertTriangle } from 'lucide-react';
 
 const UserMenu = ({ isOpen, onClose, onSelect, isCollapsed, currentUser }) => {
     const menuRef = useRef(null);
@@ -18,9 +18,10 @@ const UserMenu = ({ isOpen, onClose, onSelect, isCollapsed, currentUser }) => {
     }, [isOpen, onClose]);
 
     const items = [
-        { id: 'profil',   label: 'Profil',       Icon: User,            color: '#A01B1B' },
-        { id: 'egitim',   label: 'Eğitimlerim',  Icon: BarChart2,       color: '#378ADD' },
-        { id: 'talepler', label: 'Taleplerim',   Icon: MessageSquare,   color: '#10b981' },
+        { id: 'profil',   label: 'Profil',           Icon: User,            color: '#DC2626' },
+        { id: 'egitim',   label: 'Eğitimlerim',      Icon: BarChart2,       color: '#378ADD' },
+        { id: 'talepler', label: 'Taleplerim',       Icon: MessageSquare,   color: '#10b981' },
+        { id: 'hatalar',  label: 'Çözdüğüm Hatalar', Icon: AlertTriangle,   color: '#A01B1B' },
     ];
 
     return (

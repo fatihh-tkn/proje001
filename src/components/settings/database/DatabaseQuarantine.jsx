@@ -176,9 +176,9 @@ const DatabaseQuarantine = ({
                         </div>
 
                         {saveError && (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-2 flex items-center gap-2 px-4 py-3 bg-[#FCEBEB] border border-[#F0C0C0] rounded-xl shrink-0">
-                                <AlertTriangle size={16} className="text-[#791F1F] shrink-0" />
-                                <p className="text-[12px] font-medium text-[#791F1F]">{saveError}</p>
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-2 flex items-center gap-2 px-4 py-3 bg-[#FEF2F2] border border-[#F0C0C0] rounded-xl shrink-0">
+                                <AlertTriangle size={16} className="text-[#991B1B] shrink-0" />
+                                <p className="text-[12px] font-medium text-[#991B1B]">{saveError}</p>
                             </motion.div>
                         )}
 

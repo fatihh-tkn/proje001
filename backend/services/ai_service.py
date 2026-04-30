@@ -163,8 +163,13 @@ def _fetch_chat_memory(session_id: str, query: str) -> str:
         if safe_col_name in vector_db.list_collections():
             results = vector_db.query(collection_name=safe_col_name, query_texts=[query], n_results=2)
             docs = results.get("documents", [[]])[0]
-            if docs:
-                return "\n\n".join(docs)
+            dists = results.get("distances", [[]])[0]
+            valid_docs = []
+            for doc, dist in zip(docs, dists):
+                if dist <= SETTINGS.LLM_PRE_FILTER_DISTANCE_THRESHOLD:
+                    valid_docs.append(doc)
+            if valid_docs:
+                return "\n\n".join(valid_docs)
     except Exception as e:
         logger.warning("[CHAT-RAG QUERY] Sohbet hafızası sorgulanamadı: %s", e)
     return ""
@@ -254,6 +259,54 @@ async def _trigger_n8n_by_name(workflow_name: str, payload: dict) -> dict:
         return {"status": "error", "detail": str(e)}
 
 
+def _fetch_zli_report_matches(query: str, limit: int = 5) -> list[dict]:
+    """
+    SQL üzerinden basit token-bazlı arama (zli_raporlar tablosu).
+    /api/zli-raporlar/search ile aynı puanlama mantığı; AIService bu çağrıyı
+    threadpool'da yapar (sync DB).
+    """
+    from database.sql.session import get_session
+    from database.sql.models import ZliRapor
+
+    sorgu = (query or "").strip()
+    if not sorgu:
+        return []
+    tokens = [t for t in sorgu.split() if len(t) >= 2][:8] or [sorgu]
+
+    with get_session() as db:
+        rows = db.query(ZliRapor).filter(ZliRapor.aktif_mi == True).all()  # noqa: E712
+
+        def score(r: ZliRapor) -> float:
+            kod   = (r.kod or "").lower()
+            ad    = (r.ad or "").lower()
+            acik  = (r.aciklama or "").lower()
+            alan  = (r.kullanim_alani or "").lower()
+            s = 0.0
+            for tok in tokens:
+                t = tok.lower()
+                if t in kod:   s += 4.0
+                if t in ad:    s += 3.0
+                if t in acik:  s += 1.5
+                if t in alan:  s += 1.0
+            return s
+
+        scored = [(r, score(r)) for r in rows]
+        scored = [(r, sc) for r, sc in scored if sc > 0]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        return [
+            {
+                "kod":            r.kod,
+                "ad":             r.ad,
+                "aciklama":       r.aciklama,
+                "modul":          r.modul,
+                "kullanim_alani": r.kullanim_alani,
+                "score":          round(sc, 2),
+            }
+            for r, sc in scored[:limit]
+        ]
+
+
 def _truncate(text: str, limit: int = None) -> str:
     limit = limit or SETTINGS.CHUNK_CHAR_LIMIT
     if len(text) <= limit:
@@ -334,7 +387,17 @@ def _build_semantic_context(
 
         if hybrid_results:
             # Hybrid Search başarılı — sonuçları chromadb_kimlik listesine çevir
-            hybrid_ids = [r["chromadb_kimlik"] for r in hybrid_results if r.get("chromadb_kimlik")]
+            hybrid_ids = []
+            for r in hybrid_results:
+                cid = r.get("chromadb_kimlik")
+                # Dinamik alaka filtresi: rerank_score veya rrf_score
+                rerank = r.get("rerank_score")
+                rrf = r.get("rrf_score", 0) or 0
+                score = float(rerank) if rerank is not None else float(rrf)
+                
+                # Sadece genel bir filtre: Eğer skor aşırı düşükse (ilkisizse) ekleme
+                if score >= 0.01 and cid:
+                    hybrid_ids.append(cid)
 
             if hybrid_ids:
                 # ChunkGraph ile komşu genişletmesi
@@ -387,25 +450,28 @@ def _build_semantic_context(
                         # Hybrid arama bilgisi — hangi yöntemle bulunduğunu işaretle
                         hybrid_info = ""
                         chroma_id = ctx.get("chroma_id", "")
+                        rrf_score = 0.0
+                        rerank_score = None
                         for hr in hybrid_results:
                             if hr.get("chromadb_kimlik") == chroma_id:
                                 methods = []
                                 if hr.get("in_vector"): methods.append("Vektör")
                                 if hr.get("in_fts"):    methods.append("FTS")
-                                rrf = hr.get("rrf_score", 0)
-                                rerank = hr.get("rerank_score")
-                                score_str = f"RRF:{rrf:.4f}"
-                                if rerank is not None:
-                                    score_str += f" | ReRank:{rerank:.4f}"
+                                rrf_score = float(hr.get("rrf_score", 0) or 0)
+                                rerank_score = hr.get("rerank_score")
+                                score_str = f"RRF:{rrf_score:.4f}"
+                                if rerank_score is not None:
+                                    score_str += f" | ReRank:{float(rerank_score):.4f}"
                                 hybrid_info = f" [{'+'.join(methods)} | {score_str}]"
                                 break
 
                         header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + f"{hybrid_info}]"
                         parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
 
-                        # UI Action
-                        if not best_ui_action:
-                            import urllib.parse
+                        # UI Action — sadece kullanıcı belirli bir dosyaya soru soruyorsa
+                        # otomatik sekme aç. Genel RAG'da AI alaka derecesini chip listesinde
+                        # bildirir; sekme açılmaz.
+                        if file_name and not best_ui_action:
                             pdf_url = (
                                 f"/api/archive/file/{doc_info.get('id')}"
                                 if doc_info.get("id")
@@ -427,6 +493,15 @@ def _build_semantic_context(
                             "page":             page,
                             "bbox":             bbox,
                             "doc_id":           doc_info.get("id"),
+                            "element_id":       ctx.get("element_id"),
+                            "element_name":     ctx.get("element_name"),
+                            "image_path":       ctx.get("image_path"),
+                            "slide_w":          ctx.get("slide_w"),
+                            "slide_h":          ctx.get("slide_h"),
+                            "chunk_type":       ctx.get("chunk_type"),
+                            # Alaka skoru — frontend ilgisiz chip'leri eler.
+                            # Rerank varsa onu, yoksa RRF'i kullan; yüksek = daha alakalı.
+                            "score":            float(rerank_score) if rerank_score is not None else rrf_score,
                         })
 
             if parts:
@@ -508,8 +583,8 @@ def _build_semantic_context(
                         header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + "]"
                         parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
 
-                        if not best_ui_action:
-                            import urllib.parse
+                        # UI Action — sadece dosya QA modunda otomatik aç
+                        if file_name and not best_ui_action:
                             pdf_url = (
                                 f"/api/archive/file/{doc_info.get('id')}"
                                 if doc_info.get("id")
@@ -524,13 +599,27 @@ def _build_semantic_context(
                                 "doc_id":      doc_info.get("id"),
                             }
 
+                        # Chroma cosine distance: küçük = daha yakın.
+                        # Frontend için score = 1 - distance (büyük = alakalı) olarak normalize.
+                        cur_chroma_id = ctx["chroma_id"]
+                        cur_dist = next(
+                            (dists[i] for i, c in enumerate(chroma_ids) if c == cur_chroma_id and i < len(dists)),
+                            None,
+                        )
+                        cur_score = (1.0 - float(cur_dist)) if cur_dist is not None else 0.0
+
                         sources.append({
                             "file":             src,
                             "location_marker":  marker,
-                            "chroma_id":        ctx["chroma_id"],
+                            "chroma_id":        cur_chroma_id,
                             "page":             page,
                             "bbox":             bbox,
                             "doc_id":           doc_info.get("id"),
+                            "image_path":       ctx.get("image_path"),
+                            "slide_w":          ctx.get("slide_w"),
+                            "slide_h":          ctx.get("slide_h"),
+                            "chunk_type":       ctx.get("chunk_type"),
+                            "score":            cur_score,
                         })
 
             except Exception as ex:
@@ -556,6 +645,7 @@ class AIService:
         ip: str = "127.0.0.1",
         mac: str = "00:00:00:00",
         user_id: str | None = None,
+        command: str | None = None,
     ) -> tuple[str, bool, list[dict], dict | None]:
         """
         Döner: (yanıt_metni, rag_kullanıldı_mı, kaynak_listesi, ui_action)
@@ -617,8 +707,67 @@ class AIService:
                 system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
             if agent_config.get("negative_prompt"):
                 system_intro += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER (KISITLAMALAR)]\n{agent_config['negative_prompt']}"
-            if agent_config.get("can_ask_follow_up"):
-                system_intro += f"\n\nYazının sonuna kullanıcının sorabileceği 1 veya 2 adet takip sorusu önerisi ekle. Bunu kalın yazıyla 'Önerilen Takip Sorusu:' formatında yap."
+
+        # ── Hızlı Aksiyon: Hata Çözümü ───────────────────────────────────────
+        if command == "error_solve":
+            system_intro += (
+                "\n\n[HATA ÇÖZÜMÜ MODU]\n"
+                "Kullanıcının mesajı bir SAP/sistem hatası hakkında. "
+                "Cevabını AŞAĞIDAKİ tek bir JSON kod bloğu olarak ver. "
+                "JSON dışında HİÇBİR metin yazma. Eksik bilgi varsa ilgili alanı boş bırak veya tahmin etmeden makul varsayılan kullan.\n\n"
+                "```json\n"
+                "{\n"
+                '  "type": "error_solution",\n'
+                '  "id": "<hata_kodu_ör_ME083>",\n'
+                '  "title": "<kısa_başlık>",\n'
+                '  "module": "<SAP_modülü_ör_MM/PP/SD>",\n'
+                '  "severity": "low|medium|high|critical",\n'
+                '  "frequency": <int_geçmişte_kaç_kez_görüldü_bilinmiyorsa_0>,\n'
+                '  "summary": "<1-2_cümle_genel_özet>",\n'
+                '  "cause": "<hatanın_tespit_edilen_nedeni>",\n'
+                '  "steps": [\n'
+                '    {"title": "<adım_başlığı>", "tcode": "<varsa_T-kod>", "detail": "<detay>"}\n'
+                "  ],\n"
+                '  "docs": [{"name": "<dosya_adı>", "page": <int|null>}],\n'
+                '  "similar": [{"code": "<hata_kodu>", "title": "<başlık>", "count": <int>}]\n'
+                "}\n"
+                "```"
+            )
+
+        # ── Hızlı Aksiyon: Z'li Rapor Sorgusu ────────────────────────────────
+        if command == "zli_report_query":
+            zli_matches = await run_in_threadpool(_fetch_zli_report_matches, user_message, 5)
+            matches_block = "(eşleşme yok)"
+            if zli_matches:
+                lines = []
+                for m in zli_matches:
+                    parca = f"- {m['kod']}: {m['ad']}"
+                    if m.get("modul"):
+                        parca += f" [{m['modul']}]"
+                    parca += f"\n    Açıklama: {m['aciklama']}"
+                    if m.get("kullanim_alani"):
+                        parca += f"\n    Kullanım: {m['kullanim_alani']}"
+                    lines.append(parca)
+                matches_block = "\n".join(lines)
+
+            system_intro += (
+                "\n\n[Z'Lİ RAPOR SORGUSU MODU]\n"
+                "Kullanıcı sistemde yüklü Z'li raporlardan birini arıyor. "
+                "Aşağıda SQL'den gelen aday raporlar var; en uygun olanı ve "
+                "alternatifleri seç. Eşleşme yoksa best_match=null ver.\n\n"
+                f"ADAY RAPORLAR:\n{matches_block}\n\n"
+                "Cevabını AŞAĞIDAKİ tek bir JSON kod bloğu olarak ver. "
+                "JSON dışında HİÇBİR metin yazma.\n\n"
+                "```json\n"
+                "{\n"
+                '  "type": "zli_report_query",\n'
+                '  "query": "<kullanıcının_isteğinin_kısa_özeti>",\n'
+                '  "best_match": {"kod": "...", "ad": "...", "aciklama": "...", "modul": "...", "kullanim_alani": "...", "neden": "<neden_uygun>"} | null,\n'
+                '  "alternatives": [{"kod": "...", "ad": "...", "aciklama": "..."}],\n'
+                '  "no_match_reason": "<eşleşme_yoksa_kısa_açıklama_yoksa_boş>"\n'
+                "}\n"
+                "```"
+            )
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -781,6 +930,7 @@ class AIService:
         ip: str = "127.0.0.1",
         mac: str = "00:00:00:00",
         user_id: str | None = None,
+        command: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         SSE formatında text chunk'ları yield eder.
@@ -820,6 +970,19 @@ class AIService:
         # ── İşlem Botu: Önce aksiyon kararı al ──────────────────────────
         n8n_ui_action = await _try_route_and_trigger(user_message)
 
+        # ── İstem Revize Botu (aktif ise) — kullanıcı mesajını LLM'e
+        # göndermeden önce profesyonelleştirir / detaylandırır.
+        prompt_bot = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_prompt_001")
+        if prompt_bot and (prompt_bot.get("prompt") or "").strip() and len((user_message or "").strip()) >= 3:
+            try:
+                revised = await AIService.revise_prompt(user_message)
+                if revised and revised.strip() and revised.strip() != user_message.strip():
+                    logger.info("[PROMPT-BOT] Mesaj revize edildi (orig=%d → revised=%d karakter)",
+                                len(user_message), len(revised))
+                    user_message = revised.strip()
+            except Exception as _e:
+                logger.warning("[PROMPT-BOT] Revize hatası, orijinal mesaj kullanılıyor: %s", _e)
+
         # RAG bağlamı
         ui_action = None
         if file_name:
@@ -840,8 +1003,67 @@ class AIService:
                 system_intro = f"{agent_config['prompt']}\n\n{system_intro}"
             if agent_config.get("negative_prompt"):
                 system_intro += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER (KISITLAMALAR)]\n{agent_config['negative_prompt']}"
-            if agent_config.get("can_ask_follow_up"):
-                system_intro += f"\n\nYazının sonuna kullanıcının sorabileceği 1 veya 2 adet takip sorusu önerisi ekle. Bunu kalın yazıyla 'Önerilen Takip Sorusu:' formatında yap."
+
+        # ── Hızlı Aksiyon: Hata Çözümü ───────────────────────────────────────
+        if command == "error_solve":
+            system_intro += (
+                "\n\n[HATA ÇÖZÜMÜ MODU]\n"
+                "Kullanıcının mesajı bir SAP/sistem hatası hakkında. "
+                "Cevabını AŞAĞIDAKİ tek bir JSON kod bloğu olarak ver. "
+                "JSON dışında HİÇBİR metin yazma. Eksik bilgi varsa ilgili alanı boş bırak veya tahmin etmeden makul varsayılan kullan.\n\n"
+                "```json\n"
+                "{\n"
+                '  "type": "error_solution",\n'
+                '  "id": "<hata_kodu_ör_ME083>",\n'
+                '  "title": "<kısa_başlık>",\n'
+                '  "module": "<SAP_modülü_ör_MM/PP/SD>",\n'
+                '  "severity": "low|medium|high|critical",\n'
+                '  "frequency": <int_geçmişte_kaç_kez_görüldü_bilinmiyorsa_0>,\n'
+                '  "summary": "<1-2_cümle_genel_özet>",\n'
+                '  "cause": "<hatanın_tespit_edilen_nedeni>",\n'
+                '  "steps": [\n'
+                '    {"title": "<adım_başlığı>", "tcode": "<varsa_T-kod>", "detail": "<detay>"}\n'
+                "  ],\n"
+                '  "docs": [{"name": "<dosya_adı>", "page": <int|null>}],\n'
+                '  "similar": [{"code": "<hata_kodu>", "title": "<başlık>", "count": <int>}]\n'
+                "}\n"
+                "```"
+            )
+
+        # ── Hızlı Aksiyon: Z'li Rapor Sorgusu ────────────────────────────────
+        if command == "zli_report_query":
+            zli_matches = await run_in_threadpool(_fetch_zli_report_matches, user_message, 5)
+            matches_block = "(eşleşme yok)"
+            if zli_matches:
+                lines = []
+                for m in zli_matches:
+                    parca = f"- {m['kod']}: {m['ad']}"
+                    if m.get("modul"):
+                        parca += f" [{m['modul']}]"
+                    parca += f"\n    Açıklama: {m['aciklama']}"
+                    if m.get("kullanim_alani"):
+                        parca += f"\n    Kullanım: {m['kullanim_alani']}"
+                    lines.append(parca)
+                matches_block = "\n".join(lines)
+
+            system_intro += (
+                "\n\n[Z'Lİ RAPOR SORGUSU MODU]\n"
+                "Kullanıcı sistemde yüklü Z'li raporlardan birini arıyor. "
+                "Aşağıda SQL'den gelen aday raporlar var; en uygun olanı ve "
+                "alternatifleri seç. Eşleşme yoksa best_match=null ver.\n\n"
+                f"ADAY RAPORLAR:\n{matches_block}\n\n"
+                "Cevabını AŞAĞIDAKİ tek bir JSON kod bloğu olarak ver. "
+                "JSON dışında HİÇBİR metin yazma.\n\n"
+                "```json\n"
+                "{\n"
+                '  "type": "zli_report_query",\n'
+                '  "query": "<kullanıcının_isteğinin_kısa_özeti>",\n'
+                '  "best_match": {"kod": "...", "ad": "...", "aciklama": "...", "modul": "...", "kullanim_alani": "...", "neden": "<neden_uygun>"} | null,\n'
+                '  "alternatives": [{"kod": "...", "ad": "...", "aciklama": "..."}],\n'
+                '  "no_match_reason": "<eşleşme_yoksa_kısa_açıklama_yoksa_boş>"\n'
+                "}\n"
+                "```"
+            )
 
         # ── Chat-RAG ─────────────────────────────────────────────────────────
         chat_memory_text = await run_in_threadpool(_fetch_chat_memory, session_id, user_message)
@@ -994,9 +1216,23 @@ class AIService:
 
             await run_in_threadpool(add_log_to_db, log_entry)
 
+            # ── Mesaj Revize Botu (aktif ise) — AI cevabını kullanıcıya
+            # göstermeden önce üslup/format açısından profesyonelleştir.
+            # Frontend 'replace' event'i alınca baloncuğun metnini değiştirir.
+            msg_bot = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
+            if msg_bot and (msg_bot.get("prompt") or "").strip() and full_reply.strip():
+                try:
+                    revised = await AIService.revise_message(full_reply)
+                    if revised and revised.strip() and revised.strip() != full_reply.strip():
+                        logger.info("[MSG-BOT] Cevap revize edildi (orig=%d → revised=%d karakter)",
+                                    len(full_reply), len(revised))
+                        yield f"data: {json.dumps({'type': 'replace', 'text': revised})}\n\n"
+                except Exception as _e:
+                    logger.warning("[MSG-BOT] Revize hatası, orijinal cevap kullanılıyor: %s", _e)
+
             # done sinyali — n8n aksiyonu varsa onu önceliklendir
             final_ui_action = n8n_ui_action if n8n_ui_action else ui_action
-            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': final_ui_action})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'rag_used': bool(rag_context), 'rag_sources': rag_sources, 'ui_action': final_ui_action, 'model': actual_model_name, 'provider': provider_label, 'prompt_tokens': prompt_tokens, 'completion_tokens': comp_tokens, 'duration_ms': duration_ms})}\n\n"
 
         except httpx.HTTPStatusError as e:
             end_time    = time.time()
@@ -1255,6 +1491,102 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         except Exception as _e:
             logger.debug("JSON aksiyon ayrıştırma başarısız, 'none' döndürülüyor: %s | raw=%s", _e, raw_text[:100])
             return {"action": "none", "raw": raw_text}
+
+
+    @staticmethod
+    async def suggest_followups(user_message: str, bot_reply: str, max_count: int = 2) -> list[str]:
+        """
+        Kullanıcı + bot mesajı çiftine bakarak konuşmayı doğal şekilde devam
+        ettirebilecek 1-3 kısa Türkçe takip sorusu döner. Chatbot ajanında
+        can_ask_follow_up = false ise sessizce boş liste döndürür.
+        Hata olursa boş liste — frontend chip göstermez.
+        """
+        if not bot_reply or len(bot_reply.strip()) < 20:
+            return []
+
+        # Ajan ayarına saygı: kapatılmışsa öneri üretme
+        agent_config = await run_in_threadpool(get_ai_agent, "chatbot")
+        if agent_config and not agent_config.get("can_ask_follow_up", True):
+            return []
+
+        models = await run_in_threadpool(get_user_models)
+        if not models:
+            return []
+
+        active_model = models[0]
+        if agent_config and agent_config.get("model"):
+            active_model = next((m for m in models if m["name"] == agent_config["model"]), models[0])
+        model_name = active_model["name"]
+        api_key    = active_model["api_key"]
+
+        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        actual_model_name = model_name
+        if is_gemini:
+            invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
+            if model_name.lower().strip() in invalid_names or "1.5" in model_name:
+                actual_model_name = "gemini-1.5-flash"
+            elif "2.0" in model_name:
+                actual_model_name = "gemini-2.0-flash"
+
+        system_prompt = (
+            "Sen bir konuşma asistanısın. Kullanıcının son sorusunu ve botun cevabını okuyup "
+            f"onun bir sonraki adımda sorabileceği {max_count} kısa, doğal Türkçe takip sorusu üret. "
+            "Sorular cevap içeriğine bağlı olmalı, klişe/jenerik olmamalı; her biri tek satır, soru işaretiyle bitsin. "
+            'Sadece şu JSON formatında dön: {"questions": ["...", "..."]} — başka açıklama yazma.'
+        )
+        user_input = f"KULLANICI: {user_message}\n\nBOT CEVABI:\n{bot_reply[:3000]}"
+        temperature = 0.5
+
+        raw_text = ""
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if is_gemini:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                    payload = {
+                        "systemInstruction": {"parts": [{"text": system_prompt}]},
+                        "contents": [{"parts": [{"text": user_input}]}],
+                        "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
+                    }
+                    response = await _post_with_retry(
+                        client, url,
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
+                    )
+                    data = response.json()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                else:
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": user_input},
+                    ]
+                    response = await _post_with_retry(
+                        client,
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": actual_model_name, "messages": messages,
+                            "temperature": temperature,
+                            "response_format": {"type": "json_object"},
+                        },
+                    )
+                    data = response.json()
+                    raw_text = data["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.debug("Takip sorusu üretimi başarısız: %s", e)
+            return []
+
+        import re as _re, json as _json
+        m = _re.search(r'\{.*\}', raw_text, _re.DOTALL)
+        if m:
+            raw_text = m.group(0)
+        try:
+            parsed = _json.loads(raw_text)
+            qs = parsed.get("questions") if isinstance(parsed, dict) else None
+            if isinstance(qs, list):
+                return [str(q).strip() for q in qs if str(q).strip()][:max_count]
+        except Exception as e:
+            logger.debug("Takip sorusu JSON ayrıştırılamadı: %s | raw=%s", e, raw_text[:120])
+        return []
 
 
 ai_service = AIService()

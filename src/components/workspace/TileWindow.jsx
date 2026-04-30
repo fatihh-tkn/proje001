@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Activity, Minus, X, LayoutTemplate, Database, Bot, Settings as SettingsIcon } from 'lucide-react';
@@ -27,8 +27,26 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
 
     const [showSnap, setShowSnap] = useState(false);
     const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+    const [zoom, setZoom] = useState(1);
     const snapTimeoutRef = useRef(null);
     const snapContainerRef = useRef(null);
+    const contentRef = useRef(null);
+
+    const isSelfZooming = tab.type === 'bpmn';
+    const isZoomable = ['pdf', 'pptx', 'ppt', 'doc', 'docx', 'xls', 'xlsx', 'image-viewer', 'bpmn'].includes(tab.type);
+
+    useEffect(() => {
+        if (!isZoomable || isSelfZooming) return;
+        const el = contentRef.current;
+        if (!el) return;
+        const handleWheel = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.08 : 0.08;
+            setZoom(prev => Math.min(Math.max(prev + delta, 0.2), 4));
+        };
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [isSelfZooming]);
 
     const handleMouseEnterSnap = () => {
         if (snapTimeoutRef.current) clearTimeout(snapTimeoutRef.current);
@@ -182,7 +200,7 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
                                                                 onSelectLayout(layout.id, zone.id);
                                                             }}
                                                             onClick={(e) => e.stopPropagation()}
-                                                            className={`bg-slate-200 hover:bg-[#A01B1B] rounded-[2px] transition-colors duration-150 cursor-pointer shadow-sm ${zone.class}`}
+                                                            className={`bg-slate-200 hover:bg-[#DC2626] rounded-[2px] transition-colors duration-150 cursor-pointer shadow-sm ${zone.class}`}
                                                             title={`${layout.name} - Alan ${zone.id + 1}`}
                                                         />
                                                     ))}
@@ -211,10 +229,13 @@ export const TileWindow = ({ tab, isActive, isDraggingGhost, activeId, isMaximiz
             </div>
 
             <div
-                className="flex-1 bg-white relative flex items-center justify-center overflow-hidden w-full h-full"
+                ref={contentRef}
+                className="flex-1 bg-white relative overflow-auto w-full h-full"
                 onPointerDown={(e) => e.stopPropagation()}
             >
-                <DynamicViewer tab={tab} onOpenFile={onOpenFile} />
+                <div style={(isZoomable && !isSelfZooming) ? { zoom, width: '100%', height: '100%' } : { width: '100%', height: '100%' }}>
+                    <DynamicViewer tab={tab} onOpenFile={onOpenFile} />
+                </div>
             </div>
         </motion.div>
     );

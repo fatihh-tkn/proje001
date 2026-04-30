@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle } from 'lucide-react';
 
 const THEMES = [
-    { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#A01B1B'] },
-    { id: 'light', name: 'Açık', colors: ['#f8fafc', '#e2e8f0', '#A01B1B'] },
+    { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#DC2626'] },
+    { id: 'light', name: 'Açık', colors: ['#f8fafc', '#e2e8f0', '#DC2626'] },
     { id: 'blue', name: 'Mavi', colors: ['#0f172a', '#1e293b', '#3b82f6'] },
     { id: 'green', name: 'Yeşil', colors: ['#0a1a0f', '#1a2e1a', '#22c55e'] },
     { id: 'purple', name: 'Mor', colors: ['#1a0a2e', '#2d1b4e', '#a855f7'] },
@@ -179,6 +179,25 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             >
                                 <Inbox size={14} className="text-emerald-500 shrink-0" />
                                 <span>Kullanıcı Talepleri</span>
+                            </button>
+                        )}
+
+                        {canSeeTab('ui_error_management') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'error-management',
+                                            title: 'Hata Yönetimi',
+                                            type: 'error-management',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <AlertTriangle size={14} className="text-[#A01B1B] shrink-0" />
+                                <span>Hata Yönetimi</span>
                             </button>
                         )}
 

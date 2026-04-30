@@ -34,16 +34,82 @@ const itemVariants = {
     exit: { opacity: 0, x: -6, transition: { duration: 0.1 } }
 };
 
-const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed, setIsCollapsed, setOpenFolders, onOpenFile, tabs }) => {
+const getExtStyle = (ext) => {
+    switch (ext) {
+        case 'pdf':
+            return {
+                bgColor: 'bg-red-500/10 border border-transparent border-l border-l-red-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-red-300 font-medium',
+                markClass: 'bg-red-400/30 text-red-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-red-400 shrink-0',
+            };
+        case 'bpmn':
+            return {
+                bgColor: 'bg-teal-500/10 border border-transparent border-l border-l-teal-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-teal-300 font-medium',
+                markClass: 'bg-teal-400/30 text-teal-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-teal-400 shrink-0',
+            };
+        case 'xls':
+        case 'xlsx':
+            return {
+                bgColor: 'bg-green-500/10 border border-transparent border-l border-l-green-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-green-300 font-medium',
+                markClass: 'bg-green-400/30 text-green-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-green-400 shrink-0',
+            };
+        case 'txt':
+        case 'doc':
+        case 'docx':
+            return {
+                bgColor: 'bg-blue-500/10 border border-transparent border-l border-l-blue-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-blue-300 font-medium',
+                markClass: 'bg-blue-400/30 text-blue-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-blue-400 shrink-0',
+            };
+        case 'png':
+        case 'jpg':
+        case 'jpeg':
+            return {
+                bgColor: 'bg-purple-500/10 border border-transparent border-l border-l-purple-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-purple-300 font-medium',
+                markClass: 'bg-purple-400/30 text-purple-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-purple-400 shrink-0',
+            };
+        default:
+            return {
+                bgColor: 'bg-amber-500/10 border border-transparent border-l border-l-amber-400 ml-1 rounded-[2px] pr-2',
+                textColor: 'text-amber-200 font-medium',
+                markClass: 'bg-amber-400/30 text-amber-200 rounded-[2px] px-px not-italic',
+                arrowClass: 'text-amber-400 shrink-0',
+            };
+    }
+};
+
+const highlightText = (text, query, markClass) => {
+    if (!query) return text;
+    const idx = text.toLocaleLowerCase('tr-TR').indexOf(query.toLocaleLowerCase('tr-TR'));
+    if (idx === -1) return text;
+    return (
+        <>
+            {text.slice(0, idx)}
+            <mark className={markClass}>{text.slice(idx, idx + query.length)}</mark>
+            {text.slice(idx + query.length)}
+        </>
+    );
+};
+
+const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed, setIsCollapsed, setOpenFolders, onOpenFile, tabs, searchQuery = '', matchedFileIds = new Set(), matchedFolderIds = new Set() }) => {
     const isOpen = !!openFolders[node.id];
     const isAktif = activeFile === node.id;
     const isOpenedInTab = tabs?.some(t => t.id === node.id);
     const paddingLeft = level * 16;
+    const isSearchActive = !!searchQuery.trim();
 
     // 1. EĞER BU BİR KLASÖR İSE:
     if (node.type === 'folder') {
         if (isCollapsed) return null;
-
+        // Arama aktifken bu klasör eşleşen dosya içermiyorsa gizle
         return (
             <div className="flex flex-col w-full">
                 <div
@@ -82,8 +148,11 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                                         isCollapsed={isCollapsed}
                                         setIsCollapsed={setIsCollapsed}
                                         setOpenFolders={setOpenFolders}
-                                        onOpenFile={onOpenFile} // onOpenFile'ı alt dosyalara aktar
+                                        onOpenFile={onOpenFile}
                                         tabs={tabs}
+                                        searchQuery={searchQuery}
+                                        matchedFileIds={matchedFileIds}
+                                        matchedFolderIds={matchedFolderIds}
                                     />
                                 </motion.div>
                             ))}
@@ -97,10 +166,16 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
     // 2. EĞER BU BİR DOSYA İSE:
     if (isCollapsed) return null;
 
+    const isSearchMatch = isSearchActive && matchedFileIds.has(node.id);
+    const extStyle = isSearchMatch ? getExtStyle(node.extension) : null;
+
     let bgColor = 'border border-transparent ml-1 rounded-[2px] pr-2 hover:bg-slate-800/40';
     let textColor = 'text-slate-300 hover:text-white';
 
-    if (isOpenedInTab) {
+    if (isSearchMatch) {
+        bgColor = extStyle.bgColor;
+        textColor = extStyle.textColor;
+    } else if (isOpenedInTab) {
         textColor = 'text-red-400 font-medium';
         if (isAktif) bgColor = 'bg-red-500/10 border border-transparent border-l border-l-red-500 ml-1 rounded-[2px] pr-2 shadow-[inset_0_0_10px_rgba(160,27,27,0.05)]';
     } else if (isAktif) {
@@ -182,9 +257,9 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
             style={{ paddingLeft: `${paddingLeft + 11}px` }}
             title="Açmak için çift tıklayın"
         >
-            <CornerDownRight size={14} className={isAktif ? "text-red-500 shrink-0" : "text-slate-600 shrink-0"} />
+            <CornerDownRight size={14} className={isSearchMatch ? extStyle.arrowClass : isAktif ? "text-red-500 shrink-0" : "text-slate-600 shrink-0"} />
             {getFileIcon(node.extension)}
-            <span className="truncate w-full select-none">{node.name}</span>
+            <span className="truncate w-full select-none">{highlightText(node.name, searchQuery, extStyle?.markClass)}</span>
         </div>
     );
 };

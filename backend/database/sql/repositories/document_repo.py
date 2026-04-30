@@ -351,6 +351,7 @@ class DocumentRepository:
                         "relation_type": edge.iliski_turu,
                     })
 
+            _meta = node.meta or {}
             results.append({
                 "chroma_id": node.chromadb_kimlik,
                 "node_id": node.kimlik,
@@ -358,6 +359,12 @@ class DocumentRepository:
                 "location_marker": node.konum_imi,
                 "page": node.sayfa_no,
                 "bbox": node.sinir_kutusu,
+                "element_id": _meta.get("element_id"),
+                "element_name": _meta.get("element_name"),
+                "image_path": _meta.get("image_path"),
+                "slide_w": _meta.get("slide_emu_w") or _meta.get("page_width"),
+                "slide_h": _meta.get("slide_emu_h") or _meta.get("page_height"),
+                "chunk_type": _meta.get("type"),
                 "document": {
                     "id": doc.kimlik if doc else None,
                     "filename": doc.dosya_adi if doc else None,

@@ -24,7 +24,7 @@ const DatabaseDropzone = ({
                 <Network size={14} className="text-stone-400" />
                 <span className="text-[11px] font-bold text-stone-500 tracking-widest uppercase">Dosya Yükleme</span>
                 {(phase === 'staged' || phase === 'saving') && (
-                    <button onClick={handleCancel} className="ml-auto text-stone-400 hover:text-[#791F1F] transition-colors p-1 bg-white hover:bg-[#FCEBEB] rounded-md border border-stone-200 hover:border-[#791F1F]/30">
+                    <button onClick={handleCancel} className="ml-auto text-stone-400 hover:text-[#991B1B] transition-colors p-1 bg-white hover:bg-[#FEF2F2] rounded-md border border-stone-200 hover:border-[#991B1B]/30">
                         <X size={14} />
                     </button>
                 )}
@@ -55,7 +55,7 @@ const DatabaseDropzone = ({
                                         : 'border-stone-200 hover:border-stone-300 shadow-[0_2px_15px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-1'
                                     }`}
                             >
-                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv" />
+                                <input type="file" className="hidden" onChange={handleFileInput} accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv,.bpmn" />
 
                                 <div className={`p-4 rounded-2xl mb-5 transition-all duration-300 ${dragOver || dragActive ? 'bg-[#378ADD] text-white scale-110 shadow-lg' : 'bg-stone-50 text-stone-400 group-hover:bg-stone-100 group-hover:text-stone-600'}`}>
                                     <Upload size={28} strokeWidth={2} className={dragOver || dragActive ? 'animate-bounce' : ''} />
@@ -128,7 +128,7 @@ const DatabaseDropzone = ({
                         >
                             <div className="bg-white rounded-3xl p-8 border border-stone-200 shadow-[0_8px_30px_rgba(0,0,0,0.04)] flex flex-col items-center text-center relative overflow-hidden group">
                                 {/* İşlem İptal Edici Buton */}
-                                <button onClick={handleCancel} className="absolute top-4 right-4 z-20 text-stone-400 hover:text-white bg-stone-50 hover:bg-[#791F1F] p-1.5 rounded-lg border border-stone-100 hover:border-[#791F1F] transition-all shadow-sm hover:scale-105 active:scale-95" title="İşlemi İptal Et">
+                                <button onClick={handleCancel} className="absolute top-4 right-4 z-20 text-stone-400 hover:text-white bg-stone-50 hover:bg-[#991B1B] p-1.5 rounded-lg border border-stone-100 hover:border-[#991B1B] transition-all shadow-sm hover:scale-105 active:scale-95" title="İşlemi İptal Et">
                                     <X size={14} strokeWidth={3} />
                                 </button>
 

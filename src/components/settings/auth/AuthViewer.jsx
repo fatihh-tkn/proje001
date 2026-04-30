@@ -160,12 +160,12 @@ function UsersTab() {
                                     const rowBg = isExpanded
                                         ? 'bg-[#378ADD]/5 border-b-0'
                                         : isPassive
-                                            ? 'bg-[#FCEBEB]/50 hover:bg-[#FCEBEB]/80'
+                                            ? 'bg-[#FEF2F2]/50 hover:bg-[#FEF2F2]/80'
                                             : isAdmin
                                                 ? 'bg-[#FAEEDA]/40 hover:bg-[#FAEEDA]/70'
                                                 : 'hover:bg-stone-50';
 
-                                    const avatarBg = isPassive ? '#791F1F' : isAdmin ? '#A07A0B' : '#378ADD';
+                                    const avatarBg = isPassive ? '#991B1B' : isAdmin ? '#A07A0B' : '#378ADD';
 
                                     return (
                                         <tr
@@ -188,7 +188,7 @@ function UsersTab() {
                                                     <div>
                                                         <span className="font-black text-stone-700 text-[12px] group-hover:text-[#378ADD] transition-colors block">{user.name}</span>
                                                         {isAdmin && <span className="text-[9px] font-bold text-[#A07A0B] uppercase tracking-widest">Yönetici</span>}
-                                                        {isPassive && <span className="text-[9px] font-bold text-[#791F1F] uppercase tracking-widest">Pasif</span>}
+                                                        {isPassive && <span className="text-[9px] font-bold text-[#991B1B] uppercase tracking-widest">Pasif</span>}
                                                     </div>
                                                 </div>
                                             </td>
@@ -217,7 +217,7 @@ function UsersTab() {
                                             <td className="py-3 px-4">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block w-max border ${user.status === 'Aktif'
                                                     ? 'bg-[#EAF3DE] text-[#3B6D11] border-[#3B6D11]/20'
-                                                    : 'bg-[#FCEBEB] text-[#791F1F] border-[#791F1F]/20'
+                                                    : 'bg-[#FEF2F2] text-[#991B1B] border-[#991B1B]/20'
                                                     }`}>
                                                     {user.status}
                                                 </span>
@@ -357,7 +357,7 @@ function _UNUSED_UserDashboardModal({ user, onClose }) {
                         <ul className="space-y-3 text-[12px] text-stone-600">
                             {dashboardData.belgeler.map((belge, i) => (
                                 <li key={i} className="flex items-center gap-3 p-2 hover:bg-stone-50 rounded-lg transition-colors">
-                                    {belge.type === 'PDF' && <div className="w-8 h-8 rounded bg-[#FCEBEB] text-[#791F1F] flex items-center justify-center font-bold text-[10px]">PDF</div>}
+                                    {belge.type === 'PDF' && <div className="w-8 h-8 rounded bg-[#FEF2F2] text-[#991B1B] flex items-center justify-center font-bold text-[10px]">PDF</div>}
                                     {belge.type === 'DOCX' && <div className="w-8 h-8 rounded bg-[#E6F1FB] text-[#0C447C] flex items-center justify-center font-bold text-[10px]">DOCX</div>}
                                     {belge.type === 'XLSX' && <div className="w-8 h-8 rounded bg-[#EAF3DE] text-[#3B6D11] flex items-center justify-center font-bold text-[10px]">XLSX</div>}
                                     {belge.type === 'FILE' && <div className="w-8 h-8 rounded bg-stone-100 text-stone-600 flex items-center justify-center font-bold text-[10px]">DOSYA</div>}

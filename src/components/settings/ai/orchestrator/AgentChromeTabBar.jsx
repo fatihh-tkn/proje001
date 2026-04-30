@@ -130,8 +130,8 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                                 setContextMenu(null);
                             }}
                         >
-                            <Power size={13} strokeWidth={2.5} className={agent.active ? 'text-[#791F1F]' : 'text-[#3B6D11]'} />
-                            <span className={agent.active ? 'text-[#791F1F]' : 'text-[#3B6D11]'}>
+                            <Power size={13} strokeWidth={2.5} className={agent.active ? 'text-[#991B1B]' : 'text-[#3B6D11]'} />
+                            <span className={agent.active ? 'text-[#991B1B]' : 'text-[#3B6D11]'}>
                                 {agent.active ? 'Pasife Al' : 'Aktifleştir'}
                             </span>
                         </button>

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import {
     X, Edit2, Check, FileText, Clock,
     Shield, LogOut, ChevronRight, BarChart2, ClipboardList,
-    HardDrive, File, MessageSquare, ChevronDown, Plus
+    HardDrive, File, MessageSquare, ChevronDown, Plus, AlertTriangle, Trash2,
+    Search, Download
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useErrorStore } from '../../store/errorStore';
@@ -10,6 +12,9 @@ import AdminEgitimForm from './AdminEgitimForm';
 import UserEgitimDashboard from './UserEgitimDashboard';
 import UserVeriGirisi from './UserVeriGirisi';
 import TalepGonderModal from './TalepGonderModal';
+import MyRequestsViewer from '../settings/talepler/MyRequestsViewer';
+import MyResolvedErrorsViewer from '../settings/errors/MyResolvedErrorsViewer';
+import MyProfileViewer from './MyProfileViewer';
 
 /* ── Dairesel Depolama Grafiği ── */
 function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
@@ -20,7 +25,7 @@ function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
     const pct = totalMb > 0 ? Math.min(usedMb / totalMb, 1) : 0;
     const dash = pct * circ;
     const gap = circ - dash;
-    const color = pct >= 0.9 ? '#ef4444' : pct >= 0.7 ? '#f59e0b' : '#A01B1B';
+    const color = pct >= 0.9 ? '#ef4444' : pct >= 0.7 ? '#f59e0b' : '#DC2626';
     const fmt = (mb) => mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
 
     return (
@@ -65,9 +70,14 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
     const [nameSaving, setNameSaving] = useState(false);
     const [activeTab, setActiveTab] = useState(initialTab); // 'profil', 'egitim', 'talepler'
     const [egitimSubTab, setEgitimSubTab] = useState('dashboard'); // 'dashboard' | 'veriGirisi'
+    const [veriGirisiModalOpen, setVeriGirisiModalOpen] = useState(false);
     const [expandedTalepIndex, setExpandedTalepIndex] = useState(null);
     const [talepler, setTalepler] = useState([]);
     const [talepModalOpen, setTalepModalOpen] = useState(false);
+    const [errorRecords, setErrorRecords] = useState([]);
+    const [expandedErrorId, setExpandedErrorId] = useState(null);
+    const [errorSearch, setErrorSearch] = useState('');
+    const [errorSevFilter, setErrorSevFilter] = useState('all'); // all | high | medium | low
     const panelRef = useRef(null);
 
     const refreshTalepler = React.useCallback(() => {
@@ -77,6 +87,25 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
             .then(data => setTalepler(Array.isArray(data) ? data : []))
             .catch((e) => console.warn('[UserPanel] Talepler alınamadı:', e.message));
     }, [currentUser?.id]);
+
+    const refreshErrorRecords = React.useCallback(() => {
+        if (!currentUser?.id) return;
+        fetch(`/api/errors/user/${currentUser.id}`)
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+            .then(data => setErrorRecords(data?.records || []))
+            .catch((e) => console.warn('[UserPanel] Hata kayıtları alınamadı:', e.message));
+    }, [currentUser?.id]);
+
+    useEffect(() => {
+        if (open && activeTab === 'hatalar') refreshErrorRecords();
+    }, [open, activeTab, refreshErrorRecords]);
+
+    const handleDeleteErrorRecord = async (kimlik, e) => {
+        e.stopPropagation();
+        if (!window.confirm('Bu kayıt silinsin mi?')) return;
+        const res = await fetch(`/api/errors/user-record/${kimlik}`, { method: 'DELETE' });
+        if (res.ok) refreshErrorRecords();
+    };
 
     // Panel her açıldığında, UserMenu'den seçilen sekmeye geç
     useEffect(() => {
@@ -226,7 +255,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                 {/* Avatar */}
                 <div style={{
                     width: 48, height: 48, borderRadius: 10,
-                    background: '#A01B1B', display: 'flex',
+                    background: '#DC2626', display: 'flex',
                     alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0, fontSize: 16, fontWeight: 700,
                     color: 'white', border: '2px solid rgba(160,27,27,0.35)',
@@ -272,7 +301,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                     style={{
                         padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
                         color: activeTab === 'profil' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
-                        borderBottom: activeTab === 'profil' ? '2px solid #A01B1B' : '2px solid transparent'
+                        borderBottom: activeTab === 'profil' ? '2px solid #DC2626' : '2px solid transparent'
                     }}
                 >
                     Profil
@@ -297,180 +326,36 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                 >
                     Taleplerim
                 </button>
+                <button
+                    onClick={() => setActiveTab('hatalar')}
+                    style={{
+                        padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
+                        color: activeTab === 'hatalar' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
+                        borderBottom: activeTab === 'hatalar' ? '2px solid #A01B1B' : '2px solid transparent'
+                    }}
+                >
+                    Çözdüğüm Hatalar
+                </button>
             </div>
 
             {/* ── BODY ── */}
             <div style={{ flex: 1, padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
                 {activeTab === 'profil' && (
-                    <>
-                        {/* Hesap Bilgileri */}
-                        <section>
-                            <div style={S.sectionTitle}>
-                                <Clock size={11} /> Hesap Bilgileri
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                {[
-                                    ['Durum', userData?.status || 'Aktif'],
-                                    ['Rol', userData?.role || (currentUser.super ? 'Sistem Yöneticisi' : 'Standart Kullanıcı')],
-                                    ['Son Giriş', userData?.lastLogin && userData.lastLogin !== 'Bilinmiyor'
-                                        ? new Date(userData.lastLogin).toLocaleString('tr', { dateStyle: 'medium', timeStyle: 'short' })
-                                        : '—'],
-                                ].map(([k, v]) => (
-                                    <div key={k} style={S.row}>
-                                        <span style={S.rowKey}>{k}</span>
-                                        <span style={{ ...S.rowVal, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            {k === 'Durum' && (
-                                                <span style={{
-                                                    width: 6, height: 6, borderRadius: '50%',
-                                                    background: v === 'Aktif' ? '#10b981' : '#ef4444',
-                                                    display: 'inline-block',
-                                                }} />
-                                            )}
-                                            {v}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-
-                        {/* Profil Düzenle */}
-                        <section>
-                            <div style={S.sectionTitle}>
-                                <Edit2 size={11} /> Profil Düzenle
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <label style={{ fontSize: 11, color: '#64748b' }}>Ad Soyad</label>
-                                {nameEditing ? (
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                        <input
-                                            autoFocus
-                                            value={nameValue}
-                                            onChange={e => setNameValue(e.target.value)}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter') saveName();
-                                                if (e.key === 'Escape') { setNameEditing(false); setNameValue(currentUser.tam_ad || ''); }
-                                            }}
-                                            style={{
-                                                flex: 1, background: '#0f172a',
-                                                border: '1px solid #A01B1B', borderRadius: 6,
-                                                padding: '7px 10px', color: '#f1f5f9',
-                                                fontSize: 12, outline: 'none',
-                                            }}
-                                        />
-                                        <button
-                                            onClick={saveName}
-                                            disabled={nameSaving}
-                                            style={{
-                                                background: '#A01B1B', color: 'white',
-                                                border: 'none', borderRadius: 6,
-                                                padding: '7px 12px', cursor: nameSaving ? 'wait' : 'pointer',
-                                                opacity: nameSaving ? 0.7 : 1, display: 'flex', alignItems: 'center',
-                                            }}
-                                        >
-                                            {nameSaving ? <span style={{ fontSize: 11 }}>...</span> : <Check size={13} />}
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div
-                                        onClick={() => setNameEditing(true)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                            background: '#0f172a', border: '1px solid #1e293b', borderRadius: 6,
-                                            padding: '8px 10px', cursor: 'text',
-                                        }}
-                                    >
-                                        <span style={{ fontSize: 12, color: '#e2e8f0' }}>{currentUser.tam_ad}</span>
-                                        <Edit2 size={11} style={{ color: '#475569' }} />
-                                    </div>
-                                )}
-                            </div>
-                        </section>
-
-                        {/* Depolama Kotası */}
-                        <section>
-                            <div style={S.sectionTitle}>
-                                <HardDrive size={11} /> Depolama Kotası
-                            </div>
-                            <StorageDonut
-                                usedMb={quota?.kullanilan_mb ?? 0}
-                                totalMb={quota?.depolama_limiti_mb ?? 0}
-                                usedFiles={quota?.kullanilan_dosya ?? 0}
-                                totalFiles={quota?.dosya_limiti ?? 0}
-                            />
-                            {quota?.dolu_mu && (
-                                <div style={{
-                                    marginTop: 8, fontSize: 10, color: '#ef4444',
-                                    textAlign: 'center',
-                                }}>
-                                    Kota doldu — yeni dosya yükleyemezsiniz.
-                                </div>
-                            )}
-                        </section>
-
-                        {/* Yüklenen Dosyalar */}
-                        <section>
-                            <div style={S.sectionTitle}>
-                                <File size={11} /> Yüklediğim Dosyalar
-                                {userDocs.length > 0 && (
-                                    <span style={{
-                                        marginLeft: 'auto', fontSize: 9, fontWeight: 600,
-                                        color: '#475569', background: '#1e293b',
-                                        padding: '1px 7px', borderRadius: 999,
-                                    }}>
-                                        {userDocs.length}
-                                    </span>
-                                )}
-                            </div>
-                            {userDocs.length === 0 ? (
-                                <div style={{
-                                    fontSize: 11, color: '#475569', textAlign: 'center',
-                                    padding: '16px 0',
-                                }}>
-                                    Henüz dosya yüklemediniz.
-                                </div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                    {userDocs.map((doc) => {
-                                        const bytes = doc.file_size ?? 0;
-                                        const sizeStr = bytes >= 1024 * 1024
-                                            ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-                                            : `${(bytes / 1024).toFixed(0)} KB`;
-                                        const ext = (doc.file_type || '').replace('.', '') || '?';
-                                        return (
-                                            <div key={doc.id} style={{
-                                                display: 'flex', alignItems: 'center', gap: 8,
-                                                background: '#0f172a', borderRadius: 8,
-                                                padding: '8px 10px', border: '1px solid #1e293b',
-                                            }}>
-                                                <span style={{
-                                                    fontSize: 9, fontWeight: 700, color: '#64748b',
-                                                    background: '#1e293b', padding: '2px 6px',
-                                                    borderRadius: 4, flexShrink: 0, letterSpacing: '0.05em',
-                                                    textTransform: 'uppercase',
-                                                }}>
-                                                    {ext}
-                                                </span>
-                                                <span style={{
-                                                    fontSize: 11, color: '#94a3b8', flex: 1,
-                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                }}>
-                                                    {doc.filename}
-                                                </span>
-                                                <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>
-                                                    {sizeStr}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </section>
-                    </>
+                    <div style={{
+                        // UserPanel gövde padding'ini neutralize → MyProfileViewer
+                        // kendi tasarımıyla yarım panele tam yerleşir.
+                        margin: '-16px -16px',
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                    }}>
+                        <MyProfileViewer currentUser={currentUser} onLogout={onLogout} />
+                    </div>
                 )}
 
                 {activeTab === 'egitim' && (
                     <>
-                        {/* Sayfa içi alt-sekme: Dashboard / Bilgi Girişi */}
+                        {/* Sayfa içi alt-sekme: Dashboard / Bilgi Girişi (modal olarak) */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <button
                                 onClick={() => setEgitimSubTab('dashboard')}
@@ -488,15 +373,15 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                                 Dashboard
                             </button>
                             <button
-                                onClick={() => setEgitimSubTab('veriGirisi')}
+                                onClick={() => setVeriGirisiModalOpen(true)}
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 6,
                                     padding: '6px 12px', fontSize: 11, fontWeight: 600,
                                     borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
                                     border: '1px solid',
-                                    background: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.15)' : 'transparent',
-                                    color: egitimSubTab === 'veriGirisi' ? '#60a5fa' : '#64748b',
-                                    borderColor: egitimSubTab === 'veriGirisi' ? 'rgba(55,138,221,0.4)' : '#334155',
+                                    background: veriGirisiModalOpen ? 'rgba(55,138,221,0.15)' : 'transparent',
+                                    color: veriGirisiModalOpen ? '#60a5fa' : '#64748b',
+                                    borderColor: veriGirisiModalOpen ? 'rgba(55,138,221,0.4)' : '#334155',
                                 }}
                             >
                                 <ClipboardList size={12} />
@@ -504,106 +389,31 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                             </button>
                         </div>
                         {egitimSubTab === 'dashboard' && <UserEgitimDashboard currentUser={currentUser} />}
-                        {egitimSubTab === 'veriGirisi' && <UserVeriGirisi currentUser={currentUser} />}
                     </>
                 )}
 
                 {activeTab === 'talepler' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={S.sectionTitle}>
-                                <MessageSquare size={11} /> Sisteme İletilen Talepler
-                            </div>
-                            <button
-                                onClick={() => setTalepModalOpen(true)}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                                    padding: '5px 10px', fontSize: 10, fontWeight: 700,
-                                    background: 'rgba(16,185,129,0.12)',
-                                    color: '#10b981',
-                                    border: '1px solid rgba(16,185,129,0.35)',
-                                    borderRadius: 6, cursor: 'pointer',
-                                }}
-                            >
-                                <Plus size={11} /> Yeni Talep
-                            </button>
-                        </div>
-                        {talepler.length === 0 ? (
-                            <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '16px 0' }}>
-                                Henüz bir talep oluşturmadınız.
-                            </div>
-                        ) : (
-                            talepler.map((talep, i) => {
-                                const isExpanded = expandedTalepIndex === i;
-                                const renkHaritasi = {
-                                    emerald: { c: '#10b981', bg: 'rgba(16,185,129,0.1)' },
-                                    amber:   { c: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-                                    red:     { c: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
-                                    sky:     { c: '#38bdf8', bg: 'rgba(56,189,248,0.1)' },
-                                    slate:   { c: '#94a3b8', bg: 'rgba(148,163,184,0.1)' },
-                                };
-                                const palet = renkHaritasi[talep.renk] || renkHaritasi.slate;
+                    <div style={{
+                        // Negative margin → UserPanel'in 16px gövde padding'ini neutralize
+                        // et; viewer kendi iç padding'ini yönetir, panele tam yerleşir.
+                        margin: '-16px -16px',
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                    }}>
+                        <MyRequestsViewer currentUser={currentUser} />
+                    </div>
+                )}
 
-                                return (
-                                    <div key={talep.id || i} style={{
-                                        background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8,
-                                        overflow: 'hidden', transition: 'all 0.2s'
-                                    }}>
-                                        <div
-                                            onClick={() => setExpandedTalepIndex(isExpanded ? null : i)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                padding: '12px 14px', cursor: 'pointer', background: isExpanded ? 'rgba(255,255,255,0.02)' : 'transparent'
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                                                <div style={{
-                                                    width: 8, height: 8, borderRadius: '50%', background: palet.c, flexShrink: 0
-                                                }} />
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                        {talep.baslik || 'İsimsiz Talep'}
-                                                    </div>
-                                                    <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-                                                        {talep.tarih}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                                <span style={{
-                                                    fontSize: 9, fontWeight: 700, color: palet.c, background: palet.bg,
-                                                    padding: '2px 8px', borderRadius: 999, letterSpacing: '0.05em', textTransform: 'uppercase'
-                                                }}>
-                                                    {talep.durum_etiket || talep.durum}
-                                                </span>
-                                                <ChevronDown size={14} style={{ color: '#475569', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }} />
-                                            </div>
-                                        </div>
-                                        {isExpanded && (
-                                            <div style={{
-                                                padding: '10px 14px 14px 32px', fontSize: 11, color: '#94a3b8', lineHeight: 1.5,
-                                                borderTop: '1px solid rgba(255,255,255,0.05)'
-                                            }}>
-                                                <div>{talep.mesaj}</div>
-                                                {talep.yonetici_notu && (
-                                                    <div style={{
-                                                        marginTop: 8, padding: '8px 10px',
-                                                        background: 'rgba(245,158,11,0.06)',
-                                                        border: '1px solid rgba(245,158,11,0.2)',
-                                                        borderRadius: 6, color: '#fcd34d',
-                                                    }}>
-                                                        <div style={{ fontSize: 9, fontWeight: 700, marginBottom: 3, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                                                            Yönetici Notu
-                                                        </div>
-                                                        {talep.yonetici_notu}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        )}
+                {activeTab === 'hatalar' && (
+                    <div style={{
+                        // UserPanel gövde padding'ini neutralize → viewer'i tam yerleştir
+                        margin: '-16px -16px',
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                    }}>
+                        <MyResolvedErrorsViewer currentUser={currentUser} />
                     </div>
                 )}
 
@@ -635,6 +445,78 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                 currentUser={currentUser}
                 onSubmitted={() => refreshTalepler()}
             />
+
+            {/* ── Bilgi Girişi — Tam Ekran Ortada Modal ── */}
+            {veriGirisiModalOpen && ReactDOM.createPortal(
+                <div
+                    onClick={() => setVeriGirisiModalOpen(false)}
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 9999,
+                        background: 'rgba(0,0,0,0.6)',
+                        backdropFilter: 'blur(6px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        animation: 'veriGirisiBackdropIn 0.2s ease',
+                    }}
+                >
+                    <style>{`
+                        @keyframes veriGirisiBackdropIn { from { opacity:0 } to { opacity:1 } }
+                        @keyframes veriGirisiPanelIn { from { opacity:0; transform:scale(0.96) translateY(12px) } to { opacity:1; transform:scale(1) translateY(0) } }
+                    `}</style>
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            width: '80%', maxWidth: 960, height: '85vh',
+                            background: 'linear-gradient(180deg, #1e1e22 0%, #1a1a1c 100%)',
+                            border: '1px solid #2a2a2d',
+                            borderRadius: 14,
+                            boxShadow: '0 32px 80px rgba(0,0,0,0.55)',
+                            display: 'flex', flexDirection: 'column',
+                            overflow: 'hidden',
+                            animation: 'veriGirisiPanelIn 0.25s cubic-bezier(0.16,1,0.3,1)',
+                        }}
+                    >
+                        {/* Modal Header */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '16px 24px', borderBottom: '1px solid #2a2a2d',
+                            background: 'rgba(255,255,255,0.02)', flexShrink: 0,
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <ClipboardList size={16} style={{ color: '#60a5fa' }} />
+                                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>Bilgi Girişi</span>
+                                <span style={{
+                                    fontSize: 9, padding: '2px 8px', borderRadius: 4,
+                                    background: 'rgba(55,138,221,0.12)', color: '#60a5fa',
+                                    border: '1px solid rgba(55,138,221,0.3)',
+                                }}>Eğitim & Sertifika</span>
+                            </div>
+                            <button
+                                onClick={() => setVeriGirisiModalOpen(false)}
+                                style={{
+                                    background: 'transparent', border: '1px solid #333',
+                                    borderRadius: 8, cursor: 'pointer', padding: '6px 8px',
+                                    color: '#64748b', display: 'flex', alignItems: 'center', gap: 6,
+                                    fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#333'; }}
+                            >
+                                <X size={14} />
+                                Kapat
+                            </button>
+                        </div>
+
+                        {/* Modal Body — scrollable */}
+                        <div style={{
+                            flex: 1, overflowY: 'auto', padding: '20px 28px',
+                            scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent',
+                        }}>
+                            <UserVeriGirisi currentUser={currentUser} />
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

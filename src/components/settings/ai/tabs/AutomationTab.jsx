@@ -160,9 +160,9 @@ export const AutomationTab = () => {
                     </p>
 
                     {authError && (
-                        <div className="mb-4 p-3 bg-[#FCEBEB] border border-[#FCEBEB] rounded-lg flex items-start gap-2">
-                            <AlertCircle size={14} className="text-[#791F1F] shrink-0 mt-0.5" />
-                            <p className="text-[10px] font-medium text-[#791F1F]">{authError}</p>
+                        <div className="mb-4 p-3 bg-[#FEF2F2] border border-[#FEF2F2] rounded-lg flex items-start gap-2">
+                            <AlertCircle size={14} className="text-[#991B1B] shrink-0 mt-0.5" />
+                            <p className="text-[10px] font-medium text-[#991B1B]">{authError}</p>
                         </div>
                     )}
 
@@ -271,12 +271,12 @@ export const AutomationTab = () => {
                 </div>
 
                 <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-stone-200 shadow-sm">
-                    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border ${failingCount > 0 ? 'bg-[#FCEBEB] border-[#FCEBEB]/50' : 'bg-stone-50 border-stone-100'}`}>
-                        <XCircle size={14} className={failingCount > 0 ? 'text-[#791F1F]' : 'text-stone-400'} />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border ${failingCount > 0 ? 'bg-[#FEF2F2] border-[#FEF2F2]/50' : 'bg-stone-50 border-stone-100'}`}>
+                        <XCircle size={14} className={failingCount > 0 ? 'text-[#991B1B]' : 'text-stone-400'} />
                     </div>
                     <div>
                         <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-0.5">Uyarı / Hata</p>
-                        <p className={`text-[14px] font-black leading-none ${failingCount > 0 ? 'text-[#791F1F]' : 'text-stone-700'}`}>{failingCount}</p>
+                        <p className={`text-[14px] font-black leading-none ${failingCount > 0 ? 'text-[#991B1B]' : 'text-stone-700'}`}>{failingCount}</p>
                     </div>
                 </div>
             </div>
@@ -320,7 +320,7 @@ export const AutomationTab = () => {
                                                     <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 border 
                                                     ${wk.status === 'offline' ? 'bg-stone-100 border-stone-200 text-stone-400'
                                                             : wk.status === 'healthy' ? 'bg-[#378ADD]/10 border-[#378ADD]/20 text-[#378ADD]'
-                                                                : 'bg-[#FCEBEB] border-[#FCEBEB]/50 text-[#791F1F]'}`}>
+                                                                : 'bg-[#FEF2F2] border-[#FEF2F2]/50 text-[#991B1B]'}`}>
                                                         <Webhook size={14} />
                                                     </div>
                                                     <div>
@@ -348,11 +348,11 @@ export const AutomationTab = () => {
                                             </td>
                                             <td className="px-4 py-4 text-right">
                                                 <div className="flex flex-col items-end">
-                                                    <span className={`text-[11px] font-black ${wk.successRate === 100 ? 'text-[#3B6D11]' : wk.successRate > 50 ? 'text-[#854F0B]' : 'text-[#791F1F]'}`}>
+                                                    <span className={`text-[11px] font-black ${wk.successRate === 100 ? 'text-[#3B6D11]' : wk.successRate > 50 ? 'text-[#854F0B]' : 'text-[#991B1B]'}`}>
                                                         %{wk.successRate || 0}
                                                     </span>
                                                     <div className="w-16 h-1 mt-1 bg-stone-100 rounded-full overflow-hidden">
-                                                        <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-[#EAF3DE]' : wk.successRate > 50 ? 'bg-[#FAEEDA]' : 'bg-[#FCEBEB]'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
+                                                        <div className={`h-full rounded-full ${wk.successRate === 100 ? 'bg-[#EAF3DE]' : wk.successRate > 50 ? 'bg-[#FAEEDA]' : 'bg-[#FEF2F2]'}`} style={{ width: `${wk.successRate || 0}%` }}></div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -364,7 +364,7 @@ export const AutomationTab = () => {
                                                         disabled={!!triggeringId || isCachedData}
                                                         title="Manuel Tetikle"
                                                         className={`w-7 h-7 rounded-md border flex items-center justify-center transition-all shadow-sm text-[10px] font-bold ${triggerResults[wk.id] === 'ok' ? 'bg-[#EAF3DE] border-[#EAF3DE] text-[#3B6D11]' :
-                                                                triggerResults[wk.id] === 'error' ? 'bg-[#FCEBEB] border-[#FCEBEB] text-[#791F1F]' :
+                                                                triggerResults[wk.id] === 'error' ? 'bg-[#FEF2F2] border-[#FEF2F2] text-[#991B1B]' :
                                                                     triggeringId === wk.id ? 'bg-stone-50 border-stone-200 text-[#378ADD]' :
                                                                         'bg-white border-stone-200 text-stone-400 hover:text-[#1D9E75] hover:border-[#1D9E75] opacity-0 group-hover:opacity-100'
                                                             }`}

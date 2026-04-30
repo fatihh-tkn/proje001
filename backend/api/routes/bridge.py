@@ -29,6 +29,7 @@ _MAX_SIZE = {
     "jpg": 20 * 1024 * 1024, "jpeg": 20 * 1024 * 1024,
     "png": 20 * 1024 * 1024, "webp": 20 * 1024 * 1024,
     "txt": 10 * 1024 * 1024,
+    "bpmn": 10 * 1024 * 1024,
 }
 _DEFAULT_MAX_SIZE = 50 * 1024 * 1024
 
@@ -104,6 +105,8 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
             "isleme_suresi_ms":    isleme_suresi_ms,
             "converted_pdf_path": converted_pdf_path,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Dosya analiz hatası [%s]: %s", file.filename if file else "?", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Dosya analiz edilemedi: {str(e)}")
@@ -282,9 +285,10 @@ def save_to_db(data: dict):
 
         with UnitOfWork() as uow:
             db = uow.session
-            # 1. Belge kaydını çöz / oluştur & Varsa ESKİ kayıtları temizle (Re-upload durumunda üst üste binmeyi/orphan'ı engeller)
+
+            # ── 1. Belge kaydını çöz / oluştur ────────────────────────────────
             resolved_belge_kimlik = None
-            b = None  # DÜZELTME: NameError'ı önlemek için başlangıç değeri None
+            b = None
 
             if belge_kimlik_istek:
                 b = db.scalar(select(Belge).where(Belge.kimlik == belge_kimlik_istek))
@@ -295,24 +299,26 @@ def save_to_db(data: dict):
                 if b: resolved_belge_kimlik = b.kimlik
 
             if b and resolved_belge_kimlik:
-                # EĞER bu isimle bir kayıt varsa, eski verilerini Temizle! (Issue 4 Fix: UUID Collision / Overload)
-                eski_parcalar = list(db.scalars(select(VektorParcasi).where(VektorParcasi.belge_kimlik == resolved_belge_kimlik)).all())
+                # Eski chunk'ları temizle (re-upload)
+                eski_parcalar = list(db.scalars(
+                    select(VektorParcasi).where(VektorParcasi.belge_kimlik == resolved_belge_kimlik)
+                ).all())
                 if eski_parcalar:
                     eski_chroma_ids = [p.chromadb_kimlik for p in eski_parcalar]
-                    eski_graf_ids = [str(p.kimlik) for p in eski_parcalar]
+                    eski_graf_ids   = [str(p.kimlik) for p in eski_parcalar]
                     try:
                         vector_db.delete_documents(b.vektordb_koleksiyon or coll_name, eski_chroma_ids)
                     except Exception as _ce:
-                        logger.warning("Eski ChromaDB kayıtları silinemedi: %s", _ce)
+                        logger.warning("Eski vektör kayıtları silinemedi: %s", _ce)
                     try:
                         graph_db.remove_nodes(eski_graf_ids)
                     except Exception as _ge:
                         logger.warning("Eski graf düğümleri silinemedi: %s", _ge)
-                    for p in eski_parcalar: db.delete(p)
+                    for p in eski_parcalar:
+                        db.delete(p)
                     db.flush()
-                # Belge güncelleme verisi
-                b.parca_sayisi = len(chunks_raw)
-                b.durum = "karantina"
+                b.parca_sayisi    = len(chunks_raw)
+                b.durum           = "karantina"
                 b.isleme_suresi_ms = data.get("isleme_suresi_ms")
                 db.flush()
 
@@ -327,39 +333,44 @@ def save_to_db(data: dict):
                 db.flush()
                 resolved_belge_kimlik = b.kimlik
 
-            # 2. ChromaDB'ye yaz (vektörleştirme)
-            # archive_only chunk'lar vektörleştirilmez → ChromaDB'ye gönderilmez
+            # ── KRİTİK: Belge kaydını add_documents'tan ÖNCE commit et ────────
+            # add_documents kendi session'ını açar. VektorParcasi.belge_kimlik FK'si
+            # için Belge'nin DB'de committed olması şart; flush yeterli değil.
+            db.commit()
+
+            # ── 2. archive_only kontrolü ──────────────────────────────────────
             is_archive_only = all(
-                c.get("metadata", {}).get("type") == "archive_only"
+                (c.get("metadata") or {}).get("type") == "archive_only"
                 for c in chunks_raw
             )
 
+            texts: list = []
+            metadatas: list = []
+            ids: list = []
+
             if is_archive_only:
-                # Belgeyi "arşiv" modunda işaretle
                 if b is not None:
                     b.vektorlestirildi_mi = False
-                    b.durum              = "onaylandi"
-                    b.parca_sayisi       = 0
+                    b.durum               = "onaylandi"
+                    b.parca_sayisi        = 0
                     db.flush()
-                logger.info("archive_only dosya — ChromaDB atlandı: %s", file_name)
-                texts, metadatas, ids = [], [], []
+                logger.info("archive_only dosya — vektörleştirme atlandı: %s", file_name)
             else:
-                # Metadata temizliği ve hazırlığı
-                texts, metadatas, ids = [], [], []
+                # ── Metadata temizliği ────────────────────────────────────────
                 for chunk in chunks_raw:
                     text = chunk.get("text", "")
                     if not text.strip():
                         continue
-                    # archive_only chunk'ı karışık bir dosyada bile atla
-                    if chunk.get("metadata", {}).get("type") == "archive_only":
+                    meta = chunk.get("metadata") or {}
+                    if meta.get("type") == "archive_only":
                         continue
                     curr_id = chunk.get("id") or str(uuid.uuid4())
-                    meta    = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
 
-                    clean_meta = {"sql_doc_id": resolved_belge_kimlik, "sqlite_doc_id": resolved_belge_kimlik}
+                    clean_meta: dict = {
+                        "sql_doc_id":    resolved_belge_kimlik,
+                        "sqlite_doc_id": resolved_belge_kimlik,
+                    }
                     for k, v in meta.items():
-                        # ChromaDB sadece primitive tipleri kabul eder (str, int, float, bool)
-                        # Emu/subclass gibi türevleri de str/int/float'a zorunlu dönüştür
                         if isinstance(v, bool):
                             clean_meta[k] = v
                         elif isinstance(v, int):
@@ -368,60 +379,83 @@ def save_to_db(data: dict):
                             clean_meta[k] = float(v)
                         elif isinstance(v, str):
                             clean_meta[k] = v
+                        elif v is None:
+                            clean_meta[k] = None
                         else:
-                            clean_meta[k] = str(v)
+                            # dict, list vb. → JSON string olarak sakla
+                            import json as _json
+                            try:
+                                clean_meta[k] = _json.dumps(v, ensure_ascii=False)
+                            except Exception:
+                                clean_meta[k] = str(v)
 
                     texts.append(text)
                     metadatas.append(clean_meta)
                     ids.append(curr_id)
 
-
-
+            # ── 3. Vektörleştir ve pgvector'e yaz ────────────────────────────
             if texts:
-                # Adım 1: ChromaDB'ye yaz (Atomik değil, UoW kaydiyla korunacak)
-                vector_db.add_documents(
-                    collection_name=coll_name,
-                    documents=texts,
-                    metadatas=metadatas,
-                    ids=ids,
-                )
-                logger.info("ChromaDB kayit OK | koleksiyon=%s | %d dokuman", coll_name, len(texts))
+                ids_snapshot = list(ids)   # closure'a sabit kopya ver
+                try:
+                    vector_db.add_documents(
+                        collection_name=coll_name,
+                        documents=texts,
+                        metadatas=metadatas,
+                        ids=ids_snapshot,
+                    )
+                except Exception as ve:
+                    logger.error("Vektörleştirme hatası [%s]: %s", file_name, ve, exc_info=True)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Embedding/vektör kayıt hatası: {str(ve)}",
+                    )
+                logger.info("Vektör kayıt OK | koleksiyon=%s | %d doküman", coll_name, len(texts))
 
-                # UoW: SQL Flush oncesi Olası Hata için Telafi Kaydı (Compensation Transaction)
                 def rb_chroma():
-                    vector_db.delete_documents(coll_name, ids)
-                    logger.info("ChromaDB rollback OK | %d vektor silindi", len(ids))
+                    try:
+                        vector_db.delete_documents(coll_name, ids_snapshot)
+                        logger.info("Vektör rollback OK | %d kayıt silindi", len(ids_snapshot))
+                    except Exception as _re:
+                        logger.error("Vektör rollback hatası: %s", _re)
 
                 uow.register_compensation(rb_chroma)
 
-                # Adım 2: SQL'i güncelle
                 if b is not None:
                     b.vektorlestirildi_mi = True
                     b.vektordb_koleksiyon = coll_name
                     b.parca_sayisi        = len(texts)
                     db.flush()
 
-            # 3. Semantik komşuları al
+            # ── 4. Semantik komşular ──────────────────────────────────────────
             semantic_neighbors: dict[str, list[tuple[str, float]]] = {}
-            q_ids   = [c.get("id") for c in chunks_raw if c.get("text", "").strip()]
-            q_texts = [c.get("text") for c in chunks_raw if c.get("text", "").strip()]
-            if q_texts:
-                results  = vector_db.query(collection_name=coll_name, query_texts=q_texts, n_results=10)
-                r_ids    = results.get("ids", [])
-                r_dists  = results.get("distances", [])
-                q_id_set = set(q_ids)
-                for idx, c_id in enumerate(q_ids):
-                    semantic_neighbors[c_id] = [
-                        (t_id, dist) for t_id, dist in zip(r_ids[idx], r_dists[idx])
-                        if t_id != c_id and t_id not in q_id_set and dist < 1.5
-                    ]
+            if texts:   # sadece vektörleştirme yapıldıysa anlıklı
+                q_ids   = [c.get("id") for c in chunks_raw if (c.get("text") or "").strip() and c.get("id")]
+                q_texts = [c.get("text") for c in chunks_raw if (c.get("text") or "").strip() and c.get("id")]
+                if q_texts:
+                    try:
+                        results = vector_db.query(collection_name=coll_name, query_texts=q_texts, n_results=10)
+                        r_ids   = results.get("ids", [])
+                        r_dists = results.get("distances", [])
+                        q_id_set = set(q_ids)
+                        for idx, c_id in enumerate(q_ids):
+                            if idx >= len(r_ids):
+                                break
+                            semantic_neighbors[c_id] = [
+                                (t_id, dist)
+                                for t_id, dist in zip(r_ids[idx], r_dists[idx])
+                                if t_id != c_id and t_id not in q_id_set and dist < 1.5
+                            ]
+                    except Exception as _se:
+                        logger.warning("Semantik komşu sorgusu başarısız (devam): %s", _se)
 
-            # 4. Yeni parçaları SQL'e kaydet (archive_only dosyalar atlanır)
-            new_parcalar = []
-            existing_map: dict = {}
+            # ── 5. SQL VektorParcasi — eksik olanları tamamla ────────────────
+            # add_documents zaten kayıt oluşturdu; burada sadece kaçırdıklarını yakala.
+            new_parcalar:  list = []
+            existing_map:  dict = {}
+            existing_rows: list = []
+
             if not is_archive_only:
                 all_chroma_ids = [c.get("id", "") for c in chunks_raw if c.get("id")]
-                existing_rows: list = []
                 if all_chroma_ids:
                     for chunked_ids in chunk_list(all_chroma_ids):
                         existing_rows.extend(db.scalars(
@@ -433,29 +467,58 @@ def save_to_db(data: dict):
                     chroma_id = chunk.get("id", "")
                     if not chroma_id or chroma_id in existing_map:
                         continue
-                    if chunk.get("metadata", {}).get("type") == "archive_only":
+                    meta = chunk.get("metadata") or {}
+                    if meta.get("type") == "archive_only":
                         continue
-                    meta = chunk.get("metadata", {})
-                    # Kaydedilecek tam metadata (image_path, page_width, page_height, zoom_factor, type vb.)
                     meta_to_save = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool, type(None)))}
+                    src   = meta.get("source", file_name) or file_name
+                    page  = meta.get("page", 0)
+                    el_nm = meta.get("element_name")
+                    konum = f"{src} | Eleman: {el_nm}" if el_nm else f"{src} | Sayfa {page}"
                     new_parcalar.append(VektorParcasi(
-                        belge_kimlik=resolved_belge_kimlik, chromadb_kimlik=chroma_id,
-                        icerik=chunk.get("text", "")[:1000], konum_imi=f"{meta.get('source', file_name)} | Sayfa {meta.get('page', 0)}",
-                        sayfa_no=meta.get("page", 0), sinir_kutusu=str(meta.get("bbox")) if meta.get("bbox") else None,
-                        meta=meta_to_save if meta_to_save else None,
+                        belge_kimlik=resolved_belge_kimlik,
+                        chromadb_kimlik=chroma_id,
+                        icerik=chunk.get("text", "")[:1000],
+                        konum_imi=konum,
+                        sayfa_no=page,
+                        sinir_kutusu=meta.get("sinir_kutusu") or (str(meta.get("bbox")) if meta.get("bbox") else None),
+                        meta=meta_to_save or None,
                     ))
 
                 if new_parcalar:
                     db.add_all(new_parcalar)
                     db.flush()
 
+            # ── 5b. Slayt görsel yollarını archive konumuna güncelle ──────────
+            # archive-document adımı, chunk'lar henüz oluşturulmadığından
+            # image_path'leri düzeltemez. Chunks DB'de hazır olduğu şimdi onarıyoruz.
+            if b and b.meta:
+                archive_imgs_dir = (b.meta or {}).get("images_yolu", "")
+                if archive_imgs_dir and os.path.isdir(archive_imgs_dir):
+                    all_nodes = list(existing_rows) + list(new_parcalar)
+                    _upd = 0
+                    for p in all_nodes:
+                        sayfa = p.sayfa_no or 0
+                        if sayfa <= 0:
+                            continue
+                        archive_img = os.path.join(archive_imgs_dir, f"page_{sayfa}.png")
+                        if not os.path.exists(archive_img):
+                            continue
+                        curr_m = dict(p.meta or {})
+                        old_ip = curr_m.get("image_path", "")
+                        if not old_ip or "temp_uploads" in old_ip.replace("\\", "/"):
+                            curr_m["image_path"] = os.path.abspath(archive_img)
+                            p.meta = curr_m
+                            _upd += 1
+                    if _upd:
+                        db.flush()
+                        logger.info("save_to_db: %d chunk image_path archive konumuna guncellendi", _upd)
 
-            # 3d. Node sıralaması (archive_only ise atlanır)
-            id_to_pk  : dict = {}
+            # ── 6. Node sıralaması ────────────────────────────────────────────
+            id_to_pk:    dict = {}
             saved_nodes: list = []
             if not is_archive_only:
-                _existing_rows = existing_rows if "existing_rows" in dir() else []
-                id_to_pk = {r.chromadb_kimlik: r.kimlik for r in _existing_rows}
+                id_to_pk = {r.chromadb_kimlik: r.kimlik for r in existing_rows}
                 id_to_pk.update({p.chromadb_kimlik: p.kimlik for p in new_parcalar})
 
                 for c in chunks_raw:
@@ -503,10 +566,10 @@ def save_to_db(data: dict):
                                 edges_to_add.append(new_edge)
 
             # 3g. Mantıksal kenarlar
-            chroma_to_meta = {c.get("id"): c.get("metadata", {}) for c in chunks_raw if c.get("id")}
+            chroma_to_meta = {c.get("id"): (c.get("metadata") or {}) for c in chunks_raw if c.get("id")}
             page_groups = {}
             for node in saved_nodes:
-                m = chroma_to_meta.get(node.chromadb_kimlik, {})
+                m = chroma_to_meta.get(node.chromadb_kimlik) or {}
                 p, t = m.get("page", -1), m.get("type", "")
                 if p >= 0:
                     page_groups.setdefault(p, []).append((node.kimlik, t))
@@ -594,17 +657,28 @@ def archive_document(data: dict):
     file_ext = final_name.rsplit(".", 1)[-1].lower() if "." in final_name else "unknown"
 
     # PPTX: oluşturulan PDF'i de arşive kopyala
+    # converted_pdf_path verilmemişse pptx_processor'ın koyduğu konvansiyonel
+    # konumdan ({temp_dir}/{base}.pdf) türet — frontend bu alanı göndermese bile PDF arşive geçer
     pdf_archive_path = None
-    if file_ext in ("pptx", "ppt") and converted_pdf_path and os.path.exists(converted_pdf_path):
-        base_pdf_name    = os.path.splitext(final_name)[0] + ".pdf"
-        pdf_archive_name = f"{uid_prefix}_{base_pdf_name}"
-        pdf_archive_path = os.path.join(ARCHIVE_DIR, pdf_archive_name)
-        try:
-            shutil.copy2(converted_pdf_path, pdf_archive_path)
-            logger.info("PPTX->PDF arsive tasindi: %s", pdf_archive_path)
-        except Exception as e:
-            logger.warning("PDF arsive tasinamadi: %s", e)
-            pdf_archive_path = None
+    if file_ext in ("pptx", "ppt"):
+        candidate_pdf = converted_pdf_path
+        if not candidate_pdf or not os.path.exists(candidate_pdf):
+            derived = os.path.splitext(temp_path)[0] + ".pdf"
+            if os.path.exists(derived):
+                candidate_pdf = derived
+
+        if candidate_pdf and os.path.exists(candidate_pdf):
+            base_pdf_name    = os.path.splitext(final_name)[0] + ".pdf"
+            pdf_archive_name = f"{uid_prefix}_{base_pdf_name}"
+            pdf_archive_path = os.path.join(ARCHIVE_DIR, pdf_archive_name)
+            try:
+                shutil.copy2(candidate_pdf, pdf_archive_path)
+                logger.info("PPTX->PDF arsive tasindi: %s", pdf_archive_path)
+            except Exception as e:
+                logger.warning("PDF arsive tasinamadi: %s", e)
+                pdf_archive_path = None
+        else:
+            logger.warning("PPTX icin donusturulmus PDF bulunamadi (temp=%s)", temp_path)
 
     # PPTX: slayt görsellerini (images_*/) de arşive kopyala
     archive_images_dir = None

@@ -62,7 +62,7 @@ const ArchiveDetailPanel = ({ selectedDoc, onClose }) => (
                             {selectedDoc.is_vectorized && (
                                 <div className="flex justify-between items-center text-[12px] border-b border-slate-100 pb-2">
                                     <span className="text-slate-500 font-medium">Parça (Chunk) Sayısı</span>
-                                    <span className="bg-[#A01B1B]/10 text-[#A01B1B] font-bold px-2 py-0.5 rounded">{selectedDoc.total_chunks}</span>
+                                    <span className="bg-[#DC2626]/10 text-[#DC2626] font-bold px-2 py-0.5 rounded">{selectedDoc.total_chunks}</span>
                                 </div>
                             )}
                         </div>

@@ -123,9 +123,10 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
     const toggleFileAccess = (e, fileId) => {
         e.stopPropagation();
         const disabledKey = `!${fileId}`;
-        const newAllowedRags = selectedItem.allowedRags.includes(disabledKey)
-            ? selectedItem.allowedRags.filter(id => id !== disabledKey)
-            : [...selectedItem.allowedRags, disabledKey];
+        const current = Array.isArray(selectedItem.allowedRags) ? selectedItem.allowedRags : [];
+        const newAllowedRags = current.includes(disabledKey)
+            ? current.filter(id => id !== disabledKey)
+            : [...current, disabledKey];
         updateAgent('allowedRags', newAllowedRags);
     };
 
@@ -223,11 +224,11 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                     <div>
                         <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center justify-between">
                             <span>Yaratıcılık (Temperature)</span>
-                            <span className="text-[#378ADD] font-black text-xs font-mono">{typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp.toFixed(1)}</span>
+                            <span className="text-[#378ADD] font-black text-xs font-mono">{(Number(selectedItem.temp) || 0.7).toFixed(1)}</span>
                         </label>
                         <input
                             type="range" min="0.0" max="2.0" step="0.1"
-                            value={typeof selectedItem.temp === 'string' ? 0.7 : selectedItem.temp}
+                            value={Number(selectedItem.temp) || 0.7}
                             onChange={(e) => updateAgent('temp', parseFloat(e.target.value))}
                             className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#378ADD] mt-1"
                         />
@@ -268,13 +269,13 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-[#791F1F] mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                            <ShieldCheck size={12} className="text-[#791F1F]" /> Kısıtlamalar (Don'ts)
+                        <label className="block text-[10px] font-bold text-[#991B1B] mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                            <ShieldCheck size={12} className="text-[#991B1B]" /> Kısıtlamalar (Don'ts)
                         </label>
                         <textarea
                             value={selectedItem.negativePrompt}
                             onChange={(e) => updateAgent('negativePrompt', e.target.value)}
-                            className="w-full bg-[#FCEBEB]/30 border border-[#FCEBEB] text-[#791F1F] text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#791F1F]/40 focus:ring-1 focus:ring-[#791F1F]/20 focus:bg-[#FCEBEB]/50 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-[#791F1F]/40 placeholder:font-normal"
+                            className="w-full bg-[#FEF2F2]/30 border border-[#FEF2F2] text-[#991B1B] text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#991B1B]/40 focus:ring-1 focus:ring-[#991B1B]/20 focus:bg-[#FEF2F2]/50 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-[#991B1B]/40 placeholder:font-normal"
                             placeholder="Örn: Fiyat verme, siyaset konuşma..."
                         />
                     </div>
@@ -291,7 +292,8 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                     <div className="p-5">
                         <div className="space-y-1.5">
                             {rags.map(rag => {
-                                const hasAccess = selectedItem.allowedRags.includes(rag.id);
+                                const allowedRagsArr = Array.isArray(selectedItem.allowedRags) ? selectedItem.allowedRags : [];
+                                const hasAccess = allowedRagsArr.includes(rag.id);
                                 const isExpanded = expandedRags[rag.id];
                                 return (
                                     <div key={rag.id} className="flex flex-col gap-1">
@@ -322,20 +324,20 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                                         {isExpanded && rag.files && (
                                             <div className="pl-9 pr-3 py-1 space-y-1.5 mt-2 mb-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                                 {rag.files.map((file) => {
-                                                    const isFileDisabled = selectedItem.allowedRags.includes(`!${file.id}`);
+                                                    const isFileDisabled = allowedRagsArr.includes(`!${file.id}`);
                                                     return (
                                                         <div
                                                             key={file.id}
                                                             onClick={(e) => toggleFileAccess(e, file.id)}
-                                                            className={`flex items-center gap-2 text-[11px] px-3 py-2 rounded border cursor-pointer transition-colors font-semibold tracking-tight ${isFileDisabled ? 'bg-[#FCEBEB]/50 border-[#FCEBEB] text-stone-400' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'}`}
+                                                            className={`flex items-center gap-2 text-[11px] px-3 py-2 rounded border cursor-pointer transition-colors font-semibold tracking-tight ${isFileDisabled ? 'bg-[#FEF2F2]/50 border-[#FEF2F2] text-stone-400' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'}`}
                                                             title={isFileDisabled ? "Yapay zeka erişimine kapalı. Açmak için tıklayın." : "Yapay zeka erişimine açık. Kapatmak için tıklayın."}
                                                         >
                                                             <div className="flex-1 flex items-center gap-2.5 truncate">
-                                                                <FileText size={12} strokeWidth={2.5} className={isFileDisabled ? "text-[#791F1F]/50" : "text-[#378ADD]"} />
+                                                                <FileText size={12} strokeWidth={2.5} className={isFileDisabled ? "text-[#991B1B]/50" : "text-[#378ADD]"} />
                                                                 <span className={`truncate ${isFileDisabled ? 'line-through decoration-stone-300' : ''}`}>{file.filename}</span>
                                                             </div>
                                                             <div className="shrink-0">
-                                                                {isFileDisabled ? <ToggleLeft size={16} strokeWidth={2.5} className="text-[#791F1F]/60" /> : <ToggleRight size={16} strokeWidth={2.5} className="text-[#378ADD]" />}
+                                                                {isFileDisabled ? <ToggleLeft size={16} strokeWidth={2.5} className="text-[#991B1B]/60" /> : <ToggleRight size={16} strokeWidth={2.5} className="text-[#378ADD]" />}
                                                             </div>
                                                         </div>
                                                     );
@@ -402,11 +404,11 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
                         {/* Sağ sütun: Hata yanıtı */}
                         <div>
-                            <label className="block text-[10px] font-bold text-[#791F1F] mb-1.5 uppercase tracking-wide">Hata Durumu Yanıtı (Fallback)</label>
+                            <label className="block text-[10px] font-bold text-[#991B1B] mb-1.5 uppercase tracking-wide">Hata Durumu Yanıtı (Fallback)</label>
                             <textarea
                                 value={selectedItem.errorMessage}
                                 onChange={e => updateAgent('errorMessage', e.target.value)}
-                                className="w-full bg-[#FCEBEB]/30 border border-[#FCEBEB] text-[#791F1F] text-xs font-medium rounded-xl px-4 py-3 outline-none focus:border-[#791F1F]/40 focus:ring-1 focus:ring-[#791F1F]/20 focus:bg-[#FCEBEB]/50 transition-all resize-none min-h-[110px] placeholder:text-[#791F1F]/40 placeholder:font-normal"
+                                className="w-full bg-[#FEF2F2]/30 border border-[#FEF2F2] text-[#991B1B] text-xs font-medium rounded-xl px-4 py-3 outline-none focus:border-[#991B1B]/40 focus:ring-1 focus:ring-[#991B1B]/20 focus:bg-[#FEF2F2]/50 transition-all resize-none min-h-[110px] placeholder:text-[#991B1B]/40 placeholder:font-normal"
                                 placeholder="Bilgi bulamazsa kullanıcıya ne desin?"
                             />
                         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Loader2, Webhook, Key, Workflow, LineChart, Terminal, FileCode } from 'lucide-react';
+import { Bot, Loader2, Webhook, Key, Workflow, LineChart, Terminal, FileCode, Power } from 'lucide-react';
 
 // Components
 import { ModelsTab } from './tabs/ModelsTab';
@@ -254,12 +254,14 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                         </div>
 
                                         {upperViewMode === 'diagram' && (
-                                            <InlineTopologyOverview
-                                                agent={selectedItem}
-                                                allAgents={agents}
-                                                rags={rags}
-                                                onOpenPayload={() => setIsFlowExpanded(true)}
-                                            />
+                                            <ErrorBoundary>
+                                                <InlineTopologyOverview
+                                                    agent={selectedItem}
+                                                    allAgents={agents}
+                                                    rags={rags}
+                                                    onOpenPayload={() => setIsFlowExpanded(true)}
+                                                />
+                                            </ErrorBoundary>
                                         )}
                                         {upperViewMode === 'dashboard' && (
                                             <div className="w-full h-full pt-14 relative z-10 overflow-hidden bg-stone-50 animate-in fade-in duration-300">
@@ -379,12 +381,14 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 }}
                                             >
                                                 <div className="max-w-5xl mx-auto">
-                                                    <AgentConfigPanel
-                                                        selectedItem={selectedItem}
-                                                        rags={rags}
-                                                        updateAgent={updateAgent}
-                                                        toggleRagAccess={toggleRagAccess}
-                                                    />
+                                                    <ErrorBoundary>
+                                                        <AgentConfigPanel
+                                                            selectedItem={selectedItem}
+                                                            rags={rags}
+                                                            updateAgent={updateAgent}
+                                                            toggleRagAccess={toggleRagAccess}
+                                                        />
+                                                    </ErrorBoundary>
                                                 </div>
                                             </div>
                                         </div>

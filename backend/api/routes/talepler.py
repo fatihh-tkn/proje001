@@ -31,7 +31,7 @@ router = APIRouter()
 # ── Yardımcılar ──────────────────────────────────────────────────────────────
 
 GECERLI_DURUMLAR = {"incelemede", "onaylandi", "reddedildi", "tamamlandi"}
-GECERLI_KATEGORILER = {"erisim", "kota", "egitim", "hata", "diger"}
+GECERLI_KATEGORILER = {"erisim", "kota", "egitim", "hata", "zli_rapor", "diger"}
 GECERLI_ONCELIKLER = {"dusuk", "orta", "yuksek"}
 
 DURUM_RENK = {

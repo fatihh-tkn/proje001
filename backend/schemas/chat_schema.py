@@ -16,6 +16,8 @@ class ChatMessage(BaseModel):
     # PC parmak izi (localStorage) ve sekme token'ı (sessionStorage)
     pc_id: str | None = Field(default=None, max_length=64)
     tab_id: str | None = Field(default=None, max_length=64)
+    # Hızlı Aksiyon komutu (error_solve, summarize, bpmn_analyze, ...)
+    command: str | None = Field(default=None, max_length=64)
 
 
 class ChatResponse(BaseModel):

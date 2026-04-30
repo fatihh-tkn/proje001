@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 NS = {
     "bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL",
     "bpmndi": "http://www.omg.org/spec/BPMN/20100524/DI",
+    "dc":    "http://www.omg.org/spec/DD/20100524/DC",
 }
 
 # Desteklenen element türleri → insanın anlayacağı etiket
@@ -83,9 +84,26 @@ def parse_bpmn(file_path: str, original_name: str | None = None) -> list[dict]:
     flows: dict[str, tuple[str, str, str]] = {}
     # Category değer tablosu
     category_values: dict[str, str] = {}
+    # element_id → (x, y, width, height) — BPMN DI koordinatları
+    element_bounds: dict[str, dict] = {}
 
     def find_all(tag: str):
         return root.iter(f"{{{NS['bpmn']}}}{tag}")
+
+    # BPMN DI — element koordinatları (BPMNShape → Bounds)
+    for shape in root.iter(f"{{{NS['bpmndi']}}}BPMNShape"):
+        el_id = shape.get("bpmnElement", "")
+        bounds = shape.find(f"{{{NS['dc']}}}Bounds")
+        if el_id and bounds is not None:
+            try:
+                element_bounds[el_id] = {
+                    "x":      float(bounds.get("x", 0)),
+                    "y":      float(bounds.get("y", 0)),
+                    "width":  float(bounds.get("width", 100)),
+                    "height": float(bounds.get("height", 80)),
+                }
+            except (TypeError, ValueError):
+                pass
 
     # Category değerleri
     for cv in find_all("categoryValue"):
@@ -228,17 +246,25 @@ def parse_bpmn(file_path: str, original_name: str | None = None) -> list[dict]:
         if len(text.strip()) < 20:
             continue
 
+        bounds = element_bounds.get(eid)
+        sinir = (
+            f"{bounds['x']},{bounds['y']},{bounds['width']},{bounds['height']}"
+            if bounds else None
+        )
+
         chunks.append({
             "id":   str(uuid.uuid4()),
             "text": text,
             "metadata": {
-                "page":        idx + 1,
-                "chunk_index": idx + 1,
-                "source":      file_basename,
-                "type":        f"bpmn_{tag}",
-                "element_id":  eid,
+                "page":         idx + 1,
+                "chunk_index":  idx + 1,
+                "source":       file_basename,
+                "type":         f"bpmn_{tag}",
+                "element_id":   eid,
                 "element_name": name,
-                "total_pages": len(all_elements),
+                "total_pages":  len(all_elements),
+                "sinir_kutusu": sinir,
+                "bounds":       bounds,
             }
         })
 

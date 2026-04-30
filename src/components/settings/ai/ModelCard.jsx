@@ -61,7 +61,7 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
                                 </span>
                             )}
                             {status === 'inactive' && (
-                                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md text-[#791F1F] bg-[#FCEBEB] border border-[#FCEBEB]/60">
+                                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md text-[#991B1B] bg-[#FEF2F2] border border-[#FEF2F2]/60">
                                     <X size={12} strokeWidth={2.5} /> PASİF
                                 </span>
                             )}

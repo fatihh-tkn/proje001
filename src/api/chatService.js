@@ -112,8 +112,10 @@ export const sendMessageStream = async (
   message,
   sessionId = "default_chat",
   userId = null,
-  { onChunk, onDone, onError } = {},
+  { onChunk, onReplace, onDone, onError, onAbort } = {},
   fileOpts = null,
+  commandOpts = null,
+  signal = null,
 ) => {
   try {
     const body = {
@@ -125,12 +127,15 @@ export const sendMessageStream = async (
     };
     if (userId) body.user_id = userId;
     if (fileOpts?.fileName) body.file_name = fileOpts.fileName;
+    if (fileOpts?.fileNames?.length) body.file_names = fileOpts.fileNames;
     if (fileOpts?.collectionName) body.collection_name = fileOpts.collectionName;
+    if (commandOpts?.commandId) body.command = commandOpts.commandId;
 
     const response = await fetch(STREAM_BASE, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
 
     // 429 = oturum limiti aşıldı
@@ -149,31 +154,51 @@ export const sendMessageStream = async (
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // SSE satırlarını işle — her olay "data: {...}\n\n" formatında
-      const lines = buffer.split("\n");
-      buffer = lines.pop(); // Son yarım satırı beklet
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const raw = trimmed.slice(5).trim();
-        if (!raw) continue;
-
-        try {
-          const evt = JSON.parse(raw);
-          if (evt.type === "chunk") onChunk?.(evt.text);
-          else if (evt.type === "done") onDone?.({ rag_used: evt.rag_used, rag_sources: evt.rag_sources ?? [], ui_action: evt.ui_action ?? null });
-          else if (evt.type === "error") onError?.(evt.text);
-        } catch (_) { /* JSON parse hatası — yoksay */ }
-      }
+    // Kullanıcı durdur butonuna basarsa reader'ı kapat — okuma döngüsü düşer.
+    const onSignalAbort = () => {
+      try { reader.cancel(); } catch (_) { /* yok say */ }
+    };
+    if (signal) {
+      if (signal.aborted) onSignalAbort();
+      else signal.addEventListener('abort', onSignalAbort, { once: true });
     }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE satırlarını işle — her olay "data: {...}\n\n" formatında
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // Son yarım satırı beklet
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const raw = trimmed.slice(5).trim();
+          if (!raw) continue;
+
+          try {
+            const evt = JSON.parse(raw);
+            if (evt.type === "chunk") onChunk?.(evt.text);
+            else if (evt.type === "replace") onReplace?.(evt.text);
+            else if (evt.type === "done") onDone?.({ rag_used: evt.rag_used, rag_sources: evt.rag_sources ?? [], ui_action: evt.ui_action ?? null, model: evt.model ?? null, provider: evt.provider ?? null, prompt_tokens: evt.prompt_tokens ?? 0, completion_tokens: evt.completion_tokens ?? 0, duration_ms: evt.duration_ms ?? 0 });
+            else if (evt.type === "error") onError?.(evt.text);
+          } catch (_) { /* JSON parse hatası — yoksay */ }
+        }
+      }
+    } finally {
+      if (signal) signal.removeEventListener?.('abort', onSignalAbort);
+    }
+
+    if (signal?.aborted) onAbort?.();
   } catch (error) {
+    if (error?.name === 'AbortError' || signal?.aborted) {
+      onAbort?.();
+      return;
+    }
     console.error("Streaming sırasında hata:", error);
     onError?.("Bağlantı hatası: Backend çalışmıyor olabilir.");
   }

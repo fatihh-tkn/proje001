@@ -29,7 +29,7 @@ const heatmap = [];
 
 const heatLegend = [
     { label: "Atanmadı", bg: "#F1EFE8", text: "#888780" },
-    { label: "Başlangıç", bg: "#FCEBEB", text: "#791F1F" },
+    { label: "Başlangıç", bg: "#FEF2F2", text: "#991B1B" },
     { label: "Orta", bg: "#FAEEDA", text: "#854F0B" },
     { label: "İleri", bg: "#EAF3DE", text: "#3B6D11" },
     { label: "Uzman", bg: "#C0DD97", text: "#173404" },
@@ -38,7 +38,7 @@ const heatLegend = [
 
 const heatColors = {
     0: { bg: "#F1EFE8", text: "#888780" },
-    1: { bg: "#FCEBEB", text: "#791F1F" },
+    1: { bg: "#FEF2F2", text: "#991B1B" },
     2: { bg: "#FAEEDA", text: "#854F0B" },
     3: { bg: "#EAF3DE", text: "#3B6D11" },
     4: { bg: "#C0DD97", text: "#173404" },
@@ -87,7 +87,7 @@ function StatusBadge({ status, label }) {
     const colors = {
         ok: { bg: "#EAF3DE", text: "#3B6D11" },
         warn: { bg: "#FAEEDA", text: "#854F0B" },
-        risk: { bg: "#FCEBEB", text: "#791F1F" }
+        risk: { bg: "#FEF2F2", text: "#991B1B" }
     };
     const c = colors[status];
     return (
@@ -138,7 +138,7 @@ export default function SapEgitimAdminPaneli() {
                     <div>
                         <h1 className="text-xl font-medium text-stone-900 mb-1">SAP Eğitim Yönetimi · Admin</h1>
                         <div className="text-xs text-stone-600">Tüm çalışanlar · rol, modül ve sertifika takibi</div>
-                        <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] px-2 py-0.5 rounded" style={{ background: "#FCEBEB", color: "#791F1F" }}>● Admin erişimi</span>
+                        <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] px-2 py-0.5 rounded" style={{ background: "#FEF2F2", color: "#991B1B" }}>● Admin erişimi</span>
                     </div>
                     <div className="text-right">
                         <div className="text-[11px] text-stone-600">Güncelleme: Bugün 09:00</div>

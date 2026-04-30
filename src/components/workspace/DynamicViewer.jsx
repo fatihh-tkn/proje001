@@ -16,6 +16,9 @@ const AiOrchestratorViewer = lazy(() => import('../settings/ai/AiOrchestratorVie
 const MeetingUploadViewer = lazy(() => import('../settings/meetings/MeetingUploadViewer'));
 const AuthViewer = lazy(() => import('../settings/auth/AuthViewer'));
 const TalepYonetimViewer = lazy(() => import('../settings/talepler/TalepYonetimViewer'));
+const ErrorManagementViewer = lazy(() => import('../settings/errors/ErrorManagementViewer'));
+const MyResolvedErrorsViewer = lazy(() => import('../settings/errors/MyResolvedErrorsViewer'));
+const MyRequestsViewer = lazy(() => import('../settings/talepler/MyRequestsViewer'));
 
 export const DynamicViewer = ({ tab, onOpenFile }) => {
     return (
@@ -25,7 +28,7 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
                 <p className="text-sm">Görüntüleyici Modül Yükleniyor...</p>
             </div>
         }>
-            {tab.type === 'bpmn' && <BpmnViewer url={tab.url} title={tab.title} />}
+            {tab.type === 'bpmn' && <BpmnViewer url={tab.url} title={tab.title} elementId={tab.meta?.elementId || null} />}
             {(tab.type === 'pdf' || tab.type === 'pptx' || tab.type === 'ppt') && (
                 <PdfViewer
                     url={tab.url}
@@ -48,8 +51,11 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
             {tab.type === 'meetings' && <MeetingUploadViewer />}
             {tab.type === 'auth' && <AuthViewer />}
             {tab.type === 'talep-yonetim' && <TalepYonetimViewer />}
+            {tab.type === 'error-management' && <ErrorManagementViewer currentUser={tab.meta?.currentUser} />}
+            {tab.type === 'my-errors' && <MyResolvedErrorsViewer currentUser={tab.meta?.currentUser} />}
+            {tab.type === 'my-requests' && <MyRequestsViewer currentUser={tab.meta?.currentUser} />}
 
-            {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'error-management' && tab.type !== 'my-errors' && tab.type !== 'my-requests' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

@@ -3,7 +3,7 @@ import {
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { BookOpen, FileText, Award, Clock, Layers, MapPin, User, Calendar, Tag, Lock, X, Check, Search, ShieldAlert } from 'lucide-react';
+import { BookOpen, FileText, Award, Clock, Layers, MapPin, User, Calendar, Tag, Lock, X, Check, Search, ShieldAlert, AlertTriangle } from 'lucide-react';
 import ReactDOM from 'react-dom';
 
 /* ─── Renk Sabitleri ─────────────────────────────── */
@@ -13,7 +13,7 @@ const C = {
     amber: '#EF9F27',
     green: '#1D9E75',
     darkGreen: '#3B6D11',
-    red: '#791F1F',
+    red: '#991B1B',
 };
 
 /* ─── Yardımcı: token'ı okunabilir kısa forma çevir ─ */
@@ -167,6 +167,7 @@ export const RestrictionsModal = ({ userId, userName, onClose }) => {
 export default function InlineUserDashboard({ userId, userName, userStatus, onStatusChange, onDelete }) {
     const [data, setData] = useState(null);
     const [egitimData, setEgitimData] = useState(null);
+    const [errorRecords, setErrorRecords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState(userStatus || 'Aktif');
     const [confirming, setConfirming] = useState(false);
@@ -178,10 +179,12 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
 
         const dashPromise = fetch(`/api/auth/users/${userId}/dashboard`).then(r => r.json()).catch(() => null);
         const egitimPromise = fetch(`http://127.0.0.1:8000/api/egitim/dashboard/${userId}`).then(r => r.json()).catch(() => null);
+        const errorsPromise = fetch(`/api/errors/user/${userId}`).then(r => r.json()).catch(() => ({ records: [] }));
 
-        Promise.all([dashPromise, egitimPromise]).then(([dash, egitim]) => {
+        Promise.all([dashPromise, egitimPromise, errorsPromise]).then(([dash, egitim, errs]) => {
             setData(dash);
             setEgitimData(egitim);
+            setErrorRecords(errs?.records || []);
             setLoading(false);
         });
     }, [userId]);
@@ -308,7 +311,7 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                                         )}
                                         {sonBelgeler.slice(0, 3).map((b, i) => (
                                             <div key={i} className="flex items-center gap-2">
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${b.type === 'PDF' ? 'bg-[#FCEBEB] text-[#791F1F]' :
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${b.type === 'PDF' ? 'bg-[#FEF2F2] text-[#991B1B]' :
                                                     b.type === 'XLSX' ? 'bg-[#EAF3DE] text-[#3B6D11]' :
                                                         b.type === 'DOCX' ? 'bg-[#E6F1FB] text-[#0C447C]' :
                                                             'bg-stone-100 text-stone-600'
@@ -320,6 +323,42 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* ── Çözdüğüm Hatalar ── */}
+                        <div className="bg-white border border-stone-200 rounded-lg shadow-sm p-4 mb-4">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-3 flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <AlertTriangle size={12} className="text-[#A01B1B]" /> Çözdüğüm Hatalar
+                                </span>
+                                <span className="text-[10px] text-stone-400 normal-case font-mono tracking-normal">{errorRecords.length} kayıt</span>
+                            </div>
+                            {errorRecords.length === 0 ? (
+                                <p className="text-[11px] text-stone-400 italic">Henüz kaydedilen hata çözümü yok.</p>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {errorRecords.slice(0, 6).map((r) => (
+                                        <div key={r.kimlik} className="flex items-start gap-2 bg-stone-50 border border-stone-200 rounded-md px-2.5 py-2">
+                                            <AlertTriangle size={11} className="text-[#A01B1B] mt-0.5 shrink-0" />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                    {r.hata_kodu && (
+                                                        <span className="font-mono text-[9px] text-slate-700 bg-stone-200 px-1 py-0.5 rounded">{r.hata_kodu}</span>
+                                                    )}
+                                                    {r.modul && (
+                                                        <span className="font-mono text-[9px] text-blue-700 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded">{r.modul}</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] font-medium text-stone-700 truncate" title={r.baslik}>{r.baslik}</p>
+                                                {r.ozet && (
+                                                    <p className="text-[10px] text-stone-500 line-clamp-2 mt-0.5">{r.ozet}</p>
+                                                )}
+                                                <span className="text-[9px] text-stone-400">{(r.kayit_tarihi || '').slice(0, 10)}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* ── Yönetici Talepler ve Kişisel Profil ── */}
@@ -411,19 +450,19 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                                 {!confirming ? (
                                     <button
                                         onClick={() => setConfirming(true)}
-                                        className="text-[11px] font-medium px-3 py-1.5 rounded-md border bg-[#FCEBEB] text-[#791F1F] border-[#F2D7D7] hover:bg-[#F2D7D7] transition-colors"
+                                        className="text-[11px] font-medium px-3 py-1.5 rounded-md border bg-[#FEF2F2] text-[#991B1B] border-[#F2D7D7] hover:bg-[#F2D7D7] transition-colors"
                                     >
                                         Kullanıcıyı Sil
                                     </button>
                                 ) : (
-                                    <div className="flex items-center gap-1.5 bg-[#FCEBEB] border border-[#F2D7D7] rounded-md px-3 py-1.5">
-                                        <span className="text-[11px] text-[#791F1F] font-medium">Emin misiniz?</span>
+                                    <div className="flex items-center gap-1.5 bg-[#FEF2F2] border border-[#F2D7D7] rounded-md px-3 py-1.5">
+                                        <span className="text-[11px] text-[#991B1B] font-medium">Emin misiniz?</span>
                                         <button
                                             onClick={() => {
                                                 fetch(`/api/auth/users/${userId}`, { method: 'DELETE' })
                                                     .then(res => { if (res.ok) onDelete?.(); });
                                             }}
-                                            className="text-[11px] font-bold text-white bg-[#791F1F] px-2 py-0.5 rounded hover:bg-[#5a1717] transition-colors"
+                                            className="text-[11px] font-bold text-white bg-[#991B1B] px-2 py-0.5 rounded hover:bg-[#5a1717] transition-colors"
                                         >Evet, Sil</button>
                                         <button
                                             onClick={() => setConfirming(false)}

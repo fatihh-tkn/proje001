@@ -14,7 +14,7 @@ const MODULE_COLORS = {
 };
 
 const TYPE_COLORS = {
-    Zorunlu: { bg: "#FCEBEB", text: "#791F1F", border: "#F7C1C1" },
+    Zorunlu: { bg: "#FEF2F2", text: "#991B1B", border: "#F7C1C1" },
     Ekstra: { bg: "#EEEDFE", text: "#3C3489", border: "#AFA9EC" },
     Yenileme: { bg: "#E6F1FB", text: "#0C447C", border: "#B5D4F4" },
     Onboarding: { bg: "#E1F5EE", text: "#085041", border: "#9FE1CB" },
@@ -294,7 +294,7 @@ export default function EgitimAcmaSlideOver({ open, onClose }) {
                         </div>
                         <span style={{
                             display: "inline-flex", alignItems: "center", gap: 5,
-                            background: "#FCEBEB", color: "#791F1F",
+                            background: "#FEF2F2", color: "#991B1B",
                             fontSize: 11, padding: "3px 9px", borderRadius: 6, marginTop: 8,
                         }}>● Admin · Eğitim yönetimi</span>
                     </div>
@@ -511,7 +511,7 @@ export default function EgitimAcmaSlideOver({ open, onClose }) {
                                     color: "#94a3b8", padding: "4px 6px", borderRadius: 4,
                                     fontSize: 16, lineHeight: 1,
                                 }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = "#FCEBEB"; e.currentTarget.style.color = "#A32D2D"; }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = "#FEF2F2"; e.currentTarget.style.color = "#A32D2D"; }}
                                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
                                 >×</button>
                             </div>
@@ -580,7 +580,7 @@ export default function EgitimAcmaSlideOver({ open, onClose }) {
                             border: "0.5px solid #e2e8f0", fontSize: 12, padding: "8px 14px",
                             borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
                         }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#FCEBEB"; e.currentTarget.style.borderColor = "#F7C1C1"; }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#FEF2F2"; e.currentTarget.style.borderColor = "#F7C1C1"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
                         >Sil</button>
 
