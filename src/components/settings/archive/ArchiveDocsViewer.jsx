@@ -9,6 +9,7 @@ import {
     Mic, Loader2, AlertCircle, GripVertical, Users2
 } from 'lucide-react';
 import { useErrorStore } from '../../../store/errorStore';
+import { mutate, mutation } from '../../../api/client';
 
 /* ── Klasör İkonu ──────────────────────────────────────────────────── */
 function FolderIcon({ isUserFolder, uploaderName, size = 64 }) {
@@ -198,14 +199,15 @@ const AccessModal = ({ item, onClose, onSaved }) => {
 
     const save = async () => {
         setSaving(true);
-        await fetch(`/api/archive/access/${item.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ izin_verilen_kullanicilar: [...selected] }),
-        });
+        try {
+            await mutation('PUT', `/api/archive/access/${item.id}`,
+                { izin_verilen_kullanicilar: [...selected] },
+                { kind: 'save', subject: 'Erişim izinleri' }
+            );
+            onSaved();
+            onClose();
+        } catch { /* toast atıldı */ }
         setSaving(false);
-        onSaved();
-        onClose();
     };
 
     const filtered = data?.tum_kullanicilar.filter(u =>
@@ -468,17 +470,13 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
         setTags(newTags);
         setTagInput('');
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await mutate.update('/api/archive/meta',
+                { kimlik: doc.id, etiketler: newTags },
+                { kind: 'create', subject: 'Etiket', detail: tag.trim() }
+            );
             onTagUpdate?.(doc.id, newTags);
-        } catch (e) {
-            setTags(tags); // geri al
-            addToast({ type: 'error', message: 'Etiket eklenemedi.' });
-            console.error('[ArchiveDetail] addTag hatası:', e.message);
+        } catch {
+            setTags(tags);
         }
     };
 
@@ -486,37 +484,27 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
         const newTags = tags.filter(t => t !== tag);
         setTags(newTags);
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await mutate.update('/api/archive/meta',
+                { kimlik: doc.id, etiketler: newTags },
+                { kind: 'delete', subject: 'Etiket', detail: tag }
+            );
             onTagUpdate?.(doc.id, newTags);
-        } catch (e) {
-            setTags(tags); // geri al
-            addToast({ type: 'error', message: 'Etiket silinemedi.' });
-            console.error('[ArchiveDetail] removeTag hatası:', e.message);
+        } catch {
+            setTags(tags);
         }
     };
 
     const saveDesc = async () => {
         setSaving(true);
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            addToast({ type: 'success', message: 'Açıklama kaydedildi.' });
-        } catch (e) {
-            addToast({ type: 'error', message: 'Açıklama kaydedilemedi.' });
-            console.error('[ArchiveDetail] saveDesc hatası:', e.message);
-        }
+            await mutate.save('/api/archive/meta',
+                { kimlik: doc.id, aciklama: desc },
+                { subject: 'Açıklama' }
+            );
+            onDescUpdate?.(doc.id, desc);
+        } catch { /* mutate zaten toast attı */ }
         setSaving(false);
         setDescEditing(false);
-        onDescUpdate?.(doc.id, desc);
     };
 
     const { Icon, color, bg } = getFileVisual(doc.file_type);
@@ -875,12 +863,15 @@ export default function ArchiveDocsViewer() {
 
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
-        await fetch('/api/archive/create-folder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newFolderName, parent_id: currentFolderId })
-        });
-        fetchArchive(); setIsCreatingFolder(false); setNewFolderName('');
+        try {
+            await mutate.create('/api/archive/create-folder',
+                { name: newFolderName, parent_id: currentFolderId },
+                { subject: 'Klasör', detail: newFolderName }
+            );
+            fetchArchive();
+            setIsCreatingFolder(false);
+            setNewFolderName('');
+        } catch { /* toast atıldı */ }
     };
 
     const handleUploadClick = () => {
@@ -896,7 +887,11 @@ export default function ArchiveDocsViewer() {
         if (currentFolderId) formData.append('folder_id', currentFolderId);
         if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);
-        await fetch('/api/archive/direct-upload', { method: 'POST', body: formData });
+        try {
+            await mutate.upload('/api/archive/direct-upload', formData, {
+                subject: 'Belge', detail: file.name, rawBody: true, showLoading: true,
+            });
+        } catch { /* toast atıldı */ }
         fetchArchive();
     };
 
@@ -907,25 +902,29 @@ export default function ArchiveDocsViewer() {
 
     const handleBatchDelete = async (ids) => {
         if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
+        let data;
         try {
-            const res = await fetch('/api/archive/delete', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids })
+            data = await mutate.remove('/api/archive/delete',
+                { ids },
+                {
+                    subject: ids.length > 1 ? `${ids.length} öğe` : 'Öğe',
+                    silentSuccess: true, // partial uyarı varsa onu özel toast'la ver
+                }
+            );
+        } catch {
+            return; // mutate zaten error toast attı
+        }
+        if (data?.status === 'partial') {
+            useErrorStore.getState().addToast({
+                type: 'info',
+                message: `Kısmi silme: ${data.uyarilar?.join(' · ') || 'Bazı öğeler silinemedi.'}`,
+                copyable: true,
             });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert(`Silme başarısız: ${err.detail || res.statusText}`);
-                return;
-            }
-            const data = await res.json();
-            if (data.status === 'partial') {
-                alert(`Kısmi silme tamamlandı:\n${data.uyarilar?.join('\n') || 'Bazı dosyalar silinemedi.'}`);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Sunucuya ulaşılamadı.");
-            return;
+        } else {
+            useErrorStore.getState().addToast({
+                type: 'success',
+                message: ids.length > 1 ? `${ids.length} öğe silindi.` : 'Öğe silindi.',
+            });
         }
         setSelectedIds(new Set());
         if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
@@ -935,31 +934,48 @@ export default function ArchiveDocsViewer() {
 
     const handleRename = async () => {
         if (!renameValue.trim()) return;
-        await fetch('/api/archive/rename', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: renameItem.id, yeni_ad: renameValue })
-        });
-        setRenameItem(null);
-        fetchArchive();
+        try {
+            await mutate.rename('/api/archive/rename',
+                { kimlik: renameItem.id, yeni_ad: renameValue },
+                { subject: 'Öğe', detail: renameValue }
+            );
+            setRenameItem(null);
+            fetchArchive();
+        } catch { /* toast atıldı */ }
     };
 
     const handleMove = async (docId, targetFolderId) => {
-        await fetch('/api/archive/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ belge_kimlik: docId, hedef_klasor_kimlik: targetFolderId })
-        });
-        fetchArchive();
+        try {
+            await mutate.move('/api/archive/move',
+                { belge_kimlik: docId, hedef_klasor_kimlik: targetFolderId },
+                { subject: 'Öğe' }
+            );
+            fetchArchive();
+        } catch { /* toast atıldı */ }
     };
 
     const handleBatchMove = async (docIds, targetFolderId) => {
         setLoading(true);
+        let okCount = 0;
         for (const id of docIds) {
-            await fetch('/api/archive/move', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ belge_kimlik: id, hedef_klasor_kimlik: targetFolderId })
+            try {
+                await mutate.move('/api/archive/move',
+                    { belge_kimlik: id, hedef_klasor_kimlik: targetFolderId },
+                    { silent: true } // toplu işlem — tek özet toast aşağıda
+                );
+                okCount++;
+            } catch { /* devam */ }
+        }
+        if (okCount > 0) {
+            useErrorStore.getState().addToast({
+                type: 'success',
+                message: `${okCount} öğe taşındı.`,
+            });
+        }
+        if (okCount < docIds.length) {
+            useErrorStore.getState().addToast({
+                type: 'error',
+                message: `${docIds.length - okCount} öğe taşınamadı.`,
             });
         }
         fetchArchive();

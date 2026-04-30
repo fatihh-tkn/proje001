@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { BookOpen, FileText, Award, Clock, Layers, MapPin, User, Calendar, Tag, Lock, X, Check, Search, ShieldAlert, AlertTriangle } from 'lucide-react';
 import ReactDOM from 'react-dom';
+import { mutation, mutate } from '../../../api/client';
 
 /* ─── Renk Sabitleri ─────────────────────────────── */
 const C = {
@@ -62,18 +63,20 @@ export const RestrictionsModal = ({ userId, userName, onClose }) => {
     const toggleAccess = async (fileId, currentAccess) => {
         setUpdating(fileId);
         const newAccess = !currentAccess;
+        const f = files.find(x => x.id === fileId);
         try {
-            await fetch(`/api/auth/users/${userId}/file-access`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_id: fileId, has_access: newAccess })
-            });
-            setFiles(prev => prev.map(f => f.id === fileId ? { ...f, has_access: newAccess } : f));
-        } catch (error) {
-            console.error("Erişim güncellenemedi", error);
-        } finally {
-            setUpdating(null);
-        }
+            await mutation('PUT', `/api/auth/users/${userId}/file-access`,
+                { file_id: fileId, has_access: newAccess },
+                {
+                    kind: 'toggle',
+                    subject: 'Dosya erişimi',
+                    detail: f?.filename,
+                    customSuccess: `Dosya erişimi ${newAccess ? 'açıldı' : 'kapatıldı'}: ${f?.filename || ''}`,
+                }
+            );
+            setFiles(prev => prev.map(x => x.id === fileId ? { ...x, has_access: newAccess } : x));
+        } catch { /* mutate toast attı */ }
+        setUpdating(null);
     };
 
     const filtered = (files || []).filter(f => f.filename.toLowerCase().includes(search.toLowerCase()));
@@ -425,15 +428,20 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                         <div className="flex items-center justify-between pt-4 border-t border-stone-200 mt-2">
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         const newStatus = status === 'Aktif' ? 'Askıya Alındı' : 'Aktif';
-                                        fetch(`/api/auth/users/${userId}/status`, {
-                                            method: 'PUT',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ status: newStatus })
-                                        }).then(res => {
-                                            if (res.ok) { setStatus(newStatus); onStatusChange?.(newStatus); }
-                                        });
+                                        try {
+                                            await mutation('PUT', `/api/auth/users/${userId}/status`,
+                                                { status: newStatus },
+                                                {
+                                                    kind: 'update',
+                                                    subject: 'Hesap durumu',
+                                                    customSuccess: `Hesap ${newStatus === 'Aktif' ? 'aktifleştirildi' : 'askıya alındı'}.`,
+                                                }
+                                            );
+                                            setStatus(newStatus);
+                                            onStatusChange?.(newStatus);
+                                        } catch { /* toast atıldı */ }
                                     }}
                                     className={`text-[11px] font-medium px-3 py-1.5 rounded-md border transition-colors ${status === 'Aktif'
                                         ? 'bg-[#FAEEDA] text-[#854F0B] border-[#F2DFBA] hover:bg-[#F2DFBA]'
@@ -458,9 +466,13 @@ export default function InlineUserDashboard({ userId, userName, userStatus, onSt
                                     <div className="flex items-center gap-1.5 bg-[#FEF2F2] border border-[#F2D7D7] rounded-md px-3 py-1.5">
                                         <span className="text-[11px] text-[#991B1B] font-medium">Emin misiniz?</span>
                                         <button
-                                            onClick={() => {
-                                                fetch(`/api/auth/users/${userId}`, { method: 'DELETE' })
-                                                    .then(res => { if (res.ok) onDelete?.(); });
+                                            onClick={async () => {
+                                                try {
+                                                    await mutate.remove(`/api/auth/users/${userId}`, null, {
+                                                        subject: 'Kullanıcı',
+                                                    });
+                                                    onDelete?.();
+                                                } catch { /* toast atıldı */ }
                                             }}
                                             className="text-[11px] font-bold text-white bg-[#991B1B] px-2 py-0.5 rounded hover:bg-[#5a1717] transition-colors"
                                         >Evet, Sil</button>

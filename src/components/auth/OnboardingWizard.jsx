@@ -4,6 +4,7 @@ import {
     ChevronRight, Check, ArrowRight,
     Briefcase, BookOpen, Code2, Palette, BarChart2, Globe,
 } from 'lucide-react';
+import { mutation } from '../../api/client';
 
 /* ─── Inline accent helper ─────────────────────────────────────── */
 // CSS değişkeni --th-tab-active-bg tema rengi (kırmızı/mavi/yeşil vb.)
@@ -473,17 +474,14 @@ export default function OnboardingWizard({ user, onComplete }) {
             onboarding_completed: true,
         };
         try {
-            await fetch(`/api/auth/users/${user.id}/meta`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+            await mutation('PUT', `/api/auth/users/${user.id}/meta`, payload, {
+                kind: 'save', subject: 'Profil tercihleri',
             });
         } catch (err) {
             console.error('Onboarding kaydedilemedi:', err);
-        } finally {
-            setIsSaving(false);
-            setDone(true);
         }
+        setIsSaving(false);
+        setDone(true);
     };
 
     const handleFinish = () => {

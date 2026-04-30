@@ -4,6 +4,7 @@ import {
     Activity, RefreshCw, X, Box, Network, Cpu
 } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
+import { mutate, notify } from '../../../../api/client';
 import ModelCard from '../ModelCard';
 
 /* ─── Main Component ─────────────────────────────────────────────── */
@@ -49,58 +50,52 @@ export const ModelsTab = React.memo(() => {
         if (!keyVal.trim()) return;
         setVerifying(true);
         try {
-            const res = await fetchWithTimeout(`${API_BASE}/custom-models/verify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: keyVal.trim() }),
-            });
-            const data = await res.json();
-            if (data.ok && data.models) {
+            const data = await mutate.process(`${API_BASE}/custom-models/verify`,
+                { api_key: keyVal.trim() },
+                {
+                    subject: 'API anahtarı',
+                    silentSuccess: true,           // doğrulama listesi inline gösterilecek
+                    customError: 'API anahtarı doğrulanamadı',
+                }
+            );
+            if (data?.ok && data.models) {
                 setAvailableModels(data.models);
                 setProvider(data.provider);
-                setSelectedModel(data.models[0] || "");
+                setSelectedModel(data.models[0] || '');
+                notify.success(`${data.models.length} model bulundu (${data.provider}).`);
             } else {
-                alert("API doğrulanamadı veya model bulunamadı.");
+                notify.error('API doğrulandı ancak model bulunamadı.');
             }
-        } catch (e) {
-            console.error(e);
-            alert("Anahtar hatalı veya sunucuya ulaşılamıyor.");
-        } finally {
-            setVerifying(false);
-        }
+        } catch { /* mutate toast attı */ }
+        setVerifying(false);
     };
 
     const handleSave = async () => {
         if (!keyVal.trim() || !selectedModel) return;
         setSaving(true);
         try {
-            await fetchWithTimeout(`${API_BASE}/custom-models`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: keyVal.trim(), name: selectedModel }),
-            });
-
+            await mutate.create(`${API_BASE}/custom-models`,
+                { api_key: keyVal.trim(), name: selectedModel },
+                { subject: 'Model', detail: selectedModel }
+            );
             setKeyVal('');
             setAvailableModels([]);
             setSelectedModel('');
             setProvider('');
             setShowForm(false);
             await fetchModels();
-        } catch (e) {
-            console.error(e);
-            alert("Model eklenirken bir hata oluştu.");
-        } finally {
-            setSaving(false);
-        }
+        } catch { /* mutate toast attı */ }
+        setSaving(false);
     };
 
     const handleDelete = async (id) => {
+        const m = models.find(x => x.id === id);
         try {
-            await fetchWithTimeout(`${API_BASE}/custom-models/${id}`, { method: 'DELETE' });
+            await mutate.remove(`${API_BASE}/custom-models/${id}`, null,
+                { subject: 'Model', detail: m?.name || aliases[id] || id }
+            );
             await fetchModels();
-        } catch (e) {
-            console.error(e);
-        }
+        } catch { /* mutate toast attı */ }
     };
 
     if (loading) {

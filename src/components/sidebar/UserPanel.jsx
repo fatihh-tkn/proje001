@@ -7,7 +7,7 @@ import {
     Search, Download
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
-import { useErrorStore } from '../../store/errorStore';
+import { mutate } from '../../api/client';
 import AdminEgitimForm from './AdminEgitimForm';
 import UserEgitimDashboard from './UserEgitimDashboard';
 import UserVeriGirisi from './UserVeriGirisi';
@@ -59,7 +59,6 @@ function StorageDonut({ usedMb, totalMb, usedFiles, totalFiles }) {
 const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil' }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const setCurrentUser = useWorkspaceStore(state => state.setCurrentUser);
-    const addToast = useErrorStore((s) => s.addToast);
 
     const [userData, setUserData] = useState(null);
     const [dashboard, setDashboard] = useState(null);
@@ -103,8 +102,12 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
     const handleDeleteErrorRecord = async (kimlik, e) => {
         e.stopPropagation();
         if (!window.confirm('Bu kayıt silinsin mi?')) return;
-        const res = await fetch(`/api/errors/user-record/${kimlik}`, { method: 'DELETE' });
-        if (res.ok) refreshErrorRecords();
+        try {
+            await mutate.remove(`/api/errors/user-record/${kimlik}`, null,
+                { subject: 'Hata çözümü' }
+            );
+            refreshErrorRecords();
+        } catch { /* mutate toast attı */ }
     };
 
     // Panel her açıldığında, UserMenu'den seçilen sekmeye geç
@@ -169,21 +172,14 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
         }
         setNameSaving(true);
         try {
-            const res = await fetch(`/api/auth/users/${currentUser.id}/profile`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tam_ad: trimmed }),
-            });
-            if (res.ok) {
-                setCurrentUser({ ...currentUser, tam_ad: trimmed });
-                setUserData(prev => prev ? { ...prev, name: trimmed } : prev);
-                addToast({ type: 'success', message: 'Profil güncellendi.' });
-            } else {
-                addToast({ type: 'error', message: 'Profil güncellenemedi.' });
-            }
+            await mutate.update(`/api/auth/users/${currentUser.id}/profile`,
+                { tam_ad: trimmed },
+                { subject: 'Profil', detail: trimmed }
+            );
+            setCurrentUser({ ...currentUser, tam_ad: trimmed });
+            setUserData(prev => prev ? { ...prev, name: trimmed } : prev);
         } catch (e) {
             console.error('[UserPanel] Profil kayıt hatası:', e);
-            addToast({ type: 'error', message: 'Sunucuya bağlanılamadı.' });
         }
         setNameSaving(false);
         setNameEditing(false);

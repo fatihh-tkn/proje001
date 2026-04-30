@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, Upload, CheckCircle } from "lucide-react";
+import { mutate } from "../../../api/client";
 
 /* ── Renk sabitleri ── */
 const MODULE_COLORS = {
@@ -212,24 +213,14 @@ export default function EgitimAcmaSlideOver({ open, onClose }) {
         };
 
         try {
-            const response = await fetch("http://127.0.0.1:8000/api/egitim/", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+            await mutate.create('/api/egitim/', payload, {
+                subject: 'Eğitim',
+                detail: payload?.baslik || payload?.title,
             });
-
-            if (response.ok) {
-                showToast("published");
-                setTimeout(() => onClose(), 2500); // Kapat ve Toast süresini bekle
-            } else {
-                alert("Eğitim yayınlanırken hata oluştu.");
-            }
-        } catch (error) {
-            console.error("API Hatası:", error);
-            alert("Bağlantı hatası!");
-        } finally {
-            setLoading(false);
-        }
+            showToast("published");
+            setTimeout(() => onClose(), 2500);
+        } catch { /* mutate toast attı */ }
+        setLoading(false);
     };
     const handleDraft = () => showToast("draft");
 

@@ -4,6 +4,7 @@
     BarChart3, Zap, RefreshCw, ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { mutate, notify } from '../../../api/client';
 
 const fmtDate = (iso) =>
     new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -82,13 +83,17 @@ const DatabaseMemoryTable = ({
                     <button
                         onClick={async () => {
                             try {
-                                const r = await fetch('/api/sql/repair-integrity', { method: 'POST' });
-                                const d = await r.json();
-                                alert(`✅ Onarım tamamlandı\\n${d.repaired_chunks} chunk onarıldı, ${d.created_belgeler} Belge oluşturuldu.`);
+                                const d = await mutate.process('/api/sql/repair-integrity', null, {
+                                    subject: 'Bütünlük onarımı',
+                                    silentSuccess: true,
+                                    showLoading: true,
+                                });
+                                notify.success(
+                                    `Onarım tamamlandı: ${d.repaired_chunks} chunk · ${d.created_belgeler} belge oluşturuldu.`,
+                                    { copyable: true }
+                                );
                                 fetchRecords();
-                            } catch (e) {
-                                alert('Onarım hatası: ' + e.message);
-                            }
+                            } catch { /* mutate toast attı */ }
                         }}
                         className="p-1.5 flex items-center justify-center bg-white hover:bg-stone-50 border border-stone-200 rounded-lg shadow-sm transition-colors text-stone-500 hover:text-[#378ADD]" title="Ağ Onarımı Yürüt"
                     >

@@ -4,6 +4,7 @@ import {
     AlertCircle, BookmarkPlus
 } from 'lucide-react';
 import { useErrorStore } from '../../store/errorStore';
+import { mutate } from '../../api/client';
 
 const PRIORITY_OPTIONS = [
     { id: 'dusuk',   label: 'Düşük',   color: '#6b7280' },
@@ -78,28 +79,16 @@ const ZliReportSuggestionCard = ({ data, userId }) => {
         setSubmitError('');
 
         try {
-            const res = await fetch('/api/talepler', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    kullanici_kimlik: userId,
-                    baslik:   form.baslik.trim(),
-                    mesaj:    form.mesaj.trim(),
-                    kategori: 'zli_rapor',
-                    oncelik:  form.oncelik,
-                }),
-            });
-            if (res.ok) {
-                setMode('submitted');
-                addToast({ type: 'success', message: 'Talep yöneticilere iletildi.' });
-            } else {
-                let detail = 'Talep gönderilemedi.';
-                try { const j = await res.json(); detail = j.detail || detail; } catch (_) { /* yok say */ }
-                setSubmitError(detail);
-                setSubmitState('error');
-            }
+            await mutate.create('/api/talepler', {
+                kullanici_kimlik: userId,
+                baslik:   form.baslik.trim(),
+                mesaj:    form.mesaj.trim(),
+                kategori: 'zli_rapor',
+                oncelik:  form.oncelik,
+            }, { subject: "Z'li rapor talebi", detail: form.baslik.trim() });
+            setMode('submitted');
         } catch (e) {
-            setSubmitError('Sunucuya ulaşılamadı.');
+            setSubmitError(e.message || 'Talep gönderilemedi.');
             setSubmitState('error');
         }
     };

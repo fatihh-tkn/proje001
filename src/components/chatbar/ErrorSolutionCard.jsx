@@ -3,6 +3,7 @@ import {
     AlertTriangle, ListChecks, Paperclip, GitBranch, ChevronDown, ChevronUp,
     BookmarkPlus, FileText
 } from 'lucide-react';
+import { mutate } from '../../api/client';
 
 const SEVERITY_STYLES = {
     low:      { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Düşük' },
@@ -58,27 +59,18 @@ const ErrorSolutionCard = ({ data, userId, sessionId }) => {
         }
         setSaveStatus('saving');
         try {
-            const res = await fetch('/api/errors/user-record', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    kullanici_id: userId,
-                    hata_kodu: id || null,
-                    baslik: title || 'Adsız Hata',
-                    modul: module || null,
-                    severity: severity || null,
-                    ozet: summary || null,
-                    cevap_json: data,
-                    oturum_id: sessionId || null,
-                }),
-            });
-            if (res.ok) {
-                setSaveStatus('saved');
-                setTimeout(() => setSaveStatus('idle'), 2500);
-            } else {
-                setSaveStatus('error');
-                setTimeout(() => setSaveStatus('idle'), 2500);
-            }
+            await mutate.create('/api/errors/user-record', {
+                kullanici_id: userId,
+                hata_kodu: id || null,
+                baslik: title || 'Adsız Hata',
+                modul: module || null,
+                severity: severity || null,
+                ozet: summary || null,
+                cevap_json: data,
+                oturum_id: sessionId || null,
+            }, { subject: 'Hata çözümü', detail: title || id });
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2500);
         } catch {
             setSaveStatus('error');
             setTimeout(() => setSaveStatus('idle'), 2500);

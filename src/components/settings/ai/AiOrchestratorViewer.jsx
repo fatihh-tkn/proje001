@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Webhook, Key, Workflow, LineChart, Terminal, FileCode, Power } from 'lucide-react';
+import { mutate } from '../../../api/client';
 
 // Components
 import { ModelsTab } from './tabs/ModelsTab';
@@ -131,22 +132,14 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     const handleSave = async () => {
         setIsSaving(true);
+        const dirtyCount = dirtyAgentIds.size;
         try {
-            const res = await fetch('/api/orchestrator/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(agents)
+            await mutate.save('/api/orchestrator/save', agents, {
+                subject: dirtyCount > 1 ? `${dirtyCount} ajan` : 'Ajan ayarları',
             });
-            if (res.ok) {
-                setDirtyAgentIds(new Set());
-            } else {
-                console.error("Kaydetme hatası:", await res.text());
-            }
-        } catch (error) {
-            console.error("API Kaydetme Hatası:", error);
-        } finally {
-            setIsSaving(false);
-        }
+            setDirtyAgentIds(new Set());
+        } catch { /* mutate toast attı */ }
+        setIsSaving(false);
     };
 
     const toggleAgent = (id) => {

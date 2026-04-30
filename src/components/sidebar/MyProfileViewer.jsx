@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWorkspaceStore } from '../../store/workspaceStore';
-import { useErrorStore } from '../../store/errorStore';
+import { mutate } from '../../api/client';
 
 /**
  * Profilim — Claude Design "Klasik Koyu" varyantı.
@@ -388,7 +388,6 @@ const RingChart = ({ pct, used }) => {
 
 const MyProfileViewer = ({ currentUser, onLogout }) => {
     const setCurrentUser = useWorkspaceStore(s => s.setCurrentUser);
-    const addToast = useErrorStore(s => s.addToast);
 
     const [userData, setUserData] = useState(null);
     const [dashboard, setDashboard] = useState(null);
@@ -443,24 +442,16 @@ const MyProfileViewer = ({ currentUser, onLogout }) => {
         }
         setNameSaving(true);
         try {
-            const res = await fetch(`/api/auth/users/${userId}/profile`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tam_ad: trimmed }),
-            });
-            if (res.ok) {
-                setCurrentUser({ ...currentUser, tam_ad: trimmed });
-                setUserData(prev => prev ? { ...prev, name: trimmed, tam_ad: trimmed } : prev);
-                addToast?.({ type: 'success', message: 'Profil güncellendi.' });
-            } else {
-                addToast?.({ type: 'error', message: 'Profil güncellenemedi.' });
-            }
-        } catch {
-            addToast?.({ type: 'error', message: 'Sunucuya bağlanılamadı.' });
-        }
+            await mutate.update(`/api/auth/users/${userId}/profile`,
+                { tam_ad: trimmed },
+                { subject: 'Profil', detail: trimmed }
+            );
+            setCurrentUser({ ...currentUser, tam_ad: trimmed });
+            setUserData(prev => prev ? { ...prev, name: trimmed, tam_ad: trimmed } : prev);
+        } catch { /* mutate toast attı */ }
         setNameSaving(false);
         setNameEditing(false);
-    }, [nameValue, currentUser, userId, setCurrentUser, addToast]);
+    }, [nameValue, currentUser, userId, setCurrentUser]);
 
     const isAktif = (userData?.status || 'Aktif') === 'Aktif';
     const isAdmin = (currentUser?.super || currentUser?.super_kullanici_mi) === true;

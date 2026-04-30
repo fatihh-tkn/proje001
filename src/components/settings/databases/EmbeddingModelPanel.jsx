@@ -4,6 +4,7 @@ import {
     Brain, Check, Loader2, RefreshCw, Globe, Zap, AlertTriangle,
     ChevronDown, ChevronUp, Cpu, Cloud, Sparkles
 } from 'lucide-react';
+import { mutation, mutate } from '../../../api/client';
 
 const BASE = '/api/embedding';
 
@@ -55,23 +56,17 @@ const EmbeddingModelPanel = () => {
         if (key === activeKey || switching) return;
         setSwitching(true);
         setError(null);
+        const m = models.find(x => x.key === key);
         try {
-            const res = await fetch(`${BASE}/active`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model_key: key }),
+            await mutation('PUT', `${BASE}/active`, { model_key: key }, {
+                kind: 'save', subject: 'Aktif embedding modeli', detail: m?.name || key,
             });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || 'Model değiştirilemedi');
-            }
             setActiveKey(key);
             setModels(prev => prev.map(m => ({ ...m, is_active: m.key === key })));
         } catch (e) {
             setError(e.message);
-        } finally {
-            setSwitching(false);
         }
+        setSwitching(false);
     };
 
     const handleReVectorize = async () => {
@@ -85,15 +80,14 @@ const EmbeddingModelPanel = () => {
         setReVecResult(null);
         setError(null);
         try {
-            const res = await fetch(`${BASE}/re-vectorize`, { method: 'POST' });
-            if (!res.ok) throw new Error('Yeniden vektörleştirme başarısız');
-            const data = await res.json();
+            const data = await mutate.process(`${BASE}/re-vectorize`, null, {
+                subject: 'Yeniden vektörleştirme', showLoading: true,
+            });
             setReVecResult(data);
         } catch (e) {
             setError(e.message);
-        } finally {
-            setReVectorizing(false);
         }
+        setReVectorizing(false);
     };
 
     if (loading) {

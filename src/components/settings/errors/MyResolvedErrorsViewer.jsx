@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { mutate } from '../../../api/client';
 
 /**
  * Çözdüğüm Hatalar — koyu tema, marka kırmızı (#b91d2c) aksanlı, SAP iş akışına
@@ -365,18 +366,16 @@ const MyResolvedErrorsViewer = ({ currentUser }) => {
 
     const handleDelete = useCallback(async (kimlik) => {
         if (!window.confirm('Bu kayıt silinsin mi?')) return;
+        const r = records.find(x => x.id === kimlik);
         try {
-            const res = await fetch(`/api/errors/user-record/${kimlik}`, { method: 'DELETE' });
-            if (res.ok) {
-                setRecords(prev => prev.filter(r => r.id !== kimlik));
-                if (expandedId === kimlik) setExpandedId(null);
-            } else {
-                alert('Silme başarısız.');
-            }
-        } catch {
-            alert('Silme başarısız.');
-        }
-    }, [expandedId]);
+            await mutate.remove(`/api/errors/user-record/${kimlik}`, null, {
+                subject: 'Hata çözümü',
+                detail: r?.hata_kodu || r?.baslik,
+            });
+            setRecords(prev => prev.filter(x => x.id !== kimlik));
+            if (expandedId === kimlik) setExpandedId(null);
+        } catch { /* mutate toast attı */ }
+    }, [expandedId, records]);
 
     // Modül listesi (mevcut kayıtlardan türet)
     const modules = useMemo(() => {

@@ -9,6 +9,7 @@ import {
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 import { useErrorStore } from '../../../store/errorStore';
+import { mutate } from '../../../api/client';
 import { FileCard } from '../../ui/file-card-collections';
 
 // ── YARDIMCI: Dosya türüne göre ikon ve renk
@@ -678,12 +679,15 @@ export default function AudioArchiveViewer() {
 
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
-        await fetch('/api/archive/create-folder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newFolderName, parent_id: currentFolderId })
-        });
-        fetchArchive(); setIsCreatingFolder(false); setNewFolderName('');
+        try {
+            await mutate.create('/api/archive/create-folder',
+                { name: newFolderName, parent_id: currentFolderId },
+                { subject: 'Klasör', detail: newFolderName }
+            );
+            fetchArchive();
+            setIsCreatingFolder(false);
+            setNewFolderName('');
+        } catch { /* mutate toast attı */ }
     };
 
     const handleUploadClick = () => {
@@ -704,8 +708,69 @@ export default function AudioArchiveViewer() {
         if (currentFolderId) formData.append('folder_id', currentFolderId);
         if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);
-        await fetch('/api/archive/direct-upload', { method: 'POST', body: formData });
+        try {
+            await mutate.upload('/api/archive/direct-upload', formData, {
+                subject: 'Ses kaydı', detail: file.name, rawBody: true, showLoading: true,
+            });
+        } catch { /* mutate toast attı */ }
         fetchArchive();
+    };
+
+    const handleBatchDelete = async (ids) => {
+        if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
+        try {
+            await mutate.remove('/api/archive/delete', { ids }, {
+                subject: ids.length > 1 ? `${ids.length} ses kaydı` : 'Ses kaydı',
+            });
+            setSelectedIds(new Set());
+            if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
+            fetchArchive();
+            dispatchArchiveChanged();
+        } catch { /* mutate toast attı */ }
+    };
+
+    const handleRename = async () => {
+        if (!renameValue.trim()) return;
+        try {
+            await mutate.rename('/api/archive/rename',
+                { kimlik: renameItem.id, yeni_ad: renameValue },
+                { subject: 'Ses kaydı', detail: renameValue }
+            );
+            setRenameItem(null);
+            fetchArchive();
+        } catch { /* mutate toast attı */ }
+    };
+
+    const handleMove = async (docId, targetFolderId) => {
+        try {
+            await mutate.move('/api/archive/move',
+                { belge_kimlik: docId, hedef_klasor_kimlik: targetFolderId },
+                { subject: 'Kayıt' }
+            );
+            fetchArchive();
+        } catch { /* mutate toast attı */ }
+    };
+
+    const handleBatchMove = async (docIds, targetFolderId) => {
+        setLoading(true);
+        let okCount = 0;
+        for (const id of docIds) {
+            try {
+                await mutate.move('/api/archive/move',
+                    { belge_kimlik: id, hedef_klasor_kimlik: targetFolderId },
+                    { silent: true }
+                );
+                okCount++;
+            } catch { /* devam */ }
+        }
+        if (okCount > 0) {
+            useErrorStore.getState().addToast({ type: 'success', message: `${okCount} kayıt taşındı.` });
+        }
+        if (okCount < docIds.length) {
+            useErrorStore.getState().addToast({ type: 'error', message: `${docIds.length - okCount} kayıt taşınamadı.` });
+        }
+        fetchArchive();
+        setSelectedIds(new Set());
     };
 
     const toggleSelect = (id, e) => {

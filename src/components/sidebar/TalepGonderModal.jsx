@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send } from 'lucide-react';
 import { useErrorStore } from '../../store/errorStore';
+import { mutate } from '../../api/client';
 
 const KATEGORILER = [
     { value: 'erisim', label: 'Erişim Talebi' },
@@ -48,31 +49,17 @@ const TalepGonderModal = ({ open, onClose, currentUser, onSubmitted }) => {
         }
         setSubmitting(true);
         try {
-            const res = await fetch('/api/talepler', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    kullanici_kimlik: currentUser.id,
-                    baslik: b,
-                    mesaj: m,
-                    kategori,
-                    oncelik,
-                }),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || `HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            addToast({ type: 'success', message: 'Talebiniz gönderildi.' });
+            const data = await mutate.create('/api/talepler', {
+                kullanici_kimlik: currentUser.id,
+                baslik: b,
+                mesaj: m,
+                kategori,
+                oncelik,
+            }, { subject: 'Talep', detail: b });
             onSubmitted?.(data);
             onClose();
-        } catch (e) {
-            console.error('[TalepGonderModal] gönderim hatası:', e);
-            addToast({ type: 'error', message: e.message || 'Talep gönderilemedi.' });
-        } finally {
-            setSubmitting(false);
-        }
+        } catch { /* mutate toast attı */ }
+        setSubmitting(false);
     };
 
     const inputStyle = {

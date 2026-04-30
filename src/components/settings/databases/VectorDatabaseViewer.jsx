@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Database, File as FileIcon, RefreshCw, Search, X, Activity } from 'lucide-react';
+import { mutate } from '../../../api/client';
 
 import VdbFileList from './VdbFileList';
 import VdbPageList from './VdbPageList';
@@ -93,45 +94,26 @@ export default function VectorDatabaseViewer() {
         e.stopPropagation();
         if (!window.confirm("Bu bilgi parçacığını tüm veritabanlarından (Vektör + SQL + Graf) kalıcı olarak silmek istiyor musunuz?")) return;
         try {
-            const res = await fetch(`/api/chunk/${encodeURIComponent(chunkId)}`, {
-                method: 'DELETE',
-            });
-            if (res.ok) {
-                setAllVectors(prev => prev.filter(v => v.id !== chunkId));
-
-            } else {
-                const err = await res.json().catch(() => ({}));
-                alert(`Silme başarısız: ${err.detail || res.statusText}`);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Sunucuya ulaşılamadı.");
-        }
+            await mutate.remove(`/api/chunk/${encodeURIComponent(chunkId)}`, null,
+                { subject: 'Bilgi parçacığı' }
+            );
+            setAllVectors(prev => prev.filter(v => v.id !== chunkId));
+        } catch { /* mutate toast attı */ }
     };
 
     const handleDeleteFile = async (fileName, fileId, e) => {
         e.stopPropagation();
         if (!window.confirm(`"${fileName}" dosyası ve tüm vektör parçacıkları kalıcı olarak silinecek. Emin misiniz?`)) return;
-
         try {
-            const res = await fetch('/api/archive/delete', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: [fileId] })
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert(`Silme başarısız: ${err.detail || res.statusText}`);
-                return;
-            }
+            await mutate.remove('/api/archive/delete',
+                { ids: [fileId] },
+                { subject: 'Belge', detail: fileName }
+            );
             setAllVectors(prev => prev.filter(v => v.file !== fileName));
             setFiles(prev => prev.filter(f => f.id !== fileId));
             if (selectedFileId === fileId) { setSelectedFileId(null); setSelectedPage(null); }
             dispatchArchiveChanged();
-        } catch (err) {
-            console.error(err);
-            alert("Sunucuya ulaşılamadı.");
-        }
+        } catch { /* mutate toast attı */ }
     };
 
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Inbox, Search, RefreshCw, Trash2, Check, X, Clock, AlertTriangle, MessageSquare } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { useErrorStore } from '../../../store/errorStore';
+import { mutate } from '../../../api/client';
 
 const DURUMLAR = [
     { value: '', label: 'Tüm Durumlar' },
@@ -83,47 +84,30 @@ export default function TalepYonetimViewer() {
 
     const handleDurumGuncelle = async (talep_id, payload) => {
         if (!currentUser?.id) return;
+        const t = talepler.find(x => x.id === talep_id);
         try {
-            const res = await fetch(
+            const updated = await mutate.update(
                 `/api/talepler/${talep_id}?yonetici_kimlik=${currentUser.id}`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                }
+                payload,
+                { subject: 'Talep', detail: t?.baslik }
             );
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || `HTTP ${res.status}`);
-            }
-            const updated = await res.json();
-            setTalepler(prev => prev.map(t => t.id === talep_id ? updated : t));
-            addToast({ type: 'success', message: 'Talep güncellendi.' });
-        } catch (e) {
-            console.error('[TalepYonetim] güncelleme hatası:', e);
-            addToast({ type: 'error', message: e.message || 'Güncellenemedi' });
-        }
+            setTalepler(prev => prev.map(x => x.id === talep_id ? updated : x));
+        } catch { /* mutate toast attı */ }
     };
 
     const handleSil = async (talep_id) => {
         if (!currentUser?.id) return;
         if (!window.confirm('Bu talebi silmek istediğinize emin misiniz?')) return;
+        const t = talepler.find(x => x.id === talep_id);
         try {
-            const res = await fetch(
+            await mutate.remove(
                 `/api/talepler/${talep_id}?yonetici_kimlik=${currentUser.id}`,
-                { method: 'DELETE' }
+                null,
+                { subject: 'Talep', detail: t?.baslik }
             );
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || `HTTP ${res.status}`);
-            }
-            setTalepler(prev => prev.filter(t => t.id !== talep_id));
+            setTalepler(prev => prev.filter(x => x.id !== talep_id));
             if (selectedId === talep_id) setSelectedId(null);
-            addToast({ type: 'success', message: 'Talep silindi.' });
-        } catch (e) {
-            console.error('[TalepYonetim] silme hatası:', e);
-            addToast({ type: 'error', message: e.message || 'Silinemedi' });
-        }
+        } catch { /* mutate toast attı */ }
     };
 
     return (

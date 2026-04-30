@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     AlertTriangle, Plus, Trash2, RefreshCw, Search, X, Save, Hash, Tag, Layers
 } from 'lucide-react';
+import { mutate } from '../../../api/client';
 
 const SEVERITY = [
     { id: 'low',      label: 'Düşük',  color: '#10b981' },
@@ -203,24 +204,26 @@ const ErrorManagementViewer = ({ currentUser }) => {
     const handleCreate = async (payload) => {
         const userId = currentUser?.id || '';
         const url = userId ? `/api/errors/?user_id=${userId}` : '/api/errors/';
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (res.ok) {
+        try {
+            await mutate.create(url, payload, {
+                subject: 'Hata kaydı',
+                detail: payload.hata_kodu || payload.baslik,
+            });
             setShowForm(false);
             load();
-        } else {
-            alert('Kayıt başarısız: ' + res.statusText);
-        }
+        } catch { /* mutate toast attı */ }
     };
 
     const handleDelete = async (kimlik) => {
         if (!window.confirm('Bu hata kaydı silinsin mi?')) return;
-        const res = await fetch(`/api/errors/${kimlik}`, { method: 'DELETE' });
-        if (res.ok) load();
-        else alert('Silme başarısız: ' + res.statusText);
+        const e = errors.find(x => x.kimlik === kimlik);
+        try {
+            await mutate.remove(`/api/errors/${kimlik}`, null, {
+                subject: 'Hata kaydı',
+                detail: e?.hata_kodu || e?.baslik,
+            });
+            load();
+        } catch { /* mutate toast attı */ }
     };
 
     const filtered = errors.filter(e => {

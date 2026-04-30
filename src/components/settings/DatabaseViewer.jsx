@@ -12,6 +12,7 @@ import DatabaseMemoryTable from './database/DatabaseMemoryTable';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../utils/archiveEvents';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useErrorStore } from '../../store/errorStore';
+import { mutate } from '../../api/client';
 
 const BASE = '/api/db';
 const COLLECTION = 'documents';
@@ -474,10 +475,18 @@ const DatabaseViewer = ({ readOnly }) => {
             setApprovedChunks(new Set());
             setTempFilePath(null);
 
-            // Arşiv uyarısı varsa kullanıcıya göster (kaydı engelleme)
+            // Başarı bildirimi
+            addToast({
+                type: archiveWarning ? 'info' : 'success',
+                message: archiveWarning
+                    ? `Belge kısmen kaydedildi: ${safeFileName} — ${archiveWarning}`
+                    : `Belge kaydedildi: ${safeFileName}`,
+                copyable: !!archiveWarning,
+            });
             if (archiveWarning) setSaveError(`⚠️ ${archiveWarning}`);
 
             await fetchRecords(); // Listeyi SQL'den taze çeker
+            dispatchArchiveChanged();
         } catch (err) {
             const msg = err.message || 'Kayıt sırasında hata oluştu.';
             setSaveError(msg);
@@ -489,54 +498,32 @@ const DatabaseViewer = ({ readOnly }) => {
 
     const handleDeleteRecord = async (rec) => {
         setDeleteConfirm(null);
-
         try {
-            // /api/archive/delete endpoint'i her şeyi (SQL + Chroma + Graph + Disk) atomik temizler
-            const res = await fetch('/api/archive/delete', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: [rec.id] }),
-            });
-
-            if (res.ok) {
-                if (expandedRecord === rec.id) setExpandedRecord(null);
-                await fetchRecords();
-                dispatchArchiveChanged();
-            } else {
-                const err = await res.json().catch(() => ({}));
-                const msg = `Dosya silinemedi: ${err.detail || res.statusText}`;
-                addToast({ type: 'error', message: msg, duration: 6000 });
-            }
-        } catch (err) {
-            console.error("Record deletion failed:", err);
-            addToast({ type: 'error', message: 'Dosya silinirken hata oluştu.', duration: 6000 });
-        }
+            await mutate.remove('/api/archive/delete',
+                { ids: [rec.id] },
+                { subject: 'Belge', detail: rec.dosya_adi || rec.filename }
+            );
+            if (expandedRecord === rec.id) setExpandedRecord(null);
+            await fetchRecords();
+            dispatchArchiveChanged();
+        } catch { /* mutate toast attı */ }
     };
 
     const handleDeleteVector = async (recId, vectorId) => {
         setDeleteConfirm(null);
         try {
-            const res = await fetch(`/api/chunk/${encodeURIComponent(vectorId)}`, {
-                method: 'DELETE',
+            await mutate.remove(`/api/chunk/${encodeURIComponent(vectorId)}`, null,
+                { subject: 'Parça' }
+            );
+            setRecordVectors(prev => {
+                const updated = { ...prev };
+                if (updated[recId]) {
+                    updated[recId] = updated[recId].filter(v => v.id !== vectorId);
+                }
+                return updated;
             });
-
-            if (res.ok) {
-                setRecordVectors(prev => {
-                    const updated = { ...prev };
-                    if (updated[recId]) {
-                        updated[recId] = updated[recId].filter(v => v.id !== vectorId);
-                    }
-                    return updated;
-                });
-                await fetchRecords();
-            } else {
-                const err = await res.json().catch(() => ({}));
-                addToast({ type: 'error', message: `Parça silinemedi: ${err.detail || res.statusText}`, duration: 6000 });
-            }
-        } catch (err) {
-            console.error("Vector item deletion error", err);
-            addToast({ type: 'error', message: 'Parça silinirken hata oluştu.', duration: 6000 });
-        }
+            await fetchRecords();
+        } catch { /* mutate toast attı */ }
     };
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, CheckCircle } from 'lucide-react';
+import { mutate } from '../../api/client';
 
 /* ── Modül renk haritası ── */
 const MOD_COLORS = {
@@ -246,23 +247,15 @@ export default function UserVeriGirisi({ currentUser }) {
         };
 
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/egitim/profil/${currentUser.kimlik}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+            await mutate.save(`/api/egitim/profil/${currentUser.kimlik}`, payload, {
+                subject: 'Eğitim profili',
             });
-
-            if (res.ok) {
-                setToast(true);
-                setTimeout(() => setToast(false), 2400);
-            } else {
-                alert("Bilgiler kaydedilirken bir hata oluştu.");
-            }
+            setToast(true);
+            setTimeout(() => setToast(false), 2400);
         } catch (err) {
             console.error("Profil Kaydetme Hatası", err);
-        } finally {
-            setLoading(false);
         }
+        setLoading(false);
     };
 
     return (

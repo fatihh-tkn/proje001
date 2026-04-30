@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Webhook, Activity, Clock, Server, CheckCircle2, XCircle, Search, Filter, ExternalLink, Play, SlidersHorizontal, ArrowUpDown, KeyRound, AlertCircle, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { mutate } from '../../../../api/client';
 
 export const AutomationTab = () => {
     const [workflows, setWorkflows] = useState([]);
@@ -77,30 +78,27 @@ export const AutomationTab = () => {
         if (isActionLoading || isCachedData) return;
         setIsActionLoading(true);
         const newStatus = !currentStatus;
+        const wk = workflows.find(w => w.id === id);
 
-        // Optimistic UI update
         setWorkflows(prev => prev.map(w => w.id === id ? { ...w, active: newStatus, status: newStatus ? 'healthy' : 'stopped' } : w));
 
         try {
             const savedKey = localStorage.getItem('n8n_api_key') || '';
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(savedKey ? { 'x-n8n-api-key': savedKey } : {})
-            };
-
-            await fetch(`/api/n8n/workflows/${id}/toggle`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ active: newStatus })
-            });
-            // Bir sonraki Canılı veri çekiminde gerçek durumu netleşecek
-        } catch (error) {
-            console.error("Toggle error:", error);
-            // Geri al
+            const headers = savedKey ? { 'x-n8n-api-key': savedKey } : {};
+            await mutate.toggle(`/api/n8n/workflows/${id}/toggle`,
+                { active: newStatus },
+                {
+                    subject: 'Workflow',
+                    detail: wk?.name,
+                    customSuccess: `Workflow ${newStatus ? 'aktifleştirildi' : 'durduruldu'}: ${wk?.name || id}.`,
+                    headers,
+                }
+            );
+        } catch {
+            // Optimistic UI'i geri al
             setWorkflows(prev => prev.map(w => w.id === id ? { ...w, active: currentStatus, status: currentStatus ? 'healthy' : 'stopped' } : w));
-        } finally {
-            setIsActionLoading(false);
         }
+        setIsActionLoading(false);
     };
 
     const triggerWorkflow = async (wk) => {
@@ -109,11 +107,15 @@ export const AutomationTab = () => {
         setTriggerResults(prev => ({ ...prev, [wk.id]: null }));
         try {
             const savedKey = localStorage.getItem('n8n_api_key') || '';
-            const headers = { 'Content-Type': 'application/json', ...(savedKey ? { 'x-n8n-api-key': savedKey } : {}) };
+            const headers = savedKey ? { 'x-n8n-api-key': savedKey } : {};
             let payload = {};
             try { payload = JSON.parse(payloadInputs[wk.id] || '{}'); } catch { payload = {}; }
-            const res = await fetch(`/api/n8n/workflows/${wk.id}/run`, { method: 'POST', headers, body: JSON.stringify(payload) });
-            const data = await res.json();
+            const data = await mutate.trigger(`/api/n8n/workflows/${wk.id}/run`, payload, {
+                subject: 'Workflow',
+                detail: wk.name,
+                headers,
+                silentSuccess: true, // sonuç UI'da result indicator ile gösterilir
+            });
             setTriggerResults(prev => ({ ...prev, [wk.id]: data.success ? 'ok' : 'error' }));
         } catch {
             setTriggerResults(prev => ({ ...prev, [wk.id]: 'error' }));

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Clock, Search, ChevronRight, Plus, UserPlus, LayoutDashboard, BookOpen, Zap, Shield } from 'lucide-react';
+import { mutation } from '../../../api/client';
 import InlineUserDashboard, { RestrictionsModal } from './InlineUserDashboard';
 import SapEgitimAdminPaneli from './SapEgitimAdminPaneli';
 import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
@@ -86,15 +87,15 @@ function UsersTab() {
             .catch(err => console.error('Kullanıcılar yüklenemedi', err));
     }, []);
 
-    const updateRole = (userId, newRole) => {
-        fetch(`/api/auth/users/${userId}/role`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ role: newRole })
-        }).then(res => {
-            if (res.ok) setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-            setEditingRoleId(null);
-        }).catch(err => console.error('Rol güncellenemedi', err));
+    const updateRole = async (userId, newRole) => {
+        const u = users.find(x => x.id === userId);
+        try {
+            await mutation('PUT', `/api/auth/users/${userId}/role`, { role: newRole }, {
+                kind: 'update', subject: 'Kullanıcı rolü', detail: u?.name || u?.tam_ad,
+            });
+            setUsers(prev => prev.map(x => x.id === userId ? { ...x, role: newRole } : x));
+        } catch { /* mutate toast attı */ }
+        setEditingRoleId(null);
     };
 
     const toggleExpand = (userId) => {
