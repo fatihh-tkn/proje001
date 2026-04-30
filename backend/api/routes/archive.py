@@ -10,7 +10,7 @@ import shutil
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from database.sql.session import get_session
@@ -67,7 +67,7 @@ def sistem_belgeleri():
     with get_session() as db:
         repo = DocumentRepository(db)
         belgeler = repo.list_system_documents()
-        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+        return {"items": _belgeler_to_dict_list(belgeler, db)}
 
 
 @router.get("/my-documents/{user_id}")
@@ -80,7 +80,7 @@ def kullanici_belgeleri(user_id: str):
             raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
         repo = DocumentRepository(db)
         belgeler = repo.list_user_documents(user_id)
-        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+        return {"items": _belgeler_to_dict_list(belgeler, db)}
 
 
 @router.get("/quota/{user_id}")
@@ -152,46 +152,79 @@ def kota_guncelle(user_id: str, istek: KotaGuncelleRequest):
         }
 
 
+def chunk_list(lst, n=900):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+def _belgeler_to_dict_list(belgeler: List[Belge], db) -> List[dict]:
+    """Belge listesini API yanıtına uygun formata dönüştürür, N+1 performans optimizasyonlarıyla."""
+    if not belgeler:
+        return []
+
+    # 1. Fetch Uploader Info Efficiently
+    yukleyen_kimlikler = list({b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik})
+    kullanici_map = {}
+    for chunk in chunk_list(yukleyen_kimlikler, 900):
+        kullanicilar = db.scalars(select(Kullanici).where(Kullanici.kimlik.in_(chunk))).all()
+        for k in kullanicilar:
+            kullanici_map[k.kimlik] = k.tam_ad
+
+    # 2. Fetch Chunk Counts Efficiently
+    belge_kimlikler = [b.kimlik for b in belgeler]
+    chunk_counts = {}
+    for chunk in chunk_list(belge_kimlikler, 900):
+        counts = db.execute(
+            select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+            .where(VektorParcasi.belge_kimlik.in_(chunk))
+            .group_by(VektorParcasi.belge_kimlik)
+        ).all()
+        for b_id, count in counts:
+            chunk_counts[b_id] = count
+
+    # 3. Assemble the response
+    sonuclar = []
+    for b in belgeler:
+        meta = b.meta or {}
+        yukleyen_adi = kullanici_map.get(b.yukleyen_kimlik, "Bilinmiyor")
+        total_chunks = chunk_counts.get(b.kimlik, 0)
+
+        sonuclar.append({
+            "id": b.kimlik,
+            "filename": b.dosya_adi,
+            "file_type": b.dosya_turu,
+            "file_size": b.dosya_boyutu_bayt,
+            "created_at": b.olusturulma_tarihi,
+            "updated_at": b.guncelleme_tarihi,
+            "is_vectorized": b.vektorlestirildi_mi,
+            "durum": b.durum,
+            "uploader": yukleyen_adi,
+            "havuz_turu": b.havuz_turu,
+            "folder_id": meta.get("klasor_kimlik"),
+            "total_chunks": total_chunks,
+            "storage_path": b.depolama_yolu,
+            "erisim_politikasi": b.erisim_politikasi,
+            "etiketler": meta.get("etiketler", []),
+            "aciklama": meta.get("aciklama", ""),
+            "izin_verilen_kullanicilar": meta.get("izin_verilen_kullanicilar", []),
+            "meta": {
+                "transcription_status": meta.get("transcription_status") or (
+                    "done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower()
+                    in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
+                        "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None
+                ),
+                "transcription_language": meta.get("transcription_language"),
+                "transcription_chunk_count": meta.get("transcription_chunk_count"),
+                "transcription_preview": meta.get("transcription_preview"),
+                "transcription_full_text": meta.get("transcription_full_text"),
+                "transcription_error": meta.get("transcription_error"),
+            },
+        })
+    return sonuclar
+
 def _belge_to_dict(b: Belge, db) -> dict:
     """Belge modelini API yanıtı dict'ine çevirir (ortak yardımcı)."""
-    meta = b.meta or {}
-    yukleyen_adi = "Bilinmiyor"
-    if b.yukleyen_kimlik:
-        k = db.get(Kullanici, b.yukleyen_kimlik)
-        if k:
-            yukleyen_adi = k.tam_ad
-    parcalar = db.scalars(
-        select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-    ).all()
-    return {
-        "id": b.kimlik,
-        "filename": b.dosya_adi,
-        "file_type": b.dosya_turu,
-        "file_size": b.dosya_boyutu_bayt,
-        "created_at": b.olusturulma_tarihi,
-        "updated_at": b.guncelleme_tarihi,
-        "is_vectorized": b.vektorlestirildi_mi,
-        "durum": b.durum,
-        "uploader": yukleyen_adi,
-        "havuz_turu": b.havuz_turu,
-        "folder_id": meta.get("klasor_kimlik"),
-        "total_chunks": len(parcalar),
-        "storage_path": b.depolama_yolu,
-        "erisim_politikasi": b.erisim_politikasi,
-        "etiketler": meta.get("etiketler", []),
-        "aciklama": meta.get("aciklama", ""),
-        "izin_verilen_kullanicilar": meta.get("izin_verilen_kullanicilar", []),
-        "meta": {
-            "transcription_status": meta.get("transcription_status") or (
-                "done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower()
-                in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
-                    "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None
-            ),
-            "transcription_language": meta.get("transcription_language"),
-            "transcription_chunk_count": meta.get("transcription_chunk_count"),
-            "transcription_preview": meta.get("transcription_preview"),
-        },
-    }
+    return _belgeler_to_dict_list([b], db)[0]
 
 
 @router.get("/list")
@@ -233,52 +266,25 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
-        sonuclar = []
+        # Delegate to the optimized list serializer, but we need to attach chunks_preview
+        # Since chunks_preview is specific to this endpoint, we will add it after serialization
+        sonuclar = _belgeler_to_dict_list(belgeler, db)
+
+        # Optimize chunks preview loading (only load 5 chunks per document instead of all)
+        belge_kimlikler = [b.kimlik for b in belgeler]
+        preview_map = {}
+        # Unfortunately, limit/offset per group is hard in SQLAlchemy without window functions
+        # For small results this could be iterated, or omitted if not needed, but we preserve it via efficient query
         for b in belgeler:
-            meta = b.meta or {}
-            belge_klasor_kimlik = meta.get("klasor_kimlik")
+             parcalar = db.execute(
+                 select(VektorParcasi.kimlik, VektorParcasi.chromadb_kimlik)
+                 .where(VektorParcasi.belge_kimlik == b.kimlik)
+                 .limit(5)
+             ).all()
+             preview_map[b.kimlik] = [{"id": p[0], "chroma_id": p[1]} for p in parcalar]
 
-            yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
-
-            sonuclar.append({
-                "id": b.kimlik,
-                "filename": b.dosya_adi,
-                "file_type": b.dosya_turu,
-                "file_size": b.dosya_boyutu_bayt,
-                "created_at": b.olusturulma_tarihi,
-                "updated_at": b.guncelleme_tarihi,
-                "is_vectorized": b.vektorlestirildi_mi,
-                "durum": b.durum,
-                "uploader": yukleyen_adi,
-                "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
-                "storage_path": b.depolama_yolu,
-                "erisim_politikasi": b.erisim_politikasi,
-                "havuz_turu": b.havuz_turu,
-                "etiketler": meta.get("etiketler", []),
-                "aciklama": meta.get("aciklama", ""),
-                # Transkripsiyon verileri (ses/video için)
-                "meta": {
-                    "transcription_status": meta.get("transcription_status") or ("done" if b.vektorlestirildi_mi and (b.dosya_turu or "").lower() in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None),
-                    "transcription_language": meta.get("transcription_language"),
-                    "transcription_chunk_count": meta.get("transcription_chunk_count"),
-                    "transcription_preview": meta.get("transcription_preview"),
-                    "transcription_full_text": meta.get("transcription_full_text"),
-                    "transcription_error": meta.get("transcription_error"),
-                },
-            })
+        for s in sonuclar:
+            s["chunks_preview"] = preview_map.get(s["id"], [])
 
         return {"items": sonuclar}
 
@@ -291,9 +297,9 @@ def arsiv_detay(doc_id: str):
         if not b:
             raise HTTPException(status_code=404, detail="Belge bulunamadı.")
         meta = b.meta or {}
-        parcalar = db.scalars(
-            select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-        ).all()
+        total_chunks = db.scalar(
+            select(func.count(VektorParcasi.kimlik)).where(VektorParcasi.belge_kimlik == b.kimlik)
+        ) or 0
         return {
             "id": b.kimlik,
             "filename": b.dosya_adi,
@@ -303,7 +309,7 @@ def arsiv_detay(doc_id: str):
             "is_vectorized": b.vektorlestirildi_mi,
             "durum": b.durum,
             "storage_path": b.depolama_yolu,
-            "total_chunks": len(parcalar),
+            "total_chunks": total_chunks,
             "etiketler": meta.get("etiketler", []),
             "aciklama": meta.get("aciklama", ""),
             "meta": {
