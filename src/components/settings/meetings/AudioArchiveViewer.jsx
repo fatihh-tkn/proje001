@@ -126,7 +126,6 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
     const [txLoading, setTxLoading] = useState(false);
     const [txPercent, setTxPercent] = useState(0);
     const [showCancelPanel, setShowCancelPanel] = useState(false);
-    const addToast = useErrorStore((s) => s.addToast);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
@@ -192,16 +191,13 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
         setTags(newTags);
         setTagInput('');
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await mutate.update('/api/archive/meta',
+                { kimlik: doc.id, etiketler: newTags },
+                { subject: 'Etiket', detail: tag.trim(), silentSuccess: true }
+            );
             onTagUpdate?.(doc.id, newTags);
         } catch (e) {
             setTags(tags);
-            addToast({ type: 'error', message: 'Etiket eklenemedi.' });
         }
     };
 
@@ -209,33 +205,25 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
         const newTags = tags.filter(t => t !== tag);
         setTags(newTags);
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, etiketler: newTags })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await mutate.update('/api/archive/meta',
+                { kimlik: doc.id, etiketler: newTags },
+                { subject: 'Etiket', detail: tag, silentSuccess: true }
+            );
             onTagUpdate?.(doc.id, newTags);
         } catch (e) {
             setTags(tags);
-            addToast({ type: 'error', message: 'Etiket silinemedi.' });
         }
     };
 
     const saveDesc = async () => {
         setSaving(true);
         try {
-            const res = await fetch('/api/archive/meta', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kimlik: doc.id, aciklama: desc })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            addToast({ type: 'success', message: 'Açıklama kaydedildi.' });
+            await mutate.update('/api/archive/meta',
+                { kimlik: doc.id, aciklama: desc },
+                { subject: 'Açıklama' }
+            );
             onDescUpdate?.(doc.id, desc);
-        } catch (e) {
-            addToast({ type: 'error', message: 'Açıklama kaydedilemedi.' });
-        }
+        } catch (e) { /* mutate toast attı */ }
         setSaving(false);
         setDescEditing(false);
     };
@@ -472,7 +460,11 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                                                 <button
                                                     onClick={async () => {
                                                         setShowCancelPanel(false);
-                                                        await fetch(`/api/archive/transcribe/${doc.id}`, { method: 'DELETE' });
+                                                        try {
+                                                            await mutate.remove(`/api/archive/transcribe/${doc.id}`, null, {
+                                                                subject: 'Transkripsiyon', detail: doc.filename,
+                                                            });
+                                                        } catch { /* mutate toast attı */ }
                                                     }}
                                                     className="px-2.5 py-1 text-[10px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shrink-0"
                                                 >
@@ -778,52 +770,6 @@ export default function AudioArchiveViewer() {
         setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
     };
 
-    const handleBatchDelete = async (ids) => {
-        if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
-        const res = await fetch('/api/archive/delete', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids })
-        });
-        setSelectedIds(new Set());
-        if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
-        fetchArchive();
-        if (res.ok) dispatchArchiveChanged();
-    };
-
-    const handleRename = async () => {
-        if (!renameValue.trim()) return;
-        await fetch('/api/archive/rename', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kimlik: renameItem.id, yeni_ad: renameValue })
-        });
-        setRenameItem(null);
-        fetchArchive();
-    };
-
-    const handleMove = async (docId, targetFolderId) => {
-        await fetch('/api/archive/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ belge_kimlik: docId, hedef_klasor_kimlik: targetFolderId })
-        });
-        fetchArchive();
-    };
-
-    const handleBatchMove = async (docIds, targetFolderId) => {
-        setLoading(true);
-        for (const id of docIds) {
-            await fetch('/api/archive/move', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ belge_kimlik: id, hedef_klasor_kimlik: targetFolderId })
-            });
-        }
-        fetchArchive();
-        setSelectedIds(new Set());
-    };
-
     // Drag-and-drop handlers
     const handleDragStart = (e, item) => {
         let dragIds = [item.id];
@@ -922,36 +868,34 @@ export default function AudioArchiveViewer() {
     };
 
     const handleTranscribe = async (docId) => {
+        const doc = items.find(i => i.id === docId);
         try {
-            const res = await fetch(`/api/archive/transcribe/${docId}`, { method: 'POST' });
-            const data = await res.json();
-            if (res.ok) {
-                // Durumu hemen "pending" olarak güncelle
-                updateDocInList(docId, { meta: { ...((items.find(i => i.id === docId)?.meta) || {}), transcription_status: 'pending' } });
-                // 3 saniyede bir polling yap (max 10 dakika)
-                let attempts = 0;
-                const poll = setInterval(async () => {
-                    attempts++;
-                    if (attempts > 200) { clearInterval(poll); return; }
-                    try {
-                        const r = await fetch(`/api/archive/detail/${docId}`);
-                        if (r.ok) {
-                            const detail = await r.json();
-                            setItems(prev => prev.map(it => it.id === docId ? { ...it, ...detail } : it));
-                            if (selectedDocRef.current?.id === docId) {
-                                setSelectedDoc(prev => prev?.id === docId ? { ...prev, ...detail } : prev);
-                            }
-                            const status = detail.meta?.transcription_status;
-                            if (status === 'done' || status === 'failed') {
-                                clearInterval(poll);
-                            }
+            await mutate.process(`/api/archive/transcribe/${docId}`, null, {
+                subject: 'Transkripsiyon', detail: doc?.filename, showLoading: true,
+            });
+            // Durumu hemen "pending" olarak güncelle
+            updateDocInList(docId, { meta: { ...((items.find(i => i.id === docId)?.meta) || {}), transcription_status: 'pending' } });
+            // 3 saniyede bir polling yap (max 10 dakika)
+            let attempts = 0;
+            const poll = setInterval(async () => {
+                attempts++;
+                if (attempts > 200) { clearInterval(poll); return; }
+                try {
+                    const r = await fetch(`/api/archive/detail/${docId}`);
+                    if (r.ok) {
+                        const detail = await r.json();
+                        setItems(prev => prev.map(it => it.id === docId ? { ...it, ...detail } : it));
+                        if (selectedDocRef.current?.id === docId) {
+                            setSelectedDoc(prev => prev?.id === docId ? { ...prev, ...detail } : prev);
                         }
-                    } catch (e) { console.error('Polling hatası:', e); }
-                }, 3000);
-            }
-        } catch (err) {
-            console.error('Transkripsiyon başlatma hatası:', err);
-        }
+                        const status = detail.meta?.transcription_status;
+                        if (status === 'done' || status === 'failed') {
+                            clearInterval(poll);
+                        }
+                    }
+                } catch (e) { console.error('Polling hatası:', e); }
+            }, 3000);
+        } catch { /* mutate toast attı */ }
     };
 
     // Progress polling'den percent>=100 sinyali gelince çağrılır.
