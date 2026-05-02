@@ -498,15 +498,23 @@ def get_live_dashboard(db: Session = Depends(get_db)):
     
     from database.sql.session import get_session
     with get_session() as logs_db:
-        from sqlalchemy import select
-        api_logs = list(logs_db.scalars(
-            select(ApiLog).where(ApiLog.olusturulma_tarihi.like(f"{today}%"))
-        ).all())
-        total_signals = len(api_logs)
-        for al in api_logs:
-            if al.kullanici_kimlik in stats_map:
-                stats_map[al.kullanici_kimlik]["api_requests"] += 1
-                stats_map[al.kullanici_kimlik]["total_tokens"] += int(al.toplam_token or 0)
+        from sqlalchemy import select, func
+        # ⚡ Bolt: Offloaded aggregation to the DB instead of fetching all rows into memory
+        api_stats = logs_db.execute(
+            select(
+                ApiLog.kullanici_kimlik,
+                func.count(ApiLog.kimlik).label("req_count"),
+                func.coalesce(func.sum(ApiLog.toplam_token), 0).label("total_tok")
+            )
+            .where(ApiLog.olusturulma_tarihi.like(f"{today}%"))
+            .group_by(ApiLog.kullanici_kimlik)
+        ).all()
+
+        total_signals = sum(r.req_count for r in api_stats)
+        for r in api_stats:
+            if r.kullanici_kimlik in stats_map:
+                stats_map[r.kullanici_kimlik]["api_requests"] += r.req_count
+                stats_map[r.kullanici_kimlik]["total_tokens"] += int(r.total_tok)
 
     for d in denetim_logs:
         uid = d.kullanici_kimlik
