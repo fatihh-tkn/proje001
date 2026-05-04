@@ -234,13 +234,12 @@ async def aggregator_node(state: AgentState) -> dict:
             logger.warning("[aggregator] atanmış ajan çekilemedi: %s", e)
 
         system = _build_chat_system(state, agent_config)
-        node_cfg_pre = (agent_config or {}).get("node_config") or {}
-        history = state.get("history") or [] if node_cfg_pre.get("include_history", True) else []
+        node_cfg = (agent_config or {}).get("node_config") or {}
+        history = state.get("history") or [] if node_cfg.get("include_history", True) else []
         user_msg = state.get("user_message") or state.get("original_message") or ""
 
         # Semantik sohbet hafızası — node_config.include_chat_memory ile
         # kapatılabilir (default: True).
-        node_cfg = (agent_config or {}).get("node_config") or {}
         if node_cfg.get("include_chat_memory", True):
             chat_memory_text = await _fetch_memory_safe(
                 state.get("session_id") or "", user_msg,
