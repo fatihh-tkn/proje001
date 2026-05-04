@@ -190,7 +190,12 @@ async def _try_route_and_trigger(user_message: str) -> dict | None:
     """
     import os as _os
     try:
-        action_agent = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
+        # LG.7: Önce yeni graph node ajanını dene (sys_node_n8n_trigger),
+        # bulunamazsa legacy sys_agent_action_001'e düş.
+        from core.db_bridge import get_assigned_agent
+        action_agent = await run_in_threadpool(get_assigned_agent, "n8n_trigger")
+        if not action_agent:
+            action_agent = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
         if not action_agent:
             return None
 
@@ -1225,7 +1230,11 @@ class AIService:
             # ── Mesaj Revize Botu (aktif ise) — AI cevabını kullanıcıya
             # göstermeden önce üslup/format açısından profesyonelleştir.
             # Frontend 'replace' event'i alınca baloncuğun metnini değiştirir.
-            msg_bot = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
+            # LG.7: Önce yeni graph node ajanı (sys_node_msg_polish), sonra legacy
+            from core.db_bridge import get_assigned_agent as _ga
+            msg_bot = await run_in_threadpool(_ga, "msg_polish")
+            if not msg_bot:
+                msg_bot = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
             if msg_bot and (msg_bot.get("prompt") or "").strip() and full_reply.strip():
                 try:
                     revised = await AIService.revise_message(full_reply)
@@ -1345,7 +1354,11 @@ class AIService:
     @staticmethod
     async def revise_message(bot_reply: str) -> str:
         """Mesaj Revize Botu'nu kullanarak nihai yanıtı kullanıcıya gösterilmeden önce iyileştirir."""
-        agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
+        # LG.7: Önce yeni graph node ajanı (sys_node_msg_polish), sonra legacy
+        from core.db_bridge import get_assigned_agent
+        agent_config = await run_in_threadpool(get_assigned_agent, "msg_polish")
+        if not agent_config:
+            agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_msg_001")
         if not agent_config:
             system_prompt = "Sana gelen metni imla, üslup ve profesyonellik açısından daha iyi bir hale getir. Eğer liste falan varsa daha okunabilir yap. Sadece revize edilmiş metni döndür, kendi yorumunu ekleme."
             temperature = 0.4

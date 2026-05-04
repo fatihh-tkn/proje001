@@ -1,8 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Brain, Save, Loader2, Power } from 'lucide-react';
+import { Bot, Brain, Save, Loader2, Power, GitBranch } from 'lucide-react';
+import { isAgentVisibleInGrid } from './constants';
 
 const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAgentIds = new Set(), onSave, onToggleAgent, isSaving }) => {
+    const visibleAgents = useMemo(
+        () => (agents || []).filter(isAgentVisibleInGrid),
+        [agents]
+    );
     const [editingId, setEditingId] = useState(null);
     const [editValue, setEditValue] = useState('');
     const inputRef = useRef(null);
@@ -53,7 +58,7 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                 className="flex items-stretch px-0 shrink-0 overflow-x-auto z-10 relative w-full h-full"
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-                {agents.map((agent) => {
+                {visibleAgents.map((agent) => {
                     const isActive = selectedItemId === agent.id;
                     const isEditing = editingId === agent.id;
                     const isDirty = dirtyAgentIds.has(agent.id);
@@ -69,7 +74,11 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                             title={isEditing ? undefined : `${agent.name} — Yeniden adlandırmak için çift tıklayın`}
                         >
                             <div className={`shrink-0 ${isActive ? 'text-[#378ADD]' : 'text-stone-400 group-hover:text-stone-500'}`}>
-                                {agent.agentKind === 'chatbot' ? <Bot size={14} strokeWidth={isActive ? 2.5 : 2} /> : <Brain size={14} strokeWidth={isActive ? 2.5 : 2} />}
+                                {agent.agentKind === 'graph_node'
+                                    ? <GitBranch size={14} strokeWidth={isActive ? 2.5 : 2} />
+                                    : agent.agentKind === 'chatbot'
+                                        ? <Bot size={14} strokeWidth={isActive ? 2.5 : 2} />
+                                        : <Brain size={14} strokeWidth={isActive ? 2.5 : 2} />}
                             </div>
 
                             {isEditing && isActive ? (
@@ -115,7 +124,7 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
 
             {/* Sağ tıklama Context Menüsü — portal ile body'e render et (transform offset'inden kaçınmak için) */}
             {contextMenu && (() => {
-                const agent = agents.find(a => a.id === contextMenu.agentId);
+                const agent = visibleAgents.find(a => a.id === contextMenu.agentId);
                 if (!agent) return null;
                 return createPortal(
                     <div

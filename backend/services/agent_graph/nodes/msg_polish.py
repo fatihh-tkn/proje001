@@ -31,7 +31,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
-from core.db_bridge import get_ai_agent
+from core.db_bridge import get_ai_agent, get_assigned_agent
 from ..state import AgentState
 
 try:
@@ -75,15 +75,28 @@ async def msg_polish_node(state: AgentState) -> dict:
             "node_timings": {"msg_polish": int((time.time() - t0) * 1000)},
         }
 
-    # Ajan kontrolü
+    # Ajan kontrolü — önce yeni graph node ajanı (sys_node_msg_polish), sonra legacy
     try:
-        msg_bot = await run_in_threadpool(get_ai_agent, "sys_agent_msg_001")
+        msg_bot = await run_in_threadpool(get_assigned_agent, "msg_polish")
+        if not msg_bot:
+            msg_bot = await run_in_threadpool(get_ai_agent, "sys_agent_msg_001")
     except Exception as e:
         logger.warning("[msg_polish] msg_bot çekilemedi: %s", e)
         msg_bot = None
 
     if not msg_bot or not (msg_bot.get("prompt") or "").strip():
         logger.info("[msg_polish] msg_bot pasif → atlandı")
+        return {
+            "nodes_executed": ["msg_polish"],
+            "node_timings": {"msg_polish": int((time.time() - t0) * 1000)},
+        }
+
+    # node_config: çok kısa mesajları revize etme
+    node_cfg = msg_bot.get("node_config") or {}
+    min_chars = int(node_cfg.get("min_chars_to_revise", 0) or 0)
+    if min_chars > 0 and len(final_reply.strip()) < min_chars:
+        logger.info("[msg_polish] mesaj %d karakter (< %d) → atlandı",
+                    len(final_reply.strip()), min_chars)
         return {
             "nodes_executed": ["msg_polish"],
             "node_timings": {"msg_polish": int((time.time() - t0) * 1000)},
