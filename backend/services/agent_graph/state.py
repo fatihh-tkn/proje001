@@ -69,7 +69,7 @@ class AgentState(TypedDict, total=False):
     zli_matches: list[dict]
     n8n_action: dict | None                    # {workflow, status, detail}
 
-    chat_draft: str                            # chat_reply node çıktısı
+    chat_draft: str                            # specialist (error_solver/zli_finder) veya aggregator çıktısı
 
     # ── FINAL ────────────────────────────────────────────────────────────
     final_reply: str
