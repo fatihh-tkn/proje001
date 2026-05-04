@@ -63,11 +63,23 @@ _VALID_SPECIALISTS = {
 }
 
 
-def _dispatch_specialists(state: AgentState):
+def _dispatch_specialists(state: AgentState) -> list[Send] | str:
     """
     Supervisor'dan sonra çağrılan conditional dispatcher.
-    state["plan"]'ı okur, her geçerli specialist için bir Send üretir.
-    Plan boşsa veya geçersizse aggregator'a düşer (genel sohbet).
+
+    state["plan"]'ı okur ve LangGraph'a routing kararını döner. İki
+    farklı dönüş tipi var, her ikisi de `add_conditional_edges` tarafından
+    desteklenir:
+
+      • list[Send]  — plan'da geçerli specialist(ler) varsa onlara Send
+        API ile paralel dağıtım yapılır. Send'lenen node'lar bittiğinde
+        downstream edge'leri (aggregator) otomatik fan-in ile tetiklenir.
+
+      • "aggregator" — plan boş veya tüm node'lar whitelist dışındaysa
+        direkt aggregator'a düşer (cost_capped veya intent="general"
+        + LLM cevabı senaryosu). path_map'teki "aggregator" yalnızca bu
+        string-yolu için anlamlı; specialist isimleri Send'lerin nereye
+        gittiğini graph görselleştirmesinde göstermek için listelenmiştir.
     """
     plan = state.get("plan") or []
     sends: list[Send] = []
@@ -76,7 +88,6 @@ def _dispatch_specialists(state: AgentState):
         if node in _VALID_SPECIALISTS:
             sends.append(Send(node, state))
     if not sends:
-        # Specialist yoksa direkt aggregator'a (genel sohbet)
         return "aggregator"
     return sends
 
