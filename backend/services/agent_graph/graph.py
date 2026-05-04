@@ -36,6 +36,8 @@ SSE pump eklenecek.
 
 from __future__ import annotations
 
+from typing import Any
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
@@ -84,9 +86,18 @@ def _route_after_aggregator(state: AgentState) -> str:
     return "msg_polish" if state.get("needs_polish") else END
 
 
+# Compile edilmiş graph cache'i — checkpointer instance kimliğine göre.
+# Checkpointer genellikle process boyunca tekil (None veya tek PostgresSaver),
+# her request'te yeniden compile etmek anlamsız.
+_GRAPH_CACHE: dict[int, Any] = {}
+
+
 def build_graph(checkpointer=None):
     """
     StateGraph kurar, node'ları + edge'leri tanımlar, compile eder.
+
+    Aynı `checkpointer` instance'ı için sonraki çağrılarda cache'lenmiş
+    compiled graph döner.
 
     Args:
         checkpointer: Opsiyonel checkpoint backend (PostgresSaver vb.).
@@ -95,6 +106,11 @@ def build_graph(checkpointer=None):
     Returns:
         Compiled graph (Runnable). `.ainvoke(state)` veya `.astream(...)`.
     """
+    cache_key = id(checkpointer)
+    cached = _GRAPH_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     graph = StateGraph(AgentState)
 
     # Node kayıtları
@@ -140,4 +156,6 @@ def build_graph(checkpointer=None):
     # msg_polish → END
     graph.add_edge("msg_polish", END)
 
-    return graph.compile(checkpointer=checkpointer)
+    compiled = graph.compile(checkpointer=checkpointer)
+    _GRAPH_CACHE[cache_key] = compiled
+    return compiled
