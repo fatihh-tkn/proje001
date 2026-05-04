@@ -28,8 +28,10 @@ import json
 import time
 import re
 
+from fastapi.concurrency import run_in_threadpool
+
 from core.logger import get_logger
-from core.db_bridge import get_assigned_agent
+from core.db_bridge import get_assigned_agent, check_cost_cap
 from ..state import AgentState
 from ..llm_adapter import call_llm, build_messages
 
@@ -55,7 +57,7 @@ _COMMAND_INTENT_MAP = {
 _INTENT_PLAN = {
     "general":     [("rag_search", True)],
     "hata_cozumu": [("rag_search", True), ("error_solver", False)],
-    "rapor_arama": [("zli_finder", False)],
+    "rapor_arama": [("rag_search", True), ("zli_finder", False)],
     "n8n":         [("n8n_trigger", False), ("rag_search", True)],
     "dosya_qa":    [("rag_search", False)],
 }
@@ -185,6 +187,30 @@ def _plan_for_intent(intent: str) -> list[dict]:
 
 async def supervisor_node(state: AgentState) -> dict:
     t0 = time.time()
+
+    # Cost cap kontrolü en başta — aşıldıysa hem supervisor LLM çağrısını
+    # hem specialist'lerin LLM çağrılarını atla; aggregator boş plan ile
+    # tetiklenip cap mesajını yayınlayacak.
+    try:
+        capped, cap_msg = await run_in_threadpool(check_cost_cap)
+        if capped:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            logger.warning("[supervisor] cost cap aşıldı, plan iptal edildi")
+            return {
+                "intent": "general",
+                "plan": [],
+                "plan_reasoning": "cost_cap_exceeded",
+                "needs_polish": False,
+                "cost_capped": True,
+                "final_reply": cap_msg,
+                "chat_draft": cap_msg,
+                "nodes_executed": ["supervisor"],
+                "node_timings": {"supervisor": elapsed_ms},
+                "node_errors": {"supervisor": "cost_cap_exceeded"},
+            }
+    except Exception as e:
+        logger.warning("[supervisor] cost cap kontrolü atlandı: %s", e)
+
     cmd = state.get("command")
     user_msg = state.get("user_message") or state.get("original_message") or ""
     has_file = bool(state.get("file_name"))

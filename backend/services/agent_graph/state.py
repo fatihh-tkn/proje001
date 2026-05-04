@@ -27,6 +27,18 @@ def append_list(left: list | None, right: list | None) -> list:
     return [*(left or []), *(right or [])]
 
 
+def last_non_empty(left: str | None, right: str | None) -> str:
+    """
+    Paralel branch'lerden gelen string güncellemelerinde anlamlı (boş olmayan)
+    olanı korur. Her iki taraf da doluysa son geleni (right) kullanır.
+    chat_draft için: boş döndüren specialist, dolu draft yazan specialist'in
+    çıktısını silmesin.
+    """
+    if right and right.strip():
+        return right
+    return left or ""
+
+
 # ── State şeması ────────────────────────────────────────────────────────────
 
 class AgentState(TypedDict, total=False):
@@ -69,12 +81,15 @@ class AgentState(TypedDict, total=False):
     zli_matches: list[dict]
     n8n_action: dict | None                    # {workflow, status, detail}
 
-    chat_draft: str                            # chat_reply node çıktısı
+    # Paralel specialist'lerden (error_solver/zli_finder) gelen draft'ların
+    # boş güncellemeyle silinmemesi için reducer'lı.
+    chat_draft: Annotated[str, last_non_empty]
 
     # ── FINAL ────────────────────────────────────────────────────────────
     final_reply: str
     ui_action: dict | None
     needs_polish: bool
+    cost_capped: bool                          # supervisor'da cost cap aşıldıysa True
 
     # ── TELEMETRY (Düşünme Süreci paneli için) ───────────────────────────
     nodes_executed: Annotated[list[str], append_list]

@@ -34,7 +34,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
-from core.db_bridge import get_assigned_agent, check_cost_cap
+from core.db_bridge import get_assigned_agent
 from core.prompts import (
     attach_chat_memory,
     get_general_rag_prompt,
@@ -185,6 +185,23 @@ async def aggregator_node(state: AgentState) -> dict:
     intent = state.get("intent") or "general"
     structured_draft = state.get("chat_draft") or ""
 
+    # ── 0) Supervisor cost cap'i tespit ettiyse ek LLM çağrısı yapma,
+    #      onun hazırladığı cap mesajını direkt yayınla.
+    if state.get("cost_capped"):
+        cap_msg = state.get("final_reply") or structured_draft or ""
+        elapsed_ms = int((time.time() - t0) * 1000)
+        writer = _try_get_writer()
+        if writer:
+            try:
+                writer({"type": "replace", "text": cap_msg})
+            except Exception as e:
+                logger.warning("[aggregator] writer hatası (cost_cap): %s", e)
+        return {
+            "final_reply": cap_msg,
+            "nodes_executed": ["aggregator"],
+            "node_timings": {"aggregator": elapsed_ms},
+        }
+
     # ── 1) Yapılandırılmış specialist çıktıları (error_solver / zli_finder)
     #    JSON cevap ise direkt kullan.
     if intent in ("hata_cozumu", "rapor_arama") and structured_draft.strip():
@@ -207,29 +224,8 @@ async def aggregator_node(state: AgentState) -> dict:
         }
 
     # ── 2) Sohbetsel sentez (general / dosya_qa / n8n sonrası açıklama)
-    # Bütçe kontrolü — günlük/aylık cap aşıldıysa LLM çağrısı yapma,
-    # kullanıcıya nazik uyarı dön.
-    try:
-        capped, cap_msg = await run_in_threadpool(check_cost_cap)
-        if capped:
-            elapsed_ms = int((time.time() - t0) * 1000)
-            logger.warning("[aggregator] cost cap aşıldı, LLM çağrısı atlandı")
-            writer = _try_get_writer()
-            if writer:
-                try:
-                    writer({"type": "replace", "text": cap_msg})
-                except Exception:
-                    pass
-            return {
-                "chat_draft": cap_msg,
-                "final_reply": cap_msg,
-                "nodes_executed": ["aggregator"],
-                "node_timings": {"aggregator": elapsed_ms},
-                "node_errors": {"aggregator": "cost_cap_exceeded"},
-            }
-    except Exception as e:
-        logger.warning("[aggregator] cost cap kontrolü atlandı: %s", e)
-
+    #      Cost cap kontrolü supervisor_node'da yapılıyor; buraya geldiyse
+    #      bütçe yeterli demektir.
     try:
         agent_config = None
         try:
@@ -238,13 +234,12 @@ async def aggregator_node(state: AgentState) -> dict:
             logger.warning("[aggregator] atanmış ajan çekilemedi: %s", e)
 
         system = _build_chat_system(state, agent_config)
-        node_cfg_pre = (agent_config or {}).get("node_config") or {}
-        history = state.get("history") or [] if node_cfg_pre.get("include_history", True) else []
+        node_cfg = (agent_config or {}).get("node_config") or {}
+        history = state.get("history") or [] if node_cfg.get("include_history", True) else []
         user_msg = state.get("user_message") or state.get("original_message") or ""
 
         # Semantik sohbet hafızası — node_config.include_chat_memory ile
         # kapatılabilir (default: True).
-        node_cfg = (agent_config or {}).get("node_config") or {}
         if node_cfg.get("include_chat_memory", True):
             chat_memory_text = await _fetch_memory_safe(
                 state.get("session_id") or "", user_msg,
@@ -252,15 +247,20 @@ async def aggregator_node(state: AgentState) -> dict:
             if chat_memory_text:
                 system = attach_chat_memory(system, chat_memory_text)
 
-        # n8n tetiklendiyse onay cümlesini sistem prompt'una ekle
+        # n8n tetiklendiyse LLM'i durumdan haberdar et — ama onay cümlesini
+        # TEKRAR YAZDIRMA. Frontend ayrı bir 'n8n_action' SSE event'i ile
+        # yapılandırılmış onay metnini zaten baloncuğa basıyor; LLM aynı
+        # cümleyi üretirse kullanıcı iki onay birden görür.
         n8n_action = state.get("n8n_action")
         if n8n_action:
             confirm = _n8n_confirmation_line(n8n_action)
             system += (
-                "\n\n[OTOMASYON DURUMU]\n"
+                "\n\n[OTOMASYON DURUMU — BAĞLAM]\n"
                 f"{confirm}\n"
-                "Cevabını bu durumla tutarlı şekilde, kısa bir onay cümlesi "
-                "veya açıklama ile başlat."
+                "Bu otomasyon durumu kullanıcı arayüzünde ayrı bir bildirim "
+                "olarak zaten gösteriliyor. Cevabında bu onayı TEKRAR YAZMA, "
+                "'tetiklendi/başlatıldı' gibi cümlelerle başlama. Kullanıcının "
+                "asıl sorusuna doğrudan cevap ver; otomasyon yalnızca bağlam."
             )
 
         messages = build_messages(system=system, history=history, user=user_msg)

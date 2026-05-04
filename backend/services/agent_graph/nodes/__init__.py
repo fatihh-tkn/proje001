@@ -8,9 +8,6 @@ from .n8n_trigger import n8n_trigger_node
 from .aggregator import aggregator_node
 from .msg_polish import msg_polish_node
 
-# LG.1 leftover — graph içinde kullanılmıyor, geriye dönük import için tutuluyor
-from .chat_reply import chat_reply_node
-
 __all__ = [
     'supervisor_node',
     'rag_search_node',
@@ -19,5 +16,4 @@ __all__ = [
     'n8n_trigger_node',
     'aggregator_node',
     'msg_polish_node',
-    'chat_reply_node',
 ]

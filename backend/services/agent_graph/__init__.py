@@ -12,8 +12,7 @@ Kavramsal mimari:
         ├─ rag_search  ──┐
         ├─ zli_finder   ─┤  paralel branch'ler
         ├─ error_solver ─┤  (Send API ile)
-        ├─ n8n_trigger  ─┤
-        └─ chat_reply   ─┘
+        └─ n8n_trigger  ─┘
                          ↓
                   ┌────────────┐
                   │ aggregator │  outputs → final_reply

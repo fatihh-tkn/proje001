@@ -36,6 +36,8 @@ SSE pump eklenecek.
 
 from __future__ import annotations
 
+from typing import Any
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
@@ -61,11 +63,23 @@ _VALID_SPECIALISTS = {
 }
 
 
-def _dispatch_specialists(state: AgentState):
+def _dispatch_specialists(state: AgentState) -> list[Send] | str:
     """
     Supervisor'dan sonra çağrılan conditional dispatcher.
-    state["plan"]'ı okur, her geçerli specialist için bir Send üretir.
-    Plan boşsa veya geçersizse aggregator'a düşer (genel sohbet).
+
+    state["plan"]'ı okur ve LangGraph'a routing kararını döner. İki
+    farklı dönüş tipi var, her ikisi de `add_conditional_edges` tarafından
+    desteklenir:
+
+      • list[Send]  — plan'da geçerli specialist(ler) varsa onlara Send
+        API ile paralel dağıtım yapılır. Send'lenen node'lar bittiğinde
+        downstream edge'leri (aggregator) otomatik fan-in ile tetiklenir.
+
+      • "aggregator" — plan boş veya tüm node'lar whitelist dışındaysa
+        direkt aggregator'a düşer (cost_capped veya intent="general"
+        + LLM cevabı senaryosu). path_map'teki "aggregator" yalnızca bu
+        string-yolu için anlamlı; specialist isimleri Send'lerin nereye
+        gittiğini graph görselleştirmesinde göstermek için listelenmiştir.
     """
     plan = state.get("plan") or []
     sends: list[Send] = []
@@ -74,7 +88,6 @@ def _dispatch_specialists(state: AgentState):
         if node in _VALID_SPECIALISTS:
             sends.append(Send(node, state))
     if not sends:
-        # Specialist yoksa direkt aggregator'a (genel sohbet)
         return "aggregator"
     return sends
 
@@ -84,9 +97,18 @@ def _route_after_aggregator(state: AgentState) -> str:
     return "msg_polish" if state.get("needs_polish") else END
 
 
+# Compile edilmiş graph cache'i — checkpointer instance kimliğine göre.
+# Checkpointer genellikle process boyunca tekil (None veya tek PostgresSaver),
+# her request'te yeniden compile etmek anlamsız.
+_GRAPH_CACHE: dict[int, Any] = {}
+
+
 def build_graph(checkpointer=None):
     """
     StateGraph kurar, node'ları + edge'leri tanımlar, compile eder.
+
+    Aynı `checkpointer` instance'ı için sonraki çağrılarda cache'lenmiş
+    compiled graph döner.
 
     Args:
         checkpointer: Opsiyonel checkpoint backend (PostgresSaver vb.).
@@ -95,6 +117,11 @@ def build_graph(checkpointer=None):
     Returns:
         Compiled graph (Runnable). `.ainvoke(state)` veya `.astream(...)`.
     """
+    cache_key = id(checkpointer)
+    cached = _GRAPH_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     graph = StateGraph(AgentState)
 
     # Node kayıtları
@@ -140,4 +167,6 @@ def build_graph(checkpointer=None):
     # msg_polish → END
     graph.add_edge("msg_polish", END)
 
-    return graph.compile(checkpointer=checkpointer)
+    compiled = graph.compile(checkpointer=checkpointer)
+    _GRAPH_CACHE[cache_key] = compiled
+    return compiled

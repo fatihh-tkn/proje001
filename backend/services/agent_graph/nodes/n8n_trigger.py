@@ -16,7 +16,7 @@ yeniden kullanır.
     }
 
 NOT: Bu node aksiyon TETİKLEYİCİ. Kullanıcı sohbet metni de istiyorsa
-chat_reply / aggregator paralel çalışmaya devam eder.
+aggregator paralel olarak rag_search çıktısıyla sohbet cevabını üretir.
 """
 
 from __future__ import annotations
