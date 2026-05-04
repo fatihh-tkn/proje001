@@ -247,15 +247,20 @@ async def aggregator_node(state: AgentState) -> dict:
             if chat_memory_text:
                 system = attach_chat_memory(system, chat_memory_text)
 
-        # n8n tetiklendiyse onay cümlesini sistem prompt'una ekle
+        # n8n tetiklendiyse LLM'i durumdan haberdar et — ama onay cümlesini
+        # TEKRAR YAZDIRMA. Frontend ayrı bir 'n8n_action' SSE event'i ile
+        # yapılandırılmış onay metnini zaten baloncuğa basıyor; LLM aynı
+        # cümleyi üretirse kullanıcı iki onay birden görür.
         n8n_action = state.get("n8n_action")
         if n8n_action:
             confirm = _n8n_confirmation_line(n8n_action)
             system += (
-                "\n\n[OTOMASYON DURUMU]\n"
+                "\n\n[OTOMASYON DURUMU — BAĞLAM]\n"
                 f"{confirm}\n"
-                "Cevabını bu durumla tutarlı şekilde, kısa bir onay cümlesi "
-                "veya açıklama ile başlat."
+                "Bu otomasyon durumu kullanıcı arayüzünde ayrı bir bildirim "
+                "olarak zaten gösteriliyor. Cevabında bu onayı TEKRAR YAZMA, "
+                "'tetiklendi/başlatıldı' gibi cümlelerle başlama. Kullanıcının "
+                "asıl sorusuna doğrudan cevap ver; otomasyon yalnızca bağlam."
             )
 
         messages = build_messages(system=system, history=history, user=user_msg)
