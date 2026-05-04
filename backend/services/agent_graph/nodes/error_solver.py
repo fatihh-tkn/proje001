@@ -77,9 +77,24 @@ async def error_solver_node(state: AgentState) -> dict:
     user_msg = state.get("user_message") or state.get("original_message") or ""
     rag_ctx = state.get("rag_context") or ""
 
-    # Sistem prompt'una RAG bağlamı varsa ekle
-    system = _SYSTEM_BASE
-    if rag_ctx:
+    agent_config = None
+    try:
+        agent_config = get_assigned_agent("error_solver")
+    except Exception:
+        pass
+
+    # DB'den prompt çek; yoksa kod fallback'ini kullan.
+    system_prompt = ((agent_config or {}).get("prompt") or "").strip() or _SYSTEM_BASE
+    negative = ((agent_config or {}).get("negative_prompt") or "").strip()
+    if negative:
+        system_prompt += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER]\n{negative}"
+
+    node_cfg = (agent_config or {}).get("node_config") or {}
+    use_rag_context = node_cfg.get("use_rag_context", True)
+
+    # Sistem prompt'una RAG bağlamı varsa ekle (node_config ile kapatılabilir)
+    system = system_prompt
+    if rag_ctx and use_rag_context:
         system += (
             "\n\n[BİLGİ TABANI BAĞLAMI]\n"
             "Aşağıdaki kurum içi belge alıntılarını çözüm adımlarını ve "
@@ -88,18 +103,15 @@ async def error_solver_node(state: AgentState) -> dict:
         )
 
     try:
-        agent_config = None
-        try:
-            agent_config = get_assigned_agent("error_solver")
-        except Exception:
-            pass
-
+        temperature = (agent_config or {}).get("temperature", 0.2)
+        max_tokens = (agent_config or {}).get("max_tokens") or None
         messages = build_messages(system=system, history=None, user=user_msg)
         result = await call_llm(
             agent_config,
             messages,
-            temperature=0.2,
+            temperature=temperature,
             response_format="json_object",
+            max_tokens=max_tokens,
             timeout=45.0,
         )
         raw = (result.get("text") or "").strip()

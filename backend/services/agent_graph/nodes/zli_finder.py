@@ -72,9 +72,18 @@ async def zli_finder_node(state: AgentState) -> dict:
     t0 = time.time()
     user_msg = state.get("user_message") or state.get("original_message") or ""
 
+    agent_config = None
+    try:
+        agent_config = get_assigned_agent("zli_finder")
+    except Exception:
+        pass
+
+    node_cfg = (agent_config or {}).get("node_config") or {}
+    sql_match_limit = int(node_cfg.get("sql_match_limit", 5) or 5)
+
     try:
         from services.ai_service import _fetch_zli_report_matches
-        matches = await run_in_threadpool(_fetch_zli_report_matches, user_msg, 5)
+        matches = await run_in_threadpool(_fetch_zli_report_matches, user_msg, sql_match_limit)
     except Exception as e:
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.error("[zli_finder] SQL eşleşme hatası: %s", e, exc_info=True)
@@ -86,21 +95,32 @@ async def zli_finder_node(state: AgentState) -> dict:
         }
 
     matches_block = _format_matches(matches)
-    system = _SYSTEM_TEMPLATE.format(matches_block=matches_block)
+
+    # DB prompt'u varsa onu kullan + matches_block'u "ADAY RAPORLAR" başlığıyla
+    # ekle. Yoksa kod fallback şablonunu format'la.
+    db_prompt = ((agent_config or {}).get("prompt") or "").strip()
+    if db_prompt:
+        system = (
+            db_prompt
+            + "\n\nADAY RAPORLAR:\n"
+            + matches_block
+        )
+        negative = ((agent_config or {}).get("negative_prompt") or "").strip()
+        if negative:
+            system += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER]\n{negative}"
+    else:
+        system = _SYSTEM_TEMPLATE.format(matches_block=matches_block)
 
     try:
-        agent_config = None
-        try:
-            agent_config = get_assigned_agent("zli_finder")
-        except Exception:
-            pass
-
+        temperature = (agent_config or {}).get("temperature", 0.0)
+        max_tokens = (agent_config or {}).get("max_tokens") or None
         messages = build_messages(system=system, history=None, user=user_msg)
         result = await call_llm(
             agent_config,
             messages,
-            temperature=0.0,
+            temperature=temperature,
             response_format="json_object",
+            max_tokens=max_tokens,
             timeout=30.0,
         )
         text = (result.get("text") or "").strip()

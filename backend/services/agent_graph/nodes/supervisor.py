@@ -61,7 +61,7 @@ _INTENT_PLAN = {
 }
 
 
-_CLASSIFIER_SYSTEM = (
+_CLASSIFIER_SYSTEM_FALLBACK = (
     "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
     "kategorilerden birini seçersin:\n"
     "- general: genel sohbet, tanımlama, açık uçlu soru\n"
@@ -81,6 +81,15 @@ _CLASSIFIER_SYSTEM = (
 )
 
 
+def _resolve_system_prompt(agent_config: dict | None) -> str:
+    """DB'den prompt çek; yoksa kod fallback'ine düş."""
+    if agent_config:
+        prompt = (agent_config.get("prompt") or "").strip()
+        if prompt:
+            return prompt
+    return _CLASSIFIER_SYSTEM_FALLBACK
+
+
 def _strip_json_fence(text: str) -> str:
     """LLM'in ```json ... ``` ile sardığı çıktıdan saf JSON çıkarır."""
     t = (text or "").strip()
@@ -95,15 +104,20 @@ async def _classify_with_llm(user_message: str) -> dict | None:
     """
     try:
         # Sınıflandırıcı için supervisor rolüne atanmış ajanı kullan
-        # (varsayılan: chatbot kind'ı). T=0.0 ile çağrılır.
+        # (varsayılan: sys_node_supervisor). T=0.0 ile çağrılır.
         agent_config = None
         try:
             agent_config = get_assigned_agent("supervisor")
         except Exception:
             pass
 
+        # node_config: rule-only çalıştırmak isterse use_llm_classifier=false
+        node_cfg = (agent_config or {}).get("node_config") or {}
+        if node_cfg.get("use_llm_classifier") is False:
+            return None
+
         messages = build_messages(
-            system=_CLASSIFIER_SYSTEM,
+            system=_resolve_system_prompt(agent_config),
             history=None,
             user=user_message,
         )
@@ -194,9 +208,19 @@ async def supervisor_node(state: AgentState) -> dict:
             needs_polish = llm_result["needs_polish"]
             tokens = llm_result["tokens"]
         else:
-            # 3) Rule-based fallback
-            intent, reasoning = _rule_based_intent(user_msg, has_file)
-            needs_polish = (intent == "general")
+            # 3) Rule-based fallback (node_config.fallback_to_rules ile devre dışı bırakılabilir)
+            try:
+                _agent = get_assigned_agent("supervisor") or {}
+                _cfg = _agent.get("node_config") or {}
+            except Exception:
+                _cfg = {}
+            if _cfg.get("fallback_to_rules", True):
+                intent, reasoning = _rule_based_intent(user_msg, has_file)
+                needs_polish = (intent == "general")
+            else:
+                intent = "general"
+                reasoning = "LLM erişilemedi; rule-based fallback kapalı → general."
+                needs_polish = True
 
     plan = _plan_for_intent(intent)
     elapsed_ms = int((time.time() - t0) * 1000)

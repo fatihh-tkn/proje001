@@ -55,7 +55,7 @@ const SPECIALISTS = [
         sub: 'Bilgi tabanı (hibrit)',
         icon: Search,
         color: '#0ea5e9',
-        usesAgent: null,
+        usesAgent: 'sys_node_rag_search',
         intents: ['general', 'hata_cozumu', 'n8n', 'dosya_qa'],
         info: 'Vektör + tam metin hibrit arama. Belge & toplantı havuzlarından kullanıcı sorgusuyla en alakalı parçaları çeker.',
     },
@@ -65,9 +65,9 @@ const SPECIALISTS = [
         sub: 'JSON çıktı şeması',
         icon: Wrench,
         color: '#dc2626',
-        usesAgent: 'sys_agent_chatbot_001',
+        usesAgent: 'sys_node_error_solver',
         intents: ['hata_cozumu'],
-        info: 'SAP/sistem hatalarını yapılandırılmış JSON formatında (error_solution) çözümleyen uzman. Chatbot ajanının modeli + prompt\'u kullanılır.',
+        info: 'SAP/sistem hatalarını yapılandırılmış JSON formatında (error_solution) çözümleyen uzman. Kendi sys_node_error_solver ajanının prompt\'u + modeli kullanılır.',
     },
     {
         id: 'zli_finder',
@@ -75,7 +75,7 @@ const SPECIALISTS = [
         sub: 'SQL eşleşme + LLM',
         icon: Database,
         color: '#0891b2',
-        usesAgent: 'sys_agent_chatbot_001',
+        usesAgent: 'sys_node_zli_finder',
         intents: ['rapor_arama'],
         info: "SQL'den aday Z'li raporları çekip LLM ile en uygunu seçen uzman. JSON çıktısı (zli_report_query).",
     },
@@ -85,9 +85,9 @@ const SPECIALISTS = [
         sub: 'İşlem Botu',
         icon: Webhook,
         color: '#16a34a',
-        usesAgent: 'sys_agent_action_001',
+        usesAgent: 'sys_node_n8n_trigger',
         intents: ['n8n'],
-        info: 'İşlem Botu ajanı kullanıcı mesajını analiz edip n8n workflow tetikler. allowed_workflows kontrolü yapılır.',
+        info: 'sys_node_n8n_trigger ajanı kullanıcı mesajını analiz edip n8n workflow tetikler. allowed_workflows kontrolü yapılır.',
     },
 ];
 
@@ -139,17 +139,20 @@ const GraphTopologyOverview = ({ allAgents, rags, onOpenPayload, onToggleAgent }
         return !a || a.active !== false;
     };
 
-    const chatbotAgent = getAgentById('sys_agent_chatbot_001');
-    const msgAgent = getAgentById('sys_agent_msg_001');
+    // LG.7: Yeni graph_node ajanları öncelikli; bulunamazsa eski ajanlara düş.
+    const aggregatorAgent = getAgentById('sys_node_aggregator') || getAgentById('sys_agent_chatbot_001');
+    const msgAgent = getAgentById('sys_node_msg_polish') || getAgentById('sys_agent_msg_001');
     const promptAgent = getAgentById('sys_agent_prompt_001');
+    // Eski isimle erişim — popup'larda kullanılıyor
+    const chatbotAgent = aggregatorAgent;
 
-    const chatbotActive = isAgentActive('sys_agent_chatbot_001');
-    const msgPolishActive = isAgentActive('sys_agent_msg_001');
-    const actionActive = isAgentActive('sys_agent_action_001');
+    const chatbotActive = aggregatorAgent ? aggregatorAgent.active !== false : false;
+    const msgPolishActive = msgAgent ? msgAgent.active !== false : false;
+    const actionActive = isAgentActive('sys_node_n8n_trigger') || isAgentActive('sys_agent_action_001');
     const promptActive = isAgentActive('sys_agent_prompt_001');
 
-    // Chatbot ajanın allowed_rags listesi → rag_search üstündeki havuz rozetleri
-    const allowedRags = chatbotAgent?.allowedRags || chatbotAgent?.allowed_rags || [];
+    // Aggregator ajanının allowed_rags listesi → rag_search üstündeki havuz rozetleri
+    const allowedRags = aggregatorAgent?.allowedRags || aggregatorAgent?.allowed_rags || [];
     const isRag1Active = chatbotActive && allowedRags.includes('rag_1');
     const isRag2Active = chatbotActive && allowedRags.includes('rag_2');
 
@@ -484,37 +487,52 @@ const GraphTopologyOverview = ({ allAgents, rags, onOpenPayload, onToggleAgent }
                 </PopupPortal>
             )}
 
-            {activePopup === 'supervisor' && (
-                <PopupPortal title="Supervisor — Intent Sınıflandırıcı" icon={GitBranch} iconColor="#7c3aed" popupPos={popupPos} onClose={closePopup} width={400}>
-                    <div className="px-4 py-4 bg-stone-50 rounded-b-xl text-[11px] text-stone-600 leading-relaxed space-y-2">
-                        <p><strong>Görev:</strong> Kullanıcı mesajını + komutu + dosya bağlamını okuyup intent ve specialist plan'ı üretir.</p>
-                        <p><strong>5 intent:</strong> general, hata_cozumu, rapor_arama, n8n, dosya_qa.</p>
-                        <p><strong>Strateji:</strong> Önce komut/dosya rule'u, sonra LLM JSON-mode (chatbot ajanı, T=0). Hata olursa regex fallback.</p>
-                        <p className="text-stone-400 italic mt-2">Kod: backend/services/agent_graph/nodes/supervisor.py</p>
-                    </div>
-                </PopupPortal>
-            )}
-
-            {SPECIALISTS.map(spec => activePopup === spec.id && (
-                <PopupPortal key={spec.id} title={`${spec.label} — Specialist`} icon={spec.icon} iconColor={spec.color} popupPos={popupPos} onClose={closePopup} width={400}>
-                    <div className="px-4 py-4 bg-stone-50 rounded-b-xl text-[11px] text-stone-600 leading-relaxed space-y-2">
-                        <p>{spec.info}</p>
-                        {spec.usesAgent && (
-                            <p className="text-stone-500"><strong>Bağlı ajan:</strong> {getAgentById(spec.usesAgent)?.name || spec.usesAgent}</p>
+            {activePopup === 'supervisor' && (() => {
+                const supAgent = getAgentById('sys_node_supervisor');
+                return (
+                    <PopupPortal title="Supervisor — Intent Sınıflandırıcı" icon={GitBranch} iconColor="#7c3aed" popupPos={popupPos} onClose={closePopup} width={400}>
+                        {supAgent ? (
+                            <ApiPayloadPreview agent={supAgent} rags={[]} />
+                        ) : (
+                            <div className="px-4 py-4 bg-stone-50 rounded-b-xl text-[11px] text-stone-600 leading-relaxed space-y-2">
+                                <p><strong>Görev:</strong> Kullanıcı mesajını + komutu + dosya bağlamını okuyup intent ve specialist plan'ı üretir.</p>
+                                <p><strong>5 intent:</strong> general, hata_cozumu, rapor_arama, n8n, dosya_qa.</p>
+                                <p><strong>Strateji:</strong> Önce komut/dosya rule'u, sonra LLM JSON-mode (T=0). Hata olursa regex fallback.</p>
+                                <p className="text-stone-400 italic mt-2">Kod: backend/services/agent_graph/nodes/supervisor.py</p>
+                            </div>
                         )}
-                        <p className="text-stone-400 italic mt-2">Kod: backend/services/agent_graph/nodes/{spec.id}.py</p>
-                    </div>
-                </PopupPortal>
-            ))}
+                    </PopupPortal>
+                );
+            })()}
+
+            {SPECIALISTS.map(spec => {
+                if (activePopup !== spec.id) return null;
+                const specAgent = spec.usesAgent ? getAgentById(spec.usesAgent) : null;
+                return (
+                    <PopupPortal key={spec.id} title={`${spec.label} — Specialist`} icon={spec.icon} iconColor={spec.color} popupPos={popupPos} onClose={closePopup} width={420}>
+                        {specAgent ? (
+                            <ApiPayloadPreview agent={specAgent} rags={spec.id === 'rag_search' ? rags : []} />
+                        ) : (
+                            <div className="px-4 py-4 bg-stone-50 rounded-b-xl text-[11px] text-stone-600 leading-relaxed space-y-2">
+                                <p>{spec.info}</p>
+                                {spec.usesAgent && (
+                                    <p className="text-stone-500"><strong>Bağlı ajan:</strong> {spec.usesAgent} <span className="text-amber-600">(seed bekleniyor)</span></p>
+                                )}
+                                <p className="text-stone-400 italic mt-2">Kod: backend/services/agent_graph/nodes/{spec.id}.py</p>
+                            </div>
+                        )}
+                    </PopupPortal>
+                );
+            })}
 
             {activePopup === 'aggregator' && (
                 <PopupPortal title="Aggregator — Yanıt Sentezi" icon={Sparkles} iconColor="#378ADD" popupPos={popupPos} onClose={closePopup}>
-                    {chatbotAgent
-                        ? <ApiPayloadPreview agent={chatbotAgent} rags={rags} />
+                    {aggregatorAgent
+                        ? <ApiPayloadPreview agent={aggregatorAgent} rags={rags} />
                         : (
                             <div className="px-4 py-6 flex flex-col items-center gap-3 bg-stone-50 rounded-b-xl">
                                 <AlertTriangle size={20} className="text-amber-500" />
-                                <p className="text-[11px] text-stone-500 text-center">Sohbet Asistanı ajanı bulunamadı.</p>
+                                <p className="text-[11px] text-stone-500 text-center">Aggregator ajanı (sys_node_aggregator) bulunamadı.</p>
                             </div>
                         )
                     }
@@ -522,13 +540,13 @@ const GraphTopologyOverview = ({ allAgents, rags, onOpenPayload, onToggleAgent }
             )}
 
             {activePopup === 'msg_polish' && (
-                <PopupPortal title="Msg Polish — Mesaj Revize Botu" icon={MessageSquareText} iconColor="#a855f7" popupPos={popupPos} onClose={closePopup}>
+                <PopupPortal title="Msg Polish — Mesaj Revize" icon={MessageSquareText} iconColor="#a855f7" popupPos={popupPos} onClose={closePopup}>
                     {msgAgent
                         ? <ApiPayloadPreview agent={msgAgent} rags={[]} />
                         : (
                             <div className="px-4 py-6 flex flex-col items-center gap-3 bg-stone-50 rounded-b-xl">
                                 <AlertTriangle size={20} className="text-amber-500" />
-                                <p className="text-[11px] text-stone-500 text-center">Mesaj Revize Botu bulunamadı.</p>
+                                <p className="text-[11px] text-stone-500 text-center">sys_node_msg_polish ajanı bulunamadı.</p>
                             </div>
                         )
                     }

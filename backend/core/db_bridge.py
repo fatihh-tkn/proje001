@@ -231,7 +231,8 @@ def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]
             "strict_fact_check": agent.strict_fact_check,
             "chat_history_length": agent.chat_history_length,
             "can_ask_follow_up": agent.can_ask_follow_up,
-            "error_message": agent.error_message
+            "error_message": agent.error_message,
+            "node_config": agent.node_config or {},
         }
 
 
@@ -412,16 +413,22 @@ def get_assigned_agent(role: str) -> Optional[dict]:
         if a:
             return a
 
-    # 2) Rol için bilinen varsayılan agent_id (msg_polish / n8n_trigger)
+    # 2) Rol için bilinen varsayılan agent_id (sys_node_<role>)
     default_id = _DEFAULT_ROLE_AGENT_ID.get(role)
     if default_id:
         a = get_ai_agent(agent_id=default_id)
         if a:
             return a
 
-    # 3) Rol → kind eşlemesi (chatbot fallback)
-    default_kind = _DEFAULT_ROLE_KIND.get(role, "chatbot")
-    return get_ai_agent(agent_kind=default_kind)
+    # 3) Rol → kind eşlemesi (graph_node fallback). Seed çalışmamış ya da
+    #    tüm sys_node_* ajanları silinmişse, herhangi bir aktif graph_node
+    #    ajanına düşer; o da yoksa legacy chatbot.
+    default_kind = _FALLBACK_KIND_BY_ROLE.get(role, "chatbot")
+    a = get_ai_agent(agent_kind=default_kind)
+    if a:
+        return a
+    # Son emniyet: legacy chatbot (rollback senaryosu)
+    return get_ai_agent(agent_kind="chatbot")
 
 
 def is_agent_graph_enabled() -> bool:

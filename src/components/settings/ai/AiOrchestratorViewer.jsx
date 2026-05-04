@@ -118,8 +118,21 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
         fetchSystemFiles();
     }, []);
 
-    const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_agent_chatbot_001');
+    const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_node_aggregator');
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
+
+    // Eğer ilk yükleme sonrası seçili ajan listede yoksa (ör. legacy gizlendi),
+    // ilk görünür ajana düş.
+    useEffect(() => {
+        if (!isLoadingAgents && agents.length && !selectedItem) {
+            const firstVisible = agents.find(a =>
+                a.id !== 'sys_agent_chatbot_001'
+                && a.id !== 'sys_agent_msg_001'
+                && a.id !== 'sys_agent_action_001'
+            );
+            if (firstVisible) setSelectedItemId(firstVisible.id);
+        }
+    }, [isLoadingAgents, agents, selectedItem]);
 
     const [dirtyAgentIds, setDirtyAgentIds] = useState(new Set());
     const [isSaving, setIsSaving] = useState(false);

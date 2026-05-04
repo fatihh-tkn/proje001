@@ -103,6 +103,30 @@ async def rag_search_node(state: AgentState) -> dict:
         except Exception as e:
             logger.warning("[rag_search] aggregator allowed_rags okunamadı: %s", e)
 
+        # rag_search node ajanının kendi node_config'inden top_k / score_threshold oku
+        rag_top_k: int | None = None
+        rag_score_threshold: float = 0.0
+        # Eğer rag_search ajanı kendi `allowed_rags` setini override ediyorsa
+        # aggregator'ınkinin yerine onu kullan.
+        try:
+            rag_agent = get_assigned_agent("rag_search") or {}
+            node_cfg = rag_agent.get("node_config") or {}
+            tk = node_cfg.get("top_k")
+            if tk:
+                rag_top_k = int(tk)
+            rag_score_threshold = float(node_cfg.get("score_threshold") or 0.0)
+            rag_allowed = rag_agent.get("allowed_rags") or []
+            if rag_allowed:
+                # rag_search override
+                _ex = [str(r)[1:] for r in rag_allowed if str(r).startswith("!")]
+                _po = [str(r) for r in rag_allowed if not str(r).startswith("!")]
+                if _ex:
+                    agent_excluded = list(set(agent_excluded) | set(_ex))
+                if _po:
+                    allowed_pools = _po
+        except Exception as e:
+            logger.warning("[rag_search] node_config okunamadı: %s", e)
+
         user_excluded = _get_user_excluded_files(user_id) if user_id else []
         excluded = list(set(agent_excluded) | set(user_excluded))
 
@@ -122,6 +146,7 @@ async def rag_search_node(state: AgentState) -> dict:
                 user_msg,
                 file_name=fn,
                 collection_name=collection_name,
+                top_k=rag_top_k,
                 excluded_file_ids=excluded,
                 allowed_pools=allowed_pools,
                 user_id=user_id,
@@ -129,6 +154,18 @@ async def rag_search_node(state: AgentState) -> dict:
 
         results = await asyncio.gather(*[_search_one(t) for t in targets])
         rag_context, sources, ui_action = _merge_search_results(results)
+
+        # score_threshold altında kalan kaynakları ele
+        if rag_score_threshold > 0 and sources:
+            kept = [s for s in sources if float(s.get("score") or 0.0) >= rag_score_threshold]
+            if len(kept) != len(sources):
+                logger.info(
+                    "[rag_search] score_threshold=%.3f → %d/%d kaynak filtrelendi",
+                    rag_score_threshold, len(sources) - len(kept), len(sources),
+                )
+                sources = kept
+                if not sources:
+                    rag_context = ""
 
         elapsed_ms = int((time.time() - t0) * 1000)
         score = _max_score(sources)

@@ -1,6 +1,144 @@
 import React, { useState, useEffect } from 'react';
-import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle } from 'lucide-react';
+import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle, GitBranch, Settings2 } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
+
+/* ── LG.7: Graph Node Ajanları için node_config Editörü ──────────────── */
+function NodeConfigPanel({ selectedItem, updateAgent }) {
+    const cfg = selectedItem.nodeConfig || {};
+    const setKey = (k, v) => {
+        updateAgent('nodeConfig', { ...cfg, [k]: v });
+    };
+
+    const Toggle = ({ label, k, desc }) => (
+        <div
+            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${cfg[k] ? 'bg-[#EAF3DE] border-[#EAF3DE]/60' : 'bg-white border-stone-200 hover:bg-stone-50'}`}
+            onClick={() => setKey(k, !cfg[k])}
+        >
+            <div>
+                <div className={`text-[11px] font-black tracking-tight ${cfg[k] ? 'text-[#3B6D11]' : 'text-stone-700'}`}>{label}</div>
+                {desc && <div className="text-[10px] font-semibold tracking-tight mt-0.5 text-stone-500">{desc}</div>}
+            </div>
+            {cfg[k] ? <ToggleRight size={24} strokeWidth={2} className="text-[#3B6D11]" /> : <ToggleLeft size={24} strokeWidth={2} className="text-stone-300" />}
+        </div>
+    );
+
+    const Slider = ({ label, k, min, max, step, fmt }) => (
+        <div>
+            <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center justify-between">
+                <span>{label}</span>
+                <span className="text-[#378ADD] font-black text-xs font-mono">{fmt ? fmt(cfg[k]) : (cfg[k] ?? '—')}</span>
+            </label>
+            <input
+                type="range" min={min} max={max} step={step}
+                value={Number(cfg[k]) || 0}
+                onChange={(e) => setKey(k, step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))}
+                className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#378ADD]"
+            />
+        </div>
+    );
+
+    const NumInput = ({ label, k, min }) => (
+        <div>
+            <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">{label}</label>
+            <input
+                type="number" min={min}
+                value={cfg[k] ?? ''}
+                onChange={e => setKey(k, e.target.value === '' ? null : parseInt(e.target.value))}
+                className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
+            />
+        </div>
+    );
+
+    // Node ID'sine göre özel kontroller
+    const id = selectedItem.id;
+    let body = null;
+    if (id === 'sys_node_rag_search') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Slider label="Top-K (kaynak sayısı)" k="top_k" min={3} max={30} step={1} />
+                <Slider label="Minimum Skor Eşiği" k="score_threshold" min={0} max={1} step={0.01} fmt={(v) => (Number(v) || 0).toFixed(2)} />
+                <div className="col-span-2">
+                    <Toggle label="Komşu Chunk Genişletmesi" k="expand_chunk_graph" desc="Eşleşen chunk'ın etrafındaki paragrafları da dahil et." />
+                </div>
+            </div>
+        );
+    } else if (id === 'sys_node_error_solver') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Toggle label="RAG Bağlamını Kullan" k="use_rag_context" desc="Bilgi tabanı varsa çözüme dahil et." />
+                <NumInput label="Çıktı Şema Versiyonu" k="output_schema_version" min={1} />
+            </div>
+        );
+    } else if (id === 'sys_node_aggregator') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Toggle label="Sohbet Hafızasını Dahil Et" k="include_chat_memory" desc="Önceki sohbetlerden alakalı kesitler eklenir." />
+                <Toggle label="Tur Geçmişini Dahil Et" k="include_history" desc="Aynı oturumdaki son turlar prompt'a eklenir." />
+                <div className="col-span-2">
+                    <Toggle label="Düşük Skorlu RAG'ları Filtrele" k="trim_low_score_rag" desc="rag_search'in score_threshold'una uymayanları at." />
+                </div>
+            </div>
+        );
+    } else if (id === 'sys_node_supervisor') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Toggle label="LLM Sınıflandırıcı Kullan" k="use_llm_classifier" desc="Kapalıysa sadece kural tabanlı sınıflandırma çalışır." />
+                <Toggle label="Kural Tabanlı Yedek" k="fallback_to_rules" desc="LLM erişilemezse regex/anahtar kelimelere düş." />
+            </div>
+        );
+    } else if (id === 'sys_node_zli_finder') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <NumInput label="SQL Aday Limiti" k="sql_match_limit" min={1} />
+                <Slider label="Minimum Skor" k="min_score" min={0} max={1} step={0.05} fmt={(v) => (Number(v) || 0).toFixed(2)} />
+            </div>
+        );
+    } else if (id === 'sys_node_n8n_trigger') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Toggle label="Açık Niyet Şartı" k="require_explicit_intent" desc="Sadece supervisor intent='n8n' verdiğinde tetikle." />
+            </div>
+        );
+    } else if (id === 'sys_node_msg_polish') {
+        body = (
+            <div className="grid grid-cols-2 gap-5 p-5">
+                <Toggle label="Temizse Atla" k="skip_if_already_clean" desc="Heuristik olarak zaten profesyonel görünen metni revize etme." />
+                <NumInput label="Min Karakter Eşiği" k="min_chars_to_revise" min={0} />
+            </div>
+        );
+    } else {
+        // Bilinmeyen node — JSON editörü göster
+        const text = JSON.stringify(cfg, null, 2);
+        body = (
+            <div className="p-5">
+                <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">Ham JSON</label>
+                <textarea
+                    defaultValue={text}
+                    onBlur={(e) => {
+                        try {
+                            const parsed = JSON.parse(e.target.value || '{}');
+                            updateAgent('nodeConfig', parsed);
+                        } catch {
+                            // sessizce yoksay
+                        }
+                    }}
+                    className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-mono rounded-lg px-3 py-2 min-h-[140px] outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30"
+                />
+                <p className="text-[10px] text-stone-400 mt-1">Geçersiz JSON yok sayılır.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-violet-50/50">
+                <Settings2 size={13} className="text-violet-600" />
+                <span className="text-[10px] font-black text-violet-700 uppercase tracking-widest">Node Yapılandırması ({id})</span>
+            </div>
+            {body}
+        </div>
+    );
+}
 
 /* ── İşlem Botu için n8n Workflow Seçici ─────────────────────────── */
 function RouterWorkflowPanel({ selectedItem, updateAgent }) {
@@ -282,8 +420,10 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                 </div>
             </div>
 
-            {/* ── KUTU 4: Bilgi Kaynağı (sadece chatbot) ── */}
-            {selectedItem.agentKind === 'chatbot' && (
+            {/* ── KUTU 4: Bilgi Kaynağı — chatbot VEYA RAG kullanan graph_node ── */}
+            {(selectedItem.agentKind === 'chatbot' ||
+              selectedItem.id === 'sys_node_rag_search' ||
+              selectedItem.id === 'sys_node_aggregator') && (
                 <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
                     <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
                         <Database size={13} className="text-stone-500" />
@@ -352,9 +492,14 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                 </div>
             )}
 
-            {/* ── KUTU 5: n8n Tetikleyiciler (sadece router/işlem botu) ── */}
-            {selectedItem.agentKind === 'router' && (
+            {/* ── KUTU 5: n8n Tetikleyiciler (router VEYA n8n_trigger node) ── */}
+            {(selectedItem.agentKind === 'router' || selectedItem.id === 'sys_node_n8n_trigger') && (
                 <RouterWorkflowPanel selectedItem={selectedItem} updateAgent={updateAgent} />
+            )}
+
+            {/* ── LG.7 KUTU: Node Yapılandırması (graph_node ajanları için) ── */}
+            {selectedItem.agentKind === 'graph_node' && (
+                <NodeConfigPanel selectedItem={selectedItem} updateAgent={updateAgent} />
             )}
 
             {/* ── KUTU 6: Akıllı Denetim (sadece chatbot) ── */}
