@@ -24,6 +24,7 @@ logger = get_logger("main")
 
 
 import asyncio
+from contextlib import AsyncExitStack
 from fastapi.concurrency import run_in_threadpool
 
 def _graph_ready_hint():
@@ -41,17 +42,42 @@ def _graph_ready_hint():
         logger.warning("[GRAPH] Kenar sayısı okunamadı: %s", e)
 
 
+async def _init_langgraph_checkpointer(app: FastAPI, stack: AsyncExitStack) -> None:
+    """
+    DB hazır olunca PostgresSaver'ı bir kez açar ve `app.state.checkpointer`
+    olarak yayınlar. AsyncExitStack içinde kayıtlı olduğu için lifespan
+    sonunda otomatik kapatılır. Açılamazsa app.state.checkpointer None
+    kalır → graph in-memory checkpoint ile çalışır.
+    """
+    try:
+        from database.sql.init_db import wait_for_db
+        await asyncio.to_thread(wait_for_db, 30.0)
+        from services.agent_graph.checkpoint import open_checkpointer
+        cp = await stack.enter_async_context(open_checkpointer())
+        app.state.checkpointer = cp
+        logger.info("[LIFESPAN] LangGraph checkpointer hazır (%s)", type(cp).__name__)
+    except Exception as e:
+        # ProactorEventLoop / DB erişim sorunlarında graceful — graph in-memory çalışır.
+        logger.warning("[LIFESPAN] checkpointer açılamadı, in-memory'ye düşülecek: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Sunucu anında ayağa kalkar (yield hemen).
     DB init ve diğer ağır işler background thread'de çalışır.
     Login endpoint, DB hazır olduğu anda (genellikle <1s) çalışmaya başlar.
+    LangGraph checkpointer'ı da DB hazır olunca arka planda açılır;
+    lifespan sonunda AsyncExitStack ile temiz kapatılır.
     """
     asyncio.create_task(run_in_threadpool(init_db))
     asyncio.create_task(run_in_threadpool(_graph_ready_hint))
 
-    yield
+    app.state.checkpointer = None
+
+    async with AsyncExitStack() as stack:
+        asyncio.create_task(_init_langgraph_checkpointer(app, stack))
+        yield
 
 
 app = FastAPI(

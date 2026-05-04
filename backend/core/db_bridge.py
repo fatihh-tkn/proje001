@@ -258,6 +258,187 @@ def get_system_settings() -> dict:
         return {r.anahtar: r.deger for r in rows}
 
 
+# LG.7 — Her graph rolünün kendi DB ajanı var (sys_node_<role>).
+# Önceki "her rol chatbot ajanına düşer" yapısı yerine: rol → ajan ID 1:1 eşleşme.
+# `agent_assignments` SistemAyari override mekanizması korunuyor.
+_DEFAULT_ROLE_AGENT_ID = {
+    "supervisor":   "sys_node_supervisor",
+    "rag_search":   "sys_node_rag_search",
+    "aggregator":   "sys_node_aggregator",
+    "error_solver": "sys_node_error_solver",
+    "zli_finder":   "sys_node_zli_finder",
+    "msg_polish":   "sys_node_msg_polish",
+    "n8n_trigger":  "sys_node_n8n_trigger",
+}
+
+# Yeni node ajanı silinmiş veya seed çalışmamışsa son çare olarak hangi
+# kind'ın aktif kaydına düşelim
+_FALLBACK_KIND_BY_ROLE = {
+    "supervisor":   "graph_node",
+    "rag_search":   "graph_node",
+    "aggregator":   "graph_node",
+    "error_solver": "graph_node",
+    "zli_finder":   "graph_node",
+    "msg_polish":   "graph_node",
+    "n8n_trigger":  "graph_node",
+}
+
+
+def get_agent_assignments() -> dict:
+    """`agent_assignments` system setting'ini JSON olarak okur. Boşsa {}."""
+    import json as _json
+    try:
+        raw = get_system_settings().get("agent_assignments")
+        if not raw:
+            return {}
+        return _json.loads(raw) if isinstance(raw, str) else (raw or {})
+    except Exception:
+        return {}
+
+
+def set_agent_assignments(assignments: dict) -> None:
+    """`agent_assignments` system setting'ini günceller."""
+    import json as _json
+    import datetime
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    payload = _json.dumps(assignments or {}, ensure_ascii=False)
+    now = datetime.datetime.utcnow().isoformat()
+    with get_session() as db:
+        row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "agent_assignments"))
+        if row:
+            row.deger = payload
+            row.guncelleme_tarihi = now
+        else:
+            db.add(SistemAyari(
+                anahtar="agent_assignments",
+                deger=payload,
+                aciklama="Graph node rolü → atanmış AIAgent.kimlik eşlemesi",
+                hassas_mi=False,
+                olusturulma_tarihi=now,
+                guncelleme_tarihi=now,
+            ))
+        db.commit()
+
+
+def get_period_cost_usd(period: str = "day") -> float:
+    """
+    api_loglari tablosundan mevcut periyodun toplam maliyetini (USD) döner.
+    period = "day"  → bugünün UTC 00:00'dan itibaren
+            "month" → bu ayın 1'inden itibaren
+    Hata durumunda 0.0 döner (cap kontrolü güvenli tarafa düşsün).
+    """
+    import datetime as _dt
+    from database.sql.models import ApiLogu
+    from sqlalchemy import select, func
+
+    now = _dt.datetime.utcnow()
+    if period == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_iso = start.isoformat()
+
+    try:
+        with get_session() as db:
+            stmt = select(func.coalesce(func.sum(ApiLogu.maliyet_usd), 0.0)).where(
+                ApiLogu.olusturulma_tarihi >= start_iso
+            )
+            return float(db.scalar(stmt) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def get_cost_caps() -> dict:
+    """daily_cost_cap_usd ve monthly_cost_cap_usd ayarlarını döner.
+    0 / yok = devre dışı (limit yok)."""
+    s = get_system_settings()
+
+    def _to_float(v):
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    return {
+        "daily":   _to_float(s.get("daily_cost_cap_usd")),
+        "monthly": _to_float(s.get("monthly_cost_cap_usd")),
+    }
+
+
+def check_cost_cap() -> tuple[bool, str]:
+    """
+    Mevcut periyot maliyetlerini caps ile karşılaştırır.
+    Döner: (aşıldı_mı, kullanıcı_mesajı). Aşılmadıysa (False, "").
+    """
+    caps = get_cost_caps()
+    daily = caps["daily"]
+    monthly = caps["monthly"]
+    if daily <= 0 and monthly <= 0:
+        return False, ""
+
+    if daily > 0:
+        spent = get_period_cost_usd("day")
+        if spent >= daily:
+            return True, (
+                f"⚠️ Günlük yapay zeka bütçesi aşıldı "
+                f"(${spent:.2f} / ${daily:.2f}). Lütfen daha sonra tekrar deneyin "
+                f"veya yöneticiyle iletişime geçin."
+            )
+    if monthly > 0:
+        spent = get_period_cost_usd("month")
+        if spent >= monthly:
+            return True, (
+                f"⚠️ Aylık yapay zeka bütçesi aşıldı "
+                f"(${spent:.2f} / ${monthly:.2f}). Bu ay için sınır doldu."
+            )
+    return False, ""
+
+
+def get_assigned_agent(role: str) -> Optional[dict]:
+    """
+    Graph node rolüne (örn. `aggregator`, `error_solver`) atanmış ajanı döner.
+
+    Önce `agent_assignments` system setting'inde özel atama var mı bakar.
+    Atama yoksa veya o ID'li ajan pasif/silinmişse, rolün varsayılan kind'ına
+    (`chatbot` / `worker` / `router`) düşer. O da bulunamazsa None döner.
+    """
+    assignments = get_agent_assignments()
+    assigned_id = (assignments or {}).get(role)
+
+    # 1) Özel atama
+    if assigned_id:
+        a = get_ai_agent(agent_id=assigned_id)
+        if a:
+            return a
+
+    # 2) Rol için bilinen varsayılan agent_id (msg_polish / n8n_trigger)
+    default_id = _DEFAULT_ROLE_AGENT_ID.get(role)
+    if default_id:
+        a = get_ai_agent(agent_id=default_id)
+        if a:
+            return a
+
+    # 3) Rol → kind eşlemesi (chatbot fallback)
+    default_kind = _DEFAULT_ROLE_KIND.get(role, "chatbot")
+    return get_ai_agent(agent_kind=default_kind)
+
+
+def is_agent_graph_enabled() -> bool:
+    """
+    Feature flag — `agent_graph_enabled` system setting'i. Default: True.
+    LangGraph artık birincil yol; klasik AIService akışı sadece acil rollback
+    için kapalıya çekildiğinde aktif olur. DB erişilemezse True (graph birincil).
+    """
+    try:
+        val = get_system_settings().get("agent_graph_enabled")
+        if val is None:
+            return True  # ayar henüz yazılmamışsa graph default
+        return str(val).strip().lower() in ("1", "true", "yes", "on")
+    except Exception:
+        return True
+
+
 def add_audit_log(
     islem_turu: str,
     tablo_adi: Optional[str] = None,

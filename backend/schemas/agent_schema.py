@@ -27,6 +27,9 @@ class AgentBase(BaseModel):
     
     allowedRags: Optional[List[str]] = Field(None, alias="allowed_rags")
     allowedWorkflows: Optional[List[str]] = Field(None, alias="allowed_workflows")
+    # Transient — DB'de ayrı kolon yok, allowed_rags içinde "!file_id" prefix'iyle saklanır.
+    # Save endpoint'i bu alanı !-prefix'iyle allowed_rags'e merge eder; get endpoint'i ayrıştırır.
+    excludedFiles: Optional[List[str]] = Field(default=None, exclude=True)
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 

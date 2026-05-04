@@ -572,6 +572,9 @@ class AIAgent(Base):
     allowed_rags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Router ajan için izin verilen n8n workflow isimleri JSON array (örn: ["rapor_gonder", "gorev_olustur"])
     allowed_workflows: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Node-specific opsiyonlar (graph node ajanlarında: top_k, score_threshold,
+    # strict_json, include_chat_memory vb. — kod tarafı gerektikçe okur).
+    node_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("ix_ai_agents_ad", "ad"),

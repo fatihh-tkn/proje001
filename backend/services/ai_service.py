@@ -97,12 +97,18 @@ SETTINGS = AppSettings()
 
 # ── Session konuşma hafızası (SQLite) ───────────────────────────────────
 
-def _get_history(session_id: str) -> list[dict]:
+def _get_history(session_id: str, max_turns: int | None = None) -> list[dict]:
+    """
+    Sohbet geçmişini son `max_turns` tur ile döner.
+    `max_turns=None` ise sistem ayarı `MAX_HISTORY_TURNS` kullanılır.
+    Bir tur = 1 user + 1 assistant mesajı (yani limit = max_turns * 2).
+    """
     from database.sql.session import get_session
     from database.sql.repositories.chat_repo import ChatRepository
+    turns = max_turns if (max_turns and max_turns > 0) else SETTINGS.MAX_HISTORY_TURNS
     with get_session() as db:
         repo = ChatRepository(db)
-        messages = repo.get_messages(session_id, limit=SETTINGS.MAX_HISTORY_TURNS * 2)
+        messages = repo.get_messages(session_id, limit=turns * 2)
         out = []
         for msg in messages:
             out.append({"role": msg.rol, "text": msg.icerik})

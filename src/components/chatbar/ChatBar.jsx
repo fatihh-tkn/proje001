@@ -262,6 +262,11 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             command: activeCommand ? { id: activeCommand.id, label: activeCommand.label } : null,
             attachedFileNames: filesSnapshot.length ? filesSnapshot.map(f => f.name) : [],
             userQuery: textPayload,
+            // LangGraph telemetrisi (flag açıkken doldurulur)
+            graphNodes: [],
+            graphIntent: null,
+            graphPlan: null,
+            graphErrors: [],
         };
 
         setMessages((prev) => [...prev, userMsg, aiPlaceholder]);
@@ -393,6 +398,65 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     setIsTyping(false);
                     streamingMsgIdRef.current = null;
                     abortControllerRef.current = null;
+                },
+                // ── LangGraph telemetri callback'leri ─────────────────
+                onProgress: ({ node, phase, elapsed_ms, intent, plan, reasoning }) => {
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== aiMsgId) return m;
+                        const next = {
+                            ...m,
+                            graphNodes: [
+                                ...(m.graphNodes || []),
+                                { node, phase, elapsedMs: elapsed_ms },
+                            ],
+                        };
+                        if (intent && !m.graphIntent) next.graphIntent = intent;
+                        if (Array.isArray(plan) && !m.graphPlan) next.graphPlan = plan;
+                        if (reasoning && !m.graphReasoning) next.graphReasoning = reasoning;
+                        return next;
+                    }));
+                },
+                onSources: ({ items, score }) => {
+                    if (!Array.isArray(items) || items.length === 0) return;
+                    setMessages(prev => prev.map(m => m.id === aiMsgId
+                        ? { ...m, ragUsed: true, ragSources: items, ragScore: score }
+                        : m
+                    ));
+                },
+                onUiAction: ({ action }) => {
+                    if (!action) return;
+                    // RAG sonucu: belirli dosya bağlamında otomatik PDF sekmesi
+                    if (action.command === 'OPEN_PDF_AT' && onOpenFile) {
+                        const { doc_id, pdf_url, source_file, page, bbox } = action;
+                        const url = doc_id ? `/api/archive/file/${doc_id}` : (pdf_url || '');
+                        if (!url) return;
+                        const nameMatch = (source_file || '').match(/[^/\\]+$/);
+                        const name = nameMatch ? nameMatch[0] : (source_file || 'Belge');
+                        const tabKey = `pdf-${doc_id || name}-p${page || 1}`;
+                        onOpenFile({
+                            id: tabKey,
+                            title: `📍 ${name}${page ? ` – Slayt ${page}` : ''}`,
+                            type: 'pdf', url,
+                            meta: { page: page || 1, highlightPage: page || 1, bbox: bbox || null },
+                        });
+                    }
+                },
+                onN8nAction: ({ action }) => {
+                    if (!action) return;
+                    const ok = action.status === 'ok';
+                    const statusMsg = ok
+                        ? `✅ **${action.workflow}** otomasyonu başarıyla tetiklendi.`
+                        : `⚠️ **${action.workflow}** tetiklenmeye çalışıldı. ${action.detail || ''}`;
+                    setMessages(prev => prev.map(m => m.id === aiMsgId
+                        ? { ...m, text: m.text ? m.text + '\n\n' + statusMsg : statusMsg, n8nAction: action }
+                        : m
+                    ));
+                },
+                onNodeError: ({ node, text }) => {
+                    setMessages(prev => prev.map(m => m.id === aiMsgId
+                        ? { ...m, graphErrors: [...(m.graphErrors || []), { node, text }] }
+                        : m
+                    ));
                 },
             },
             fileOpts,

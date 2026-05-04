@@ -6,6 +6,8 @@ class ChatMessage(BaseModel):
     user_id: str | None = Field(default=None, max_length=128)
     # Sürüklenen dosya desteği – dosya adı (kaynak filtresi için)
     file_name: str | None = Field(default=None, max_length=512)
+    # Çoklu dosya bağlamı (frontend birden fazla dosya attığında)
+    file_names: list[str] | None = Field(default=None)
     # ChromaDB koleksiyon adı (opsiyonel)
     collection_name: str | None = Field(default=None, max_length=256)
     # Oturum ID'si (farklı sohbetleri ayırmak için)

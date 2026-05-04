@@ -55,6 +55,8 @@ def _run_schema_migrations(eng) -> None:
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS bilgisayar_adi VARCHAR(255)",
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS tarayici VARCHAR(256)",
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS son_aktivite_tarihi VARCHAR(32)",
+        # AIAgent: graph node ajanları için node-specific JSON ayar kolonu (LG.7)
+        "ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS node_config JSONB",
     ]
     with eng.connect() as conn:
         for stmt in migrations:
@@ -81,6 +83,12 @@ def init_db() -> None:
                 conn.commit()
             Base.metadata.create_all(bind=engine)
             _run_schema_migrations(engine)
+            # LG.7: graph node ajanlarını seed et (idempotent)
+            try:
+                from database.sql.seed_graph_agents import seed_graph_agents
+                seed_graph_agents()
+            except Exception as e:
+                logger.warning(f"seed_graph_agents başarısız (uygulama yine başlar): {e}")
             logger.info("Veritabanı hazır.")
             _db_ready.set()
             return

@@ -12,6 +12,8 @@ RAG_KEYS = [
     {"key": "CHUNK_CHAR_LIMIT",                     "label": "Chunk Karakter Limiti",        "type": "int",   "default": 2000, "min": 500,"max": 8000,"desc": "Her parçanın LLM'e gönderilecek karakter limiti"},
     {"key": "MAX_HISTORY_TURNS",                    "label": "Konuşma Hafızası (Tur)",       "type": "int",   "default": 2,    "min": 0,  "max": 20,  "desc": "LLM'e dahil edilecek geçmiş konuşma turu sayısı"},
     {"key": "LLM_PRE_FILTER_DISTANCE_THRESHOLD",   "label": "Mesafe Eşiği (Distance)",      "type": "float", "default": 1.6,  "min": 0.1,"max": 3.0, "desc": "Vektör uzaklığı bu değeri aşan sonuçlar elenir (düşük = daha katı)"},
+    {"key": "daily_cost_cap_usd",                  "label": "Günlük Maliyet Tavanı ($)",     "type": "float", "default": 0.0,  "min": 0.0,"max": 10000.0, "desc": "0 = devre dışı. Aşıldığında LLM çağrıları durur, kullanıcıya uyarı döner."},
+    {"key": "monthly_cost_cap_usd",                "label": "Aylık Maliyet Tavanı ($)",      "type": "float", "default": 0.0,  "min": 0.0,"max": 100000.0,"desc": "0 = devre dışı. Bu ay için toplam harcamayı sınırlar."},
 ]
 
 
@@ -70,6 +72,136 @@ def save_rag_settings(body: dict):
                 ))
         db.commit()
     return {"ok": True}
+
+
+# ── Feature Flags (Boolean SistemAyari kayıtları) ─────────────────────────────
+
+FEATURE_FLAGS = [
+    {
+        "key": "agent_graph_enabled",
+        "label": "LangGraph Pipeline (multi-agent)",
+        "desc": (
+            "Sohbet istekleri supervisor → uzman ajanlar (RAG + hata çözümü "
+            "+ Z'li rapor + n8n) → birleştirici → revize akışından geçer. "
+            "Kapalıyken klasik AIService akışına düşer (acil rollback için)."
+        ),
+        "default": True,
+    },
+]
+
+
+@router.get("/feature-flags")
+def get_feature_flags():
+    """SistemAyari tablosundan boolean özellik bayraklarını döner."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+
+    with get_session() as db:
+        rows = {r.anahtar: r.deger for r in db.scalars(select(SistemAyari)).all()}
+
+    def _to_bool(raw, default):
+        if raw is None:
+            return bool(default)
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+    flags = []
+    for meta in FEATURE_FLAGS:
+        flags.append({**meta, "value": _to_bool(rows.get(meta["key"]), meta["default"])})
+    return {"flags": flags}
+
+
+@router.post("/feature-flags")
+def save_feature_flags(body: dict):
+    """Boolean özellik bayraklarını yazar."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    import datetime
+
+    updates: dict = body.get("flags", {})
+    allowed_keys = {m["key"] for m in FEATURE_FLAGS}
+
+    with get_session() as db:
+        for key, value in updates.items():
+            if key not in allowed_keys:
+                continue
+            str_val = "true" if bool(value) else "false"
+            row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == key))
+            now = datetime.datetime.utcnow().isoformat()
+            if row:
+                row.deger = str_val
+                row.guncelleme_tarihi = now
+            else:
+                db.add(SistemAyari(
+                    anahtar=key,
+                    deger=str_val,
+                    aciklama=next((m["desc"] for m in FEATURE_FLAGS if m["key"] == key), ""),
+                    hassas_mi=False,
+                    olusturulma_tarihi=now,
+                    guncelleme_tarihi=now,
+                ))
+        db.commit()
+    return {"ok": True}
+
+
+# ── Agent Assignments (Graph rolü → AIAgent eşleştirmesi) ─────────────────────
+
+# UI'da dropdown sırası ve insan-okur etiketler
+AGENT_ROLES = [
+    {"key": "supervisor",   "label": "Supervisor (intent + plan)",          "default_kind": "chatbot"},
+    {"key": "aggregator",   "label": "Aggregator (sentez + RAG)",            "default_kind": "chatbot"},
+    {"key": "error_solver", "label": "Hata Çözücü (specialist)",             "default_kind": "chatbot"},
+    {"key": "zli_finder",   "label": "Z'li Rapor (specialist)",              "default_kind": "chatbot"},
+    {"key": "msg_polish",   "label": "Mesaj Revize (post-process)",          "default_kind": "worker"},
+    {"key": "n8n_trigger",  "label": "n8n Tetikleyici (router)",             "default_kind": "router"},
+]
+
+
+@router.get("/agent-assignments")
+def get_agent_assignments_route():
+    """
+    Graph rolleri ↔ atanmış agent_id eşleşmesini döner.
+    Mevcut atama yoksa o role default_kind ajanını fallback olarak gösterir.
+    """
+    from core.db_bridge import get_agent_assignments, get_ai_agent
+
+    saved = get_agent_assignments()
+    out = []
+    for role in AGENT_ROLES:
+        assigned_id = saved.get(role["key"])
+        # UI bilgi amaçlı: fallback olarak hangi ajanın çalışacağını da hesapla
+        from core.db_bridge import get_assigned_agent
+        try:
+            effective = get_assigned_agent(role["key"]) or {}
+            effective_id = effective.get("id")
+        except Exception:
+            effective_id = None
+        out.append({
+            **role,
+            "assigned_id": assigned_id,
+            "effective_id": effective_id,
+        })
+    return {"roles": out}
+
+
+@router.post("/agent-assignments")
+def save_agent_assignments_route(body: dict):
+    """
+    Atamaları toplu günceller. Her role için agent_id veya null kabul edilir.
+    null/eksik roller mevcut ataması varsa silinir → fallback'e düşer.
+    """
+    from core.db_bridge import set_agent_assignments
+    incoming = body.get("assignments", {}) or {}
+    allowed_roles = {r["key"] for r in AGENT_ROLES}
+    cleaned = {}
+    for k, v in incoming.items():
+        if k not in allowed_roles:
+            continue
+        if v:  # null / "" / 0 atlanır → o rol fallback'e düşer
+            cleaned[k] = str(v)
+    set_agent_assignments(cleaned)
+    return {"ok": True, "saved": cleaned}
 
 
 # ── Prompt Şablonları ─────────────────────────────────────────────────────────

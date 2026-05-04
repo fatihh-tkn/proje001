@@ -1,8 +1,28 @@
 import React, { useState, useMemo } from 'react';
 import {
     BrainCircuit, ChevronDown, ChevronUp, Check, FileText, Database,
-    Search, Sparkles, MessageSquare, Network, Image as ImageIcon, Square, Paperclip, Cpu, Clock, Zap
+    Search, Sparkles, MessageSquare, Network, Image as ImageIcon, Square, Paperclip, Cpu, Clock, Zap,
+    GitBranch, Wand2, Wrench, Webhook, AlertTriangle
 } from 'lucide-react';
+
+// LangGraph node adı → ikon + insan-okur etiket
+const GRAPH_NODE_META = {
+    supervisor:   { icon: GitBranch,  label: 'Plan üretildi',         accent: '#7c3aed' },
+    rag_search:   { icon: Search,     label: 'Bilgi tabanı tarandı',  accent: '#0ea5e9' },
+    error_solver: { icon: Wrench,     label: 'Hata çözümleyicisi',    accent: '#dc2626' },
+    zli_finder:   { icon: Database,   label: "Z'li rapor sorgusu",    accent: '#0891b2' },
+    n8n_trigger:  { icon: Webhook,    label: 'Otomasyon karar motoru', accent: '#16a34a' },
+    aggregator:   { icon: Sparkles,   label: 'Cevap üretildi',        accent: '#2563eb' },
+    msg_polish:   { icon: Wand2,      label: 'Mesaj revize edildi',   accent: '#a855f7' },
+};
+
+const INTENT_LABEL = {
+    general:     'Genel sohbet',
+    hata_cozumu: 'Hata çözümü',
+    rapor_arama: "Z'li rapor arama",
+    n8n:         'n8n otomasyon',
+    dosya_qa:    'Dosya QA',
+};
 
 /**
  * Düşünme Süreci paneli — bir AI mesajının altında, logonun yanında küçük bir
@@ -25,6 +45,9 @@ const ThinkingProcessPanel = ({ message }) => {
     const steps = useMemo(() => {
         const arr = [];
         const userQuery = (message.userQuery || '').trim();
+        const graphNodes = Array.isArray(message.graphNodes) ? message.graphNodes : [];
+        const graphErrors = Array.isArray(message.graphErrors) ? message.graphErrors : [];
+        const isGraph = graphNodes.length > 0;
 
         // 1) Soru analizi
         arr.push({
@@ -34,6 +57,52 @@ const ThinkingProcessPanel = ({ message }) => {
                 ? (userQuery.length > 80 ? `"${userQuery.slice(0, 78)}…"` : `"${userQuery}"`)
                 : null,
         });
+
+        // ── LangGraph yolu: per-node timeline ─────────────────────────
+        if (isGraph) {
+            // Plan/intent başlık adımı (supervisor sonrası)
+            if (message.graphIntent || message.graphPlan?.length) {
+                const intentLbl = INTENT_LABEL[message.graphIntent] || message.graphIntent;
+                const planTxt = (message.graphPlan || []).join(' · ');
+                arr.push({
+                    icon: GitBranch,
+                    label: intentLbl ? `Akış planlandı: ${intentLbl}` : 'Akış planlandı',
+                    detail: planTxt
+                        ? `Paralel ajanlar → ${planTxt}`
+                        : (message.graphReasoning || null),
+                    accent: '#7c3aed',
+                });
+            }
+
+            // Her tamamlanan node için bir adım — supervisor zaten yukarıda.
+            // Aynı node birden fazla event yayabilir; ilk tamamlanmayı al.
+            const seen = new Set(['supervisor']);
+            for (const ev of graphNodes) {
+                if (!ev || ev.phase !== 'completed') continue;
+                if (seen.has(ev.node)) continue;
+                seen.add(ev.node);
+                const meta = GRAPH_NODE_META[ev.node] || {
+                    icon: Cpu, label: ev.node, accent: '#64748b',
+                };
+                arr.push({
+                    icon: meta.icon,
+                    label: meta.label,
+                    detail: typeof ev.elapsedMs === 'number' ? fmtDuration(ev.elapsedMs) : null,
+                    accent: meta.accent,
+                });
+            }
+
+            // Hata olduysa kırmızı uyarı
+            for (const err of graphErrors) {
+                const meta = GRAPH_NODE_META[err.node] || { label: err.node };
+                arr.push({
+                    icon: AlertTriangle,
+                    label: `Uyarı: ${meta.label}`,
+                    detail: (err.text || '').slice(0, 120),
+                    accent: '#d97706',
+                });
+            }
+        }
 
         // 2) Hızlı aksiyon
         if (message.command) {
@@ -55,13 +124,17 @@ const ThinkingProcessPanel = ({ message }) => {
             });
         }
 
-        // 4) RAG araması
+        // 4) RAG araması — graph yolunda rag_search adımı zaten yukarıda; sadece
+        // klasik akışta "tarandı" başlığını ekle, kaynak chip'lerini ise her iki
+        // akışta da göster.
         if (message.ragUsed) {
-            arr.push({
-                icon: Search,
-                label: 'Bilgi tabanı tarandı',
-                detail: 'Hibrit arama (vektör + tam metin) çalıştırıldı',
-            });
+            if (!isGraph) {
+                arr.push({
+                    icon: Search,
+                    label: 'Bilgi tabanı tarandı',
+                    detail: 'Hibrit arama (vektör + tam metin) çalıştırıldı',
+                });
+            }
 
             const sources = (message.ragSources || []).filter(s => s && typeof s === 'object');
             if (sources.length > 0) {
@@ -93,7 +166,7 @@ const ThinkingProcessPanel = ({ message }) => {
                     sources: relevant,
                 });
             }
-        } else {
+        } else if (!isGraph) {
             arr.push({
                 icon: BrainCircuit,
                 label: 'Genel bilgi ile yanıtlandı',

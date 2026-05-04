@@ -102,17 +102,38 @@ export const sendMessageWithFile = async (message, fileName, collectionName = nu
 
 /**
  * SSE stream ile yanıt alır.
+ *
+ * Klasik (eski) akış event türleri: chunk, replace, done, error.
+ * LangGraph (yeni) akışı bunlara ek olarak şunları yayar:
+ *   - progress    {node, phase, elapsed_ms, intent?, plan?, reasoning?}
+ *   - sources     {items: [...], score}
+ *   - ui_action   {action: {...}}
+ *   - n8n_action  {action: {workflow, status, detail}}
+ *   - node_error  {node, text}
+ * Bu event'ler için ilgili callback'ler opsiyonel; verilmezse sessizce yutulur.
+ *
  * @param {string}   message
  * @param {string}   sessionId
  * @param {string|null} userId
- * @param {object}   callbacks  - { onChunk(text), onDone({rag_used, rag_sources}), onError(text) }
+ * @param {object}   callbacks  - {
+ *      onChunk(text), onReplace(text),
+ *      onDone({rag_used, rag_sources, ui_action, model, ...}),
+ *      onError(text), onAbort(),
+ *      onProgress({node, elapsed_ms, intent, plan, reasoning}),
+ *      onSources({items, score}),
+ *      onUiAction({action}), onN8nAction({action}),
+ *      onNodeError({node, text})
+ *   }
  * @param {object}   fileOpts   - { fileName, collectionName } (opsiyonel)
  */
 export const sendMessageStream = async (
   message,
   sessionId = "default_chat",
   userId = null,
-  { onChunk, onReplace, onDone, onError, onAbort } = {},
+  {
+    onChunk, onReplace, onDone, onError, onAbort,
+    onProgress, onSources, onUiAction, onN8nAction, onNodeError,
+  } = {},
   fileOpts = null,
   commandOpts = null,
   signal = null,
@@ -182,10 +203,59 @@ export const sendMessageStream = async (
 
           try {
             const evt = JSON.parse(raw);
-            if (evt.type === "chunk") onChunk?.(evt.text);
-            else if (evt.type === "replace") onReplace?.(evt.text);
-            else if (evt.type === "done") onDone?.({ rag_used: evt.rag_used, rag_sources: evt.rag_sources ?? [], ui_action: evt.ui_action ?? null, model: evt.model ?? null, provider: evt.provider ?? null, prompt_tokens: evt.prompt_tokens ?? 0, completion_tokens: evt.completion_tokens ?? 0, duration_ms: evt.duration_ms ?? 0 });
-            else if (evt.type === "error") onError?.(evt.text);
+            switch (evt.type) {
+              case "chunk":
+                onChunk?.(evt.text);
+                break;
+              case "replace":
+                onReplace?.(evt.text);
+                break;
+              case "done":
+                onDone?.({
+                  rag_used: evt.rag_used,
+                  rag_sources: evt.rag_sources ?? [],
+                  ui_action: evt.ui_action ?? null,
+                  model: evt.model ?? null,
+                  provider: evt.provider ?? null,
+                  prompt_tokens: evt.prompt_tokens ?? 0,
+                  completion_tokens: evt.completion_tokens ?? 0,
+                  duration_ms: evt.duration_ms ?? 0,
+                  // LangGraph telemetrisi (klasik akışta yok, undefined kalır)
+                  intent: evt.intent ?? null,
+                  nodes_executed: evt.nodes_executed ?? null,
+                  node_timings: evt.node_timings ?? null,
+                });
+                break;
+              case "error":
+                onError?.(evt.text);
+                break;
+              // ── LangGraph akışı ────────────────────────────────────
+              case "progress":
+                onProgress?.({
+                  node: evt.node,
+                  phase: evt.phase,
+                  elapsed_ms: evt.elapsed_ms,
+                  intent: evt.intent,
+                  plan: evt.plan,
+                  reasoning: evt.reasoning,
+                });
+                break;
+              case "sources":
+                onSources?.({ items: evt.items ?? [], score: evt.score ?? 0 });
+                break;
+              case "ui_action":
+                onUiAction?.({ action: evt.action ?? null });
+                break;
+              case "n8n_action":
+                onN8nAction?.({ action: evt.action ?? null });
+                break;
+              case "node_error":
+                onNodeError?.({ node: evt.node, text: evt.text });
+                break;
+              default:
+                /* bilinmeyen tip — yoksay */
+                break;
+            }
           } catch (_) { /* JSON parse hatası — yoksay */ }
         }
       }
