@@ -55,7 +55,7 @@ _COMMAND_INTENT_MAP = {
 _INTENT_PLAN = {
     "general":     [("rag_search", True)],
     "hata_cozumu": [("rag_search", True), ("error_solver", False)],
-    "rapor_arama": [("zli_finder", False)],
+    "rapor_arama": [("rag_search", True), ("zli_finder", False)],
     "n8n":         [("n8n_trigger", False), ("rag_search", True)],
     "dosya_qa":    [("rag_search", False)],
 }
