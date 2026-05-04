@@ -75,6 +75,7 @@ class AgentState(TypedDict, total=False):
     final_reply: str
     ui_action: dict | None
     needs_polish: bool
+    cost_capped: bool                          # supervisor'da cost cap aşıldıysa True
 
     # ── TELEMETRY (Düşünme Süreci paneli için) ───────────────────────────
     nodes_executed: Annotated[list[str], append_list]

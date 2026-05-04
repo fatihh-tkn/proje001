@@ -34,7 +34,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
-from core.db_bridge import get_assigned_agent, check_cost_cap
+from core.db_bridge import get_assigned_agent
 from core.prompts import (
     attach_chat_memory,
     get_general_rag_prompt,
@@ -185,6 +185,23 @@ async def aggregator_node(state: AgentState) -> dict:
     intent = state.get("intent") or "general"
     structured_draft = state.get("chat_draft") or ""
 
+    # ── 0) Supervisor cost cap'i tespit ettiyse ek LLM çağrısı yapma,
+    #      onun hazırladığı cap mesajını direkt yayınla.
+    if state.get("cost_capped"):
+        cap_msg = state.get("final_reply") or structured_draft or ""
+        elapsed_ms = int((time.time() - t0) * 1000)
+        writer = _try_get_writer()
+        if writer:
+            try:
+                writer({"type": "replace", "text": cap_msg})
+            except Exception as e:
+                logger.warning("[aggregator] writer hatası (cost_cap): %s", e)
+        return {
+            "final_reply": cap_msg,
+            "nodes_executed": ["aggregator"],
+            "node_timings": {"aggregator": elapsed_ms},
+        }
+
     # ── 1) Yapılandırılmış specialist çıktıları (error_solver / zli_finder)
     #    JSON cevap ise direkt kullan.
     if intent in ("hata_cozumu", "rapor_arama") and structured_draft.strip():
@@ -207,29 +224,8 @@ async def aggregator_node(state: AgentState) -> dict:
         }
 
     # ── 2) Sohbetsel sentez (general / dosya_qa / n8n sonrası açıklama)
-    # Bütçe kontrolü — günlük/aylık cap aşıldıysa LLM çağrısı yapma,
-    # kullanıcıya nazik uyarı dön.
-    try:
-        capped, cap_msg = await run_in_threadpool(check_cost_cap)
-        if capped:
-            elapsed_ms = int((time.time() - t0) * 1000)
-            logger.warning("[aggregator] cost cap aşıldı, LLM çağrısı atlandı")
-            writer = _try_get_writer()
-            if writer:
-                try:
-                    writer({"type": "replace", "text": cap_msg})
-                except Exception:
-                    pass
-            return {
-                "chat_draft": cap_msg,
-                "final_reply": cap_msg,
-                "nodes_executed": ["aggregator"],
-                "node_timings": {"aggregator": elapsed_ms},
-                "node_errors": {"aggregator": "cost_cap_exceeded"},
-            }
-    except Exception as e:
-        logger.warning("[aggregator] cost cap kontrolü atlandı: %s", e)
-
+    #      Cost cap kontrolü supervisor_node'da yapılıyor; buraya geldiyse
+    #      bütçe yeterli demektir.
     try:
         agent_config = None
         try:
