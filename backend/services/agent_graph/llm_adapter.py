@@ -27,6 +27,7 @@ import httpx
 
 from core.logger import get_logger
 from core.db_bridge import get_user_models
+from services import provider_registry
 
 logger = get_logger("agent_graph.llm")
 
@@ -47,8 +48,9 @@ def _resolve_active_model(agent_config: dict | None) -> dict:
     return active or models[0]
 
 
-def _is_gemini(model_name: str, api_key: str) -> bool:
-    return ("gemini" in (model_name or "").lower()) or (api_key or "").startswith("AIza")
+def _is_gemini(model_info: dict) -> bool:
+    """get_user_models() çıkışında 'protocol' alanı vardır — registry'den gelir."""
+    return (model_info or {}).get("protocol") == "google_gemini"
 
 
 def _normalize_gemini_model(model_name: str) -> str:
@@ -165,17 +167,20 @@ async def call_llm(
     model_info = _resolve_active_model(agent_config)
     model_name = model_info["name"]
     api_key = model_info["api_key"]
+    base_url = model_info.get("base_url") or ""
+    extra_headers = model_info.get("extra_headers") or {}
+    provider_label = model_info.get("provider_label") or model_info.get("provider", "")
     temp = temperature if temperature is not None else (agent_config and agent_config.get("temperature", 0.7)) or 0.7
     # max_tokens öncelik: explicit param → agent_config.max_tokens → None
     eff_max_tokens = max_tokens
     if eff_max_tokens is None and agent_config:
         eff_max_tokens = agent_config.get("max_tokens") or None
-    is_gemini = _is_gemini(model_name, api_key)
+    is_gemini = _is_gemini(model_info)
     actual_model = _normalize_gemini_model(model_name) if is_gemini else model_name
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         if is_gemini:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={api_key}"
+            url = f"{base_url}/models/{actual_model}:generateContent?key={api_key}"
             mime = "application/json" if response_format == "json_object" else None
             payload = _to_gemini_payload(messages, temp, response_mime=mime, max_tokens=eff_max_tokens)
             response = await _post_with_retry(
@@ -192,16 +197,16 @@ async def call_llm(
             return {
                 "text": text,
                 "model": actual_model,
-                "provider": "Google Gemini",
+                "provider": provider_label or "Google Gemini",
                 "prompt_tokens": int(usage.get("promptTokenCount", 0) or 0),
                 "completion_tokens": int(usage.get("candidatesTokenCount", 0) or 0),
             }
         else:
-            url = "https://api.openai.com/v1/chat/completions"
+            url = provider_registry.openai_chat_url(base_url)
             payload = _to_openai_payload(messages, temp, actual_model, response_format=response_format, max_tokens=eff_max_tokens)
             response = await _post_with_retry(
                 client, url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=provider_registry.openai_headers(api_key, extra_headers),
                 json=payload,
             )
             data = response.json()
@@ -210,7 +215,7 @@ async def call_llm(
             return {
                 "text": text,
                 "model": actual_model,
-                "provider": "OpenAI (Custom)",
+                "provider": provider_label or "OpenAI (Custom)",
                 "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
                 "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
             }
@@ -234,18 +239,21 @@ async def stream_llm(
     model_info = _resolve_active_model(agent_config)
     model_name = model_info["name"]
     api_key = model_info["api_key"]
+    base_url = model_info.get("base_url") or ""
+    extra_headers = model_info.get("extra_headers") or {}
+    provider_label = model_info.get("provider_label") or model_info.get("provider", "")
     temp = temperature if temperature is not None else (agent_config and agent_config.get("temperature", 0.7)) or 0.7
     eff_max_tokens = max_tokens
     if eff_max_tokens is None and agent_config:
         eff_max_tokens = agent_config.get("max_tokens") or None
-    is_gemini = _is_gemini(model_name, api_key)
+    is_gemini = _is_gemini(model_info)
     actual_model = _normalize_gemini_model(model_name) if is_gemini else model_name
     full_text_parts: list[str] = []
     p_tok, c_tok = 0, 0
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         if is_gemini:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:streamGenerateContent?alt=sse&key={api_key}"
+            url = f"{base_url}/models/{actual_model}:streamGenerateContent?alt=sse&key={api_key}"
             payload = _to_gemini_payload(messages, temp, max_tokens=eff_max_tokens)
             async with client.stream("POST", url,
                                      headers={"Content-Type": "application/json"},
@@ -275,17 +283,16 @@ async def stream_llm(
                         continue
             yield {
                 "type": "done",
-                "model": actual_model, "provider": "Google Gemini",
+                "model": actual_model, "provider": provider_label or "Google Gemini",
                 "prompt_tokens": p_tok, "completion_tokens": c_tok,
                 "full_text": "".join(full_text_parts),
             }
         else:
-            url = "https://api.openai.com/v1/chat/completions"
+            url = provider_registry.openai_chat_url(base_url)
             payload = _to_openai_payload(messages, temp, actual_model, max_tokens=eff_max_tokens)
             payload["stream"] = True
             async with client.stream("POST", url,
-                                     headers={"Authorization": f"Bearer {api_key}",
-                                              "Content-Type": "application/json"},
+                                     headers=provider_registry.openai_headers(api_key, extra_headers),
                                      json=payload) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
@@ -310,7 +317,7 @@ async def stream_llm(
                         continue
             yield {
                 "type": "done",
-                "model": actual_model, "provider": "OpenAI (Custom)",
+                "model": actual_model, "provider": provider_label or "OpenAI (Custom)",
                 "prompt_tokens": p_tok, "completion_tokens": c_tok,
                 "full_text": "".join(full_text_parts),
             }

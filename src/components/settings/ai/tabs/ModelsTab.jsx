@@ -31,6 +31,12 @@ export const ModelsTab = React.memo(() => {
     const [selectedModel, setSelectedModel] = useState('');
     const [provider, setProvider] = useState('');
 
+    // Provider seçici: '' = otomatik tespit, diğerleri = registry'den gelen id'ler
+    const [providerChoices, setProviderChoices] = useState([]);
+    const [selectedProviderId, setSelectedProviderId] = useState('');
+    const [baseUrl, setBaseUrl] = useState('');
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+
     const fetchModels = useCallback(async () => {
         setLoading(true);
         try {
@@ -44,14 +50,35 @@ export const ModelsTab = React.memo(() => {
         }
     }, []);
 
-    useEffect(() => { fetchModels(); }, [fetchModels]);
+    const fetchProviders = useCallback(async () => {
+        try {
+            const res = await fetchWithTimeout(`${API_BASE}/custom-models/providers`);
+            const data = await res.json();
+            setProviderChoices(data.providers || []);
+        } catch (e) {
+            console.error(e);
+        }
+    }, []);
+
+    useEffect(() => { fetchModels(); fetchProviders(); }, [fetchModels, fetchProviders]);
+
+    // 'openai_compat' (özel) seçilmediyse base_url alanı kapalı kalmalı.
+    const isCustomCompat = selectedProviderId === 'openai_compat';
 
     const handleVerify = async () => {
         if (!keyVal.trim()) return;
+        if (isCustomCompat && !baseUrl.trim()) {
+            notify.error('Özel sağlayıcı için Base URL gereklidir.');
+            return;
+        }
         setVerifying(true);
         try {
             const data = await mutate.process(`${API_BASE}/custom-models/verify`,
-                { api_key: keyVal.trim() },
+                {
+                    api_key: keyVal.trim(),
+                    provider: selectedProviderId || undefined,
+                    base_url: baseUrl.trim() || undefined,
+                },
                 {
                     subject: 'API anahtarı',
                     silentSuccess: true,           // doğrulama listesi inline gösterilecek
@@ -75,13 +102,21 @@ export const ModelsTab = React.memo(() => {
         setSaving(true);
         try {
             await mutate.create(`${API_BASE}/custom-models`,
-                { api_key: keyVal.trim(), name: selectedModel },
+                {
+                    api_key: keyVal.trim(),
+                    name: selectedModel,
+                    provider: selectedProviderId || undefined,
+                    base_url: baseUrl.trim() || undefined,
+                },
                 { subject: 'Model', detail: selectedModel }
             );
             setKeyVal('');
             setAvailableModels([]);
             setSelectedModel('');
             setProvider('');
+            setSelectedProviderId('');
+            setBaseUrl('');
+            setAdvancedOpen(false);
             setShowForm(false);
             await fetchModels();
         } catch { /* mutate toast attı */ }
@@ -158,7 +193,48 @@ export const ModelsTab = React.memo(() => {
                                     {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => setAdvancedOpen(v => !v)}
+                                className="text-[10px] font-bold text-stone-400 hover:text-[#378ADD] uppercase tracking-widest pl-1 transition-colors"
+                            >
+                                {advancedOpen ? '− Gelişmiş ayarları gizle' : '+ Sağlayıcı / Base URL belirt (opsiyonel)'}
+                            </button>
                         </div>
+
+                        {/* Advanced: Provider + Base URL (opsiyonel) */}
+                        {advancedOpen && (
+                            <div className="space-y-4 p-4 rounded-lg bg-stone-50 border border-stone-200 animate-in fade-in slide-in-from-top-2">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest pl-1">
+                                        Sağlayıcı (boş bırakılırsa API anahtarından otomatik tespit)
+                                    </label>
+                                    <select
+                                        value={selectedProviderId}
+                                        onChange={(e) => setSelectedProviderId(e.target.value)}
+                                        className="w-full bg-white border border-stone-200 rounded-md px-4 py-2.5 text-[12px] font-bold font-mono text-stone-700 shadow-sm focus:border-[#378ADD] focus:outline-none focus:ring-1 focus:ring-[#378ADD]/30 cursor-pointer"
+                                        style={{ backgroundImage: 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")', backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em', appearance: 'none' }}
+                                    >
+                                        <option value="">Otomatik tespit</option>
+                                        {providerChoices.map(p => (
+                                            <option key={p.id} value={p.id}>{p.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest pl-1">
+                                        Base URL {isCustomCompat ? '(zorunlu)' : '(opsiyonel — bilinen sağlayıcının varsayılanını override eder)'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={baseUrl}
+                                        onChange={e => setBaseUrl(e.target.value)}
+                                        placeholder={isCustomCompat ? 'https://your-host/v1' : 'Boş bırak: registry varsayılanı'}
+                                        className="w-full bg-white border border-stone-200 rounded-md px-4 py-2.5 text-[12px] font-bold font-mono text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-[#378ADD] focus:outline-none focus:ring-1 focus:ring-[#378ADD]/30"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* Verification Result */}
                         {availableModels.length > 0 && (

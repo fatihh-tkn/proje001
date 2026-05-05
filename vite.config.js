@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { exec } from 'child_process'
+import path from 'path'
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -18,9 +19,16 @@ export default defineConfig({
   resolve: {
     // Prevent multiple Three.js instances (react-force-graph-3d bundles its own Three)
     dedupe: ['three'],
+    alias: {
+      // Force every "three" import (including nested deps) to use the single root-level copy
+      three: path.resolve(__dirname, 'node_modules/three'),
+    },
   },
   optimizeDeps: {
-    exclude: ['three'],
+    include: [
+      'three',
+      'react-force-graph-3d',
+    ],
   },
   build: {
     rollupOptions: {

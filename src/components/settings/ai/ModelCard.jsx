@@ -26,7 +26,12 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
                 const res = await fetchWithTimeout(`${API_BASE}/custom-models/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ api_key: model.api_key, model_name: model.name }),
+                    body: JSON.stringify({
+                        api_key: model.api_key,
+                        model_name: model.name,
+                        provider: model.provider || undefined,
+                        base_url: model.base_url || undefined,
+                    }),
                 }, 10000);
                 const data = await res.json();
                 if (isMounted) setStatus(data.ok && data.models ? 'active' : 'inactive');
@@ -36,7 +41,7 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
         };
         checkStatus();
         return () => { isMounted = false; };
-    }, [model.api_key]);
+    }, [model.api_key, model.name, model.provider, model.base_url]);
 
     return (
         <div className="group relative bg-white rounded-xl border border-stone-200 hover:border-[#378ADD]/30 hover:shadow-md transition-all duration-200 overflow-hidden shadow-sm">
@@ -96,6 +101,14 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
                             <p className="text-[11px] font-bold text-stone-500 flex items-center gap-2 font-mono tracking-tight">
                                 <span className="truncate max-w-[200px]" title={model.name}>{model.name}</span>
                             </p>
+                            {(model.provider_label || model.provider) && (
+                                <p className="text-[10px] font-bold text-stone-500 flex items-center gap-2 tracking-widest uppercase">
+                                    <Box size={11} className="opacity-80" />
+                                    <span className="truncate" title={model.base_url || ''}>
+                                        {model.provider_label || model.provider}
+                                    </span>
+                                </p>
+                            )}
                             <p className="text-[11px] font-bold text-stone-400 flex items-center gap-2 font-mono tracking-widest">
                                 <Key size={12} className="opacity-80" />
                                 <span>{model.masked_key}</span>

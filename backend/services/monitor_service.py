@@ -355,73 +355,113 @@ def remove_computer_alias(mac: str, ip: str) -> None:
     _computer_aliases.pop(f"{mac}_{ip}", None)
 
 
-async def verify_custom_model_api(model_name: str, api_key: str) -> dict:
-    available_models = []
-    provider = "Bilinmeyen"
+async def verify_custom_model_api(
+    model_name: str,
+    api_key: str,
+    *,
+    provider: str | None = None,
+    base_url: str | None = None,
+) -> dict:
+    """
+    API anahtarını doğrular ve mevcut modelleri listeler.
+
+    provider/base_url verilmişse onlar baz alınır (UI'da "OpenAI-uyumlu özel"
+    seçeneği için). Verilmezse provider_registry.detect_from_key kullanılır.
+
+    Davranış:
+      - model_name boşsa: o sağlayıcının model kataloğunu çek
+      - model_name doluysa: o modele 1-token'lık canlı istek atıp doğrula
+    """
+    from services import provider_registry
+
+    spec = provider_registry.resolve({
+        "api_key": api_key,
+        "provider": provider or "",
+        "base_url": base_url or "",
+    })
+    protocol = spec["protocol"]
+    base = spec["base_url"]
+    label = spec["label"]
+    extra_headers = spec["extra_headers"]
+
+    # Provider tespit edilemediyse ve kullanıcı override vermediyse vazgeç
+    if not base:
+        return {"ok": False, "provider": "Bilinmeyen", "models": []}
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
+            # ── 1) Canlı istek (model_name verildiyse) ──────────────────
             if model_name:
-                # Canlı İstek Testi
-                if api_key.startswith("AIza"):
-                    provider = "Google"
-                    payload = {"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
-                    res = await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}", json=payload)
-                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
-                
-                elif api_key.startswith("sk-ant-"):
-                    provider = "Anthropic"
-                    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-                    payload = {"model": model_name, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
-                    res = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
-                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
-                
-                elif api_key.startswith("sk-") or api_key.startswith("gsk_"):
-                    provider = "OpenAI/Groq"
-                    url = "https://api.openai.com/v1/chat/completions" if api_key.startswith("sk-") else "https://api.groq.com/openai/v1/chat/completions"
-                    headers = {"Authorization": f"Bearer {api_key}"}
-                    payload = {"model": model_name, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
-                    res = await client.post(url, headers=headers, json=payload)
-                    return {"ok": res.status_code == 200, "provider": provider, "models": [model_name] if res.status_code == 200 else []}
-                
-                else:
-                    return {"ok": False, "provider": "Bilinmeyen", "models": []}
+                if protocol == "google_gemini":
+                    payload = {
+                        "contents": [{"parts": [{"text": "hi"}]}],
+                        "generationConfig": {"maxOutputTokens": 1},
+                    }
+                    res = await client.post(
+                        f"{base}/models/{model_name}:generateContent?key={api_key}",
+                        json=payload,
+                    )
+                elif protocol == "anthropic_messages":
+                    headers = {
+                        "x-api-key": api_key,
+                        "content-type": "application/json",
+                        **extra_headers,
+                    }
+                    payload = {
+                        "model": model_name, "max_tokens": 1,
+                        "messages": [{"role": "user", "content": "hi"}],
+                    }
+                    res = await client.post(f"{base}/messages", headers=headers, json=payload)
+                else:  # openai_compatible
+                    headers = {
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        **extra_headers,
+                    }
+                    payload = {
+                        "model": model_name, "max_tokens": 1,
+                        "messages": [{"role": "user", "content": "hi"}],
+                    }
+                    res = await client.post(
+                        f"{base}/chat/completions", headers=headers, json=payload,
+                    )
+                return {
+                    "ok": res.status_code == 200,
+                    "provider": label,
+                    "models": [model_name] if res.status_code == 200 else [],
+                }
 
-            # Toplu Model Çekme Okuması
-            if api_key.startswith("AIza"):
-                provider = "Google"
-                res = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
-                if res.status_code == 200:
-                    data = res.json()
-                    for m in data.get("models", []):
-                        if "generateContent" in m.get("supportedGenerationMethods", []):
-                            name = m.get("name", "").replace("models/", "")
-                            available_models.append(name)
-                else:
-                    return {"ok": False, "provider": provider, "models": []}
+            # ── 2) Toplu model listesi ─────────────────────────────────
+            if protocol == "google_gemini":
+                res = await client.get(f"{base}/models?key={api_key}")
+                if res.status_code != 200:
+                    return {"ok": False, "provider": label, "models": []}
+                data = res.json()
+                available_models = [
+                    m.get("name", "").replace("models/", "")
+                    for m in data.get("models", [])
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+                ]
 
-            elif api_key.startswith("sk-ant-"):
-                provider = "Anthropic"
-                available_models = ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229"]
+            elif protocol == "anthropic_messages":
+                # Anthropic'in liste endpoint'i public değil — registry default'u
+                provider_spec = provider_registry.get(spec["provider"]) or {}
+                available_models = list(provider_spec.get("default_models") or [])
 
-            elif api_key.startswith("sk-") or api_key.startswith("gsk_"):
-                provider = "OpenAI/Groq"
-                url = "https://api.openai.com/v1/models" if api_key.startswith("sk-") else "https://api.groq.com/openai/v1/models"
-                res = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
-                if res.status_code == 200:
-                    data = res.json()
-                    available_models = [m.get("id") for m in data.get("data", [])]
-                else:
-                    return {"ok": False, "provider": provider, "models": []}
-            else:
-                return {"ok": False, "provider": "Bilinmeyen", "models": []}
-                
+            else:  # openai_compatible — /models endpoint'i tüm uyumlu servislerde var
+                headers = {"Authorization": f"Bearer {api_key}", **extra_headers}
+                res = await client.get(f"{base}/models", headers=headers)
+                if res.status_code != 200:
+                    return {"ok": False, "provider": label, "models": []}
+                data = res.json()
+                available_models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+
         except Exception as e:
             print("Model çekme hatası:", e)
-            return {"ok": False, "provider": provider, "models": []}
+            return {"ok": False, "provider": label, "models": []}
 
     return {
-        "ok": len(available_models) > 0, 
-        "provider": provider, 
-        "models": available_models
+        "ok": len(available_models) > 0,
+        "provider": label,
+        "models": available_models,
     }

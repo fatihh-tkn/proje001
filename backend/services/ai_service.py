@@ -9,6 +9,7 @@ from typing import AsyncGenerator
 from fastapi.concurrency import run_in_threadpool
 from core.db_bridge import get_user_models, add_log_to_db, get_ai_agent
 from core.logger import get_logger
+from services import provider_registry
 
 logger = get_logger("ai_service")
 from core.prompts import (
@@ -790,7 +791,9 @@ class AIService:
         
         full_prompt = build_full_prompt(system_intro, rag_context, user_message)
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -806,10 +809,7 @@ class AIService:
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 if is_gemini:
-                    url = (
-                        f"https://generativelanguage.googleapis.com/v1beta/models/"
-                        f"{actual_model_name}:generateContent?key={api_key}"
-                    )
+                    url = f"{base_url}/models/{actual_model_name}:generateContent?key={api_key}"
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
                         "contents": build_gemini_contents(history, full_prompt),
@@ -833,16 +833,13 @@ class AIService:
                     prompt_tokens  = usage.get("promptTokenCount", 0)
                     comp_tokens    = usage.get("candidatesTokenCount", 0)
                     total_tokens   = usage.get("totalTokenCount", 0)
-                    provider_label = "Google Gemini"
+                    provider_label = active_model.get("provider_label") or "Google Gemini"
 
                 else:
                     response = await _post_with_retry(
                         client,
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        provider_registry.openai_chat_url(base_url),
+                        headers=provider_registry.openai_headers(api_key, extra_headers),
                         json={
                             "model": actual_model_name,
                             "messages": build_openai_messages(history, system_intro, full_prompt),
@@ -856,7 +853,7 @@ class AIService:
                     prompt_tokens  = usage.get("prompt_tokens", 0)
                     comp_tokens    = usage.get("completion_tokens", 0)
                     total_tokens   = usage.get("total_tokens", 0)
-                    provider_label = "OpenAI (Custom)"
+                    provider_label = active_model.get("provider_label") or "OpenAI (Custom)"
 
                 end_time    = time.time()
                 duration_ms = int((end_time - start_time) * 1000)
@@ -912,7 +909,7 @@ class AIService:
             log_entry = {
                 "id":               f"log_{uuid.uuid4().hex[:8]}",
                 "timestamp":        datetime.utcnow().isoformat() + "Z",
-                "provider":         "Google Gemini" if is_gemini else "OpenAI (Custom)",
+                "provider":         active_model.get("provider_label") or ("Google Gemini" if is_gemini else "OpenAI (Custom)"),
                 "model":            actual_model_name,
                 "promptTokens":     0, "completionTokens": 0, "totalTokens": 0,
                 "duration":         duration_ms,
@@ -1086,7 +1083,9 @@ class AIService:
         
         full_prompt = build_full_prompt(system_intro, rag_context, user_message)
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -1107,10 +1106,7 @@ class AIService:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 if is_gemini:
                     # Gemini streaming endpoint
-                    url = (
-                        f"https://generativelanguage.googleapis.com/v1beta/models/"
-                        f"{actual_model_name}:streamGenerateContent?alt=sse&key={api_key}"
-                    )
+                    url = f"{base_url}/models/{actual_model_name}:streamGenerateContent?alt=sse&key={api_key}"
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_intro}]},
                         "contents": build_gemini_contents(history, full_prompt),
@@ -1150,17 +1146,14 @@ class AIService:
                                         yield f"data: {json.dumps({'type': 'chunk', 'text': text})}\n\n"
                             except (json.JSONDecodeError, IndexError, KeyError):
                                 continue
-                    provider_label = "Google Gemini"
+                    provider_label = active_model.get("provider_label") or "Google Gemini"
 
                 else:
-                    # OpenAI streaming endpoint
+                    # OpenAI-uyumlu streaming endpoint
                     async with client.stream(
                         "POST",
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        provider_registry.openai_chat_url(base_url),
+                        headers=provider_registry.openai_headers(api_key, extra_headers),
                         json={
                             "model": actual_model_name,
                             "messages": build_openai_messages(history, system_intro, full_prompt),
@@ -1192,7 +1185,7 @@ class AIService:
                                     total_tokens  = usage.get("total_tokens", 0)
                             except (json.JSONDecodeError, IndexError, KeyError):
                                 continue
-                    provider_label = "OpenAI (Custom)"
+                    provider_label = active_model.get("provider_label") or "OpenAI (Custom)"
 
             # Tüm stream bitti — log yaz
             end_time    = time.time()
@@ -1267,7 +1260,7 @@ class AIService:
             log_entry = {
                 "id":               f"log_{uuid.uuid4().hex[:8]}",
                 "timestamp":        datetime.utcnow().isoformat() + "Z",
-                "provider":         "Google Gemini" if is_gemini else "OpenAI (Custom)",
+                "provider":         active_model.get("provider_label") or ("Google Gemini" if is_gemini else "OpenAI (Custom)"),
                 "model":            actual_model_name,
                 "promptTokens":     0, "completionTokens": 0, "totalTokens": 0,
                 "duration":         duration_ms,
@@ -1314,7 +1307,9 @@ class AIService:
         model_name = active_model["name"]
         api_key = active_model["api_key"]
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -1325,7 +1320,7 @@ class AIService:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             if is_gemini:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                url = f"{base_url}/models/{actual_model_name}:generateContent?key={api_key}"
                 payload = {
                     "systemInstruction": {"parts": [{"text": system_prompt}]},
                     "contents": [{"parts": [{"text": user_prompt}]}],
@@ -1348,8 +1343,8 @@ class AIService:
                 ]
                 response = await _post_with_retry(
                     client,
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    provider_registry.openai_chat_url(base_url),
+                    headers=provider_registry.openai_headers(api_key, extra_headers),
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
                 data = response.json()
@@ -1381,7 +1376,9 @@ class AIService:
         model_name = active_model["name"]
         api_key = active_model["api_key"]
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -1392,7 +1389,7 @@ class AIService:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             if is_gemini:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                url = f"{base_url}/models/{actual_model_name}:generateContent?key={api_key}"
                 payload = {
                     "systemInstruction": {"parts": [{"text": system_prompt}]},
                     "contents": [{"parts": [{"text": bot_reply}]}],
@@ -1415,8 +1412,8 @@ class AIService:
                 ]
                 response = await _post_with_retry(
                     client,
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    provider_registry.openai_chat_url(base_url),
+                    headers=provider_registry.openai_headers(api_key, extra_headers),
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature},
                 )
                 data = response.json()
@@ -1459,7 +1456,9 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         model_name = active_model["name"]
         api_key = active_model["api_key"]
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -1471,7 +1470,7 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         raw_text = ""
         async with httpx.AsyncClient(timeout=30.0) as client:
             if is_gemini:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                url = f"{base_url}/models/{actual_model_name}:generateContent?key={api_key}"
                 payload = {
                     "systemInstruction": {"parts": [{"text": full_system}]},
                     "contents": [{"parts": [{"text": user_input}]}],
@@ -1494,8 +1493,8 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                 ]
                 response = await _post_with_retry(
                     client,
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    provider_registry.openai_chat_url(base_url),
+                    headers=provider_registry.openai_headers(api_key, extra_headers),
                     json={"model": actual_model_name, "messages": messages, "temperature": temperature,
                           "response_format": {"type": "json_object"}},
                 )
@@ -1542,7 +1541,9 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         model_name = active_model["name"]
         api_key    = active_model["api_key"]
 
-        is_gemini = "gemini" in model_name.lower() or api_key.startswith("AIza")
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        extra_headers = active_model.get("extra_headers") or {}
         actual_model_name = model_name
         if is_gemini:
             invalid_names = ["gemini", "google gemini", "google", "gemini ai", "gemini-pro"]
@@ -1564,7 +1565,7 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 if is_gemini:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model_name}:generateContent?key={api_key}"
+                    url = f"{base_url}/models/{actual_model_name}:generateContent?key={api_key}"
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_prompt}]},
                         "contents": [{"parts": [{"text": user_input}]}],
@@ -1584,8 +1585,8 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
                     ]
                     response = await _post_with_retry(
                         client,
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        provider_registry.openai_chat_url(base_url),
+                        headers=provider_registry.openai_headers(api_key, extra_headers),
                         json={
                             "model": actual_model_name, "messages": messages,
                             "temperature": temperature,

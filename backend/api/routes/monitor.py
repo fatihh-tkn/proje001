@@ -295,16 +295,29 @@ async def get_models():
     return {"models": user_models}
 
 
+@router.get("/custom-models/providers")
+async def list_providers():
+    """Frontend'in 'Sağlayıcı' dropdown'unu beslemesi için statik liste."""
+    from services import provider_registry
+    return {"providers": provider_registry.list_provider_choices()}
+
+
 # ── Kullanıcı Modelleri Yönetimi ─────────────────────────────────────────────
 
 @router.post("/custom-models/verify")
 async def verify_custom_model(body: dict):
     api_key = body.get("api_key", "").strip()
     model_name = body.get("model_name", "").strip()
+    provider = (body.get("provider") or "").strip()
+    base_url = (body.get("base_url") or "").strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key gereklidir")
-        
-    result = await verify_custom_model_api(model_name, api_key)
+
+    result = await verify_custom_model_api(
+        model_name, api_key,
+        provider=provider or None,
+        base_url=base_url or None,
+    )
     return result
 
 @router.post("/custom-models")
@@ -312,22 +325,21 @@ async def save_custom_model(body: dict):
     api_key = body.get("api_key", "").strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key gereklidir")
-        
+
+    provider = (body.get("provider") or "").strip().lower() or None
+    base_url = (body.get("base_url") or "").strip() or None
+
     name = body.get("name", "").strip()
     if not name:
-        if api_key.startswith("AIza"):
-            name = "gemini-2.0-flash"
-        elif api_key.startswith("sk-ant-"):
-            name = "claude-3-5-sonnet"
-        elif api_key.startswith("sk-"):
-            name = "gpt-4o"
-        elif api_key.startswith("gsk_"):
-            name = "llama3-70b-8192"
-        else:
-            name = "custom-model"
+        # Provider registry üzerinden default model adını seç
+        from services import provider_registry
+        pid = provider or provider_registry.detect_from_key(api_key) or "openai"
+        spec = provider_registry.get(pid)
+        defaults = (spec or {}).get("default_models") or []
+        name = defaults[0] if defaults else "custom-model"
 
     model_id = f"model_{uuid.uuid4().hex[:8]}"
-    add_user_model(model_id, name, api_key)
+    add_user_model(model_id, name, api_key, provider=provider, base_url=base_url)
     return {"ok": True, "id": model_id, "name": name}
 
 @router.delete("/custom-models/{model_id}")

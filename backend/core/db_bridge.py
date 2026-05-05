@@ -167,6 +167,14 @@ def clear_logs_from_db() -> None:
 
 # -- get_user_models ----------------------------------------------------------
 def get_user_models() -> list[dict]:
+    """
+    Tüm kayıtlı modelleri döner. Her kayıt için provider registry'ye danışıp
+    base_url, extra_headers ve protocol alanlarını da hesaplar — böylece
+    çağrı yapan kod (ai_service / llm_adapter) hard-coded URL bilmek zorunda
+    kalmaz.
+    """
+    from services import provider_registry
+
     with get_session() as db:
         from sqlalchemy import select
         rows = list(db.scalars(select(AIModeli).order_by(AIModeli.olusturulma_tarihi)).all())
@@ -174,13 +182,25 @@ def get_user_models() -> list[dict]:
         for m in rows:
             key = m.api_anahtari
             masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+            raw_provider = m.tedarikci or ""
+            raw_base_url = m.temel_url or ""
+            spec = provider_registry.resolve({
+                "api_key": key,
+                "provider": raw_provider,
+                "base_url": raw_base_url,
+            })
             result.append({
                 "id": m.kimlik,
                 "name": m.ad,
-                "api_key": m.api_anahtari,
+                "api_key": key,
                 "masked_key": masked,
                 "created_at": m.olusturulma_tarihi,
-                "provider": m.tedarikci or "Custom",
+                # raw_provider boşsa registry'nin tahminini göster
+                "provider": raw_provider or spec["provider"],
+                "provider_label": spec["label"],
+                "protocol": spec["protocol"],
+                "base_url": spec["base_url"],
+                "extra_headers": spec["extra_headers"],
                 "has_key": True,
                 "status": "active",
                 "description": "Kullanici tarafindan eklenen model.",
@@ -193,9 +213,21 @@ def get_user_models() -> list[dict]:
 
 
 # -- add_user_model -----------------------------------------------------------
-def add_user_model(model_id: str, name: str, api_key: str) -> None:
+def add_user_model(
+    model_id: str,
+    name: str,
+    api_key: str,
+    *,
+    provider: str | None = None,
+    base_url: str | None = None,
+) -> None:
     with get_session() as db:
-        model = AIModeli(ad=name, api_anahtari=api_key)
+        model = AIModeli(
+            ad=name,
+            api_anahtari=api_key,
+            tedarikci=(provider or None),
+            temel_url=(base_url or None),
+        )
         db.add(model)
         db.commit()
 

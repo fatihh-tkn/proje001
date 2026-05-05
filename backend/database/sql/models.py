@@ -418,10 +418,13 @@ class AIModeli(Base):
 
     kimlik: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     ad: Mapped[str] = mapped_column(String(128), nullable=False)
-    # Tedarikçi: openai | google | anthropic | ollama
+    # Tedarikçi: openai | gemini | anthropic | groq | openrouter | openai_compat
     tedarikci: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # API anahtarı (şifreli saklanmalı — uygulama katmanında)
     api_anahtari: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Opsiyonel base URL — OpenAI-uyumlu özel servisler (OpenRouter, Together,
+    # vLLM, lokal) için override. Boşsa provider registry varsayılanı kullanılır.
+    temel_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Model endpoint veya model ID'si
     model_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     aktif_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
