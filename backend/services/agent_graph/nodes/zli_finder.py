@@ -10,7 +10,7 @@ Z'li rapor (özelleştirilmiş ABAP rapor) sorgusu uzmanı.
 Çıktı:
     {
       "zli_matches":   [aday raporlar (ham SQL)],
-      "chat_draft":    "JSON cevap (string)",       # aggregator burayı kullanır
+      "zli_draft":     "JSON cevap (string)",       # aggregator burayı kullanır
       "nodes_executed":["zli_finder"],
       "node_timings":  {"zli_finder": ms},
       "total_tokens":  {"zli_finder": {p, c}},
@@ -131,7 +131,7 @@ async def zli_finder_node(state: AgentState) -> dict:
 
         return {
             "zli_matches": matches,
-            "chat_draft": text,
+            "zli_draft": text,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
             "nodes_executed": ["zli_finder"],
@@ -163,7 +163,7 @@ async def zli_finder_node(state: AgentState) -> dict:
         }, ensure_ascii=False)
         return {
             "zli_matches": matches,
-            "chat_draft": fallback,
+            "zli_draft": fallback,
             "nodes_executed": ["zli_finder"],
             "node_timings": {"zli_finder": elapsed_ms},
             "node_errors": {"zli_finder": str(e)},

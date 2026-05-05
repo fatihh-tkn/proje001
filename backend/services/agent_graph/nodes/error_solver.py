@@ -12,7 +12,7 @@ prompt'a ekler ki çözüm önerileri kurum içi belgelere dayansın.
 Çıktı:
     {
       "error_solution": {parsed_json},     # aggregator'ın UI'ya yansıttığı dict
-      "chat_draft":     "<json-string>",   # ham JSON metni (frontend parser)
+      "error_draft":    "<json-string>",   # ham JSON metni (aggregator pass-through)
       "nodes_executed": ["error_solver"],
       "node_timings":   {"error_solver": ms},
       "total_tokens":   {"error_solver": {p, c}},
@@ -128,7 +128,7 @@ async def error_solver_node(state: AgentState) -> dict:
                     bool(parsed), elapsed_ms)
 
         out: dict = {
-            "chat_draft": raw,
+            "error_draft": raw,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
             "nodes_executed": ["error_solver"],
@@ -146,7 +146,6 @@ async def error_solver_node(state: AgentState) -> dict:
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.error("[error_solver] hata: %s", e, exc_info=True)
         return {
-            "chat_draft": "",
             "nodes_executed": ["error_solver"],
             "node_timings": {"error_solver": elapsed_ms},
             "node_errors": {"error_solver": str(e)},

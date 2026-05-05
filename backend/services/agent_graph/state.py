@@ -27,18 +27,6 @@ def append_list(left: list | None, right: list | None) -> list:
     return [*(left or []), *(right or [])]
 
 
-def last_non_empty(left: str | None, right: str | None) -> str:
-    """
-    Paralel branch'lerden gelen string güncellemelerinde anlamlı (boş olmayan)
-    olanı korur. Her iki taraf da doluysa son geleni (right) kullanır.
-    chat_draft için: boş döndüren specialist, dolu draft yazan specialist'in
-    çıktısını silmesin.
-    """
-    if right and right.strip():
-        return right
-    return left or ""
-
-
 def get_agent_config(state: "AgentState | dict", role: str) -> dict | None:
     """
     State'e supervisor tarafından doldurulmuş `agent_configs` cache'inden
@@ -93,12 +81,10 @@ class AgentState(TypedDict, total=False):
     rag_score: float
 
     error_solution: dict | None                # {type, id, title, steps, ...}
+    error_draft: str                           # error_solver çıktısı (ham JSON)
     zli_matches: list[dict]
+    zli_draft: str                             # zli_finder çıktısı (ham JSON)
     n8n_action: dict | None                    # {workflow, status, detail}
-
-    # Paralel specialist'lerden (error_solver/zli_finder) gelen draft'ların
-    # boş güncellemeyle silinmemesi için reducer'lı.
-    chat_draft: Annotated[str, last_non_empty]
 
     # ── FINAL ────────────────────────────────────────────────────────────
     final_reply: str

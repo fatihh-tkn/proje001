@@ -212,7 +212,6 @@ async def supervisor_node(state: AgentState) -> dict:
                 "needs_polish": False,
                 "cost_capped": True,
                 "final_reply": cap_msg,
-                "chat_draft": cap_msg,
                 "agent_configs": agent_configs,
                 "nodes_executed": ["supervisor"],
                 "node_timings": {"supervisor": elapsed_ms},

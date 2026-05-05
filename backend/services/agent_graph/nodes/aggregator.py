@@ -5,22 +5,23 @@ Specialist çıktılarını birleştirip son cevabı üretir.
 
 Davranış intent'e ve hangi specialist'lerin draft ürettiğine göre değişir:
 
-  • error_solver veya zli_finder zaten JSON `chat_draft` ürettiyse →
-    onu doğrudan `final_reply` olarak kullan. (Frontend ham JSON'u
-    parse edip rich UI render ediyor.)
+  • error_solver `error_draft` ürettiyse (intent=hata_cozumu) →
+    JSON pass-through; doğrudan `final_reply` olarak kullan.
 
-  • Aksi halde (general / dosya_qa / n8n trigger sonrası sohbet) →
-    chatbot ajanının sistem prompt'u + RAG context + history ile
-    LLM çağrısı yap, sohbetsel cevap üret.
+  • zli_finder `zli_draft` ürettiyse (intent=rapor_arama) →
+    aynı şekilde JSON pass-through.
 
-  • n8n_trigger workflow'u tetiklemişse cevabın başına kısa onay
-    cümlesi eklenir.
+  • Aksi halde (general / dosya_qa / n8n sonrası sohbet) → aggregator
+    ajanının sistem prompt'u + RAG context + history ile LLM çağrısı
+    yapar, sohbetsel cevap üretir.
+
+  • n8n_trigger workflow'u tetiklemişse LLM duruma göre cevabını
+    şekillendirir (UI ayrı bir bildirim çubuğu zaten gösteriyor).
 
 Çıktı:
     {
-      "chat_draft":   str,
       "final_reply":  str,
-      "ui_action":    dict | None,   # n8n öncelikli; yoksa rag_search'inki
+      "ui_action":    dict | None,   # rag_search'inki state'te zaten var
       "nodes_executed": ["aggregator"],
       "node_timings":   {"aggregator": ms},
       "total_tokens":   {"aggregator": {p, c}}  # sadece LLM çağrısı yapıldıysa
@@ -183,12 +184,20 @@ def _n8n_confirmation_line(action: dict) -> str:
 async def aggregator_node(state: AgentState) -> dict:
     t0 = time.time()
     intent = state.get("intent") or "general"
-    structured_draft = state.get("chat_draft") or ""
+
+    # Intent'e göre hangi specialist'in yapılandırılmış draft'ını kullanacağız.
+    # Her specialist artık kendi alanına yazıyor (error_draft / zli_draft) —
+    # paylaşılan chat_draft alanı kaldırıldı, race riski yok.
+    structured_draft = ""
+    if intent == "hata_cozumu":
+        structured_draft = state.get("error_draft") or ""
+    elif intent == "rapor_arama":
+        structured_draft = state.get("zli_draft") or ""
 
     # ── 0) Supervisor cost cap'i tespit ettiyse ek LLM çağrısı yapma,
     #      onun hazırladığı cap mesajını direkt yayınla.
     if state.get("cost_capped"):
-        cap_msg = state.get("final_reply") or structured_draft or ""
+        cap_msg = state.get("final_reply") or ""
         elapsed_ms = int((time.time() - t0) * 1000)
         writer = _try_get_writer()
         if writer:
@@ -204,7 +213,7 @@ async def aggregator_node(state: AgentState) -> dict:
 
     # ── 1) Yapılandırılmış specialist çıktıları (error_solver / zli_finder)
     #    JSON cevap ise direkt kullan.
-    if intent in ("hata_cozumu", "rapor_arama") and structured_draft.strip():
+    if structured_draft.strip():
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.info("[aggregator] intent=%s — JSON pass-through (%d ms)",
                     intent, elapsed_ms)
@@ -306,7 +315,6 @@ async def aggregator_node(state: AgentState) -> dict:
                 elapsed_ms,
             )
             return {
-                "chat_draft": text,
                 "final_reply": text,
                 "model_used": done_meta.get("model", ""),
                 "provider_used": done_meta.get("provider", ""),
@@ -336,7 +344,6 @@ async def aggregator_node(state: AgentState) -> dict:
             elapsed_ms,
         )
         return {
-            "chat_draft": text,
             "final_reply": text,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
@@ -354,7 +361,6 @@ async def aggregator_node(state: AgentState) -> dict:
         # Specialist draft varsa onu fallback olarak kullan, yoksa hata mesajı
         fallback = structured_draft or f"❌ Cevap üretilemedi: {e}"
         return {
-            "chat_draft": fallback,
             "final_reply": fallback,
             "nodes_executed": ["aggregator"],
             "node_timings": {"aggregator": elapsed_ms},
