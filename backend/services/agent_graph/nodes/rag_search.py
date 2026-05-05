@@ -26,7 +26,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 
 logger = get_logger("agent_graph.rag_search")
 
@@ -90,12 +90,13 @@ async def rag_search_node(state: AgentState) -> dict:
         from core.db_bridge import get_assigned_agent
 
         # Aggregator'ın atanmış ajanının allowed_rags konfigürasyonu.
-        # `!file_id` prefix'li girdiler agent-level excluded olarak ayrıştırılır,
-        # diğerleri allowed_pools olarak _build_semantic_context'e geçer.
+        # State cache'inden oku; cache miss'te DB fallback.
         agent_excluded: list[str] = []
         allowed_pools: list[str] | None = None
         try:
-            agg_agent = get_assigned_agent("aggregator")
+            agg_agent = get_agent_config(state, "aggregator")
+            if agg_agent is None:
+                agg_agent = get_assigned_agent("aggregator")
             allowed_rags = (agg_agent or {}).get("allowed_rags") or []
             agent_excluded = [str(r)[1:] for r in allowed_rags if str(r).startswith("!")]
             pools = [str(r) for r in allowed_rags if not str(r).startswith("!")]
@@ -106,16 +107,16 @@ async def rag_search_node(state: AgentState) -> dict:
         # rag_search node ajanının kendi node_config'inden top_k / score_threshold oku
         rag_top_k: int | None = None
         rag_score_threshold: float = 0.0
-        # Eğer rag_search ajanı kendi `allowed_rags` setini override ediyorsa
-        # aggregator'ınkinin yerine onu kullan.
         try:
-            rag_agent = get_assigned_agent("rag_search") or {}
-            node_cfg = rag_agent.get("node_config") or {}
+            rag_agent = get_agent_config(state, "rag_search")
+            if rag_agent is None:
+                rag_agent = get_assigned_agent("rag_search") or {}
+            node_cfg = (rag_agent or {}).get("node_config") or {}
             tk = node_cfg.get("top_k")
             if tk:
                 rag_top_k = int(tk)
             rag_score_threshold = float(node_cfg.get("score_threshold") or 0.0)
-            rag_allowed = rag_agent.get("allowed_rags") or []
+            rag_allowed = (rag_agent or {}).get("allowed_rags") or []
             if rag_allowed:
                 # rag_search override
                 _ex = [str(r)[1:] for r in rag_allowed if str(r).startswith("!")]

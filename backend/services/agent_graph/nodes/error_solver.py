@@ -12,7 +12,7 @@ prompt'a ekler ki çözüm önerileri kurum içi belgelere dayansın.
 Çıktı:
     {
       "error_solution": {parsed_json},     # aggregator'ın UI'ya yansıttığı dict
-      "chat_draft":     "<json-string>",   # ham JSON metni (frontend parser)
+      "error_draft":    "<json-string>",   # ham JSON metni (aggregator pass-through)
       "nodes_executed": ["error_solver"],
       "node_timings":   {"error_solver": ms},
       "total_tokens":   {"error_solver": {p, c}},
@@ -27,7 +27,7 @@ import time
 
 from core.logger import get_logger
 from core.db_bridge import get_assigned_agent
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, build_messages
 
 logger = get_logger("agent_graph.error_solver")
@@ -77,11 +77,12 @@ async def error_solver_node(state: AgentState) -> dict:
     user_msg = state.get("user_message") or state.get("original_message") or ""
     rag_ctx = state.get("rag_context") or ""
 
-    agent_config = None
-    try:
-        agent_config = get_assigned_agent("error_solver")
-    except Exception:
-        pass
+    agent_config = get_agent_config(state, "error_solver")
+    if agent_config is None:
+        try:
+            agent_config = get_assigned_agent("error_solver")
+        except Exception:
+            pass
 
     # DB'den prompt çek; yoksa kod fallback'ini kullan.
     system_prompt = ((agent_config or {}).get("prompt") or "").strip() or _SYSTEM_BASE
@@ -127,7 +128,7 @@ async def error_solver_node(state: AgentState) -> dict:
                     bool(parsed), elapsed_ms)
 
         out: dict = {
-            "chat_draft": raw,
+            "error_draft": raw,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
             "nodes_executed": ["error_solver"],
@@ -145,7 +146,6 @@ async def error_solver_node(state: AgentState) -> dict:
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.error("[error_solver] hata: %s", e, exc_info=True)
         return {
-            "chat_draft": "",
             "nodes_executed": ["error_solver"],
             "node_timings": {"error_solver": elapsed_ms},
             "node_errors": {"error_solver": str(e)},

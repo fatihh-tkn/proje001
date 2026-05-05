@@ -24,7 +24,7 @@ from __future__ import annotations
 import time
 
 from core.logger import get_logger
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 
 logger = get_logger("agent_graph.n8n_trigger")
 
@@ -42,7 +42,8 @@ async def n8n_trigger_node(state: AgentState) -> dict:
 
     try:
         from services.ai_service import _try_route_and_trigger
-        action = await _try_route_and_trigger(user_msg)
+        action_agent = get_agent_config(state, "n8n_trigger")
+        action = await _try_route_and_trigger(user_msg, action_agent=action_agent)
         elapsed_ms = int((time.time() - t0) * 1000)
 
         if action:

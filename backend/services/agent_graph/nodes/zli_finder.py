@@ -10,7 +10,7 @@ Z'li rapor (özelleştirilmiş ABAP rapor) sorgusu uzmanı.
 Çıktı:
     {
       "zli_matches":   [aday raporlar (ham SQL)],
-      "chat_draft":    "JSON cevap (string)",       # aggregator burayı kullanır
+      "zli_draft":     "JSON cevap (string)",       # aggregator burayı kullanır
       "nodes_executed":["zli_finder"],
       "node_timings":  {"zli_finder": ms},
       "total_tokens":  {"zli_finder": {p, c}},
@@ -26,7 +26,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
 from core.db_bridge import get_assigned_agent
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, build_messages
 
 logger = get_logger("agent_graph.zli_finder")
@@ -72,11 +72,12 @@ async def zli_finder_node(state: AgentState) -> dict:
     t0 = time.time()
     user_msg = state.get("user_message") or state.get("original_message") or ""
 
-    agent_config = None
-    try:
-        agent_config = get_assigned_agent("zli_finder")
-    except Exception:
-        pass
+    agent_config = get_agent_config(state, "zli_finder")
+    if agent_config is None:
+        try:
+            agent_config = get_assigned_agent("zli_finder")
+        except Exception:
+            pass
 
     node_cfg = (agent_config or {}).get("node_config") or {}
     sql_match_limit = int(node_cfg.get("sql_match_limit", 5) or 5)
@@ -130,7 +131,7 @@ async def zli_finder_node(state: AgentState) -> dict:
 
         return {
             "zli_matches": matches,
-            "chat_draft": text,
+            "zli_draft": text,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
             "nodes_executed": ["zli_finder"],
@@ -162,7 +163,7 @@ async def zli_finder_node(state: AgentState) -> dict:
         }, ensure_ascii=False)
         return {
             "zli_matches": matches,
-            "chat_draft": fallback,
+            "zli_draft": fallback,
             "nodes_executed": ["zli_finder"],
             "node_timings": {"zli_finder": elapsed_ms},
             "node_errors": {"zli_finder": str(e)},

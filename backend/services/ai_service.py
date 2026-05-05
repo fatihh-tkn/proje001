@@ -183,19 +183,23 @@ def _fetch_chat_memory(session_id: str, query: str) -> str:
 
 
 
-async def _try_route_and_trigger(user_message: str) -> dict | None:
+async def _try_route_and_trigger(user_message: str, action_agent: dict | None = None) -> dict | None:
     """
     İşlem Botunu çalıştırır; n8n aksiyonu varsa workflow'u tetikler.
     Dönüş: {"command": "N8N_TRIGGERED", "workflow": ..., "status": ...} veya None.
+
+    `action_agent` opsiyonel: çağıran (graph node) state cache'inden config
+    geçirebilir. None ise eski davranışla DB'den çekilir.
     """
     import os as _os
     try:
-        # LG.7: Önce yeni graph node ajanını dene (sys_node_n8n_trigger),
-        # bulunamazsa legacy sys_agent_action_001'e düş.
-        from core.db_bridge import get_assigned_agent
-        action_agent = await run_in_threadpool(get_assigned_agent, "n8n_trigger")
-        if not action_agent:
-            action_agent = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
+        if action_agent is None:
+            # LG.7: Önce yeni graph node ajanını dene (sys_node_n8n_trigger),
+            # bulunamazsa legacy sys_agent_action_001'e düş.
+            from core.db_bridge import get_assigned_agent
+            action_agent = await run_in_threadpool(get_assigned_agent, "n8n_trigger")
+            if not action_agent:
+                action_agent = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_action_001")
         if not action_agent:
             return None
 
