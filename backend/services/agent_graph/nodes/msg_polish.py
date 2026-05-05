@@ -32,7 +32,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
 from core.db_bridge import get_ai_agent, get_assigned_agent
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 
 try:
     from langgraph.config import get_stream_writer
@@ -75,14 +75,16 @@ async def msg_polish_node(state: AgentState) -> dict:
             "node_timings": {"msg_polish": int((time.time() - t0) * 1000)},
         }
 
-    # Ajan kontrolü — önce yeni graph node ajanı (sys_node_msg_polish), sonra legacy
-    try:
-        msg_bot = await run_in_threadpool(get_assigned_agent, "msg_polish")
-        if not msg_bot:
-            msg_bot = await run_in_threadpool(get_ai_agent, "sys_agent_msg_001")
-    except Exception as e:
-        logger.warning("[msg_polish] msg_bot çekilemedi: %s", e)
-        msg_bot = None
+    # Ajan kontrolü — önce state cache, sonra DB, sonra legacy fallback
+    msg_bot = get_agent_config(state, "msg_polish")
+    if not msg_bot:
+        try:
+            msg_bot = await run_in_threadpool(get_assigned_agent, "msg_polish")
+            if not msg_bot:
+                msg_bot = await run_in_threadpool(get_ai_agent, "sys_agent_msg_001")
+        except Exception as e:
+            logger.warning("[msg_polish] msg_bot çekilemedi: %s", e)
+            msg_bot = None
 
     if not msg_bot or not (msg_bot.get("prompt") or "").strip():
         logger.info("[msg_polish] msg_bot pasif → atlandı")

@@ -39,6 +39,16 @@ def last_non_empty(left: str | None, right: str | None) -> str:
     return left or ""
 
 
+def get_agent_config(state: "AgentState | dict", role: str) -> dict | None:
+    """
+    State'e supervisor tarafından doldurulmuş `agent_configs` cache'inden
+    rolün ajan konfigürasyonunu döner. Cache'de yoksa None — çağıran
+    taraf isterse `core.db_bridge.get_assigned_agent(role)`'e fallback yapar.
+    """
+    cache = (state or {}).get("agent_configs") or {}
+    return cache.get(role)
+
+
 # ── State şeması ────────────────────────────────────────────────────────────
 
 class AgentState(TypedDict, total=False):
@@ -66,6 +76,11 @@ class AgentState(TypedDict, total=False):
     # ── PROVENANCE / TELEMETRY (log_entry için aggregator set eder) ──────
     model_used: str
     provider_used: str
+
+    # ── AJAN KONFİGÜRASYONLARI (request-scoped cache) ────────────────────
+    # supervisor başında bir kez DB'den yüklenir, paralel specialist'ler
+    # state üzerinden okur — node başına tekrar DB sorgusu önlenir.
+    agent_configs: dict[str, dict]             # {role: agent_config}
 
     # ── PLAN (Supervisor çıktısı) ────────────────────────────────────────
     intent: str                                # 'general' | 'hata_cozumu' | 'rapor_arama' | 'n8n' | 'dosya_qa'

@@ -31,7 +31,7 @@ import re
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
-from core.db_bridge import get_assigned_agent, check_cost_cap
+from core.db_bridge import get_assigned_agent, get_all_assigned_agents, check_cost_cap
 from ..state import AgentState
 from ..llm_adapter import call_llm, build_messages
 
@@ -99,19 +99,20 @@ def _strip_json_fence(text: str) -> str:
     return m.group(0) if m else t
 
 
-async def _classify_with_llm(user_message: str) -> dict | None:
+async def _classify_with_llm(user_message: str, agent_config: dict | None = None) -> dict | None:
     """
     Küçük LLM çağrısı ile intent sınıflandırması. Hata olursa None döner;
     çağıran rule-based fallback'e düşer.
+
+    `agent_config`: state.agent_configs üzerinden geçirilir. None ise
+    eski davranışla DB'den çekmeye düşer (defansif).
     """
     try:
-        # Sınıflandırıcı için supervisor rolüne atanmış ajanı kullan
-        # (varsayılan: sys_node_supervisor). T=0.0 ile çağrılır.
-        agent_config = None
-        try:
-            agent_config = get_assigned_agent("supervisor")
-        except Exception:
-            pass
+        if agent_config is None:
+            try:
+                agent_config = get_assigned_agent("supervisor")
+            except Exception:
+                pass
 
         # node_config: rule-only çalıştırmak isterse use_llm_classifier=false
         node_cfg = (agent_config or {}).get("node_config") or {}
@@ -188,6 +189,14 @@ def _plan_for_intent(intent: str) -> list[dict]:
 async def supervisor_node(state: AgentState) -> dict:
     t0 = time.time()
 
+    # Tüm graph rollerinin ajan konfigürasyonlarını bir kez yükle (request-scoped cache).
+    # Specialist'ler ve aggregator state üzerinden okuyarak DB sorgularını azaltır.
+    agent_configs: dict[str, dict] = {}
+    try:
+        agent_configs = await run_in_threadpool(get_all_assigned_agents)
+    except Exception as e:
+        logger.warning("[supervisor] agent_configs toplu yükleme başarısız: %s", e)
+
     # Cost cap kontrolü en başta — aşıldıysa hem supervisor LLM çağrısını
     # hem specialist'lerin LLM çağrılarını atla; aggregator boş plan ile
     # tetiklenip cap mesajını yayınlayacak.
@@ -204,6 +213,7 @@ async def supervisor_node(state: AgentState) -> dict:
                 "cost_capped": True,
                 "final_reply": cap_msg,
                 "chat_draft": cap_msg,
+                "agent_configs": agent_configs,
                 "nodes_executed": ["supervisor"],
                 "node_timings": {"supervisor": elapsed_ms},
                 "node_errors": {"supervisor": "cost_cap_exceeded"},
@@ -226,8 +236,9 @@ async def supervisor_node(state: AgentState) -> dict:
         reasoning = f"file_name='{state['file_name']}' → dosya QA modu."
         needs_polish = True
     else:
+        supervisor_cfg = agent_configs.get("supervisor")
         # 2) LLM tabanlı sınıflandırma (sıcak yol)
-        llm_result = await _classify_with_llm(user_msg)
+        llm_result = await _classify_with_llm(user_msg, supervisor_cfg)
         if llm_result:
             intent = llm_result["intent"]
             reasoning = f"LLM: {llm_result['reasoning']}"
@@ -235,11 +246,7 @@ async def supervisor_node(state: AgentState) -> dict:
             tokens = llm_result["tokens"]
         else:
             # 3) Rule-based fallback (node_config.fallback_to_rules ile devre dışı bırakılabilir)
-            try:
-                _agent = get_assigned_agent("supervisor") or {}
-                _cfg = _agent.get("node_config") or {}
-            except Exception:
-                _cfg = {}
+            _cfg = (supervisor_cfg or {}).get("node_config") or {}
             if _cfg.get("fallback_to_rules", True):
                 intent, reasoning = _rule_based_intent(user_msg, has_file)
                 needs_polish = (intent == "general")
@@ -264,6 +271,7 @@ async def supervisor_node(state: AgentState) -> dict:
         "plan": plan,
         "plan_reasoning": reasoning,
         "needs_polish": needs_polish,
+        "agent_configs": agent_configs,
         "nodes_executed": ["supervisor"],
         "node_timings": {"supervisor": elapsed_ms},
         "total_tokens": {"supervisor": tokens},

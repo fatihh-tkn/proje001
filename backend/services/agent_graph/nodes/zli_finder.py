@@ -26,7 +26,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
 from core.db_bridge import get_assigned_agent
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, build_messages
 
 logger = get_logger("agent_graph.zli_finder")
@@ -72,11 +72,12 @@ async def zli_finder_node(state: AgentState) -> dict:
     t0 = time.time()
     user_msg = state.get("user_message") or state.get("original_message") or ""
 
-    agent_config = None
-    try:
-        agent_config = get_assigned_agent("zli_finder")
-    except Exception:
-        pass
+    agent_config = get_agent_config(state, "zli_finder")
+    if agent_config is None:
+        try:
+            agent_config = get_assigned_agent("zli_finder")
+        except Exception:
+            pass
 
     node_cfg = (agent_config or {}).get("node_config") or {}
     sql_match_limit = int(node_cfg.get("sql_match_limit", 5) or 5)

@@ -40,7 +40,7 @@ from core.prompts import (
     get_general_rag_prompt,
     get_file_qa_prompt,
 )
-from ..state import AgentState
+from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, stream_llm, build_messages
 
 try:
@@ -227,11 +227,13 @@ async def aggregator_node(state: AgentState) -> dict:
     #      Cost cap kontrolü supervisor_node'da yapılıyor; buraya geldiyse
     #      bütçe yeterli demektir.
     try:
-        agent_config = None
-        try:
-            agent_config = get_assigned_agent("aggregator")
-        except Exception as e:
-            logger.warning("[aggregator] atanmış ajan çekilemedi: %s", e)
+        # Önce state cache'i, yoksa DB fallback
+        agent_config = get_agent_config(state, "aggregator")
+        if agent_config is None:
+            try:
+                agent_config = get_assigned_agent("aggregator")
+            except Exception as e:
+                logger.warning("[aggregator] atanmış ajan çekilemedi: %s", e)
 
         system = _build_chat_system(state, agent_config)
         node_cfg = (agent_config or {}).get("node_config") or {}

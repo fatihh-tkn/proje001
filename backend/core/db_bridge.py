@@ -431,6 +431,28 @@ def get_assigned_agent(role: str) -> Optional[dict]:
     return get_ai_agent(agent_kind="chatbot")
 
 
+def get_all_assigned_agents() -> dict[str, dict]:
+    """
+    Tüm graph rollerinin atanmış ajan konfigürasyonlarını tek seferde döner.
+    Her tur node başına ayrı `get_assigned_agent` çağrısı yapmak yerine
+    supervisor başında bir kez yüklenip state üzerinden specialist'lere
+    taşınıyor (request-scoped cache).
+
+    Atama yoksa ya da ajan pasifse o role None düşer; çağıran taraf
+    yine `get_assigned_agent`'e fallback yapabilir.
+    """
+    out: dict[str, dict] = {}
+    for role in _DEFAULT_ROLE_AGENT_ID:
+        try:
+            a = get_assigned_agent(role)
+            if a:
+                out[role] = a
+        except Exception:
+            # Tek bir rolün hatası diğerlerini engellemesin
+            pass
+    return out
+
+
 def is_agent_graph_enabled() -> bool:
     """
     Feature flag — `agent_graph_enabled` system setting'i. Default: True.
