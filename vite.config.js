@@ -20,6 +20,13 @@ export default defineConfig({
     // Prevent multiple Three.js instances (react-force-graph-3d bundles its own Three)
     dedupe: ['three'],
     alias: {
+      // Daha SPESİFİK olanlar önce gelmeli — Vite alias'ları sırayla eşleştirir.
+      // three/webgpu ve three/tsl alt-modülleri three'nin package.json exports
+      // haritasında "./webgpu" → "./build/three.webgpu.js" şeklinde tanımlı, ama
+      // alttaki 'three' alias dizine zorladığı için exports bypass oluyor.
+      // Bu nedenle alt-modülleri açıkça build dosyalarına yönlendiriyoruz.
+      'three/webgpu': path.resolve(__dirname, 'node_modules/three/build/three.webgpu.js'),
+      'three/tsl':    path.resolve(__dirname, 'node_modules/three/build/three.tsl.js'),
       // Force every "three" import (including nested deps) to use the single root-level copy
       three: path.resolve(__dirname, 'node_modules/three'),
     },

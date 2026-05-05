@@ -981,7 +981,7 @@ export default function AudioArchiveViewer() {
                         <div className="relative">
                             <Search size={13} className="absolute left-2.5 top-1/2 -transtone-y-1/2 text-stone-400" />
                             <input type="text" placeholder="Ara..." value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onChange={(e) = autoComplete="off"> setSearchQuery(e.target.value)}
                                 className="pl-7 pr-7 py-1.5 text-[11px] border border-stone-200 rounded-md w-36 focus:outline-none focus:border-[#378ADD] bg-stone-50" />
                             {searchQuery && (
                                 <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -transtone-y-1/2 text-stone-300 hover:text-stone-500"><X size={12} /></button>

@@ -342,6 +342,27 @@ async def save_custom_model(body: dict):
     add_user_model(model_id, name, api_key, provider=provider, base_url=base_url)
     return {"ok": True, "id": model_id, "name": name}
 
+@router.post("/custom-models/{model_id}/verify")
+async def verify_existing_custom_model(model_id: str):
+    """
+    Kayıtlı modelin durumunu yeniden doğrular. Frontend'in tam api_key
+    bilmesine gerek YOK — backend DB'den kendisi çeker. (Güvenlik
+    katmanı 5: api_key hiçbir şekilde HTTP response'a girmez.)
+    """
+    # Internal çağrı: api_key'e ihtiyacımız var, dolayısıyla include_secret=True
+    models = get_user_models(include_secret=True)
+    model = next((m for m in models if m["id"] == model_id), None)
+    if not model:
+        raise HTTPException(status_code=404, detail="Model bulunamadı")
+
+    return await verify_custom_model_api(
+        model.get("name") or "",
+        model["api_key"],
+        provider=model.get("provider"),
+        base_url=model.get("base_url"),
+    )
+
+
 @router.delete("/custom-models/{model_id}")
 async def remove_custom_model(model_id: str):
     delete_user_model(model_id)

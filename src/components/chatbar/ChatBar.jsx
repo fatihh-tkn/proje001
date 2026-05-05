@@ -307,9 +307,34 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                 },
                 onDone: ({ rag_used, rag_sources, ui_action, model, provider, prompt_tokens, completion_tokens, duration_ms }) => {
                     setMessages((prev) =>
-                        prev.map((m) => m.id === aiMsgId
-                            ? { ...m, isStreaming: false, ragUsed: rag_used, ragSources: rag_sources, completedAt: Date.now(), model, provider, promptTokens: prompt_tokens, completionTokens: completion_tokens, backendDurationMs: duration_ms }
-                            : m)
+                        prev.map((m) => {
+                            if (m.id !== aiMsgId) return m;
+                            // Defense-in-depth: backend done diye bildirsin ama metin
+                            // boş kaldıysa (chunk gelmediyse) kullanıcıya hata göster —
+                            // sessiz başarısızlık değil. node_error'lar varsa onlardan
+                            // anlamlı bir özet üret.
+                            const hasText = !!(m.text && m.text.trim());
+                            if (!hasText) {
+                                const errs = m.graphErrors || [];
+                                const summary = errs.length
+                                    ? errs.map(e => `• ${e.node}: ${e.text}`).join('\n')
+                                    : 'API anahtarınızın geçerli ve yeterli krediye sahip olduğundan emin olun (Ayarlar → Yapay Zeka Modelleri).';
+                                return {
+                                    ...m,
+                                    text: `❌ Yapay zeka cevabı üretilemedi.\n\n${summary}`,
+                                    isStreaming: false,
+                                    isError: true,
+                                    ragUsed: rag_used,
+                                    ragSources: rag_sources,
+                                    completedAt: Date.now(),
+                                    model, provider,
+                                    promptTokens: prompt_tokens,
+                                    completionTokens: completion_tokens,
+                                    backendDurationMs: duration_ms,
+                                };
+                            }
+                            return { ...m, isStreaming: false, ragUsed: rag_used, ragSources: rag_sources, completedAt: Date.now(), model, provider, promptTokens: prompt_tokens, completionTokens: completion_tokens, backendDurationMs: duration_ms };
+                        })
                     );
 
                     if (ui_action?.command === 'N8N_TRIGGERED') {

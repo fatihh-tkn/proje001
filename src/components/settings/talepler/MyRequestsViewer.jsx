@@ -570,7 +570,7 @@ const MyRequestsViewer = ({ currentUser }) => {
                     <input
                         placeholder="Talep ara..."
                         value={search}
-                        onChange={e => setSearch(e.target.value)}
+                        onChange={e = autoComplete="off"> setSearch(e.target.value)}
                     />
                 </div>
                 <label className="sort">

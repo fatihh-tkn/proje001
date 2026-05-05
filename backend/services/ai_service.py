@@ -666,7 +666,7 @@ class AIService:
         """
         Döner: (yanıt_metni, rag_kullanıldı_mı, kaynak_listesi, ui_action)
         """
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             return (
                 "❌ Hata: Kayıtlı hiçbir yapay zeka modeli bulunamadı. "
@@ -948,7 +948,7 @@ class AIService:
         SSE formatında text chunk'ları yield eder.
         Her chunk: 'data: <json>\n\n'  (type: 'chunk' | 'done' | 'error')
         """
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             yield f"data: {json.dumps({'type': 'error', 'text': '❌ Kayıtlı model bulunamadı. Ayarlar → Yapay Zeka Modelleri kısmından ekleyin.'})}\n\n"
             return
@@ -1296,7 +1296,7 @@ class AIService:
             system_prompt = agent_config.get("prompt", "Kullanıcının girdiği istemi profesyonelleştir.")
             temperature = agent_config.get("temperature", 0.3)
 
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
 
@@ -1365,7 +1365,7 @@ class AIService:
             system_prompt = agent_config.get("prompt", "Gelen metni profesyonelleştir.")
             temperature = agent_config.get("temperature", 0.4)
 
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
 
@@ -1445,7 +1445,7 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         full_system = fallback_prompt
         user_input = f"Kullanıcı mesajı: {user_message}"
 
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             raise ValueError("Kayıtlı hiçbir yapay zeka modeli bulunamadı.")
 
@@ -1531,7 +1531,7 @@ Mevcut UI sekmeleri: archive, database, meetings, ai_center, n8n, monitor"""
         if agent_config and not agent_config.get("can_ask_follow_up", True):
             return []
 
-        models = await run_in_threadpool(get_user_models)
+        models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:
             return []
 

@@ -177,7 +177,7 @@ export const LogsTab = ({ compact = false, filterUser = null, onClearUserFilter 
                         placeholder="İstek, yanıt, IP, MAC ara..."
                         className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#b91d2c] focus:ring-1 focus:ring-[#b91d2c] transition-all"
                         value={filters.search}
-                        onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                        onChange={(e) = autoComplete="off"> setFilters(f => ({ ...f, search: e.target.value }))}
                     />
                 </div>
 

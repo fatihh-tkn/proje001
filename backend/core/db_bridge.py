@@ -166,21 +166,27 @@ def clear_logs_from_db() -> None:
 
 
 # -- get_user_models ----------------------------------------------------------
-def get_user_models() -> list[dict]:
+def get_user_models(include_secret: bool = False) -> list[dict]:
     """
     Tüm kayıtlı modelleri döner. Her kayıt için provider registry'ye danışıp
-    base_url, extra_headers ve protocol alanlarını da hesaplar — böylece
-    çağrı yapan kod (ai_service / llm_adapter) hard-coded URL bilmek zorunda
-    kalmaz.
+    base_url, extra_headers ve protocol alanlarını da hesaplar.
+
+    GÜVENLİK: Default olarak gerçek `api_key` döndürmez (sadece masked_key).
+    Backend internal kullanım (ai_service / llm_adapter) için açıkça
+    include_secret=True geçmeli. HTTP response'a dönen yerler asla True
+    geçmemeli — frontend tam key'i hiç görmemeli.
     """
     from services import provider_registry
+    from services.crypto_service import decrypt as _decrypt_secret
 
     with get_session() as db:
         from sqlalchemy import select
         rows = list(db.scalars(select(AIModeli).order_by(AIModeli.olusturulma_tarihi)).all())
         result = []
         for m in rows:
-            key = m.api_anahtari
+            # DB'den gelen değer şifreli olabilir; decrypt() prefix'e bakar,
+            # düz metinse olduğu gibi döner (geriye dönük uyumlu).
+            key = _decrypt_secret(m.api_anahtari) or ""
             masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
             raw_provider = m.tedarikci or ""
             raw_base_url = m.temel_url or ""
@@ -189,10 +195,9 @@ def get_user_models() -> list[dict]:
                 "provider": raw_provider,
                 "base_url": raw_base_url,
             })
-            result.append({
+            item = {
                 "id": m.kimlik,
                 "name": m.ad,
-                "api_key": key,
                 "masked_key": masked,
                 "created_at": m.olusturulma_tarihi,
                 # raw_provider boşsa registry'nin tahminini göster
@@ -200,7 +205,6 @@ def get_user_models() -> list[dict]:
                 "provider_label": spec["label"],
                 "protocol": spec["protocol"],
                 "base_url": spec["base_url"],
-                "extra_headers": spec["extra_headers"],
                 "has_key": True,
                 "status": "active",
                 "description": "Kullanici tarafindan eklenen model.",
@@ -208,7 +212,12 @@ def get_user_models() -> list[dict]:
                 "cost_per_1k": "-",
                 "max_tokens": "-",
                 "features": ["Ozel Model"],
-            })
+            }
+            if include_secret:
+                # Yalnızca backend internal çağrıları için. HTTP'ye gitmemeli.
+                item["api_key"] = key
+                item["extra_headers"] = spec["extra_headers"]
+            result.append(item)
         return result
 
 
@@ -221,10 +230,16 @@ def add_user_model(
     provider: str | None = None,
     base_url: str | None = None,
 ) -> None:
+    """
+    Yeni model kaydı ekler. api_key, FERNET_KEY tanımlıysa Fernet ile
+    şifrelenerek yazılır; yoksa düz metin yazılır (geçiş sürümü).
+    """
+    from services.crypto_service import encrypt as _encrypt_secret
+
     with get_session() as db:
         model = AIModeli(
             ad=name,
-            api_anahtari=api_key,
+            api_anahtari=_encrypt_secret(api_key),
             tedarikci=(provider or None),
             temel_url=(base_url or None),
         )

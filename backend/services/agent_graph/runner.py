@@ -169,6 +169,21 @@ async def stream_run(
     started_at = time.time()
     state.setdefault("started_at", started_at * 1000)
 
+    # Erken çıkış: hiç model kayıtlı değilse graph'ı çalıştırmaya gerek yok.
+    # Aksi halde kullanıcı "Süreç · 14.5 sn" + boş cevap görüyor (RAG çalışıyor
+    # ama LLM çağrıları sessizce patlıyor).
+    try:
+        from core.db_bridge import get_user_models
+        if not get_user_models(include_secret=False):
+            yield _sse({
+                "type": "error",
+                "text": "❌ Kayıtlı yapay zeka modeli yok. "
+                        "Ayarlar → Yapay Zeka Modelleri kısmından bir model ekleyin.",
+            })
+            return
+    except Exception as _e:
+        logger.warning("[runner] model precheck hatası: %s", _e)
+
     config: dict = {}
     if checkpointer is not None:
         config["configurable"] = {
@@ -179,6 +194,7 @@ async def stream_run(
 
     aggregated: dict = {}
     intent_emitted: bool = False
+    chunk_emitted: bool = False  # En az bir LLM chunk üretildi mi?
 
     try:
         async for stream_mode, payload in graph.astream(
@@ -189,6 +205,10 @@ async def stream_run(
             # ── Custom event'ler: node içinden writer({...}) ile gelir ──
             if stream_mode == "custom":
                 if isinstance(payload, dict) and "type" in payload:
+                    # En az bir LLM chunk geldi mi izle — sonda kullanıcıya
+                    # boş baloncuk göstermemek için.
+                    if payload.get("type") == "chunk" and (payload.get("text") or "").strip():
+                        chunk_emitted = True
                     yield _sse(payload)
                 continue
 
@@ -261,6 +281,26 @@ async def stream_run(
             await run_in_threadpool(_persist_run, dict(state), aggregated, duration_ms, None)
         except Exception as e:
             logger.warning("[runner] persist_run hatası: %s", e)
+
+        # Hiç LLM chunk üretilmediyse done yerine error — kullanıcı yoksa
+        # cevap "boş baloncuk + RAG kartları" şeklinde görmesin.
+        if not chunk_emitted:
+            node_errors = aggregated.get("node_errors") or {}
+            if node_errors:
+                # En anlamlı node hatasını öne çıkar (genelde aggregator/specialist)
+                err_msg = next(iter(node_errors.values()))
+                err_text = (
+                    f"❌ Yapay zeka cevabı üretilemedi: {err_msg}\n\n"
+                    "Çözüm: Ayarlar → Yapay Zeka Modelleri → API anahtarınızı doğrulayın."
+                )
+            else:
+                err_text = (
+                    "❌ Yapay zeka cevabı üretilemedi. "
+                    "API anahtarınızın geçerli ve yeterli krediye sahip olduğundan emin olun "
+                    "(Ayarlar → Yapay Zeka Modelleri)."
+                )
+            yield _sse({"type": "error", "text": err_text})
+            return
 
         yield _sse({
             "type": "done",

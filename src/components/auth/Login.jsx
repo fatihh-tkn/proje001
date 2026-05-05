@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import logo from '../../assets/sap yılgenci logo.png';
+import {
+    Mail, Lock, Eye, EyeOff, Check, ArrowRight, X,
+    UserPlus, AlertTriangle, Search, Clock, Shield,
+} from 'lucide-react';
 
 /* ══════════════════════════════════════════════════════════════════
    Hızlı Oturum Yönetimi (localStorage)
@@ -24,12 +27,8 @@ function saveQuickSession(user) {
         isSuper: user.super || false,
         logged_at: new Date().toISOString(),
     };
-    if (idx >= 0) {
-        sessions[idx] = entry;
-    } else {
-        sessions.unshift(entry);
-        sessions.splice(MAX_SESSIONS); // max 5 tut
-    }
+    if (idx >= 0) sessions[idx] = entry;
+    else { sessions.unshift(entry); sessions.splice(MAX_SESSIONS); }
     sessions.sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
     localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
 }
@@ -46,90 +45,68 @@ function isSessionLimitReached(email) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Yardımcı CSS
+   Tutarlı Avatar Rengi (her isim için aynı renk)
    ══════════════════════════════════════════════════════════════════ */
-const LABEL_CLS =
-    'absolute z-10 pointer-events-none transition-all duration-200 ' +
-    'top-0 left-3 -translate-y-1/2 scale-[0.78] ' +
-    'text-[11px] font-bold uppercase tracking-wider text-slate-500 ' +
-    'peer-placeholder-shown:top-1/2 peer-placeholder-shown:left-11 ' +
-    'peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:scale-100 ' +
-    'peer-placeholder-shown:text-[13px] peer-placeholder-shown:normal-case ' +
-    'peer-placeholder-shown:font-semibold peer-placeholder-shown:tracking-normal ' +
-    'peer-placeholder-shown:text-slate-400 ' +
-    'group-focus-within:top-0 group-focus-within:left-3 ' +
-    'group-focus-within:-translate-y-1/2 group-focus-within:scale-[0.78] ' +
-    'group-focus-within:text-[11px] group-focus-within:uppercase ' +
-    'group-focus-within:font-bold group-focus-within:tracking-wider group-focus-within:text-slate-500';
+const AVATAR_PALETTE = [
+    { bg: '#DC2626', fg: '#FFFFFF' }, // kurumsal kırmızı
+    { bg: '#0E7490', fg: '#FFFFFF' }, // teal
+    { bg: '#475569', fg: '#FFFFFF' }, // slate
+    { bg: '#7C2D12', fg: '#FFFFFF' }, // kahve
+    { bg: '#0F766E', fg: '#FFFFFF' }, // yeşil
+    { bg: '#6D28D9', fg: '#FFFFFF' }, // mor
+];
 
-const INPUT_CLS =
-    'peer w-full pl-11 pr-4 py-3.5 ' +
-    'bg-white/80 border border-slate-200/80 rounded-md outline-none ' +
-    'focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 focus:bg-white ' +
-    'transition-all font-semibold text-slate-800 ' +
-    'shadow-[inset_0_1px_2px_rgba(0,0,0,0.01),0_1px_3px_rgba(0,0,0,0.02)] hover:bg-white/90';
-
-const INPUT_CLS_PR = INPUT_CLS.replace('pr-4', 'pr-12');
-
-/* ══════════════════════════════════════════════════════════════════
-   Avatar Harfi
-   ══════════════════════════════════════════════════════════════════ */
-function Avatar({ name, size = 40 }) {
+function avatarOf(name) {
     const initials = name
-        ? name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+        ? name.trim().split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2)
         : '?';
-    const colors = [
-        ['#1e40af', '#dbeafe'], ['#065f46', '#d1fae5'], ['#7c2d12', '#fee2e2'],
-        ['#4c1d95', '#ede9fe'], ['#0c4a6e', '#e0f2fe'], ['#713f12', '#fef3c7'],
-    ];
-    const [fg, bg] = colors[name?.charCodeAt(0) % colors.length || 0];
-    return (
-        <div
-            style={{ width: size, height: size, backgroundColor: bg, color: fg, borderRadius: size * 0.28 }}
-            className="flex items-center justify-center font-black text-[14px] shrink-0 select-none"
-        >
-            {initials}
-        </div>
-    );
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+    const palette = AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+    return { initials, ...palette };
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Hızlı Oturum Kartı
+   Avatar Pill — yatay seçici listesi için
    ══════════════════════════════════════════════════════════════════ */
-function QuickSessionCard({ session, onSelect, onRemove }) {
+function AccountPill({ session, isActive, onSelect, onRemove }) {
+    const av = avatarOf(session.name);
+    const firstName = (session.name || '').split(' ')[0] || session.email;
     return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.85 }}
-            className="relative group"
-        >
+        <div className="relative group shrink-0">
             <button
                 type="button"
                 onClick={() => onSelect(session)}
-                className="w-full flex flex-col items-center gap-2 p-3 rounded-xl border border-slate-200/80 bg-white/70 hover:bg-white hover:border-blue-300/60 hover:shadow-md transition-all duration-200 text-center"
+                className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border-2 transition-all duration-200 ${
+                    isActive
+                        ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-sm'
+                        : 'bg-white border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-50'
+                }`}
+                title={`${session.name} · ${session.email}`}
             >
-                <Avatar name={session.name} size={44} />
-                <div className="w-full min-w-0">
-                    <p className="text-[12px] font-bold text-slate-800 truncate leading-tight">
-                        {session.name}
-                    </p>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5 font-mono">
-                        {session.email}
-                    </p>
-                </div>
+                <span
+                    style={{
+                        backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : av.bg,
+                        color: isActive ? '#fff' : av.fg,
+                    }}
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black tracking-tight"
+                >
+                    {av.initials}
+                </span>
+                <span className="text-[12px] font-bold whitespace-nowrap max-w-[80px] truncate">
+                    {firstName}
+                </span>
+                {isActive && <Check size={13} strokeWidth={3} className="ml-0.5" />}
             </button>
-            {/* Kaldır butonu */}
             <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onRemove(session.id); }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-100 border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-[10px] font-bold"
-                title="Bu oturumu kaldır"
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border border-stone-300 text-stone-400 hover:bg-red-50 hover:text-red-500 hover:border-red-300 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-[8px] font-bold shadow-sm"
+                title="Bu hesabı kaldır"
             >
-                ×
+                <X size={10} strokeWidth={3} />
             </button>
-        </motion.div>
+        </div>
     );
 }
 
@@ -137,40 +114,48 @@ function QuickSessionCard({ session, onSelect, onRemove }) {
    Ana Login Bileşeni
    ══════════════════════════════════════════════════════════════════ */
 const Login = ({ onLogin }) => {
-    const [mode, setMode] = useState('quick'); // 'quick' | 'form' | 'register' | 'selected'
+    // Mod: 'login' (mevcut hesap) | 'register' (yeni hesap)
+    const [mode, setMode] = useState('login');
+
     const [quickSessions, setQuickSessions] = useState([]);
-    const [selectedSession, setSelectedSession] = useState(null);
+    const [selectedSession, setSelectedSession] = useState(null); // { id, name, email, ... }
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [passwordConfirm, setPasswordConfirm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [rememberDevice, setRememberDevice] = useState(true);
+
     const [error, setError] = useState('');
     const [errorType, setErrorType] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [confirmShake, setConfirmShake] = useState(false);
     const [isStarting, setIsStarting] = useState(false);
 
-    // Hızlı oturumları yükle
+    /* ── Kayıtlı oturumları yükle, varsa ilkini otomatik seç ── */
     useEffect(() => {
         const sessions = getQuickSessions();
         setQuickSessions(sessions);
-        // Hiç oturum yoksa direkt form moduna geç
-        if (sessions.length === 0) setMode('form');
-        else setMode('quick');
+        if (sessions.length > 0) {
+            setSelectedSession(sessions[0]);
+            setEmail(sessions[0].email);
+        }
     }, []);
 
-    const refreshSessions = () => {
-        const sessions = getQuickSessions();
-        setQuickSessions(sessions);
-    };
+    const refreshSessions = () => setQuickSessions(getQuickSessions());
 
     const handleRemoveSession = (id) => {
         removeQuickSession(id);
-        refreshSessions();
-        const updated = getQuickSessions();
-        if (updated.length === 0) setMode('form');
+        const remaining = getQuickSessions();
+        setQuickSessions(remaining);
+        // Aktif seçim kaldırıldıysa sıradakine geç
+        if (selectedSession?.id === id) {
+            const next = remaining[0] || null;
+            setSelectedSession(next);
+            setEmail(next?.email || '');
+            setPassword('');
+        }
     };
 
     const handleSelectSession = (session) => {
@@ -178,18 +163,19 @@ const Login = ({ onLogin }) => {
         setEmail(session.email);
         setPassword('');
         setError('');
-        setMode('selected');
+        setMode('login');
     };
 
-    const handleBackToQuick = () => {
+    // "+ Başka hesap" → kayıtlı oturum yokmuş gibi davran (manuel email gir)
+    const handleNewAccount = () => {
         setSelectedSession(null);
         setEmail('');
         setPassword('');
         setError('');
-        setMode('quick');
+        setMode('login');
     };
 
-    // Şifre gücü (sadece kayıt)
+    /* ── Şifre gücü (sadece kayıt için) ── */
     const REQUIREMENTS = [
         { regex: /.{8,}/, text: 'En az 8 karakter' },
         { regex: /[A-Z]/, text: 'En az 1 büyük harf' },
@@ -200,11 +186,9 @@ const Login = ({ onLogin }) => {
         [password]);
     const strengthScore = strength.filter(r => r.met).length;
     const strengthBarColor =
-        strengthScore === 0 ? 'bg-slate-200' :
+        strengthScore === 0 ? 'bg-stone-200' :
             strengthScore === 1 ? 'bg-red-400' :
-                strengthScore === 2 ? 'bg-amber-400' :
-                    'bg-emerald-500';
-
+                strengthScore === 2 ? 'bg-amber-400' : 'bg-emerald-500';
     const passwordsMatch = password.length > 0 && password === passwordConfirm;
 
     const handleConfirmChange = (e) => {
@@ -222,25 +206,23 @@ const Login = ({ onLogin }) => {
         }
     }, [confirmShake]);
 
+    /* ── Submit ── */
     const handleSubmit = async (e) => {
         e.preventDefault();
         const isRegister = mode === 'register';
         const loginEmail = email.trim();
 
-        if (!loginEmail || !password) { setError('Lütfen e-posta ve şifrenizi girin.'); return; }
+        if (!loginEmail || !password) { setError('Lütfen e-posta ve şifrenizi girin.'); setErrorType('generic'); return; }
 
         if (isRegister) {
-            if (!name) { setError('Lütfen ad soyad bilgisini girin.'); return; }
-            if (strengthScore < 3) { setError('Şifre gereksinimlerini karşılamıyor.'); return; }
-            if (password !== passwordConfirm) { setError('Şifreler birbiriyle uyuşmuyor.'); return; }
+            if (!name) { setError('Lütfen ad soyad bilgisini girin.'); setErrorType('generic'); return; }
+            if (strengthScore < 3) { setError('Şifre gereksinimlerini karşılamıyor.'); setErrorType('generic'); return; }
+            if (password !== passwordConfirm) { setError('Şifreler birbiriyle uyuşmuyor.'); setErrorType('generic'); return; }
         }
 
-        // Hem giriş hem kayıt için 5-limit kontrolü (listeye yeni ekleme olacaksa)
-        if (isSessionLimitReached(loginEmail)) {
-            setError(
-                `Bu bilgisayarda en fazla ${MAX_SESSIONS} kayıtlı oturum tutulabilir. ` +
-                'Yeni bir hesapla giriş yapmak için mevcut oturumlardan birini kaldırın.'
-            );
+        // Cihazda yeni hesap kaydedilecekse limit kontrolü
+        if (rememberDevice && isSessionLimitReached(loginEmail)) {
+            setError(`Bu cihazda en fazla ${MAX_SESSIONS} kayıtlı hesap tutulabilir. Listeden birini kaldırarak devam edin.`);
             setErrorType('limit');
             return;
         }
@@ -272,9 +254,11 @@ const Login = ({ onLogin }) => {
                 return;
             }
 
-            // Başarılı giriş veya kayıt → hızlı oturuma kaydet
+            // Başarılı: cihazda hatırla seçeneği işaretliyse oturuma kaydet
             try {
-                saveQuickSession({ ...data, eposta: data.eposta || loginEmail });
+                if (rememberDevice) {
+                    saveQuickSession({ ...data, eposta: data.eposta || loginEmail });
+                }
                 localStorage.setItem('current_user', JSON.stringify({
                     id: data.id, super: data.super, name: data.tam_ad, email: data.eposta || loginEmail,
                 }));
@@ -288,69 +272,70 @@ const Login = ({ onLogin }) => {
         }
     };
 
-    /* ── Render ── */
-    return (
-        <div className="flex h-screen w-full items-center justify-center overflow-hidden font-sans bg-[#f8f9fa]">
-            <motion.div className="relative w-full max-w-[440px] px-6"
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
+    const isAutoFilled = !!selectedSession && email === selectedSession.email;
+    const sessionLimitReached = quickSessions.length >= MAX_SESSIONS;
 
+    /* ════════════════════════════════════════════════════════════════
+       Render
+       ════════════════════════════════════════════════════════════════ */
+    return (
+        <div className="flex h-screen w-full items-center justify-center overflow-hidden font-sans bg-[#F4F4F5]">
+            <motion.div
+                className="relative w-full max-w-[420px] px-6"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            >
                 {isStarting && (
                     <style>{`@keyframes traceCCW { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(-360deg); } }`}</style>
                 )}
 
-                <div className={`relative ${isStarting ? 'p-[2px] rounded-[14px] overflow-hidden' : ''}`}>
+                <div className={`relative ${isStarting ? 'p-[2px] rounded-[16px] overflow-hidden' : ''}`}>
                     {isStarting && (
-                        <div className="absolute top-1/2 left-1/2 w-[200%] h-[200%]"
-                            style={{ background: 'conic-gradient(from 0deg, transparent 75%, #b91c1c 100%)', animation: 'traceCCW 1.8s linear infinite', zIndex: 0 }}
+                        <div
+                            className="absolute top-1/2 left-1/2 w-[200%] h-[200%]"
+                            style={{ background: 'conic-gradient(from 0deg, transparent 75%, #DC2626 100%)', animation: 'traceCCW 1.8s linear infinite', zIndex: 0 }}
                         />
                     )}
 
-                    <div className={`relative z-10 backdrop-blur-[40px] px-9 pt-0 pb-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.9)] overflow-hidden ${isStarting ? 'bg-[#f8f9fa] rounded-[12px]' : 'bg-white/85 rounded-xl border border-white/60'}`}>
+                    <div className={`relative z-10 px-8 py-8 ${isStarting ? 'bg-white rounded-[14px]' : 'bg-white rounded-2xl border border-stone-200/80 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.10)]'}`}>
 
-                        {/* Logo */}
-                        <div className="flex flex-col items-center justify-center mb-5">
-                            <div className="flex items-center justify-center w-auto -mx-10 -mt-16 -mb-12 pointer-events-none">
-                                <img src={logo} alt="SAP Yılgenci Logo"
-                                    className="w-full h-auto object-contain mix-blend-multiply scale-[1.10]"
-                                    onError={(e) => { e.target.style.display = 'none'; }} />
-                            </div>
-                            <h2 className="text-[22px] font-black tracking-tight text-slate-800">
-                                {mode === 'register' ? 'Hesap Oluşturun' : 'Akıllı Çalışma Alanı'}
+                        {/* ── Header: GİRİŞ ── */}
+                        <div className="flex justify-end mb-6">
+                            <h2 className="text-[13px] font-black tracking-[0.25em] text-stone-400 uppercase">
+                                {mode === 'register' ? 'KAYIT' : 'GİRİŞ'}
                             </h2>
                         </div>
 
-                        {/* Hata Mesajı */}
+                        {/* ── Hata Mesajı ── */}
                         <AnimatePresence mode="wait">
                             {error && (
                                 <motion.div
                                     key={error}
                                     initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                    className={`relative mb-4 rounded-md text-sm font-semibold shadow-sm border overflow-hidden
+                                    className={`relative mb-4 rounded-md text-sm font-semibold border overflow-hidden
                                         ${errorType === 'suspended' ? 'bg-amber-50 border-amber-300'
                                             : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
-                                                : errorType === 'starting' ? 'bg-slate-50 border-slate-200'
+                                                : errorType === 'starting' ? 'bg-stone-50 border-stone-200'
                                                     : errorType === 'limit' ? 'bg-orange-50 border-orange-200'
                                                         : 'bg-red-50 border-red-200'}`}
                                 >
                                     <div className={`h-1 w-full ${errorType === 'suspended' ? 'bg-amber-400'
                                         : errorType === 'not_found' ? 'bg-blue-400'
-                                            : errorType === 'starting' ? 'bg-slate-400'
+                                            : errorType === 'starting' ? 'bg-stone-400'
                                                 : errorType === 'limit' ? 'bg-orange-400'
                                                     : 'bg-red-400'}`} />
-                                    <div className="flex items-start gap-3 p-3">
-                                        <span className="text-xl shrink-0 mt-0.5">
-                                            {errorType === 'suspended' ? '⚠️'
-                                                : errorType === 'not_found' ? '🔍'
-                                                    : errorType === 'starting' ? '⏳'
-                                                        : errorType === 'limit' ? '🔒'
-                                                            : '🔐'}
-                                        </span>
+                                    <div className="flex items-start gap-2.5 p-3">
+                                        <AlertTriangle size={16} className={`shrink-0 mt-0.5 ${errorType === 'suspended' ? 'text-amber-600'
+                                            : errorType === 'not_found' ? 'text-blue-600'
+                                                : errorType === 'starting' ? 'text-stone-500'
+                                                    : errorType === 'limit' ? 'text-orange-600'
+                                                        : 'text-red-600'}`} />
                                         <span className={`leading-snug text-[12px] ${errorType === 'suspended' ? 'text-amber-800'
                                             : errorType === 'not_found' ? 'text-blue-700'
-                                                : errorType === 'starting' ? 'text-slate-600'
+                                                : errorType === 'starting' ? 'text-stone-600'
                                                     : errorType === 'limit' ? 'text-orange-700'
-                                                        : 'text-red-600'}`}>
+                                                        : 'text-red-700'}`}>
                                             {error}
                                         </span>
                                     </div>
@@ -358,214 +343,240 @@ const Login = ({ onLogin }) => {
                             )}
                         </AnimatePresence>
 
-                        {/* ── MOD: Hızlı Oturum Seçimi ── */}
-                        <AnimatePresence mode="wait">
-                            {mode === 'quick' && (
-                                <motion.div key="quick"
-                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                    className="flex flex-col gap-4"
-                                >
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">
-                                        Hızlı Oturum Aç
-                                    </p>
-                                    <div className={`grid gap-2.5 ${quickSessions.length === 1 ? 'grid-cols-1' : quickSessions.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                                        <AnimatePresence>
-                                            {quickSessions.map(sess => (
-                                                <QuickSessionCard
-                                                    key={sess.id}
-                                                    session={sess}
-                                                    onSelect={handleSelectSession}
-                                                    onRemove={handleRemoveSession}
-                                                />
-                                            ))}
-                                        </AnimatePresence>
-                                    </div>
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-5" autoComplete="off">
 
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <div className="flex-1 h-px bg-slate-100" />
+                            {/* ── KAYITLI HESAPLAR (sadece login modu) ── */}
+                            {mode === 'login' && quickSessions.length > 0 && (
+                                <div className="flex flex-col gap-2.5">
+                                    <p className="text-[10px] font-black tracking-[0.2em] text-stone-500 uppercase">
+                                        Kayıtlı Hesaplar
+                                    </p>
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-1.5 -mx-1 px-1 mac-horizontal-scrollbar">
+                                        {quickSessions.map(sess => (
+                                            <AccountPill
+                                                key={sess.id}
+                                                session={sess}
+                                                isActive={selectedSession?.id === sess.id}
+                                                onSelect={handleSelectSession}
+                                                onRemove={handleRemoveSession}
+                                            />
+                                        ))}
+                                        {!sessionLimitReached && (
+                                            <button
+                                                type="button"
+                                                onClick={handleNewAccount}
+                                                className={`shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1 rounded-full border-2 border-dashed transition-all duration-200 ${
+                                                    !selectedSession
+                                                        ? 'border-stone-400 bg-stone-50 text-stone-700'
+                                                        : 'border-stone-300 bg-white text-stone-500 hover:border-stone-400 hover:text-stone-700'
+                                                }`}
+                                                title="Mevcut hesaplardan hiçbiri değil"
+                                            >
+                                                <UserPlus size={13} strokeWidth={2.5} />
+                                                <span className="text-[12px] font-bold whitespace-nowrap">+ Başka hesap</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Ad Soyad (sadece kayıt) ── */}
+                            {mode === 'register' && (
+                                <div className="space-y-1.5">
+                                    <label htmlFor="reg-name" className="text-[12px] font-bold text-stone-700">Ad Soyad</label>
+                                    <div className="relative">
+                                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                                        <input
+                                            id="reg-name" type="text" value={name} onChange={e => setName(e.target.value)}
+                                            placeholder="Ad Soyad"
+                                            className="w-full h-12 pl-10 pr-3 bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-400 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
+                                            autoComplete="off"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── E-posta ── */}
+                            <div className="space-y-1.5">
+                                <label htmlFor="login-email" className="text-[12px] font-bold text-stone-700">E-posta</label>
+                                <div className="relative">
+                                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10" />
+                                    <input
+                                        id="login-email"
+                                        type="email"
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        placeholder={selectedSession ? selectedSession.email : 'eposta@sirket.com'}
+                                        className={`w-full h-12 pl-10 ${isAutoFilled && mode === 'login' ? 'pr-28' : 'pr-3'} bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-400 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all`}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        required
+                                    />
+                                    {isAutoFilled && mode === 'login' && (
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black tracking-wider uppercase">
+                                            <Check size={11} strokeWidth={3} />
+                                            OTOMATİK
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* ── Şifre ── */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label htmlFor="login-password" className="text-[12px] font-bold text-stone-700">Şifre</label>
+                                    {mode === 'login' && (
+                                        <a
+                                            href="#"
+                                            onClick={(e) => e.preventDefault()}
+                                            className="text-[11px] font-bold text-[#DC2626] hover:text-[#B91C1C] hover:underline transition-colors"
+                                        >
+                                            Unuttum
+                                        </a>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10" />
+                                    <input
+                                        id="login-password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        className="w-full h-12 pl-10 pr-11 bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-300 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
+                                        autoComplete="new-password"
+                                        name="login-password-secret"
+                                        data-1p-ignore="true"
+                                        data-lpignore="true"
+                                        data-form-type="other"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(v => !v)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 transition-colors p-1"
+                                        tabIndex={-1}
+                                        title={showPassword ? 'Gizle' : 'Göster'}
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* ── Şifre gücü (kayıt) ── */}
+                            {mode === 'register' && password.length > 0 && (
+                                <div className="-mt-2">
+                                    <div className="h-1 w-full overflow-hidden rounded-full bg-stone-100 mb-2">
+                                        <div className={`h-full transition-all duration-500 ease-out ${strengthBarColor}`}
+                                            style={{ width: `${(strengthScore / 3) * 100}%` }} />
+                                    </div>
+                                    <ul className="flex flex-col gap-1">
+                                        {strength.map((req, i) => (
+                                            <li key={i} className="flex items-center gap-2">
+                                                {req.met
+                                                    ? <Check size={12} className="text-emerald-500 shrink-0" strokeWidth={3} />
+                                                    : <X size={12} className="text-stone-300 shrink-0" strokeWidth={3} />}
+                                                <span className={`text-[11px] font-medium ${req.met ? 'text-emerald-600' : 'text-stone-400'}`}>{req.text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* ── Şifre Tekrar (kayıt) ── */}
+                            {mode === 'register' && (
+                                <div className="space-y-1.5">
+                                    <label htmlFor="reg-pwd2" className="text-[12px] font-bold text-stone-700">Şifre Tekrar</label>
+                                    <div className="relative">
+                                        <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                                        <motion.input
+                                            id="reg-pwd2"
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={passwordConfirm} onChange={handleConfirmChange}
+                                            placeholder="••••••••"
+                                            className="w-full h-12 pl-10 pr-3 bg-stone-50 border rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-300 focus:bg-white focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
+                                            autoComplete="new-password"
+                                            data-1p-ignore="true"
+                                            data-lpignore="true"
+                                            animate={{
+                                                x: confirmShake ? [-8, 8, -6, 6, -4, 4, 0] : 0,
+                                                borderColor: passwordsMatch ? 'rgb(16 185 129)' : 'rgb(231 229 228)',
+                                            }}
+                                            transition={{ duration: 0.4 }}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Bu cihazda beni hatırla (sadece login) ── */}
+                            {mode === 'login' && (
+                                <label className="flex items-center gap-2.5 cursor-pointer select-none -my-1">
+                                    <span className="relative flex items-center justify-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={rememberDevice}
+                                            onChange={e => setRememberDevice(e.target.checked)}
+                                            className="peer appearance-none w-4 h-4 rounded border-2 border-stone-300 checked:border-[#DC2626] checked:bg-[#DC2626] transition-colors cursor-pointer"
+                                        />
+                                        <Check
+                                            size={11}
+                                            strokeWidth={4}
+                                            className="absolute text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"
+                                        />
+                                    </span>
+                                    <span className="text-[12px] font-semibold text-stone-700">
+                                        Bu cihazda beni hatırla
+                                    </span>
+                                </label>
+                            )}
+
+                            {/* ── Giriş Yap / Hesabı Aç butonu ── */}
+                            <button
+                                type="submit"
+                                disabled={isLoading}
+                                className={`w-full h-12 rounded-md bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold text-[13px] tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_14px_-4px_rgba(220,38,38,0.5)] transition-all duration-200 ${
+                                    isLoading ? 'opacity-70 cursor-wait' : 'hover:shadow-[0_6px_18px_-4px_rgba(220,38,38,0.6)] hover:-translate-y-0.5'
+                                }`}
+                            >
+                                {isLoading ? (
+                                    <span className="tracking-widest">BEKLEYİN...</span>
+                                ) : (
+                                    <>
+                                        <span>{mode === 'register' ? 'Hesabı Aç' : 'Giriş Yap'}</span>
+                                        <ArrowRight size={16} strokeWidth={2.5} />
+                                    </>
+                                )}
+                            </button>
+
+                            {/* ── Alt bağlantı: Kayıt ol / Giriş'e dön ── */}
+                            <div className="text-center pt-1">
+                                {mode === 'login' ? (
+                                    <p className="text-[12px] font-semibold text-stone-500">
+                                        Hesabın yok mu?{' '}
                                         <button
                                             type="button"
-                                            onClick={() => { setMode('form'); setEmail(''); setPassword(''); setError(''); }}
-                                            className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors whitespace-nowrap"
+                                            onClick={() => { setMode('register'); setError(''); setSelectedSession(null); setEmail(''); setPassword(''); }}
+                                            className="text-[#DC2626] hover:text-[#B91C1C] hover:underline font-bold transition-colors"
                                         >
-                                            {quickSessions.length >= MAX_SESSIONS
-                                                ? 'Oturum limiti dolu'
-                                                : '+ Başka bir hesapla giriş yap'}
+                                            Kayıt ol
                                         </button>
-                                        <div className="flex-1 h-px bg-slate-100" />
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* ── MOD: Seçili Oturum (şifre adımı) ── */}
-                            {mode === 'selected' && selectedSession && (
-                                <motion.div key="selected"
-                                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                                >
-                                    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-                                        {/* Seçili kullanıcı kartı */}
-                                        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200/60 rounded-xl">
-                                            <Avatar name={selectedSession.name} size={40} />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[13px] font-bold text-slate-800 truncate">{selectedSession.name}</p>
-                                                <p className="text-[11px] text-slate-400 truncate font-mono">{selectedSession.email}</p>
-                                            </div>
-                                            <button type="button" onClick={handleBackToQuick}
-                                                className="text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors shrink-0 px-2 py-1 rounded hover:bg-blue-50">
-                                                Değiştir
-                                            </button>
-                                        </div>
-
-                                        {/* Şifre */}
-                                        <div className="group relative">
-                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors z-10">
-                                                <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                </svg>
-                                            </div>
-                                            <input autoFocus id="password-quick" type={showPassword ? 'text' : 'password'}
-                                                value={password} onChange={e => setPassword(e.target.value)}
-                                                className={INPUT_CLS_PR} placeholder=" " required />
-                                            <label htmlFor="password-quick" className={LABEL_CLS}>Şifre</label>
-                                            <button type="button" onClick={() => setShowPassword(v => !v)}
-                                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-blue-600 transition-colors z-10 outline-none">
-                                                {showPassword
-                                                    ? <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0l-3.59-3.59" /></svg>
-                                                    : <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                                }
-                                            </button>
-                                        </div>
-
-                                        <button type="submit" disabled={isLoading}
-                                            className={`w-full bg-slate-900 border border-slate-800 text-white font-bold tracking-widest uppercase text-xs py-3.5 rounded-md shadow-[0_4px_15px_-4px_rgba(0,0,0,0.4)] transition-all duration-300 ${isLoading ? 'opacity-70 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.5)]'}`}>
-                                            {isLoading ? 'BEKLEYİN...' : 'GİRİŞ YAP'}
+                                    </p>
+                                ) : (
+                                    <p className="text-[12px] font-semibold text-stone-500">
+                                        Hesabın var mı?{' '}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setMode('login'); setError(''); }}
+                                            className="text-[#DC2626] hover:text-[#B91C1C] hover:underline font-bold transition-colors"
+                                        >
+                                            Giriş yap
                                         </button>
-                                    </form>
-                                </motion.div>
-                            )}
-
-                            {/* ── MOD: Tam Form (yeni hesap girişi) ── */}
-                            {(mode === 'form' || mode === 'register') && (
-                                <motion.div key="form"
-                                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                                >
-                                    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-
-                                        {mode === 'register' && (
-                                            <div className="group relative">
-                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors z-10">
-                                                    <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                                </div>
-                                                <input id="name" type="text" value={name} onChange={e => setName(e.target.value)}
-                                                    className={INPUT_CLS} placeholder=" " required />
-                                                <label htmlFor="name" className={LABEL_CLS}>Ad Soyad</label>
-                                            </div>
-                                        )}
-
-                                        <div className="group relative">
-                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors z-10">
-                                                <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
-                                            </div>
-                                            <input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)}
-                                                className={INPUT_CLS} placeholder=" " required />
-                                            <label htmlFor="email" className={LABEL_CLS}>Geçerli E-posta</label>
-                                        </div>
-
-                                        <div className="group relative">
-                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors z-10">
-                                                <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                                            </div>
-                                            <input id="password" type={showPassword ? 'text' : 'password'} value={password}
-                                                onChange={e => setPassword(e.target.value)}
-                                                className={INPUT_CLS_PR} placeholder=" " required />
-                                            <label htmlFor="password" className={LABEL_CLS}>Şifre</label>
-                                            <button type="button" onClick={() => setShowPassword(v => !v)}
-                                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-blue-600 transition-colors z-10 outline-none">
-                                                {showPassword
-                                                    ? <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0l-3.59-3.59" /></svg>
-                                                    : <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                                }
-                                            </button>
-                                        </div>
-
-                                        {/* Şifre gücü */}
-                                        {mode === 'register' && password.length > 0 && (
-                                            <div className="-mt-1">
-                                                <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100 mb-2.5">
-                                                    <div className={`h-full transition-all duration-500 ease-out ${strengthBarColor}`}
-                                                        style={{ width: `${(strengthScore / 3) * 100}%` }} />
-                                                </div>
-                                                <ul className="flex flex-col gap-1">
-                                                    {strength.map((req, i) => (
-                                                        <li key={i} className="flex items-center gap-2">
-                                                            {req.met
-                                                                ? <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                                                : <svg className="w-3.5 h-3.5 text-slate-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                                                            }
-                                                            <span className={`text-[11px] font-medium ${req.met ? 'text-emerald-600' : 'text-slate-400'}`}>{req.text}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-
-                                        {/* Şifre tekrar */}
-                                        {mode === 'register' && (
-                                            <div className="group relative">
-                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-slate-600 transition-colors z-10">
-                                                    <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                                                </div>
-                                                <motion.input
-                                                    id="passwordConfirm" type={showPassword ? 'text' : 'password'}
-                                                    value={passwordConfirm} onChange={handleConfirmChange}
-                                                    placeholder=" " required
-                                                    className={`peer ${INPUT_CLS_PR}`}
-                                                    animate={{
-                                                        x: confirmShake ? [-8, 8, -6, 6, -4, 4, 0] : 0,
-                                                        borderColor: passwordsMatch ? 'rgb(34 197 94)' : 'rgb(226 232 240)',
-                                                    }}
-                                                    transition={{ duration: 0.4 }}
-                                                />
-                                                <label htmlFor="passwordConfirm" className={LABEL_CLS}>Şifre Tekrar</label>
-                                                {password.length > 0 && (
-                                                    <div className="absolute bottom-[7px] left-11 right-4 flex gap-[3px] pointer-events-none z-10">
-                                                        {password.split('').map((letter, i) => (
-                                                            <div key={i} className={`h-[3px] flex-1 rounded-full transition-all duration-200 ${passwordConfirm[i] === letter ? 'bg-green-500' : passwordConfirm[i] ? 'bg-red-400' : 'bg-slate-200'}`} />
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {mode === 'form' && (
-                                            <div className="flex justify-end -mt-2 mr-1">
-                                                <a href="#" className="relative text-[11px] text-blue-600 hover:text-blue-800 font-bold transition-colors after:content-[''] after:absolute after:-bottom-0.5 after:left-0 after:w-0 after:h-[1px] after:bg-blue-600 hover:after:w-full after:transition-all after:duration-300">
-                                                    Şifremi Mi Unuttum?
-                                                </a>
-                                            </div>
-                                        )}
-
-                                        <div className="flex gap-3 mt-1">
-                                            {quickSessions.length > 0 && (
-                                                <button type="button" onClick={() => { setMode('quick'); setError(''); }}
-                                                    className="flex-[0.6] bg-white/50 text-slate-700 border border-slate-200/60 font-bold uppercase text-[10px] tracking-wider py-3.5 rounded-md shadow-sm hover:bg-white/90 hover:shadow-md transition-all duration-300">
-                                                    ← Geri
-                                                </button>
-                                            )}
-                                            <button type="button"
-                                                onClick={() => { setMode(mode === 'register' ? 'form' : 'register'); setError(''); }}
-                                                className="flex-[0.8] bg-white/50 text-slate-700 border border-slate-200/60 font-bold uppercase text-[11px] tracking-wider py-3.5 rounded-md shadow-sm hover:bg-white/90 hover:shadow-md transition-all duration-300">
-                                                {mode === 'register' ? 'GİRİŞE DÖN' : 'YENİ KAYIT'}
-                                            </button>
-                                            <button type="submit" disabled={isLoading}
-                                                className={`flex-[1.2] bg-slate-900 border border-slate-800 text-white font-bold tracking-widest uppercase text-xs py-3.5 rounded-md shadow-[0_4px_15px_-4px_rgba(0,0,0,0.4)] transition-all duration-300 ${isLoading ? 'opacity-70 cursor-wait' : 'hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.5)]'}`}>
-                                                {isLoading ? 'BEKLEYİN...' : mode === 'register' ? 'Hesabı Aç' : 'GİRİŞ YAP'}
-                                            </button>
-                                        </div>
-                                    </form>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                    </p>
+                                )}
+                            </div>
+                        </form>
 
                     </div>
                 </div>

@@ -241,7 +241,9 @@ const SqlDatabaseViewer = () => {
                                                                                     type="text"
                                                                                     placeholder="Ara..."
                                                                                     value={filterSearch}
-                                                                                    onChange={e => setFilterSearch(e.target.value)}
+                                                                                    onChange={e =
+                                autoComplete="off"
+                            > setFilterSearch(e.target.value)}
                                                                                     onClick={e => e.stopPropagation()}
                                                                                     className="w-full bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none focus:border-[#378ADD] font-medium"
                                                                                 />

@@ -291,6 +291,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                 onClick={e => e.stopPropagation()}
                                 placeholder="Dosya ara..."
                                 className="flex-1 bg-transparent text-[12px] text-slate-300 placeholder-slate-600 outline-none min-w-0"
+                                autoComplete="off"
+                                spellCheck={false}
                             />
                             {searchQuery && (
                                 <button

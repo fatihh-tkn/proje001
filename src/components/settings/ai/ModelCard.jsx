@@ -23,16 +23,13 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
         let isMounted = true;
         const checkStatus = async () => {
             try {
-                const res = await fetchWithTimeout(`${API_BASE}/custom-models/verify`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        api_key: model.api_key,
-                        model_name: model.name,
-                        provider: model.provider || undefined,
-                        base_url: model.base_url || undefined,
-                    }),
-                }, 10000);
+                // Güvenlik: tam api_key frontend'e hiç gelmez. ID ile çağırıyoruz,
+                // backend kendi DB'sinden okur ve doğrular.
+                const res = await fetchWithTimeout(
+                    `${API_BASE}/custom-models/${model.id}/verify`,
+                    { method: 'POST' },
+                    10000,
+                );
                 const data = await res.json();
                 if (isMounted) setStatus(data.ok && data.models ? 'active' : 'inactive');
             } catch {
@@ -41,7 +38,7 @@ function ModelCard({ model, index, alias, onAliasChange, onDelete }) {
         };
         checkStatus();
         return () => { isMounted = false; };
-    }, [model.api_key, model.name, model.provider, model.base_url]);
+    }, [model.id]);
 
     return (
         <div className="group relative bg-white rounded-xl border border-stone-200 hover:border-[#378ADD]/30 hover:shadow-md transition-all duration-200 overflow-hidden shadow-sm">

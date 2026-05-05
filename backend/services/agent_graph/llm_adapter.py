@@ -39,7 +39,7 @@ def _resolve_active_model(agent_config: dict | None) -> dict:
     Agent config'inde belirtilen model'i kullanıcı modelleri arasında bulur.
     Yoksa kullanıcının ilk modeli (varsayılan).
     """
-    models = get_user_models()
+    models = get_user_models(include_secret=True)
     if not models:
         raise RuntimeError("Sistemde kayıtlı yapay zeka modeli yok.")
 

@@ -124,7 +124,7 @@ function UsersTab() {
                         type="text"
                         placeholder="Kullanıcı ara..."
                         value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        onChange={e = autoComplete="off"> setSearchQuery(e.target.value)}
                         className="pl-9 pr-4 py-1.5 border border-stone-200 rounded-md text-[12px] font-sans w-64 bg-white text-stone-700 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD] transition-shadow placeholder:text-stone-400"
                     />
                 </div>

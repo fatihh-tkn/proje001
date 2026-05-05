@@ -123,6 +123,8 @@ const FilePickerModal = ({ onClose, onConfirm, alreadyAttached = [] }) => {
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Dosya ara..."
                             className="flex-1 bg-transparent text-[13px] text-stone-700 outline-none placeholder:text-stone-400"
+                            autoComplete="off"
+                            spellCheck={false}
                         />
                     </div>
                 </div>

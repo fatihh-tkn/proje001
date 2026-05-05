@@ -17,8 +17,7 @@ export function UsersTab() {
                     <input
                         type="text"
                         placeholder="Kullanıcı ara..."
-                        className="pl-10 pr-4 py-2.5 bg-white border border-stone-200 shadow-sm rounded-md text-[12px] font-bold text-stone-700 placeholder:text-stone-400 w-64 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono tracking-tight"
-                    />
+                        className="pl-10 pr-4 py-2.5 bg-white border border-stone-200 shadow-sm rounded-md text-[12px] font-bold text-stone-700 placeholder:text-stone-400 w-64 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono tracking-tight" autoComplete="off" />
                 </div>
                 <button className="flex items-center gap-2 bg-[#378ADD] hover:bg-[#2868A8] text-white px-5 py-2.5 rounded-md text-[11px] font-bold tracking-widest transition-colors shadow-sm">
                     <UserPlus size={16} strokeWidth={2.5} /> YENİ KULLANICI

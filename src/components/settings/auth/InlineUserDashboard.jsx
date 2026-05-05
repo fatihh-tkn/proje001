@@ -105,7 +105,7 @@ export const RestrictionsModal = ({ userId, userName, onClose }) => {
                             type="text"
                             placeholder="Dosya ara..."
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={e = autoComplete="off"> setSearch(e.target.value)}
                             className="flex-1 bg-transparent text-[12px] outline-none text-stone-700"
                         />
                     </div>

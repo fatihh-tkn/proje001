@@ -1,4 +1,4 @@
-﻿import {
+import {
     Database, FileText, Search, Trash2, AlertTriangle, Layers,
     ChevronDown, ChevronRight, X, Network, Share2, Box, CheckCircle2,
     BarChart3, Zap, RefreshCw, ShieldCheck
@@ -49,7 +49,7 @@ const DatabaseMemoryTable = ({
                         type="text"
                         placeholder="Dosya ara..."
                         value={search}
-                        onChange={e => setSearch(e.target.value)}
+                        onChange={e = autoComplete="off"> setSearch(e.target.value)}
                         className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-stone-50 border border-stone-200 rounded-lg
                             focus:outline-none focus:bg-white focus:border-[#378ADD]/40
                             placeholder:text-stone-400 text-stone-700 transition-all"

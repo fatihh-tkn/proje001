@@ -30,3 +30,27 @@ dist-ssr
 *.sw?
 backend/temp_uploads/*
 docker-compose.local.yml
+
+# ── Secrets & environment ─────────────────────────────────────────────
+# Asla commit etme — .env.example şablonu kullanılır.
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# ── Database files, dumps, backups ────────────────────────────────────
+# pg_dump çıktısı, SQLite dosyaları, vb. — içlerinde API key olabilir.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.dump
+db_yedek*.sql
+backups/
+
+# ── Local secret keys (Fernet master key vs.) ─────────────────────────
+*.key
+secret.txt
+secrets/

@@ -6,6 +6,7 @@ import {
 import { API_BASE, fetchWithTimeout } from '../utils';
 import { mutate, notify } from '../../../../api/client';
 import ModelCard from '../ModelCard';
+import SearchableModelSelect from '../SearchableModelSelect';
 
 /* ─── Main Component ─────────────────────────────────────────────── */
 export const ModelsTab = React.memo(() => {
@@ -185,6 +186,16 @@ export const ModelsTab = React.memo(() => {
                                     placeholder="sk-..."
                                     className="w-full bg-white border border-stone-200 rounded-md px-4 py-3 text-[12px] font-bold font-mono text-stone-700 shadow-sm placeholder:text-stone-400 focus:bg-white focus:border-[#378ADD] focus:outline-none focus:ring-1 focus:ring-[#378ADD]/30 transition-all"
                                     autoFocus
+                                    // Tarayıcı/şifre yöneticisi autofill'ini söndür:
+                                    // - new-password: Chrome'un kayıtlı şifre önerilerini engeller
+                                    // - data-* ignore: 1Password / LastPass / Bitwarden tetikleyicilerini kapatır
+                                    // - name boş: önceki form girişlerini hatırlamaz
+                                    autoComplete="new-password"
+                                    name="api-key-secret"
+                                    data-1p-ignore="true"
+                                    data-lpignore="true"
+                                    data-form-type="other"
+                                    spellCheck={false}
                                 />
                                 <button
                                     onClick={() => setShowKey(v => !v)}
@@ -231,6 +242,8 @@ export const ModelsTab = React.memo(() => {
                                         onChange={e => setBaseUrl(e.target.value)}
                                         placeholder={isCustomCompat ? 'https://your-host/v1' : 'Boş bırak: registry varsayılanı'}
                                         className="w-full bg-white border border-stone-200 rounded-md px-4 py-2.5 text-[12px] font-bold font-mono text-stone-700 shadow-sm placeholder:text-stone-400 focus:border-[#378ADD] focus:outline-none focus:ring-1 focus:ring-[#378ADD]/30"
+                                        autoComplete="off"
+                                        spellCheck={false}
                                     />
                                 </div>
                             </div>
@@ -245,16 +258,12 @@ export const ModelsTab = React.memo(() => {
                                         <span className="w-2 h-2 rounded-full bg-[#3B6D11] animate-pulse"></span> {provider} BAĞLANDI
                                     </span>
                                 </div>
-                                <select
+                                <SearchableModelSelect
+                                    models={availableModels}
                                     value={selectedModel}
-                                    onChange={(e) => setSelectedModel(e.target.value)}
-                                    className="w-full bg-white border border-stone-200 rounded-md px-4 py-3 text-[12px] font-bold font-mono text-stone-700 shadow-sm focus:border-[#378ADD] focus:outline-none focus:ring-1 focus:ring-[#378ADD]/30 transition-all cursor-pointer"
-                                    style={{ backgroundImage: 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")', backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em', appearance: 'none' }}
-                                >
-                                    {availableModels.map(m => (
-                                        <option key={m} value={m}>{m}</option>
-                                    ))}
-                                </select>
+                                    onChange={setSelectedModel}
+                                    placeholder={`${availableModels.length} model · ara veya seç...`}
+                                />
                             </div>
                         )}
 

@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+"""
+.githooks/pre-commit
+─────────────────────────────────────────────────────────────────
+Stage'lenmis dosyalari hassas pattern'lar icin tarar. Sizinti
+yakalanirsa commit'i bloklar.
+
+Kurulum (her clone icin bir kerelik):
+  git config core.hooksPath .githooks
+
+Bu commit icin hook'u atlamak (gercek bir false-positive ise):
+  git commit --no-verify
+
+Yeni pattern eklemek: PATTERNS listesine ekle.
+"""
+
+import re
+import subprocess
+import sys
+import os
+
+# (etiket, regex) — sirayla taranir. Yeni servis icin buraya satir ekle.
+PATTERNS = [
+    ('OpenAI API key',           r'sk-[A-Za-z0-9]{20,}'),
+    ('OpenAI project key',       r'sk-proj-[A-Za-z0-9_\-]{20,}'),
+    ('OpenRouter API key',       r'sk-or-[A-Za-z0-9_\-]{20,}'),
+    ('Anthropic API key',        r'sk-ant-[A-Za-z0-9_\-]{20,}'),
+    ('Google API key (AIza)',    r'AIza[A-Za-z0-9_\-]{20,}'),
+    ('Groq API key',             r'gsk_[A-Za-z0-9]{20,}'),
+    ('AWS access key',           r'AKIA[0-9A-Z]{16}'),
+    ('GitHub PAT (classic)',     r'ghp_[A-Za-z0-9]{36}'),
+    ('GitHub PAT (fine-grained)', r'github_pat_[A-Za-z0-9_]{50,}'),
+    ('Slack token',              r'xox[baprs]-[A-Za-z0-9\-]{20,}'),
+    ('Fernet key in code',       r'(FERNET_KEY|FERNET_MASTER)\s*=\s*[\'"][^\'"\s]{40,}[\'"]'),
+    ('DB URL with password',     r'(postgresql|mysql|mongodb)://[^\s:/@]+:[^\s/@]{4,}@'),
+    ('PEM private key block',    r'-----BEGIN [A-Z ]*PRIVATE KEY-----'),
+    ('Generic API_KEY assign',   r'(?i)(api[_-]?key|secret|password|token)\s*=\s*[\'"][A-Za-z0-9_\-]{32,}[\'"]'),
+]
+
+# Allowlist — bu pattern'lara uyanlar atlanir (test fixture, dokuman ornegi vs.)
+ALLOW_SUBSTRINGS = [
+    'YOUR_API_KEY_HERE',
+    'sk-xxxxxxxxxxxx',
+    'sk-dummy_key_12345',
+    '<api_key>',
+    'sk-...',
+    'AIzaSyDUMMY',
+]
+
+# Bu yolda olan degisiklikleri tarama
+SKIP_PATHS = {
+    '.gitignore',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'poetry.lock',
+}
+
+# Bu uzantilari tara (digerlerini atla — binary, build artifact vs.)
+TEXT_EXTENSIONS = {
+    '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
+    '.json', '.yml', '.yaml', '.toml', '.ini', '.cfg',
+    '.md', '.txt', '.rst', '.html', '.css', '.scss', '.sql',
+    '.sh', '.ps1', '.bat', '.example', '.env',
+}
+
+
+def run(cmd):
+    return subprocess.check_output(cmd, text=True, errors='replace', stderr=subprocess.DEVNULL)
+
+
+def staged_files():
+    out = run(['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'])
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+
+def staged_blob(path):
+    try:
+        return run(['git', 'show', f':{path}'])
+    except subprocess.CalledProcessError:
+        return ''
+
+
+def should_scan(path):
+    if path in SKIP_PATHS:
+        return False
+    base = os.path.basename(path)
+    # .env, .env.example gibi dotfile'lar
+    if base.startswith('.env'):
+        return True
+    if '/secrets/' in path.replace('\\', '/'):
+        return True
+    # Uzantiya gore
+    _, ext = os.path.splitext(base)
+    return ext.lower() in TEXT_EXTENSIONS
+
+
+def is_allowlisted(snippet):
+    return any(needle in snippet for needle in ALLOW_SUBSTRINGS)
+
+
+def mask(snippet):
+    if len(snippet) <= 14:
+        return '***'
+    return snippet[:6] + '...' + snippet[-4:]
+
+
+def main():
+    findings = []
+
+    for path in staged_files():
+        if not should_scan(path):
+            continue
+        content = staged_blob(path)
+        if not content:
+            continue
+
+        for label, regex in PATTERNS:
+            for m in re.finditer(regex, content):
+                snippet = m.group(0)
+                if is_allowlisted(snippet):
+                    continue
+                line_no = content[:m.start()].count('\n') + 1
+                findings.append((path, line_no, label, mask(snippet)))
+
+    if findings:
+        print('')
+        print('=' * 70)
+        print('GUVENLIK: pre-commit hook hassas pattern yakaladi.')
+        print('=' * 70)
+        for path, ln, label, masked in findings:
+            print(f'  {path}:{ln}  [{label}]  {masked}')
+        print('')
+        print('Commit ENGELLENDI.')
+        print('')
+        print('  Cozumler:')
+        print('  1) Degeri kaldir, backend/.env\'e tasi (zaten .gitignore\'da)')
+        print('  2) Sahte/test fixture ise: ALLOW_SUBSTRINGS listesine ekle')
+        print('  3) Gercekten guvenli ve istisna ise: git commit --no-verify')
+        print('')
+        return 1
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
