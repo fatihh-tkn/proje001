@@ -302,9 +302,14 @@ def _normalize_error_solution(parsed: dict | None, user_msg: str) -> dict:
     p.setdefault("frequency", 0)
     p.setdefault("summary", (user_msg or "")[:240])
     p.setdefault("cause", "")
-    p.setdefault("steps", [])
-    p.setdefault("docs", [])
-    p.setdefault("similar", [])
+    # setdefault yalnızca eksik key için çalışır; LLM null döndürdüğünde
+    # da zorla boş liste yapıyoruz.
+    if not isinstance(p.get("steps"), list):
+        p["steps"] = []
+    if not isinstance(p.get("docs"), list):
+        p["docs"] = []
+    if not isinstance(p.get("similar"), list):
+        p["similar"] = []
     return p
 
 
@@ -434,9 +439,11 @@ async def error_solver_node(state: AgentState) -> dict:
             out["error_solution"] = normalized
             out["error_draft"] = json.dumps(normalized, ensure_ascii=False)
         elif has_valid_schema:
-            # Doğal sınıflandırma + LLM şemaya uydu → pass-through.
-            out["error_solution"] = parsed
-            out["error_draft"] = raw
+            # Doğal sınıflandırma + LLM şemaya uydu → null alanları
+            # normalize et (steps/docs/similar: null → []) ve JSON olarak ilet.
+            normalized = _normalize_error_solution(parsed, user_msg)
+            out["error_solution"] = normalized
+            out["error_draft"] = json.dumps(normalized, ensure_ascii=False)
         # else: aggregator LLM çağrısına bırak (boş JSON pass-through olmasın)
 
         return out

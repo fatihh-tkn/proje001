@@ -52,10 +52,14 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
 
     const {
         id, title, module, severity, frequency, summary, cause,
-        steps = [], docs = [], similar = [],
         needs_clarification = false,
         clarification_questions = [],
     } = data || {};
+
+    // LLM bazen null döndürebilir; default [] sadece undefined için çalışır.
+    const steps = Array.isArray(data?.steps) ? data.steps : [];
+    const docs = Array.isArray(data?.docs) ? data.docs : [];
+    const similar = Array.isArray(data?.similar) ? data.similar : [];
 
     // Eski string-only şemayı yeni obje şemasına otomatik dönüştür (geriye uyum).
     const normalizedQuestions = (clarification_questions || []).map((q, i) => {
