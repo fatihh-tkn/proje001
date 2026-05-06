@@ -141,9 +141,12 @@ def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
 
 
 def get_sessions_stats(limit: int = 50) -> list[dict]:
+    from database.sql.session import get_session as _get_db_session
+    from database.sql.repositories.chat_repo import ChatRepository
+
     all_logs = get_all_logs_for_dashboard()
     sessions_map: Dict[str, Any] = {}
-    
+
     for log in all_logs:
         sid = log.get("sessionId", "unknown_session")
         if sid not in sessions_map:
@@ -155,6 +158,8 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
                 "model": log.get("model"),
                 "startTime": log["timestamp"],
                 "endTime": log["timestamp"],
+                # messages populated from SohbetMesaji below (full content, no truncation)
+                "_log_messages": [],
                 "messages": [],
                 "totalTokens": 0,
                 "totalCost": 0.0,
@@ -164,28 +169,28 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
                 "ip": log.get("ip", "unknown"),
                 "mac": log.get("mac", "unknown")
             }
-        
+
         sess = sessions_map[sid]
         sess["endTime"] = log["timestamp"]
         sess["totalTokens"] += log.get("totalTokens", 0)
         sess["totalCost"] += log.get("cost", 0.0)
         sess["totalDuration"] += log.get("duration", 0)
         sess["messageCount"] += 1
-        
+
+        # Build truncated log messages as fallback
         if log.get("request"):
-            sess["messages"].append({
+            sess["_log_messages"].append({
                 "id": log["id"] + "_user",
                 "timestamp": log["timestamp"],
                 "role": "user",
                 "content": log.get("request", ""),
                 "promptTokens": 0, "completionTokens": 0, "cost": 0, "duration": 0
             })
-        
+
         content = log.get("response", "")
         if not content and log.get("status") == "error":
             content = f"[ERROR] {log.get('error')}"
-
-        sess["messages"].append({
+        sess["_log_messages"].append({
             "id": log["id"],
             "timestamp": log["timestamp"],
             "role": log.get("role", "assistant"),
@@ -198,7 +203,44 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
 
     session_list = list(sessions_map.values())
     session_list.sort(key=lambda s: s["startTime"], reverse=True)
-    return session_list[:limit]
+    sessions = session_list[:limit]
+
+    # Populate messages from SohbetMesaji (full content, no 500-char truncation).
+    # Falls back to truncated API-log messages if SQL history is unavailable.
+    try:
+        with _get_db_session() as db:
+            repo = ChatRepository(db)
+            for sess in sessions:
+                sid = sess["sessionId"]
+                try:
+                    sql_msgs = repo.get_messages(sid, limit=200)
+                    if sql_msgs:
+                        sess["messages"] = [
+                            {
+                                "id": str(m.kimlik),
+                                "timestamp": m.olusturulma_tarihi,
+                                "role": m.rol,
+                                "content": m.icerik or "",
+                                "promptTokens": m.istek_token or 0,
+                                "completionTokens": m.yanit_token or 0,
+                                "cost": m.maliyet_usd or 0.0,
+                                "duration": m.sure_ms or 0,
+                            }
+                            for m in sql_msgs
+                        ]
+                    else:
+                        sess["messages"] = sess["_log_messages"]
+                except Exception:
+                    sess["messages"] = sess["_log_messages"]
+    except Exception:
+        for sess in sessions:
+            sess["messages"] = sess["_log_messages"]
+
+    # Clean up internal field
+    for sess in sessions:
+        sess.pop("_log_messages", None)
+
+    return sessions
 
 
 def get_computers_stats() -> list[dict]:

@@ -137,6 +137,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             id: m.id,
             text: m.content,
             sender: m.role === 'user' ? 'user' : 'ai',
+            isStreaming: false,
             time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isError: m.content.startsWith('❌') || m.content.startsWith('[ERROR]'),
             ragUsed: false,
@@ -404,11 +405,12 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     setMessages((prev) =>
                         prev.map((m) => {
                             if (m.id !== aiMsgId) return m;
-                            // Defansif: cevap zaten streaming/replace ile geldiyse
-                            // backend'den sonradan gelen hata event'iyle baloncuğu
-                            // EZME — sessiz kapat, kart/cevap ekranda kalsın.
-                            const hasText = !!(m.text && m.text.trim());
-                            if (hasText) {
+                            // Replace event ile gerçek içerik geldi ve hata değilse:
+                            // sonradan gelen backend error event'ini bastır — kart/cevap ekranda kalsın.
+                            // Diğer durumlarda (onDone'ın sentezlediği hata, partial chunk, vs.)
+                            // gerçek backend hatasını göster.
+                            const hasRealContent = !!(m.text && m.text.trim()) && m.wasRevised && !m.isError;
+                            if (hasRealContent) {
                                 console.warn('[chat] Backend error after response, suppressed:', errText);
                                 return { ...m, isStreaming: false };
                             }

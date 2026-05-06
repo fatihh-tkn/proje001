@@ -130,45 +130,43 @@ def _has_enough_error_info(msg: str) -> bool:
 
 
 _CLARIFICATION_SYSTEM = (
-    "Sen 15+ yıllık deneyime sahip kıdemli bir SAP Basis/Fonksiyonel destek "
-    "uzmanısın. Kullanıcı kısa ve eksik bir hata bildirimi yaptı.\n\n"
-    "GÖREV: ROOT CAUSE analizi için tam olarak 4-5 KESKİN, DİAGNOSTİK soru sor.\n\n"
-    "[KRİTİK KURALLAR]\n"
-    "1. Her soruya tam olarak 4-5 SOMUT, BAĞLAMA ÖZGÜ şık yaz.\n"
-    "2. Her soruda SON İKİ şık DAİMA şunlar olsun: \"Bilmiyorum\", \"Diğer\".\n"
-    "   Yani options dizisi: [\"somut_1\", \"somut_2\", \"somut_3\", \"Bilmiyorum\", \"Diğer\"]\n"
-    "3. Şıklar JENERİK değil, kullanıcının bildirdiği koda/duruma ÖZEL olsun.\n"
-    "   Örnek: Kullanıcı 'FB60' diyorsa şıklar 'Vendor faturası girişinde', \n"
-    "   'Posting key 31/40 seçiminde', 'Company code alanında' gibi FB60'a \n"
-    "   özgü seçenekler olmalı.\n"
-    "4. ÇÖZÜM ÖNERME. Sadece TANI sorusu sor.\n"
-    "5. 'Şunu denedin mi?' tarzı sorular YASAK. 'Hata tam olarak hangi adımda "
-    "çıkıyor?' tarzı diagnostic sorular sor.\n\n"
-    "[SORU STRATEJİSİ — sırayla bu eksenlerden sor]\n"
-    "Q1: Tam hata mesajı/dump metni ne diyor? (kullanıcıya somut seçenekler sun)\n"
-    "Q2: Hangi adımda/alanda hata çıkıyor? (ekran, buton, alan bazlı şıklar)\n"
-    "Q3: Bu işlem daha önce çalışıyor muydu? Ne değişti? (zaman, yetki, veri)\n"
-    "Q4: Hangi organizasyon yapısıyla çalışıyorsun? (şirket kodu, tesis vs.)\n"
-    "Q5: Başka kullanıcılar da aynı hatayı alıyor mu? (izolasyon)\n\n"
-    "Kullanıcı bir SAP T-code verdiyse (ör. FB60, ME21N, VA01, MM01) soruları "
-    "o transaction'ın altyapısına göre özelleştir. Kod yoksa genel SAP teşhis.\n\n"
-    "SADECE aşağıdaki JSON formatında cevap ver, başka HİÇBİR metin yazma:\n"
+    "Sen kıdemli bir SAP/kurumsal sistem destek uzmanısın. Kullanıcı kısa "
+    "ve eksik bir hata bildirimi yaptı. Görevin: ROOT CAUSE'a inebilmek "
+    "için 4-5 keskin soru sor ve her soruya 4-5 BAĞLAMA UYGUN seçmece "
+    "şık öner. Son şık her zaman 'Diğer' olsun.\n\n"
+    "[SORU SORMA İLKELERİ]\n"
+    "- Yüzeyde kalma. 'Hangi T-code' gibi tek başına yetersiz sorular yerine "
+    "tam hata mesajının metnini, hangi alanlarda hata aldığını, ne zamandır "
+    "olduğunu sor.\n"
+    "- Çözüm değil, TANI peşinde ol. 'Şunu denedin mi?' yerine 'Hata kaydet "
+    "tuşuna basınca mı yoksa alan değiştirince mi çıkıyor?' tarzı diagnostic.\n"
+    "- Kullanıcı verdiyse o sinyali genişlet: kod 'FB60' ise vendor/şirket "
+    "kodu/posting key/dönem alanlarına özgü sorular sor.\n"
+    "- Soru sayısı 4-5; gerekirse her birinde root cause'a yardımcı olacak "
+    "bilgi iste (kullanıcı rolü, son sistem değişikliği, başka kullanıcılarda "
+    "var mı, ilk mi yoksa tekrarlayan mı).\n"
+    "- Şıklar SOMUT olsun, 'Bilmiyorum' bir şık olarak DAİMA bulunsun.\n"
+    "- Soruları sormaktan çekinme — kullanıcıya yardım etmek için sormalısın. "
+    "Bilgi yetersizse direkt cevap verme; sor, sonra çöz.\n\n"
+    "Sorular kullanıcının yazdığı koda/duruma özgü olsun (ör. 'FB60' → MM/FI "
+    "bağlamlı; 'CS01' → PP/MM; 'ME21N' → satınalma; kod yoksa genel teşhis).\n\n"
+    "SADECE şu JSON formatında cevap ver, başka HİÇBİR metin yazma:\n"
     "```json\n"
     "{\n"
     '  "type": "error_solution",\n'
     '  "needs_clarification": true,\n'
     '  "id": "<kullanıcı_yazdıysa_SAP_kodu_yoksa_boş>",\n'
     '  "title": "Hatayı netleştirelim",\n'
-    '  "module": "<varsa_modül_ör_FI/MM/SD>",\n'
+    '  "module": "<varsa_modül_ör_MM/FI>",\n'
     '  "severity": "medium",\n'
     '  "frequency": 0,\n'
-    '  "summary": "<1_cümle_kullanıcının_bildirdiği_durumun_özeti>. <1_cümle_root_cause_için_neyi_bilmen_gerektiğini_belirt>",\n'
+    '  "summary": "<1_cümle_kullanıcının_söylediğini_özetle>+<1_cümle_root_cause_için_neyi_öğrenmen_gerektiğini_açıkla>",\n'
     '  "cause": "",\n'
     '  "clarification_questions": [\n'
     '    {\n'
     '      "id": "q1",\n'
-    '      "question": "<KESKİN_DİAGNOSTİK_SORU>",\n'
-    '      "options": ["<bağlama_özgü_şık_1>", "<bağlama_özgü_şık_2>", "<bağlama_özgü_şık_3>", "Bilmiyorum", "Diğer"],\n'
+    '      "question": "<KESKİN_TANI_SORUSU>",\n'
+    '      "options": ["<somut_şık_1>", "<somut_şık_2>", "<somut_şık_3>", "Bilmiyorum", "Diğer"],\n'
     '      "allow_other": true\n'
     '    }\n'
     "  ],\n"
@@ -182,32 +180,26 @@ _CLARIFICATION_SYSTEM = (
 _GENERIC_CLARIFICATION_QUESTIONS = [
     {
         "id": "q1",
-        "question": "Hata tam olarak hangi ekran/T-code'da ortaya çıktı?",
-        "options": ["Liste/rapor ekranı", "Veri girişi ekranı", "Kaydet butonuna bastığımda", "Bilmiyorum", "Diğer"],
+        "question": "Hata hangi T-code/ekranda ortaya çıktı?",
+        "options": ["Liste/rapor ekranı", "Veri girişi ekranı", "Kaydet butonuna bastığımda", "Açılış ekranı", "Diğer"],
         "allow_other": True,
     },
     {
         "id": "q2",
-        "question": "Ekranda gördüğünüz hata mesajı veya kodu neydi?",
-        "options": ["Ekran bir hata kodu gösterdi", "Sadece 'hata oluştu' dedi", "Dump/short dump verdi", "Bilmiyorum", "Diğer"],
+        "question": "Hata mesajı/kodu nedir?",
+        "options": ["Ekran bir kod gösterdi", "Sadece 'hata oluştu' dedi", "Dump/abort verdi", "Sessiz başarısız oldu", "Diğer"],
         "allow_other": True,
     },
     {
         "id": "q3",
-        "question": "Bu işlem daha önce sorunsuz çalışıyor muydu?",
-        "options": ["Evet, daha önce çalışıyordu", "Hayır, ilk kez deniyorum", "Bazen çalışıyor bazen hata veriyor", "Bilmiyorum", "Diğer"],
+        "question": "Aynı işlem daha önce çalışıyor muydu?",
+        "options": ["Evet, ilk kez bu hata", "Hayır, ilk denememdi", "Bilmiyorum", "Bazen çalışıyor"],
         "allow_other": True,
     },
     {
         "id": "q4",
-        "question": "Hata sadece sizde mi yoksa başka kullanıcılar da alıyor mu?",
-        "options": ["Sadece ben alıyorum", "Birden fazla kullanıcı da alıyor", "Tüm kullanıcılar alıyor", "Bilmiyorum", "Diğer"],
-        "allow_other": True,
-    },
-    {
-        "id": "q5",
-        "question": "Son günlerde bu işlemle ilgili bir sistem değişikliği/yetki güncellemesi oldu mu?",
-        "options": ["Evet, yetki değişikliği oldu", "Evet, transport/güncelleme taşındı", "Hayır, bildiğim bir değişiklik yok", "Bilmiyorum", "Diğer"],
+        "question": "Aynı hatayı başka kullanıcılar da alıyor mu?",
+        "options": ["Sadece ben alıyorum", "Birden fazla kullanıcı", "Bilmiyorum", "Diğer"],
         "allow_other": True,
     },
 ]
