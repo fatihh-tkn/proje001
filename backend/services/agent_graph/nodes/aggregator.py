@@ -100,16 +100,34 @@ _STRICT_FACT_NO_RAG = (
 )
 
 
+_CHITCHAT_PROMPT = (
+    "[SOHBET MODU]\n"
+    "Kullanıcı kısa bir sohbet mesajı (selamlama, vedalaşma, teşekkür, onay) "
+    "yazdı. Sen de SAMİMİ ve KISA cevap ver — maksimum 1-2 cümle. Açıklama "
+    "yapma, liste/tablo/kod kullanma, başka konuya geçme. Bilgi tabanına da "
+    "bakma. Sade tut."
+)
+
+
 def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     """
     Sistem prompt'unu klasik akışla aynı katmanlamayla kurar:
         agent_config.prompt   (chatbot ajanının prompt'u)
         + intent'e göre core.prompts şablonu
+            - sohbet    → minimal _CHITCHAT_PROMPT (RAG, history, vs. eklenmez)
             - dosya_qa  → get_file_qa_prompt(file_name)
             - diğerleri → get_general_rag_prompt()
         + agent_config.negative_prompt
         + RAG bağlamı (varsa)
     """
+    intent = state.get("intent") or "general"
+
+    # Sohbet modu — full RAG/template katmanlamasını atla, kısa ve sade tut.
+    if intent == "sohbet":
+        if agent_config and agent_config.get("prompt"):
+            return f"{agent_config['prompt']}\n\n{_CHITCHAT_PROMPT}"
+        return f"{_DEFAULT_SYSTEM}\n\n{_CHITCHAT_PROMPT}"
+
     parts: list[str] = []
 
     if agent_config and agent_config.get("prompt"):
@@ -153,6 +171,21 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
         parts.append(f"\n[BİLGİ TABANI BAĞLAMI]\n{rag_ctx}")
     elif strict:
         parts.append(_STRICT_FACT_NO_RAG)
+
+    # ── DEFANSİF PROSE GUARD ──
+    # Aggregator'ın DB prompt'u veya output_format ayarı LLM'i JSON üretmeye
+    # zorluyor olabilir. Sohbetsel intent'lerde (general/dosya_qa/n8n) bu
+    # davranış istenmez — kullanıcı doğal cevap bekliyor. En sona explicit
+    # "düz metin" kuralı koyuyoruz; LLM'ler son talimatı önceler.
+    if intent in ("general", "dosya_qa", "n8n"):
+        parts.append(
+            "[ÖNEMLİ ÇIKTI KURALI]\n"
+            "Cevabını mutlaka DOĞAL DİL (Markdown veya düz metin) olarak ver. "
+            "JSON, ```json kod bloğu, yapısal şema (tcode, key_features, "
+            "process_flow gibi alanlar içeren obje) KULLANMA. Bilgileri "
+            "paragraflar veya basit listeler halinde anlat. Bu kural diğer "
+            "tüm format talimatlarının üzerindedir."
+        )
 
     return "\n\n".join(parts)
 
@@ -250,8 +283,9 @@ async def aggregator_node(state: AgentState) -> dict:
         user_msg = state.get("user_message") or state.get("original_message") or ""
 
         # Semantik sohbet hafızası — node_config.include_chat_memory ile
-        # kapatılabilir (default: True).
-        if node_cfg.get("include_chat_memory", True):
+        # kapatılabilir (default: True). Sohbet modunda bypass: "nbr" için
+        # vektör DB sorgusu gereksiz latency yaratır.
+        if intent != "sohbet" and node_cfg.get("include_chat_memory", True):
             chat_memory_text = await _fetch_memory_safe(
                 state.get("session_id") or "", user_msg,
             )
@@ -277,9 +311,36 @@ async def aggregator_node(state: AgentState) -> dict:
         messages = build_messages(system=system, history=history, user=user_msg)
         temperature = (agent_config or {}).get("temperature", 0.7)
         max_tokens = (agent_config or {}).get("max_tokens") or None
-        # Agent JSON çıktı isterse response_format'ı zorla
+
+        # JSON output sadece prompt'unda explicit JSON şeması olan agent'larda
+        # mantıklı. config'de output_format='json' set edilmiş olsa bile
+        # general/sohbet/dosya_qa/n8n turlarında LLM'e şema vermeden JSON
+        # zorlamak rastgele alanlar uyduruyor (CS01 nedir → uydurma JSON
+        # bug'ı buradan geliyordu). Sadece prompt JSON şeması içeriyorsa
+        # ve intent buna izin veriyorsa (hata_cozumu/rapor_arama specialist'i
+        # yoksa fallback'te) JSON formatına izin ver.
         output_format = (agent_config or {}).get("output_format")
-        response_format = "json_object" if output_format == "json" else None
+        prompt_has_json_schema = bool(
+            agent_config
+            and agent_config.get("prompt")
+            and ("```json" in agent_config["prompt"] or '"type":' in agent_config["prompt"])
+        )
+        response_format = (
+            "json_object"
+            if output_format == "json"
+            and prompt_has_json_schema
+            and intent in ("hata_cozumu", "rapor_arama")
+            else None
+        )
+        if output_format == "json" and response_format is None:
+            logger.info(
+                "[aggregator] output_format=json yoksayıldı (intent=%s, schema_in_prompt=%s)",
+                intent, prompt_has_json_schema,
+            )
+
+        # Sohbet modunda 1-2 cümle yeterli — token tavanı koy.
+        if intent == "sohbet":
+            max_tokens = min(max_tokens or 150, 150)
 
         writer = _try_get_writer()
 

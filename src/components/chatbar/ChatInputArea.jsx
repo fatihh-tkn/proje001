@@ -3,21 +3,19 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Settings2, Send, ChevronsUp, X, FileText,
-    Sparkles, ChevronDown, FileSearch, Zap, Table2,
-    HelpCircle, ListChecks, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square
+    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square
 } from 'lucide-react';
 import FilePickerModal from './FilePickerModal';
 import { useErrorStore } from '../../store/errorStore';
 
 // ── Hızlı Aksiyonlar ────────────────────────────────────────────────────────
+// Yalnızca yapılandırılmış JSON çıktısı üreten 2 aksiyon (error_solver ve
+// zli_finder specialist'leri ile birebir eşleşir). Eski 'summarize/
+// bpmn_analyze/extract_tables/gen_questions/action_items' komutları general
+// intent'ine düşüyordu ve ayırt edici davranışları yoktu.
 export const QUICK_ACTIONS = [
     { id: 'error_solve',      label: 'Hata Çözümü',       icon: AlertTriangle,  color: '#A01B1B' },
     { id: 'zli_report_query', label: "Z'li Rapor Sorgusu", icon: FileSpreadsheet, color: '#7c3aed' },
-    { id: 'summarize',        label: 'PDF Özetle',        icon: FileSearch,     color: '#DC2626' },
-    { id: 'bpmn_analyze',     label: 'BPMN Analizi',      icon: Zap,            color: '#0d9488' },
-    { id: 'extract_tables',   label: 'Tablo Çıkar',       icon: Table2,         color: '#2563eb' },
-    { id: 'gen_questions',    label: 'Soru Üret',         icon: HelpCircle,     color: '#d97706' },
-    { id: 'action_items',     label: 'Aksiyon Listesi',   icon: ListChecks,     color: '#16a34a' },
 ];
 
 // ── Dosya tipi ikonu ─────────────────────────────────────────────────────────

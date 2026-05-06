@@ -29,14 +29,18 @@ GRAPH_AGENTS = [
         "prompt": (
             "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
             "kategorilerden birini seçersin:\n"
-            "- general: genel sohbet, tanımlama, açık uçlu soru\n"
-            "- hata_cozumu: SAP/sistem hata kodu (ör. ME083, FB60), 'şu hata "
-            "veriyor', 'çalışmıyor' tarzı arıza/destek mesajı\n"
+            "- general: tanımlama veya açık uçlu bilgi sorusu (ör. 'CS01 nedir', "
+            "'MM modülü ne işe yarar', 'şu transaction'ı açıkla'). KOD geçse "
+            "bile soru bir SORUN bildirimi değil tanıma talebi ise general.\n"
+            "- hata_cozumu: Bir SİSTEM HATASI/ARIZA bildirimi. Kullanıcı 'şu "
+            "hata veriyor', 'dump alıyor', 'çalışmıyor', 'ekran kilitlendi' "
+            "gibi sorun ifadeleri kullanıyor. Sadece kod (ör. ME083) verilse "
+            "bile bağlam bir SORUN tarifi olmalı.\n"
             "- rapor_arama: Z'li rapor (ZMM_, ZSD_), 'rapor bulamıyorum' tarzı "
-            "rapor/transaction arama\n"
-            "- n8n: net bir otomasyon tetikleme isteği (toplantı kaydet, rapor "
-            "gönder, görev oluştur)\n"
-            "- dosya_qa: belirli bir dosya hakkında soru\n\n"
+            "rapor/transaction arama.\n"
+            "- n8n: Net bir otomasyon tetikleme isteği (toplantı kaydet, rapor "
+            "gönder, görev oluştur).\n"
+            "- dosya_qa: Belirli bir dosya hakkında soru.\n\n"
             "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
             '{"intent": "<kategori>", "needs_polish": <bool>, "reasoning": '
             '"<1-cümle-gerekçe>"}\n\n'
@@ -45,7 +49,7 @@ GRAPH_AGENTS = [
         ),
         "negative_prompt": "JSON dışında metin yazma. Açıklama yapma.",
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "temperature": 0.0,
         "max_tokens": 256,
         "strict_fact_check": False,

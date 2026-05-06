@@ -207,7 +207,12 @@ async def stream_run(
                 if isinstance(payload, dict) and "type" in payload:
                     # En az bir LLM chunk geldi mi izle — sonda kullanıcıya
                     # boş baloncuk göstermemek için.
-                    if payload.get("type") == "chunk" and (payload.get("text") or "").strip():
+                    # 'chunk' (token streaming) VE 'replace' (pass-through JSON,
+                    # ör. error_solver/zli_finder kart çıktıları) ikisi de
+                    # "cevap üretildi" sayılır — yoksa runner sonda hatalı
+                    # şekilde "API anahtarı geçersiz" mesajı yolluyor.
+                    _ptype = payload.get("type")
+                    if _ptype in ("chunk", "replace") and (payload.get("text") or "").strip():
                         chunk_emitted = True
                     yield _sse(payload)
                 continue
@@ -282,7 +287,21 @@ async def stream_run(
         except Exception as e:
             logger.warning("[runner] persist_run hatası: %s", e)
 
-        # Hiç LLM chunk üretilmediyse done yerine error — kullanıcı yoksa
+        # FALLBACK: writer null veya custom event başka bir nedenle düşmediyse
+        # aggregated.final_reply'dan synthetic replace yolla (pass-through
+        # JSON kartları için kritik — kullanıcı boş "API key" hata mesajı
+        # görmesin).
+        if not chunk_emitted:
+            _final = (aggregated.get("final_reply") or "").strip()
+            if _final:
+                yield _sse({"type": "replace", "text": _final})
+                chunk_emitted = True
+                logger.info(
+                    "[runner] writer event kaçtı; final_reply'dan synthetic replace yayınlandı (%d karakter)",
+                    len(_final),
+                )
+
+        # Hiç cevap üretilmediyse done yerine error — kullanıcıya
         # cevap "boş baloncuk + RAG kartları" şeklinde görmesin.
         if not chunk_emitted:
             node_errors = aggregated.get("node_errors") or {}

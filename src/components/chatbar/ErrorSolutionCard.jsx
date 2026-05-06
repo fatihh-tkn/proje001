@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     AlertTriangle, ListChecks, Paperclip, GitBranch, ChevronDown, ChevronUp,
-    BookmarkPlus, FileText
+    BookmarkPlus, FileText, HelpCircle, Send, Loader2
 } from 'lucide-react';
 import { mutate } from '../../api/client';
 
@@ -42,15 +42,73 @@ const SectionToggle = ({ icon, iconWrap, title, count, open, onClick }) => (
     </button>
 );
 
-const ErrorSolutionCard = ({ data, userId, sessionId }) => {
+const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
     const [openSection, setOpenSection] = useState('steps');
     const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+    // Clarification — soru başına seçilen şık veya "Diğer" metni
+    const [answers, setAnswers] = useState({});       // { qId: { value, isOther } }
+    const [submitting, setSubmitting] = useState(false);
     const toggle = (k) => setOpenSection(openSection === k ? null : k);
 
     const {
         id, title, module, severity, frequency, summary, cause,
         steps = [], docs = [], similar = [],
+        needs_clarification = false,
+        clarification_questions = [],
     } = data || {};
+
+    // Eski string-only şemayı yeni obje şemasına otomatik dönüştür (geriye uyum).
+    const normalizedQuestions = (clarification_questions || []).map((q, i) => {
+        if (typeof q === 'string') {
+            return { id: `q${i + 1}`, question: q, options: [], allow_other: true };
+        }
+        return {
+            id: q.id || `q${i + 1}`,
+            question: q.question || '',
+            options: Array.isArray(q.options) ? q.options : [],
+            allow_other: q.allow_other !== false,
+        };
+    });
+
+    const setAnswer = (qId, value, isOther = false) => {
+        setAnswers((prev) => ({ ...prev, [qId]: { value, isOther } }));
+    };
+
+    const setOtherText = (qId, text) => {
+        setAnswers((prev) => ({ ...prev, [qId]: { value: text, isOther: true } }));
+    };
+
+    const answeredCount = normalizedQuestions.filter((q) => {
+        const a = answers[q.id];
+        return a && (a.value || '').trim().length > 0;
+    }).length;
+
+    const canSubmit = answeredCount >= 1 && !submitting && !!onSendFollowup;
+
+    const handleClarificationSubmit = (e) => {
+        e?.preventDefault?.();
+        if (!canSubmit) return;
+        setSubmitting(true);
+
+        // Cevapları satır satır birleştir
+        const answerLines = normalizedQuestions
+            .map((q) => {
+                const a = answers[q.id];
+                const val = (a?.value || '').trim();
+                if (!val) return null;
+                return `- ${q.question} → ${val}`;
+            })
+            .filter(Boolean);
+
+        const prefix = id ? `${id} hatası hakkında ek bilgi:\n` : 'Hata hakkında ek bilgi:\n';
+        const composed = `${prefix}${answerLines.join('\n')}`;
+
+        try {
+            onSendFollowup(composed);
+        } finally {
+            // submitting true bırakılıyor — aynı karttan tekrar göndermesin.
+        }
+    };
 
     const handleSave = async () => {
         if (!userId) {
@@ -76,6 +134,136 @@ const ErrorSolutionCard = ({ data, userId, sessionId }) => {
             setTimeout(() => setSaveStatus('idle'), 2500);
         }
     };
+
+    // Clarification modu — yetersiz bilgi geldiyse kullanıcıdan detay iste.
+    if (needs_clarification) {
+        return (
+            <div
+                className="w-full max-w-[680px] bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden"
+                style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif' }}
+            >
+                <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100 flex items-center gap-3 flex-wrap">
+                    <span className="w-7 h-7 inline-flex items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 shrink-0">
+                        <HelpCircle size={14} />
+                    </span>
+                    {id && (
+                        <span className="font-mono text-[11px] text-stone-500 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-md">
+                            {id}
+                        </span>
+                    )}
+                    <h2 className="text-[13px] font-semibold text-stone-800 truncate flex-1 min-w-0">
+                        {title || 'Daha fazla bilgi gerekli'}
+                    </h2>
+                </div>
+
+                {summary && (
+                    <div className="px-5 py-3 border-b border-amber-50">
+                        <p className="text-[12.5px] leading-relaxed text-stone-700">{summary}</p>
+                    </div>
+                )}
+
+                {normalizedQuestions.length > 0 && (
+                    <div className="divide-y divide-amber-50">
+                        {normalizedQuestions.map((q, qi) => {
+                            const a = answers[q.id];
+                            const otherChosen = !!(a && a.isOther);
+                            return (
+                                <div key={q.id} className="px-5 py-3.5">
+                                    <div className="flex items-start gap-2 mb-2.5">
+                                        <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full">
+                                            {qi + 1}
+                                        </span>
+                                        <h4 className="text-[12.5px] font-semibold text-stone-800 leading-snug flex-1">
+                                            {q.question}
+                                        </h4>
+                                    </div>
+
+                                    {/* Şıklar — chip-stili tıklanabilir butonlar */}
+                                    {q.options.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 ml-7">
+                                            {q.options.map((opt, oi) => {
+                                                const isOther = (opt || '').toLowerCase().startsWith('diğer');
+                                                const selected = (
+                                                    isOther
+                                                        ? otherChosen
+                                                        : a && !a.isOther && a.value === opt
+                                                );
+                                                return (
+                                                    <button
+                                                        key={oi}
+                                                        type="button"
+                                                        disabled={submitting}
+                                                        onClick={() => {
+                                                            if (isOther) {
+                                                                setOtherText(q.id, '');
+                                                            } else {
+                                                                setAnswer(q.id, opt, false);
+                                                            }
+                                                        }}
+                                                        className={`text-[11.5px] px-2.5 py-1 rounded-full border transition disabled:opacity-50 ${
+                                                            selected
+                                                                ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                                                                : 'bg-white text-stone-700 border-stone-200 hover:border-amber-300 hover:bg-amber-50/40'
+                                                        }`}
+                                                    >
+                                                        {opt}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* "Diğer" seçildiyse text input aç */}
+                                    {q.allow_other && otherChosen && (
+                                        <div className="ml-7 mt-2">
+                                            <input
+                                                type="text"
+                                                value={a?.value || ''}
+                                                onChange={(e) => setOtherText(q.id, e.target.value)}
+                                                placeholder="Kendi cevabını yaz..."
+                                                disabled={submitting}
+                                                className="w-full text-[12px] bg-white border border-amber-200 rounded-md px-2.5 py-1.5 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:bg-stone-100"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Şık yoksa: doğrudan text input (eski string-only şema fallback) */}
+                                    {q.options.length === 0 && (
+                                        <div className="ml-7">
+                                            <input
+                                                type="text"
+                                                value={a?.value || ''}
+                                                onChange={(e) => setOtherText(q.id, e.target.value)}
+                                                placeholder="Cevabını yaz..."
+                                                disabled={submitting}
+                                                className="w-full text-[12px] bg-white border border-stone-200 rounded-md px-2.5 py-1.5 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:bg-stone-100"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <div className="px-4 py-3 bg-stone-50/60 border-t border-amber-100 flex items-center justify-between gap-3">
+                    <span className="text-[10px] text-stone-400">
+                        {answeredCount}/{normalizedQuestions.length} cevaplandı
+                        {answeredCount === 0 && ' — en az bir soru cevaplanmalı'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleClarificationSubmit}
+                        disabled={!canSubmit}
+                        className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 bg-amber-500 text-white hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-400 transition shadow-sm"
+                    >
+                        {submitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                        {submitting ? 'Gönderiliyor...' : 'Çözümü hazırla'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div

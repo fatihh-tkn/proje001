@@ -1,3 +1,7 @@
+import {
+    Compass, Search, Wrench, BarChart3, Zap, Bot, Wand2, PencilLine, GitBranch, Brain,
+} from 'lucide-react';
+
 // --- DATA CONSTANTS ---
 export const PROVIDERS = [
     { id: 'openai', name: 'OpenAI (GPT-4)' },
@@ -412,4 +416,26 @@ export const isAgentVisibleInGrid = (agent) => {
     if (!agent) return false;
     if (HIDDEN_LEGACY_AGENT_IDS.has(agent.id)) return false;
     return true;
+};
+
+// Her ajana spesifik lucide ikonu — UI'da (tab bar, kartlar) tek tip GitBranch
+// yerine ajanın işine uygun simge basmak için kullanılır.
+export const AGENT_ICON_MAP = {
+    sys_node_supervisor:   Compass,
+    sys_node_rag_search:   Search,
+    sys_node_error_solver: Wrench,
+    sys_node_zli_finder:   BarChart3,
+    sys_node_n8n_trigger:  Zap,
+    sys_node_aggregator:   Bot,
+    sys_node_msg_polish:   Wand2,
+    sys_agent_prompt_001:  PencilLine,
+};
+
+export const getAgentIcon = (agent) => {
+    if (!agent) return GitBranch;
+    if (AGENT_ICON_MAP[agent.id]) return AGENT_ICON_MAP[agent.id];
+    // ID eşleşmesi yoksa türe göre fallback
+    if (agent.agentKind === 'graph_node') return GitBranch;
+    if (agent.agentKind === 'chatbot')    return Bot;
+    return Brain;
 };

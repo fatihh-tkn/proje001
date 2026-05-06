@@ -57,14 +57,20 @@ def _run_schema_migrations(eng) -> None:
         "ALTER TABLE bilgisayar_oturumlari ADD COLUMN IF NOT EXISTS son_aktivite_tarihi VARCHAR(32)",
         # AIAgent: graph node ajanları için node-specific JSON ayar kolonu (LG.7)
         "ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS node_config JSONB",
+        # AIModeli: OpenAI-uyumlu özel sağlayıcılar için override kolonu
+        "ALTER TABLE ai_modelleri ADD COLUMN IF NOT EXISTS temel_url VARCHAR(512)",
+        # AIModeli: provider tag (eski kurulumlarda eksik olabilir)
+        "ALTER TABLE ai_modelleri ADD COLUMN IF NOT EXISTS tedarikci VARCHAR(64)",
     ]
-    with eng.connect() as conn:
-        for stmt in migrations:
-            try:
+    # Her statement kendi transaction'ında çalışsın — eski tek-connection
+    # döngüsünde bir stmt fail ederse sonraki tüm stmt'ler PostgreSQL'in
+    # "current transaction is aborted" durumunda zincirleme kırılıyordu.
+    for stmt in migrations:
+        try:
+            with eng.begin() as conn:
                 conn.execute(text(stmt))
-                conn.commit()
-            except Exception as e:
-                logger.warning(f"Schema migration atlandı ({stmt[:60]}...): {e}")
+        except Exception as e:
+            logger.warning(f"Schema migration atlandı ({stmt[:60]}...): {e}")
 
 
 def init_db() -> None:

@@ -223,16 +223,18 @@ def get_user_models(include_secret: bool = False) -> list[dict]:
 
 # -- add_user_model -----------------------------------------------------------
 def add_user_model(
-    model_id: str,
     name: str,
     api_key: str,
     *,
     provider: str | None = None,
     base_url: str | None = None,
-) -> None:
+) -> str:
     """
     Yeni model kaydı ekler. api_key, FERNET_KEY tanımlıysa Fernet ile
     şifrelenerek yazılır; yoksa düz metin yazılır (geçiş sürümü).
+
+    DB tarafında üretilen `kimlik` (UUID4 string) döndürülür — caller bunu
+    response'a koyar; uydurma bir id üretmez.
     """
     from services.crypto_service import encrypt as _encrypt_secret
 
@@ -245,6 +247,7 @@ def add_user_model(
         )
         db.add(model)
         db.commit()
+        return model.kimlik
 
 # -- get_ai_agent -------------------------------------------------------------
 def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]:

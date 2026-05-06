@@ -72,6 +72,13 @@ async def zli_finder_node(state: AgentState) -> dict:
     t0 = time.time()
     user_msg = state.get("user_message") or state.get("original_message") or ""
 
+    # Kullanıcı "Z'li Rapor Sorgusu" hızlı aksiyonunu açıkça seçtiyse, eşleşme
+    # bulunmasa bile yapılandırılmış JSON çıktısı pass-through yapılır
+    # (UI ZliReportSuggestionCard'ı render edebilsin). Doğal dil sınıflandırma
+    # ile gelen 'rapor_arama' turlarında ise boş eşleşmede draft yazılmaz,
+    # aggregator LLM doğal dil cevabı üretir.
+    explicit_command = state.get("command") == "zli_report_query"
+
     agent_config = get_agent_config(state, "zli_finder")
     if agent_config is None:
         try:
@@ -127,11 +134,26 @@ async def zli_finder_node(state: AgentState) -> dict:
         text = (result.get("text") or "").strip()
         elapsed_ms = int((time.time() - t0) * 1000)
 
-        logger.info("[zli_finder] %d aday, %d ms", len(matches), elapsed_ms)
+        # Boş eşleşme tespiti — best_match=null + alternatives=[] ise:
+        #   • Quick action (explicit_command) → her zaman pass-through (UI kart bekler)
+        #   • Doğal dil sınıflandırma → draft yazma, aggregator LLM cevap üretsin
+        has_real_match = True
+        try:
+            parsed = json.loads(text) if text else {}
+            bm = parsed.get("best_match")
+            alts = parsed.get("alternatives") or []
+            if bm is None and not alts:
+                has_real_match = False
+        except Exception:
+            has_real_match = False
 
-        return {
+        logger.info(
+            "[zli_finder] %d aday, eşleşme=%s, explicit_cmd=%s, %d ms",
+            len(matches), has_real_match, explicit_command, elapsed_ms,
+        )
+
+        out: dict = {
             "zli_matches": matches,
-            "zli_draft": text,
             "model_used": result.get("model", ""),
             "provider_used": result.get("provider", ""),
             "nodes_executed": ["zli_finder"],
@@ -141,30 +163,44 @@ async def zli_finder_node(state: AgentState) -> dict:
                 "c": result.get("completion_tokens", 0),
             }},
         }
+        if has_real_match or explicit_command:
+            out["zli_draft"] = text
+        return out
     except Exception as e:
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.error("[zli_finder] LLM hatası: %s", e, exc_info=True)
-        # En azından SQL adaylarını fallback olarak JSON üret
-        fallback = json.dumps({
-            "type": "zli_report_query",
-            "query": user_msg[:120],
-            "best_match": (
-                {"kod": matches[0]["kod"], "ad": matches[0]["ad"],
-                 "aciklama": matches[0].get("aciklama", ""),
-                 "modul": matches[0].get("modul", ""),
-                 "kullanim_alani": matches[0].get("kullanim_alani", ""),
-                 "neden": "SQL en yüksek skor"} if matches else None
-            ),
-            "alternatives": [
-                {"kod": m["kod"], "ad": m["ad"], "aciklama": m.get("aciklama", "")}
-                for m in matches[1:5]
-            ],
-            "no_match_reason": "" if matches else "LLM erişilemedi, SQL eşleşmesi de yok.",
-        }, ensure_ascii=False)
-        return {
+        out: dict = {
             "zli_matches": matches,
-            "zli_draft": fallback,
             "nodes_executed": ["zli_finder"],
             "node_timings": {"zli_finder": elapsed_ms},
             "node_errors": {"zli_finder": str(e)},
         }
+        # SQL aday(lar)ı varsa fallback JSON; yoksa explicit_command durumunda
+        # boş ama yapılandırılmış JSON üret (UI kart bekliyor). Doğal dil
+        # rotasında ise boş bırak — aggregator LLM cevap üretsin.
+        if matches:
+            out["zli_draft"] = json.dumps({
+                "type": "zli_report_query",
+                "query": user_msg[:120],
+                "best_match": {
+                    "kod": matches[0]["kod"], "ad": matches[0]["ad"],
+                    "aciklama": matches[0].get("aciklama", ""),
+                    "modul": matches[0].get("modul", ""),
+                    "kullanim_alani": matches[0].get("kullanim_alani", ""),
+                    "neden": "SQL en yüksek skor",
+                },
+                "alternatives": [
+                    {"kod": m["kod"], "ad": m["ad"], "aciklama": m.get("aciklama", "")}
+                    for m in matches[1:5]
+                ],
+                "no_match_reason": "",
+            }, ensure_ascii=False)
+        elif explicit_command:
+            out["zli_draft"] = json.dumps({
+                "type": "zli_report_query",
+                "query": user_msg[:120],
+                "best_match": None,
+                "alternatives": [],
+                "no_match_reason": "LLM erişilemedi ve SQL eşleşmesi de yok.",
+            }, ensure_ascii=False)
+        return out

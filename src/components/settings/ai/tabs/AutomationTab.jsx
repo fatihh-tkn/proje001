@@ -224,7 +224,8 @@ export const AutomationTab = () => {
                             type="text"
                             placeholder="İş akışı ara..."
                             value={searchQuery}
-                            onChange={(e) = autoComplete="off"> setSearchQuery(e.target.value)}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoComplete="off"
                             className="bg-white border border-stone-200 rounded-md pl-8 pr-4 py-1.5 text-[11px] text-stone-700 w-60 focus:outline-none focus:border-[#378ADD] transition-all placeholder:text-stone-400"
                         />
                     </div>

@@ -48,7 +48,12 @@ async function _checkResponse(res) {
     let detail = res.statusText || `HTTP ${res.status}`;
     try {
         const body = await res.clone().json();
-        detail = body?.detail || body?.message || body?.error || detail;
+        // backend exception handler'ları (main.py) okunabilir metni `message`
+        // alanına koyar; `detail` 500'lerde request_id (8 hex) olabilir.
+        // Bu yüzden önce `message`, sonra `detail` (string ise).
+        const msg = body?.message;
+        const det = typeof body?.detail === 'string' ? body.detail : null;
+        detail = msg || det || body?.error || detail;
     } catch (_) { /* JSON değilse statusText kullan */ }
 
     throw new ApiError(detail, res.status);

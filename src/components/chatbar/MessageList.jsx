@@ -271,7 +271,7 @@ const MessageList = ({
                                                                 }
                                                                 const errorSolution = parseErrorSolution(msg.text);
                                                                 if (errorSolution) {
-                                                                    return <ErrorSolutionCard data={errorSolution} userId={currentUser?.id} sessionId={currentSessionId} />;
+                                                                    return <ErrorSolutionCard data={errorSolution} userId={currentUser?.id} sessionId={currentSessionId} onSendFollowup={onSendFollowup} />;
                                                                 }
                                                             }
                                                             return (

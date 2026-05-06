@@ -49,7 +49,8 @@ const DatabaseMemoryTable = ({
                         type="text"
                         placeholder="Dosya ara..."
                         value={search}
-                        onChange={e = autoComplete="off"> setSearch(e.target.value)}
+                        onChange={e => setSearch(e.target.value)}
+                        autoComplete="off"
                         className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-stone-50 border border-stone-200 rounded-lg
                             focus:outline-none focus:bg-white focus:border-[#378ADD]/40
                             placeholder:text-stone-400 text-stone-700 transition-all"

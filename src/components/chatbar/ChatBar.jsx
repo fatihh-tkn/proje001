@@ -402,9 +402,18 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                 },
                 onError: (errText) => {
                     setMessages((prev) =>
-                        prev.map((m) => m.id === aiMsgId
-                            ? { ...m, text: errText, isStreaming: false, isError: true }
-                            : m)
+                        prev.map((m) => {
+                            if (m.id !== aiMsgId) return m;
+                            // Defansif: cevap zaten streaming/replace ile geldiyse
+                            // backend'den sonradan gelen hata event'iyle baloncuğu
+                            // EZME — sessiz kapat, kart/cevap ekranda kalsın.
+                            const hasText = !!(m.text && m.text.trim());
+                            if (hasText) {
+                                console.warn('[chat] Backend error after response, suppressed:', errText);
+                                return { ...m, isStreaming: false };
+                            }
+                            return { ...m, text: errText, isStreaming: false, isError: true };
+                        })
                     );
                     setIsTyping(false);
                     streamingMsgIdRef.current = null;

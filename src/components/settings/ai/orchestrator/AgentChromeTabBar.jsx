@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Brain, Save, Loader2, Power, GitBranch } from 'lucide-react';
-import { isAgentVisibleInGrid } from './constants';
+import { Save, Loader2, Power } from 'lucide-react';
+import { isAgentVisibleInGrid, getAgentIcon } from './constants';
 
 const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAgentIds = new Set(), onSave, onToggleAgent, isSaving }) => {
     const visibleAgents = useMemo(
@@ -12,6 +12,25 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
     const [editValue, setEditValue] = useState('');
     const inputRef = useRef(null);
     const [contextMenu, setContextMenu] = useState(null); // { x, y, agentId }
+
+    // Sığma takibi: container, ajan sayısı * min sekme genişliğinden darsa
+    // ikon-only moda geç (label gizlenir, tooltip'te ad).
+    const containerRef = useRef(null);
+    const [compact, setCompact] = useState(false);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || visibleAgents.length === 0) return;
+        const FULL_MIN = 140;   // label modunda sekme başına minimum genişlik
+        const recompute = () => {
+            const need = visibleAgents.length * FULL_MIN;
+            setCompact(el.clientWidth < need);
+        };
+        recompute();
+        const ro = new ResizeObserver(recompute);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [visibleAgents.length]);
 
     useEffect(() => {
         if (editingId && inputRef.current) {
@@ -55,13 +74,31 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
     return (
         <>
             <div
+                ref={containerRef}
                 className="flex items-stretch px-0 shrink-0 overflow-x-auto z-10 relative w-full h-full"
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
                 {visibleAgents.map((agent) => {
                     const isActive = selectedItemId === agent.id;
+                    const isInactive = agent.active === false;
                     const isEditing = editingId === agent.id;
                     const isDirty = dirtyAgentIds.has(agent.id);
+                    const AgentIcon = getAgentIcon(agent);
+                    // Düzenlenen veya aktif sekme her zaman tam mod (input/label görünür kalsın)
+                    const showLabel = !compact || isEditing || isActive;
+
+                    const sizeClass = showLabel
+                        ? 'min-w-[140px] max-w-[220px] gap-2 px-4'
+                        : 'min-w-[40px] max-w-[40px] justify-center px-0';
+
+                    // Pasife alınmış ajanlar hafif kırmızı tona bürünür (seçili olsa bile).
+                    const tabColorClass = isActive
+                        ? (isInactive ? 'text-red-700 bg-red-50/60' : 'text-stone-700 bg-stone-50/50')
+                        : (isInactive ? 'text-red-400/80 bg-red-50/30 hover:text-red-500 hover:bg-red-50/60' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-50');
+
+                    const iconColorClass = isActive
+                        ? (isInactive ? 'text-red-500' : 'text-[#378ADD]')
+                        : (isInactive ? 'text-red-400/70 group-hover:text-red-500' : 'text-stone-400 group-hover:text-stone-500');
 
                     return (
                         <div
@@ -69,19 +106,14 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                             onClick={() => onSelect(agent.id)}
                             onDoubleClick={(e) => startEdit(e, agent)}
                             onContextMenu={(e) => handleContextMenu(e, agent)}
-                            className={`group relative flex items-center gap-2 min-w-[140px] max-w-[220px] h-full px-4 cursor-pointer transition-all select-none shrink-0 border-r border-stone-100 last:border-0
-                                ${isActive ? 'text-stone-700 bg-stone-50/50' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-50'}`}
-                            title={isEditing ? undefined : `${agent.name} — Yeniden adlandırmak için çift tıklayın`}
+                            className={`group relative flex items-center h-full cursor-pointer transition-all select-none shrink-0 border-r border-stone-100 last:border-0 ${sizeClass} ${tabColorClass}`}
+                            title={isEditing ? undefined : (showLabel ? `${agent.name}${isInactive ? ' (pasif)' : ''} — Yeniden adlandırmak için çift tıklayın` : `${agent.name}${isInactive ? ' (pasif)' : ''}`)}
                         >
-                            <div className={`shrink-0 ${isActive ? 'text-[#378ADD]' : 'text-stone-400 group-hover:text-stone-500'}`}>
-                                {agent.agentKind === 'graph_node'
-                                    ? <GitBranch size={14} strokeWidth={isActive ? 2.5 : 2} />
-                                    : agent.agentKind === 'chatbot'
-                                        ? <Bot size={14} strokeWidth={isActive ? 2.5 : 2} />
-                                        : <Brain size={14} strokeWidth={isActive ? 2.5 : 2} />}
+                            <div className={`shrink-0 ${iconColorClass}`}>
+                                <AgentIcon size={14} strokeWidth={isActive ? 2.5 : 2} />
                             </div>
 
-                            {isEditing && isActive ? (
+                            {showLabel && (isEditing && isActive ? (
                                 <input
                                     ref={inputRef}
                                     value={editValue}
@@ -89,21 +121,21 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                                     onBlur={commitEdit}
                                     onKeyDown={handleKeyDown}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="text-[12px] font-black tracking-tight bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0 focus:ring-0"
+                                    className="text-[12px] font-black tracking-tight bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0 focus:ring-0 ml-2"
                                 />
                             ) : (
-                                <span className={`text-[12px] tracking-tight truncate flex-1 ${isActive ? 'font-black' : 'font-bold'}`}>{agent.name}</span>
-                            )}
+                                <span className={`text-[12px] tracking-tight truncate flex-1 ml-2 ${isActive ? 'font-black' : 'font-bold'}`}>{agent.name}</span>
+                            ))}
 
-                            {/* Kaydet butonu — sadece bu ajan değiştirilmişse görünür */}
-                            {isDirty && (
+                            {/* Kaydet butonu — kirli ve label modunda görünür */}
+                            {isDirty && showLabel && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onSave?.(agent.id);
                                     }}
                                     title="Kaydet"
-                                    className="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[#378ADD] hover:bg-[#378ADD]/15 transition-colors"
+                                    className="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[#378ADD] hover:bg-[#378ADD]/15 transition-colors ml-1"
                                 >
                                     {isSaving ? (
                                         <Loader2 size={11} className="animate-spin" strokeWidth={2.5} />
@@ -111,6 +143,11 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                                         <Save size={11} strokeWidth={2.5} />
                                     )}
                                 </button>
+                            )}
+
+                            {/* Compact modda kirli işaretçisi — küçük nokta */}
+                            {isDirty && !showLabel && (
+                                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#378ADD]" />
                             )}
 
                             {/* Aktif göstergesi — alt çizgi */}

@@ -338,8 +338,16 @@ async def save_custom_model(body: dict):
         defaults = (spec or {}).get("default_models") or []
         name = defaults[0] if defaults else "custom-model"
 
-    model_id = f"model_{uuid.uuid4().hex[:8]}"
-    add_user_model(model_id, name, api_key, provider=provider, base_url=base_url)
+    # ai_modelleri.ad üzerinde UniqueConstraint var; aynı ad ikinci kez
+    # eklenemez. Generic 500 yerine kullanıcıya net 409 dönüyoruz.
+    from sqlalchemy.exc import IntegrityError
+    try:
+        model_id = add_user_model(name, api_key, provider=provider, base_url=base_url)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Bu model zaten kayıtlı: {name}",
+        )
     return {"ok": True, "id": model_id, "name": name}
 
 @router.post("/custom-models/{model_id}/verify")

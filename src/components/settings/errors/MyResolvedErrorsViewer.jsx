@@ -417,7 +417,8 @@ const MyResolvedErrorsViewer = ({ currentUser }) => {
                     <input
                         placeholder="Hata kodu, başlık veya etiket ara..."
                         value={search}
-                        onChange={e = autoComplete="off"> setSearch(e.target.value)}
+                        onChange={e => setSearch(e.target.value)}
+                        autoComplete="off"
                     />
                     <span className="kbd">⌘K</span>
                 </div>
