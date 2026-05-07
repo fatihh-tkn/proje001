@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
     AlertTriangle, ListChecks, Paperclip, GitBranch, ChevronDown, ChevronUp,
-    BookmarkPlus, FileText, HelpCircle, Send, Loader2
+    BookmarkPlus, FileText, HelpCircle, Send, Loader2, Image, X,
+    CheckCircle2, SkipForward, Upload,
 } from 'lucide-react';
 import { mutate } from '../../api/client';
 
@@ -42,22 +43,128 @@ const SectionToggle = ({ icon, iconWrap, title, count, open, onClick }) => (
     </button>
 );
 
-const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
+/* ── Önceki tur özeti (collapsed) ─────────────────────────────────── */
+const PreviousRoundSummary = ({ round, qaItems }) => {
+    const [open, setOpen] = useState(false);
+    return (
+        <div className="border-b border-amber-50">
+            <button
+                type="button"
+                onClick={() => setOpen(p => !p)}
+                className="w-full flex items-center gap-2 px-4 py-2 hover:bg-amber-50/30 transition text-left"
+            >
+                <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
+                <span className="flex-1 text-[11px] font-medium text-stone-600">
+                    Tur {round} cevapları ({qaItems.length} soru)
+                </span>
+                {open
+                    ? <ChevronUp size={11} className="text-stone-400" />
+                    : <ChevronDown size={11} className="text-stone-400" />}
+            </button>
+            {open && (
+                <div className="px-5 pb-3 space-y-1.5">
+                    {qaItems.map((qa, i) => (
+                        <div key={i} className="text-[11px]">
+                            <span className="text-stone-500">{qa.question || `Soru ${i + 1}`}: </span>
+                            <span className="text-stone-700 font-medium">{qa.answer || '—'}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ── Screenshot dropzone ───────────────────────────────────────────── */
+const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled }) => {
+    const [isDrag, setIsDrag] = useState(false);
+    const inputRef = useRef(null);
+
+    const readFile = useCallback((file) => {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = (e) => onScreenshot(e.target.result.split(',')[1], file.type);
+        reader.readAsDataURL(file);
+    }, [onScreenshot]);
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDrag(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) readFile(file);
+    };
+
+    if (screenshot) {
+        return (
+            <div className="mx-5 mb-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                <Image size={13} className="text-emerald-600 shrink-0" />
+                <span className="flex-1 text-[11px] text-emerald-700 font-medium truncate">
+                    Ekran görüntüsü eklendi
+                </span>
+                <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={onClear}
+                    className="text-stone-400 hover:text-stone-600 disabled:opacity-40"
+                >
+                    <X size={12} />
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div
+            onDragOver={(e) => { e.preventDefault(); setIsDrag(true); }}
+            onDragLeave={() => setIsDrag(false)}
+            onDrop={handleDrop}
+            onClick={() => !disabled && inputRef.current?.click()}
+            className={`mx-5 mb-3 flex items-center gap-2 rounded-lg px-3 py-2 border border-dashed cursor-pointer transition
+                ${isDrag
+                    ? 'bg-amber-50 border-amber-400'
+                    : 'bg-stone-50/60 border-stone-200 hover:border-amber-300 hover:bg-amber-50/30'}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+        >
+            <Upload size={12} className="text-stone-400 shrink-0" />
+            <span className="text-[10.5px] text-stone-400">
+                Ekran görüntüsü ekle <span className="text-stone-300">(opsiyonel — sürükle veya tıkla)</span>
+            </span>
+            <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={disabled}
+                onChange={(e) => readFile(e.target.files?.[0])}
+            />
+        </div>
+    );
+};
+
+/* ── Ana bileşen ───────────────────────────────────────────────────── */
+const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarificationContinue }) => {
     const [openSection, setOpenSection] = useState('steps');
-    const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
-    // Clarification — soru başına seçilen şık veya "Diğer" metni
-    const [answers, setAnswers] = useState({});       // { qId: { value, isOther } }
+    const [saveStatus, setSaveStatus] = useState('idle');
+    const [answers, setAnswers] = useState({});
+    const [screenshot, setScreenshot] = useState(null);   // { base64, mime }
     const [submitting, setSubmitting] = useState(false);
     const toggle = (k) => setOpenSection(openSection === k ? null : k);
 
     const {
         id, title, module, severity, frequency, summary, cause,
-        steps = [], docs = [], similar = [],
         needs_clarification = false,
         clarification_questions = [],
+        round = 1,
+        max_rounds = 3,
+        original_error = '',
+        qa_history = [],
     } = data || {};
 
-    // Eski string-only şemayı yeni obje şemasına otomatik dönüştür (geriye uyum).
+    const steps   = Array.isArray(data?.steps)   ? data.steps   : [];
+    const docs    = Array.isArray(data?.docs)     ? data.docs    : [];
+    const similar = Array.isArray(data?.similar)  ? data.similar : [];
+
+    /* Sorular normalize (string uyumu) */
     const normalizedQuestions = (clarification_questions || []).map((q, i) => {
         if (typeof q === 'string') {
             return { id: `q${i + 1}`, question: q, options: [], allow_other: true };
@@ -70,51 +177,62 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
         };
     });
 
-    const setAnswer = (qId, value, isOther = false) => {
-        setAnswers((prev) => ({ ...prev, [qId]: { value, isOther } }));
-    };
+    const setAnswer     = (qId, value, isOther = false) =>
+        setAnswers(p => ({ ...p, [qId]: { value, isOther } }));
+    const setOtherText  = (qId, text) =>
+        setAnswers(p => ({ ...p, [qId]: { value: text, isOther: true } }));
 
-    const setOtherText = (qId, text) => {
-        setAnswers((prev) => ({ ...prev, [qId]: { value: text, isOther: true } }));
-    };
-
-    const answeredCount = normalizedQuestions.filter((q) => {
+    const answeredCount = normalizedQuestions.filter(q => {
         const a = answers[q.id];
         return a && (a.value || '').trim().length > 0;
     }).length;
 
-    const canSubmit = answeredCount >= 1 && !submitting && !!onSendFollowup;
+    const canSubmit = answeredCount >= 1 && !submitting && !!onClarificationContinue;
+
+    /* Cevapları Q&A history formatına çevir */
+    const buildQaEntry = () =>
+        normalizedQuestions
+            .map(q => {
+                const a = answers[q.id];
+                const val = (a?.value || '').trim();
+                if (!val) return null;
+                return { question: q.question, answer: val, is_other: !!a?.isOther };
+            })
+            .filter(Boolean);
 
     const handleClarificationSubmit = (e) => {
         e?.preventDefault?.();
         if (!canSubmit) return;
         setSubmitting(true);
 
-        // Cevapları satır satır birleştir
-        const answerLines = normalizedQuestions
-            .map((q) => {
-                const a = answers[q.id];
-                const val = (a?.value || '').trim();
-                if (!val) return null;
-                return `- ${q.question} → ${val}`;
-            })
-            .filter(Boolean);
+        const newEntries  = buildQaEntry();
+        const fullHistory = [...(qa_history || []), ...newEntries];
 
-        const prefix = id ? `${id} hatası hakkında ek bilgi:\n` : 'Hata hakkında ek bilgi:\n';
-        const composed = `${prefix}${answerLines.join('\n')}`;
+        onClarificationContinue({
+            originalError:   original_error || summary || '',
+            qaHistory:       fullHistory,
+            screenshotBase64: screenshot?.base64 || null,
+            screenshotMime:  screenshot?.mime || 'image/jpeg',
+        });
+    };
 
-        try {
-            onSendFollowup(composed);
-        } finally {
-            // submitting true bırakılıyor — aynı karttan tekrar göndermesin.
-        }
+    /* Vazgeç — elindeki bilgiyle çözüm iste */
+    const handleSkip = () => {
+        if (submitting || !onClarificationContinue) return;
+        setSubmitting(true);
+        const newEntries  = buildQaEntry();
+        const fullHistory = [...(qa_history || []), ...newEntries];
+        onClarificationContinue({
+            originalError:   original_error || summary || '',
+            qaHistory:       fullHistory,
+            screenshotBase64: screenshot?.base64 || null,
+            screenshotMime:  screenshot?.mime || 'image/jpeg',
+            forceMaxRound:   true,
+        });
     };
 
     const handleSave = async () => {
-        if (!userId) {
-            alert('Bu çözümü kaydetmek için giriş yapmalısınız.');
-            return;
-        }
+        if (!userId) { alert('Bu çözümü kaydetmek için giriş yapmalısınız.'); return; }
         setSaveStatus('saving');
         try {
             await mutate.create('/api/errors/user-record', {
@@ -135,13 +253,16 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
         }
     };
 
-    // Clarification modu — yetersiz bilgi geldiyse kullanıcıdan detay iste.
+    /* ── Clarification modu ──────────────────────────────────────────── */
     if (needs_clarification) {
+        const isLastRound = round >= max_rounds;
+
         return (
             <div
                 className="w-full max-w-[680px] bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden"
-                style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif' }}
+                style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, sans-serif' }}
             >
+                {/* Header */}
                 <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-amber-100 flex items-center gap-3 flex-wrap">
                     <span className="w-7 h-7 inline-flex items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 shrink-0">
                         <HelpCircle size={14} />
@@ -151,17 +272,36 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                             {id}
                         </span>
                     )}
-                    <h2 className="text-[13px] font-semibold text-stone-800 truncate flex-1 min-w-0">
-                        {title || 'Daha fazla bilgi gerekli'}
+                    <h2 className="text-[13px] font-semibold text-stone-800 flex-1 min-w-0 truncate">
+                        {title || 'Hatayı netleştirelim'}
                     </h2>
+                    {/* Tur göstergesi */}
+                    <span className="text-[10px] font-mono text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                        Tur {round}/{max_rounds}
+                    </span>
                 </div>
 
+                {/* Önceki turların özeti */}
+                {(qa_history || []).length > 0 && (() => {
+                    // Turları grupla (her tur kendi collapsed bloğu)
+                    // qa_history düz liste — turları sorgu sayısına göre bölmek
+                    // yerine tümünü tek blokta göster (tur 1 cevapları)
+                    return (
+                        <PreviousRoundSummary
+                            round={round - 1}
+                            qaItems={qa_history}
+                        />
+                    );
+                })()}
+
+                {/* Özet */}
                 {summary && (
                     <div className="px-5 py-3 border-b border-amber-50">
                         <p className="text-[12.5px] leading-relaxed text-stone-700">{summary}</p>
                     </div>
                 )}
 
+                {/* Sorular */}
                 {normalizedQuestions.length > 0 && (
                     <div className="divide-y divide-amber-50">
                         {normalizedQuestions.map((q, qi) => {
@@ -178,27 +318,21 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                                         </h4>
                                     </div>
 
-                                    {/* Şıklar — chip-stili tıklanabilir butonlar */}
                                     {q.options.length > 0 && (
                                         <div className="flex flex-wrap gap-1.5 ml-7">
                                             {q.options.map((opt, oi) => {
-                                                const isOther = (opt || '').toLowerCase().startsWith('diğer');
-                                                const selected = (
-                                                    isOther
-                                                        ? otherChosen
-                                                        : a && !a.isOther && a.value === opt
-                                                );
+                                                const isOtherOpt = (opt || '').toLowerCase().startsWith('diğer');
+                                                const selected = isOtherOpt
+                                                    ? otherChosen
+                                                    : a && !a.isOther && a.value === opt;
                                                 return (
                                                     <button
                                                         key={oi}
                                                         type="button"
                                                         disabled={submitting}
                                                         onClick={() => {
-                                                            if (isOther) {
-                                                                setOtherText(q.id, '');
-                                                            } else {
-                                                                setAnswer(q.id, opt, false);
-                                                            }
+                                                            if (isOtherOpt) setOtherText(q.id, '');
+                                                            else setAnswer(q.id, opt, false);
                                                         }}
                                                         className={`text-[11.5px] px-2.5 py-1 rounded-full border transition disabled:opacity-50 ${
                                                             selected
@@ -213,7 +347,6 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                                         </div>
                                     )}
 
-                                    {/* "Diğer" seçildiyse text input aç */}
                                     {q.allow_other && otherChosen && (
                                         <div className="ml-7 mt-2">
                                             <input
@@ -227,7 +360,6 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                                         </div>
                                     )}
 
-                                    {/* Şık yoksa: doğrudan text input (eski string-only şema fallback) */}
                                     {q.options.length === 0 && (
                                         <div className="ml-7">
                                             <input
@@ -246,31 +378,57 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                     </div>
                 )}
 
+                {/* Screenshot dropzone */}
+                <div className="pt-2">
+                    <ScreenshotZone
+                        screenshot={screenshot}
+                        onScreenshot={(base64, mime) => setScreenshot({ base64, mime })}
+                        onClear={() => setScreenshot(null)}
+                        disabled={submitting}
+                    />
+                </div>
+
+                {/* Footer */}
                 <div className="px-4 py-3 bg-stone-50/60 border-t border-amber-100 flex items-center justify-between gap-3">
                     <span className="text-[10px] text-stone-400">
                         {answeredCount}/{normalizedQuestions.length} cevaplandı
                         {answeredCount === 0 && ' — en az bir soru cevaplanmalı'}
                     </span>
-                    <button
-                        type="button"
-                        onClick={handleClarificationSubmit}
-                        disabled={!canSubmit}
-                        className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 bg-amber-500 text-white hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-400 transition shadow-sm"
-                    >
-                        {submitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                        {submitting ? 'Gönderiliyor...' : 'Çözümü hazırla'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!isLastRound && (
+                            <button
+                                type="button"
+                                onClick={handleSkip}
+                                disabled={submitting}
+                                title="Mevcut bilgiyle çözüm üret"
+                                className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 disabled:opacity-40 transition"
+                            >
+                                <SkipForward size={11} />
+                                Yeterli, çöz
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleClarificationSubmit}
+                            disabled={!canSubmit}
+                            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 bg-amber-500 text-white hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-400 transition shadow-sm"
+                        >
+                            {submitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                            {submitting ? 'Analiz ediliyor...' : isLastRound ? 'Son tur — çözüm iste' : 'Devam et'}
+                        </button>
+                    </div>
                 </div>
             </div>
         );
     }
 
+    /* ── Çözüm modu ──────────────────────────────────────────────────── */
     return (
         <div
             className="w-full max-w-[760px] bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden"
-            style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif' }}
+            style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, sans-serif' }}
         >
-            {/* Üst şerit */}
+            {/* Header */}
             <div className="px-4 py-3 bg-gradient-to-r from-stone-50 to-white border-b border-stone-100 flex items-center gap-3 flex-wrap">
                 <span className="w-7 h-7 inline-flex items-center justify-center rounded-lg bg-[#DC2626]/10 text-[#DC2626] shrink-0">
                     <AlertTriangle size={14} />
@@ -288,9 +446,7 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
                 )}
                 {severity && <SeverityPill level={severity} />}
                 {frequency > 0 && (
-                    <span className="text-[10px] text-stone-400">
-                        {frequency} kez
-                    </span>
+                    <span className="text-[10px] text-stone-400">{frequency} kez</span>
                 )}
             </div>
 
@@ -440,7 +596,8 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup }) => {
  */
 export const parseErrorSolution = (text) => {
     if (!text || typeof text !== 'string') return null;
-    const match = text.match(/```json\s*([\s\S]*?)\s*```/i) || text.match(/(\{[\s\S]*"type"\s*:\s*"error_solution"[\s\S]*\})/);
+    const match = text.match(/```json\s*([\s\S]*?)\s*```/i)
+        || text.match(/(\{[\s\S]*"type"\s*:\s*"error_solution"[\s\S]*\})/);
     if (!match) return null;
     try {
         const data = JSON.parse(match[1]);

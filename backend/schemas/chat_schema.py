@@ -18,8 +18,12 @@ class ChatMessage(BaseModel):
     # PC parmak izi (localStorage) ve sekme token'ı (sessionStorage)
     pc_id: str | None = Field(default=None, max_length=64)
     tab_id: str | None = Field(default=None, max_length=64)
-    # Hızlı Aksiyon komutu (error_solve, summarize, bpmn_analyze, ...)
+    # Hızlı Aksiyon komutu (error_solve, clarification_continue, ...)
     command: str | None = Field(default=None, max_length=64)
+    # Clarification devam turu — önceki Q&A geçmişi (stateless, frontend taşır)
+    qa_history: list[dict] | None = Field(default=None)
+    # Opsiyonel ekran görüntüsü (base64); vision destekli modellerde analiz edilir
+    screenshot_base64: str | None = Field(default=None)
 
 
 class ChatResponse(BaseModel):

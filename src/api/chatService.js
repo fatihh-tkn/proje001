@@ -137,6 +137,8 @@ export const sendMessageStream = async (
   fileOpts = null,
   commandOpts = null,
   signal = null,
+  // Clarification devam turu — { qaHistory: [...], screenshotBase64: "..." }
+  clarificationOpts = null,
 ) => {
   try {
     const body = {
@@ -151,6 +153,8 @@ export const sendMessageStream = async (
     if (fileOpts?.fileNames?.length) body.file_names = fileOpts.fileNames;
     if (fileOpts?.collectionName) body.collection_name = fileOpts.collectionName;
     if (commandOpts?.commandId) body.command = commandOpts.commandId;
+    if (clarificationOpts?.qaHistory?.length) body.qa_history = clarificationOpts.qaHistory;
+    if (clarificationOpts?.screenshotBase64) body.screenshot_base64 = clarificationOpts.screenshotBase64;
 
     const response = await fetch(STREAM_BASE, {
       method: "POST",

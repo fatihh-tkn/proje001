@@ -3,16 +3,17 @@ nodes/error_solver.py
 ────────────────────────────────────────────────────────────────────
 SAP/sistem hatalarını yapılandırılmış JSON çıktıyla çözümleyen uzman.
 
-Mevcut akıştaki `command="error_solve"` davranışını birebir korur —
-front-end aynı şemayı (`type: "error_solution"`) parse ediyor.
-
-RAG bağlamı varsa (rag_search node'u paralel çalıştığında) onu da
-prompt'a ekler ki çözüm önerileri kurum içi belgelere dayansın.
+Üç giriş modu:
+  1. command="error_solve"        — hızlı aksiyon; şemayı zorla doldur.
+  2. command=None, intent="hata_cozumu" — doğal sınıflandırma.
+  3. command="clarification_continue"  — çok turlu teşhis devamı;
+       state["qa_history"] + state["screenshot_base64"] ile tek LLM
+       çağrısında "çözüm mü / daha fazla soru mu?" kararı verilir.
 
 Çıktı:
     {
-      "error_solution": {parsed_json},     # aggregator'ın UI'ya yansıttığı dict
-      "error_draft":    "<json-string>",   # ham JSON metni (aggregator pass-through)
+      "error_solution": {parsed_json},
+      "error_draft":    "<json-string>",
       "nodes_executed": ["error_solver"],
       "node_timings":   {"error_solver": ms},
       "total_tokens":   {"error_solver": {p, c}},
@@ -211,6 +212,10 @@ def _build_clarification_solution(user_msg: str) -> dict:
     return {
         "type": "error_solution",
         "needs_clarification": True,
+        "round": 1,
+        "max_rounds": _MAX_CLARIFICATION_ROUNDS,
+        "original_error": (user_msg or "")[:500],
+        "qa_history": [],
         "id": code_match.group(1) if code_match else "",
         "title": "Daha fazla bilgi gerekli",
         "module": "",
@@ -269,6 +274,10 @@ async def _generate_clarification_with_llm(
             parsed.setdefault("steps", [])
             parsed.setdefault("docs", [])
             parsed.setdefault("similar", [])
+            parsed.setdefault("round", 1)
+            parsed.setdefault("max_rounds", _MAX_CLARIFICATION_ROUNDS)
+            parsed.setdefault("original_error", (user_msg or "")[:500])
+            parsed.setdefault("qa_history", [])
             if not parsed.get("id"):
                 m = _CODE_RE.search(user_msg or "")
                 parsed["id"] = m.group(1) if m else ""
@@ -302,22 +311,225 @@ def _normalize_error_solution(parsed: dict | None, user_msg: str) -> dict:
     p.setdefault("frequency", 0)
     p.setdefault("summary", (user_msg or "")[:240])
     p.setdefault("cause", "")
-    p.setdefault("steps", [])
-    p.setdefault("docs", [])
-    p.setdefault("similar", [])
+    # setdefault yalnızca eksik key için çalışır; LLM null döndürdüğünde
+    # da zorla boş liste yapıyoruz.
+    if not isinstance(p.get("steps"), list):
+        p["steps"] = []
+    if not isinstance(p.get("docs"), list):
+        p["docs"] = []
+    if not isinstance(p.get("similar"), list):
+        p["similar"] = []
     return p
+
+
+# ── Clarification-Continue: çok turlu teşhis ────────────────────────────────
+
+_MAX_CLARIFICATION_ROUNDS = 3
+
+_CONTINUATION_SYSTEM = (
+    "Sen kıdemli bir SAP/kurumsal sistem destek uzmanısın. Kullanıcı bir hata\n"
+    "bildirdi ve şimdiye kadar teşhis sorularını yanıtladı. Sana:\n"
+    "  1) Orijinal hata mesajı\n"
+    "  2) Geçmiş soru-cevap geçmişi\n"
+    "  3) Opsiyonel ekran görüntüsü\n"
+    "verilecek.\n\n"
+    "[KARAR KURALI]\n"
+    "Eğer geçmiş bilgilerle ROOT CAUSE'u belirleyebiliyorsan → 'solve'\n"
+    "Hâlâ kritik bir bilinmeyen varsa (1-3 soru) → 'ask_more'\n"
+    "Tur sayısı sınırına ({round}/{max_rounds}) ulaşıldıysa → MUTLAKA 'solve'\n\n"
+    "[ask_more için]\n"
+    "Maksimum 3 soru sor. Her soruya 4-5 SOMUT seçenek ver. Son seçenek\n"
+    "'Diğer' olsun. Daha önce sorulan soruları TEKRARLAMA.\n\n"
+    "SADECE aşağıdaki JSON formatlarından birini döndür, başka metin yazma:\n\n"
+    "--- Çözüm için ---\n"
+    "```json\n"
+    "{\n"
+    '  "decision": "solve",\n'
+    '  "type": "error_solution",\n'
+    '  "id": "<hata_kodu>",\n'
+    '  "title": "<başlık>",\n'
+    '  "module": "<SAP_modülü>",\n'
+    '  "severity": "low|medium|high|critical",\n'
+    '  "frequency": 0,\n'
+    '  "summary": "<genel_özet>",\n'
+    '  "cause": "<tespit_edilen_neden>",\n'
+    '  "steps": [{"title": "...", "tcode": "...", "detail": "..."}],\n'
+    '  "docs": [],\n'
+    '  "similar": []\n'
+    "}\n"
+    "```\n\n"
+    "--- Daha fazla soru için ---\n"
+    "```json\n"
+    "{\n"
+    '  "decision": "ask_more",\n'
+    '  "questions": [\n'
+    '    {"id": "q_next_1", "question": "...", '
+    '"options": ["...", "...", "Diğer"], "allow_other": true}\n'
+    "  ]\n"
+    "}\n"
+    "```"
+)
+
+
+def _format_qa_history(qa_history: list[dict]) -> str:
+    """Q&A geçmişini LLM için okunabilir metne çevirir."""
+    if not qa_history:
+        return "(Önceki cevap yok)"
+    lines = []
+    for i, qa in enumerate(qa_history, 1):
+        q = qa.get("question") or qa.get("q") or f"Soru {i}"
+        a = qa.get("answer") or qa.get("a") or "(cevapsız)"
+        lines.append(f"  S{i}: {q}\n  C{i}: {a}")
+    return "\n".join(lines)
+
+
+async def _handle_clarification_continue(
+    state: AgentState,
+    agent_config: dict | None,
+    t0: float,
+) -> dict:
+    """
+    clarification_continue komutu için tek LLM çağrısıyla karar ver:
+    çözüm üret VEYA bir sonraki tur sorularını üret.
+    """
+    user_msg = state.get("user_message") or state.get("original_message") or ""
+    qa_history: list[dict] = state.get("qa_history") or []
+    screenshot_b64: str | None = state.get("screenshot_base64")
+    current_round = len(qa_history)          # kaç tur tamamlandı
+    force_solve = current_round >= _MAX_CLARIFICATION_ROUNDS
+
+    system = _CONTINUATION_SYSTEM.replace(
+        "{round}", str(current_round)
+    ).replace(
+        "{max_rounds}", str(_MAX_CLARIFICATION_ROUNDS)
+    )
+
+    user_prompt = (
+        f"[Orijinal Hata Bildirimi]\n{user_msg}\n\n"
+        f"[Soru-Cevap Geçmişi]\n{_format_qa_history(qa_history)}"
+    )
+    if force_solve:
+        user_prompt += (
+            f"\n\n[ÖNEMLİ] Tur limiti ({_MAX_CLARIFICATION_ROUNDS}) doldu. "
+            "Elindeki bilgilerle en iyi çözümü üret; daha soru sorma."
+        )
+    if screenshot_b64:
+        user_prompt += "\n\n[Kullanıcı ekran görüntüsü ekledi — yukarıda görsel olarak sunuldu]"
+
+    try:
+        messages = build_messages(
+            system=system,
+            history=None,
+            user=user_prompt,
+            image_base64=screenshot_b64 if screenshot_b64 else None,
+        )
+        result = await call_llm(
+            agent_config,
+            messages,
+            temperature=0.2,
+            response_format="json_object",
+            max_tokens=1200,
+            timeout=45.0,
+        )
+        raw = (result.get("text") or "").strip()
+        elapsed_ms = int((time.time() - t0) * 1000)
+
+        parsed: dict | None = None
+        try:
+            parsed = json.loads(_strip_json_fence(raw))
+        except Exception:
+            pass
+
+        p_tok = result.get("prompt_tokens", 0)
+        c_tok = result.get("completion_tokens", 0)
+        base_out = {
+            "model_used": result.get("model", ""),
+            "provider_used": result.get("provider", ""),
+            "nodes_executed": ["error_solver"],
+            "node_timings": {"error_solver": elapsed_ms},
+            "total_tokens": {"error_solver": {"p": p_tok, "c": c_tok}},
+        }
+
+        decision = (parsed or {}).get("decision", "solve")
+
+        # ── ask_more: yeni soru seti üret ────────────────────────────
+        if decision == "ask_more" and not force_solve:
+            raw_qs = (parsed or {}).get("questions") or []
+            questions = [
+                {
+                    "id": q.get("id") or f"q_r{current_round + 1}_{i}",
+                    "question": q.get("question") or "",
+                    "options": q.get("options") or [],
+                    "allow_other": q.get("allow_other", True),
+                }
+                for i, q in enumerate(raw_qs, 1)
+                if isinstance(q, dict) and q.get("question")
+            ]
+            if not questions:
+                # LLM "ask_more" dedi ama soru üretmedi → zorla çöz
+                logger.warning("[error_solver] ask_more ama soru yok → forced solve")
+            else:
+                code_match = _CODE_RE.search(user_msg)
+                clarification = {
+                    "type": "error_solution",
+                    "needs_clarification": True,
+                    "round": current_round + 1,
+                    "max_rounds": _MAX_CLARIFICATION_ROUNDS,
+                    "id": code_match.group(1) if code_match else "",
+                    "title": "Hatayı netleştirelim",
+                    "module": "",
+                    "severity": "medium",
+                    "frequency": 0,
+                    "summary": f"Tur {current_round + 1}/{_MAX_CLARIFICATION_ROUNDS} — önceki cevaplarınız alındı.",
+                    "cause": "",
+                    "original_error": user_msg[:500],
+                    "qa_history": qa_history,
+                    "clarification_questions": questions,
+                    "steps": [],
+                    "docs": [],
+                    "similar": [],
+                }
+                draft = json.dumps(clarification, ensure_ascii=False)
+                logger.info(
+                    "[error_solver] clarification_continue → ask_more tur=%d, %d soru, %d ms",
+                    current_round + 1, len(questions), elapsed_ms,
+                )
+                return {**base_out, "error_solution": clarification, "error_draft": draft}
+
+        # ── solve: tam çözüm normalize et ────────────────────────────
+        normalized = _normalize_error_solution(parsed, user_msg)
+        normalized.pop("decision", None)   # LLM'in eklediği decision alanını temizle
+        draft = json.dumps(normalized, ensure_ascii=False)
+        logger.info(
+            "[error_solver] clarification_continue → solve tur=%d, %d ms",
+            current_round, elapsed_ms,
+        )
+        return {**base_out, "error_solution": normalized, "error_draft": draft}
+
+    except Exception as e:
+        elapsed_ms = int((time.time() - t0) * 1000)
+        logger.error("[error_solver] clarification_continue hatası: %s", e, exc_info=True)
+        # Fallback: generic clarification veya minimal çözüm
+        fallback = _build_clarification_solution(user_msg)
+        fallback["round"] = current_round + 1
+        fallback["max_rounds"] = _MAX_CLARIFICATION_ROUNDS
+        fallback["original_error"] = user_msg[:500]
+        fallback["qa_history"] = qa_history
+        draft = json.dumps(fallback, ensure_ascii=False)
+        return {
+            "error_solution": fallback,
+            "error_draft": draft,
+            "nodes_executed": ["error_solver"],
+            "node_timings": {"error_solver": elapsed_ms},
+            "node_errors": {"error_solver": str(e)},
+        }
 
 
 async def error_solver_node(state: AgentState) -> dict:
     t0 = time.time()
     user_msg = state.get("user_message") or state.get("original_message") or ""
     rag_ctx = state.get("rag_context") or ""
-
-    # "Hata Çözümü" hızlı aksiyonu açıkça tıklandıysa şemayı zorla doldur
-    # (UI ErrorSolutionCard her zaman render etmeli). Doğal sınıflandırmadan
-    # gelen turlarda LLM şemaya uymazsa draft yazma → aggregator doğal dilde
-    # cevap üretsin.
-    explicit_command = state.get("command") == "error_solve"
+    command = state.get("command") or ""
 
     agent_config = get_agent_config(state, "error_solver")
     if agent_config is None:
@@ -325,6 +537,16 @@ async def error_solver_node(state: AgentState) -> dict:
             agent_config = get_assigned_agent("error_solver")
         except Exception:
             pass
+
+    # ── Clarification devam turu — önceki Q&A + opsiyonel ekran görüntüsü ──
+    if command == "clarification_continue":
+        return await _handle_clarification_continue(state, agent_config, t0)
+
+    # "Hata Çözümü" hızlı aksiyonu açıkça tıklandıysa şemayı zorla doldur
+    # (UI ErrorSolutionCard her zaman render etmeli). Doğal sınıflandırmadan
+    # gelen turlarda LLM şemaya uymazsa draft yazma → aggregator doğal dilde
+    # cevap üretsin.
+    explicit_command = command == "error_solve"
 
     # Yetersiz bilgi tespiti — quick action OLSUN OLMASIN, mesaj çözüm
     # üretmeye yetmiyorsa clarification kartını döndür. "hata aldım" gibi
@@ -434,9 +656,11 @@ async def error_solver_node(state: AgentState) -> dict:
             out["error_solution"] = normalized
             out["error_draft"] = json.dumps(normalized, ensure_ascii=False)
         elif has_valid_schema:
-            # Doğal sınıflandırma + LLM şemaya uydu → pass-through.
-            out["error_solution"] = parsed
-            out["error_draft"] = raw
+            # Doğal sınıflandırma + LLM şemaya uydu → null alanları
+            # normalize et (steps/docs/similar: null → []) ve JSON olarak ilet.
+            normalized = _normalize_error_solution(parsed, user_msg)
+            out["error_solution"] = normalized
+            out["error_draft"] = json.dumps(normalized, ensure_ascii=False)
         # else: aggregator LLM çağrısına bırak (boş JSON pass-through olmasın)
 
         return out

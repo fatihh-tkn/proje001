@@ -128,18 +128,20 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
         file_names = [payload.file_name]
 
     return {
-        "user_message":     payload.message,
-        "original_message": payload.message,
-        "user_id":          payload.user_id,
-        "session_id":       payload.session_id,
-        "command":          payload.command,
-        "file_name":        payload.file_name,
-        "file_names":       file_names,
-        "collection_name":  payload.collection_name,
-        "ip":               payload.ip or client_ip,
-        "mac":              payload.pc_id or payload.mac or "00:00:00:00",
-        "history":          history,
-        "started_at":       time.time() * 1000,
+        "user_message":      payload.message,
+        "original_message":  payload.message,
+        "user_id":           payload.user_id,
+        "session_id":        payload.session_id,
+        "command":           payload.command,
+        "file_name":         payload.file_name,
+        "file_names":        file_names,
+        "collection_name":   payload.collection_name,
+        "ip":                payload.ip or client_ip,
+        "mac":               payload.pc_id or payload.mac or "00:00:00:00",
+        "history":           history,
+        "qa_history":        payload.qa_history or None,
+        "screenshot_base64": payload.screenshot_base64 or None,
+        "started_at":        time.time() * 1000,
     }
 
 
