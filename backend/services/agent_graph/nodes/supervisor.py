@@ -43,13 +43,14 @@ _VALID_INTENTS = {"general", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa"}
 
 # Komut → intent (deterministik)
 _COMMAND_INTENT_MAP = {
-    "error_solve":       "hata_cozumu",
-    "zli_report_query":  "rapor_arama",
-    "summarize":         "general",
-    "bpmn_analyze":      "general",
-    "extract_tables":    "general",
-    "gen_questions":     "general",
-    "action_items":      "general",
+    "error_solve":            "hata_cozumu",
+    "clarification_continue": "hata_cozumu_devam",   # tur devamı — sadece error_solver
+    "zli_report_query":       "rapor_arama",
+    "summarize":              "general",
+    "bpmn_analyze":           "general",
+    "extract_tables":         "general",
+    "gen_questions":          "general",
+    "action_items":           "general",
 }
 
 # Kısa sohbet kalıpları — fast-path: LLM classifier'a hiç uğramadan 'sohbet'e düşür.
@@ -80,12 +81,13 @@ def _is_chitchat(msg: str) -> bool:
 # Intent → varsayılan specialist plan (paralel)
 # 'sohbet' boş plan: graph dispatcher direkt aggregator'a düşer, RAG çağrılmaz.
 _INTENT_PLAN = {
-    "sohbet":      [],
-    "general":     [("rag_search", True)],
-    "hata_cozumu": [("rag_search", True), ("error_solver", False)],
-    "rapor_arama": [("rag_search", True), ("zli_finder", False)],
-    "n8n":         [("n8n_trigger", False), ("rag_search", True)],
-    "dosya_qa":    [("rag_search", False)],
+    "sohbet":           [],
+    "general":          [("rag_search", True)],
+    "hata_cozumu":      [("rag_search", True), ("error_solver", False)],
+    "hata_cozumu_devam":[("error_solver", False)],  # clarification devamı — RAG atla
+    "rapor_arama":      [("rag_search", True), ("zli_finder", False)],
+    "n8n":              [("n8n_trigger", False), ("rag_search", True)],
+    "dosya_qa":         [("rag_search", False)],
 }
 
 
@@ -367,7 +369,7 @@ async def supervisor_node(state: AgentState) -> dict:
     # yapılandırılmış JSON döner, msg_polish sonradan çalışırsa şemayı bozabilir
     # veya stream sonunda gereksiz LLM çağrısı + olası hata fırlatır. UI kartı
     # zaten bütün halinde gösteriyor, post-process'e gerek yok.
-    if intent in ("hata_cozumu", "rapor_arama", "sohbet"):
+    if intent in ("hata_cozumu", "hata_cozumu_devam", "rapor_arama", "sohbet"):
         if needs_polish:
             logger.info(
                 "[supervisor] intent=%s için needs_polish zorla False (JSON/sohbet pass-through)",

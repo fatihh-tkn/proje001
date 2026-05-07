@@ -508,6 +508,114 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         }
     };
 
+    /**
+     * Clarification kartından "Devam et" / "Vazgeç" tıklandığında çağrılır.
+     * Mevcut AI mesajını in-place günceller (yeni baloncuk açılmaz).
+     */
+    const handleClarificationContinue = async (aiMsgId, {
+        originalError, qaHistory, screenshotBase64, screenshotMime, forceMaxRound,
+    }) => {
+        // Mevcut kartı "yükleniyor" durumuna al
+        setMessages(prev => prev.map(m =>
+            m.id === aiMsgId
+                ? { ...m, isStreaming: true, text: '', wasRevised: false, graphNodes: [], graphErrors: [] }
+                : m
+        ));
+        streamingMsgIdRef.current = aiMsgId;
+        setIsTyping(true);
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        await sendMessageStream(
+            originalError || '',
+            currentSessionId,
+            currentUser?.id,
+            {
+                onChunk: (chunk) => {
+                    setMessages(prev =>
+                        prev.map(m => m.id === aiMsgId ? { ...m, text: m.text + chunk } : m)
+                    );
+                },
+                onReplace: (newText) => {
+                    setMessages(prev =>
+                        prev.map(m => m.id === aiMsgId ? { ...m, text: newText, wasRevised: true } : m)
+                    );
+                },
+                onDone: ({ rag_used, rag_sources, model, provider, prompt_tokens, completion_tokens, duration_ms }) => {
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== aiMsgId) return m;
+                        const hasText = !!(m.text && m.text.trim());
+                        if (!hasText) {
+                            return {
+                                ...m,
+                                text: '❌ Yapay zeka cevabı üretilemedi.',
+                                isStreaming: false,
+                                isError: true,
+                                completedAt: Date.now(),
+                            };
+                        }
+                        return {
+                            ...m,
+                            isStreaming: false,
+                            ragUsed: rag_used,
+                            ragSources: rag_sources,
+                            completedAt: Date.now(),
+                            model, provider,
+                            promptTokens: prompt_tokens,
+                            completionTokens: completion_tokens,
+                            backendDurationMs: duration_ms,
+                        };
+                    }));
+                    setIsTyping(false);
+                    streamingMsgIdRef.current = null;
+                },
+                onError: (errText) => {
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== aiMsgId) return m;
+                        const hasRealContent = !!(m.text && m.text.trim()) && m.wasRevised && !m.isError;
+                        if (hasRealContent) return { ...m, isStreaming: false };
+                        return { ...m, text: errText, isStreaming: false, isError: true };
+                    }));
+                    setIsTyping(false);
+                    streamingMsgIdRef.current = null;
+                },
+                onAbort: () => {
+                    setMessages(prev => prev.map(m =>
+                        m.id !== aiMsgId ? m : {
+                            ...m,
+                            text: (m.text?.trim() ? m.text + '\n\n_— Yanıt durduruldu —_' : '_Yanıt başlamadan durduruldu._'),
+                            isStreaming: false,
+                            isAborted: true,
+                            completedAt: Date.now(),
+                        }
+                    ));
+                    setIsTyping(false);
+                    streamingMsgIdRef.current = null;
+                },
+                onProgress: ({ node, phase, elapsed_ms }) => {
+                    setMessages(prev => prev.map(m =>
+                        m.id !== aiMsgId ? m : {
+                            ...m,
+                            graphNodes: [...(m.graphNodes || []), { node, phase, elapsedMs: elapsed_ms }],
+                        }
+                    ));
+                },
+                onNodeError: ({ node, text }) => {
+                    setMessages(prev => prev.map(m =>
+                        m.id === aiMsgId
+                            ? { ...m, graphErrors: [...(m.graphErrors || []), { node, text }] }
+                            : m
+                    ));
+                },
+            },
+            null,  // fileOpts
+            { commandId: forceMaxRound ? 'clarification_continue' : 'clarification_continue' },
+            controller.signal,
+            { qaHistory: qaHistory || [], screenshotBase64: screenshotBase64 || null },
+        );
+    };
+
     const handleEditAndResend = (msgId, newText) => {
         const idx = messages.findIndex(m => m.id === msgId);
         if (idx === -1) return;
@@ -591,6 +699,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         handleNewChat={handleNewChat}
                         onEditAndResend={handleEditAndResend}
                         onSendFollowup={(q) => handleSendMessage(q)}
+                        onClarificationContinue={handleClarificationContinue}
                         currentUser={currentUser}
                         currentSessionId={currentSessionId}
                     />

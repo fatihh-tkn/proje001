@@ -99,6 +99,7 @@ def _to_gemini_payload(
     Standart [{role, content}] listesini Gemini API formatına çevirir.
     Sistem mesajı ayrı `systemInstruction` olarak, user/assistant turn'leri
     `contents` listesinde.
+    Mesajda `_image_base64` varsa inline_data olarak eklenir (vision).
     """
     system_parts = []
     contents = []
@@ -109,7 +110,16 @@ def _to_gemini_payload(
             system_parts.append(text)
             continue
         gemini_role = "user" if role == "user" else "model"
-        contents.append({"role": gemini_role, "parts": [{"text": text}]})
+        parts: list[dict] = [{"text": text}]
+        img_b64 = m.get("_image_base64")
+        if img_b64 and role == "user":
+            parts.append({
+                "inline_data": {
+                    "mime_type": m.get("_image_mime", "image/jpeg"),
+                    "data": img_b64,
+                }
+            })
+        contents.append({"role": gemini_role, "parts": parts})
 
     payload = {
         "contents": contents,
@@ -131,9 +141,25 @@ def _to_openai_payload(
     response_format: str | None = None,
     max_tokens: int | None = None,
 ) -> dict:
+    # Mesajlardaki özel _image_* anahtarlarını OpenAI vision formatına çevir.
+    processed: list[dict] = []
+    for m in messages:
+        img_b64 = m.get("_image_base64")
+        if img_b64 and m.get("role") == "user":
+            processed.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": m.get("content", "")},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:{m.get('_image_mime', 'image/jpeg')};base64,{img_b64}"
+                    }},
+                ],
+            })
+        else:
+            processed.append({k: v for k, v in m.items() if not k.startswith("_")})
     payload = {
         "model": model,
-        "messages": messages,
+        "messages": processed,
         "temperature": float(temperature),
     }
     if response_format == "json_object":
@@ -330,10 +356,15 @@ def build_messages(
     system: str,
     history: Iterable[dict] | None = None,
     user: str,
+    image_base64: str | None = None,
+    image_mime: str = "image/jpeg",
 ) -> list[dict]:
     """
     Standart {role, content} listesi üretir.
     history: [{role: 'user'|'assistant', content: str}, ...]
+    image_base64: opsiyonel ekran görüntüsü (vision destekleyen modeller için).
+      `_image_base64` / `_image_mime` özel anahtarlarıyla işaretlenir;
+      payload builder'lar (Gemini / OpenAI) bunu provider formatına çevirir.
     """
     msgs: list[dict] = [{"role": "system", "content": system}]
     if history:
@@ -341,5 +372,9 @@ def build_messages(
             r = m.get("role")
             if r in ("user", "assistant"):
                 msgs.append({"role": r, "content": m.get("content", "")})
-    msgs.append({"role": "user", "content": user})
+    user_msg: dict = {"role": "user", "content": user}
+    if image_base64:
+        user_msg["_image_base64"] = image_base64
+        user_msg["_image_mime"] = image_mime
+    msgs.append(user_msg)
     return msgs

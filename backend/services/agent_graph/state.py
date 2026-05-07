@@ -53,13 +53,16 @@ class AgentState(TypedDict, total=False):
     original_message: str                      # supervisor revize etse de orijinal
     user_id: str | None
     session_id: str
-    command: str | None                        # 'error_solve' | 'zli_report_query' | ...
+    command: str | None                        # 'error_solve' | 'clarification_continue' | ...
     file_name: str | None                      # belirli dosya QA modu
     file_names: list[str]                      # çoklu dosya bağlamı (drag-drop)
     collection_name: str | None                # ChromaDB koleksiyon scope'u
     ip: str | None                             # log için
     mac: str | None                            # log için (pc_id de buraya düşer)
     history: list[dict]                        # [{role, content}] son N mesaj
+    # ── CLARIFICATION (çok turlu hata teşhisi) ───────────────────────
+    qa_history: list[dict] | None              # [{question, answer, is_other}] önceki Q&A
+    screenshot_base64: str | None              # opsiyonel ekran görüntüsü (base64)
 
     # ── PROVENANCE / TELEMETRY (log_entry için aggregator set eder) ──────
     model_used: str

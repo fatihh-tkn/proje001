@@ -115,7 +115,7 @@ if (typeof document !== 'undefined' && !document.getElementById('blink-style')) 
 
 const MessageList = ({
     messages, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, handleNewChat,
-    onEditAndResend, onSendFollowup, currentUser, currentSessionId,
+    onEditAndResend, onSendFollowup, onClarificationContinue, currentUser, currentSessionId,
 }) => {
     const [copiedId, setCopiedId] = React.useState(null);
     const [editingId, setEditingId] = React.useState(null);
@@ -271,7 +271,19 @@ const MessageList = ({
                                                                 }
                                                                 const errorSolution = parseErrorSolution(msg.text);
                                                                 if (errorSolution) {
-                                                                    return <ErrorSolutionCard data={errorSolution} userId={currentUser?.id} sessionId={currentSessionId} onSendFollowup={onSendFollowup} />;
+                                                                    return (
+                                                                        <ErrorSolutionCard
+                                                                            data={errorSolution}
+                                                                            userId={currentUser?.id}
+                                                                            sessionId={currentSessionId}
+                                                                            onSendFollowup={onSendFollowup}
+                                                                            onClarificationContinue={
+                                                                                onClarificationContinue
+                                                                                    ? (opts) => onClarificationContinue(msg.id, opts)
+                                                                                    : undefined
+                                                                            }
+                                                                        />
+                                                                    );
                                                                 }
                                                             }
                                                             return (
