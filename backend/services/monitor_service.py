@@ -11,31 +11,47 @@ _computer_aliases: Dict[str, str] = {}
 AI_MODELS: list[dict] = []
 
 COST_TABLE = {
-    "gpt-4":            {"prompt": 0.03,   "completion": 0.06},
-    "gpt-4-turbo":      {"prompt": 0.01,   "completion": 0.03},
-    "gpt-3.5-turbo":    {"prompt": 0.0005, "completion": 0.0015},
-    "claude-3-opus":    {"prompt": 0.015,  "completion": 0.075},
-    "claude-3-sonnet":  {"prompt": 0.003,  "completion": 0.015},
-    "gemini-1.5-pro":   {"prompt": 0.00125,"completion": 0.005},
+    "gpt-4": {"prompt": 0.03, "completion": 0.06},
+    "gpt-4-turbo": {"prompt": 0.01, "completion": 0.03},
+    "gpt-3.5-turbo": {"prompt": 0.0005, "completion": 0.0015},
+    "claude-3-opus": {"prompt": 0.015, "completion": 0.075},
+    "claude-3-sonnet": {"prompt": 0.003, "completion": 0.015},
+    "gemini-1.5-pro": {"prompt": 0.00125, "completion": 0.005},
     "gemini-2.0-flash": {"prompt": 0.0002, "completion": 0.0008},
-    "gemma3:4b":        {"prompt": 0.0,    "completion": 0.0},
+    "gemma3:4b": {"prompt": 0.0, "completion": 0.0},
 }
+
 
 def calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     table = COST_TABLE.get(model, {"prompt": 0.001, "completion": 0.002})
-    return (prompt_tokens / 1000) * table["prompt"] + (completion_tokens / 1000) * table["completion"]
+    return (prompt_tokens / 1000) * table["prompt"] + (
+        completion_tokens / 1000
+    ) * table["completion"]
 
 
 def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
     logs = get_all_logs_for_dashboard(project_id)
-    total_reqs  = len(logs)
-    total_cost  = sum(l.get("cost", 0) for l in logs)
-    total_tokens= sum(l.get("totalTokens", 0) for l in logs)
-    latencies   = [l["duration"] for l in logs if l.get("duration", 0) > 0]
+    total_reqs = len(logs)
+    total_cost = sum(l.get("cost", 0) for l in logs)
+    total_tokens = sum(l.get("totalTokens", 0) for l in logs)
+    latencies = [l["duration"] for l in logs if l.get("duration", 0) > 0]
     avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
-    date_slots = [(datetime.utcnow() - timedelta(days=i)).strftime("%d/%m") for i in range(13, -1, -1)]
-    daily_map  = {d: {"date": d, "requests": 0, "cost": 0.0, "latencySum": 0, "latencyCount": 0, "models": {}} for d in date_slots}
+    date_slots = [
+        (datetime.utcnow() - timedelta(days=i)).strftime("%d/%m")
+        for i in range(13, -1, -1)
+    ]
+    daily_map = {
+        d: {
+            "date": d,
+            "requests": 0,
+            "cost": 0.0,
+            "latencySum": 0,
+            "latencyCount": 0,
+            "models": {},
+        }
+        for d in date_slots
+    }
 
     for log in logs:
         try:
@@ -44,16 +60,22 @@ def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
             continue
         if d in daily_map:
             daily_map[d]["requests"] = int(daily_map[d].get("requests", 0)) + 1
-            daily_map[d]["cost"] = float(daily_map[d].get("cost", 0.0)) + float(log.get("cost", 0))
+            daily_map[d]["cost"] = float(daily_map[d].get("cost", 0.0)) + float(
+                log.get("cost", 0)
+            )
             dur = float(log.get("duration", 0) or 0)
             if dur > 0:
-                daily_map[d]["latencySum"] = float(daily_map[d].get("latencySum", 0)) + dur
-                daily_map[d]["latencyCount"] = int(daily_map[d].get("latencyCount", 0)) + 1
-            
+                daily_map[d]["latencySum"] = (
+                    float(daily_map[d].get("latencySum", 0)) + dur
+                )
+                daily_map[d]["latencyCount"] = (
+                    int(daily_map[d].get("latencyCount", 0)) + 1
+                )
+
             m = log.get("model", "unknown")
             if m not in daily_map[d]["models"]:
                 daily_map[d]["models"][m] = {"success": 0, "error": 0}
-            
+
             if log.get("status") == "success":
                 daily_map[d]["models"][m]["success"] += 1
             else:
@@ -67,15 +89,21 @@ def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
         lat_count = 1 if lat_count == 0 else lat_count
         lat_sum = float(daily_map[d].get("latencySum", 0))
         cost = float(daily_map[d].get("cost", 0))
-        
+
         avg_lat = lat_sum / lat_count if daily_reqs > 0 else 0
-        
-        requests_trend.append({
-            "date": d,
-            "models": daily_map[d]["models"],
-            "success": sum(m.get("success", 0) for m in daily_map[d]["models"].values()),
-            "error": sum(m.get("error", 0) for m in daily_map[d]["models"].values()),
-        })
+
+        requests_trend.append(
+            {
+                "date": d,
+                "models": daily_map[d]["models"],
+                "success": sum(
+                    m.get("success", 0) for m in daily_map[d]["models"].values()
+                ),
+                "error": sum(
+                    m.get("error", 0) for m in daily_map[d]["models"].values()
+                ),
+            }
+        )
         costs_trend.append({"date": d, "amount": cost})
         latency_trend.append({"date": d, "value": avg_lat})
 
@@ -88,16 +116,25 @@ def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
             else:
                 err_counts["Other"] += 1
 
-    ERROR_COLORS = {"500": "#ef4444", "429": "#f59e0b", "400": "#06b6d4", "Other": "#a855f7"}
-    error_stats = [{"name": k, "value": v, "color": ERROR_COLORS.get(k, "#64748b")} for k, v in err_counts.items() if v > 0]
+    ERROR_COLORS = {
+        "500": "#ef4444",
+        "429": "#f59e0b",
+        "400": "#06b6d4",
+        "Other": "#a855f7",
+    }
+    error_stats = [
+        {"name": k, "value": v, "color": ERROR_COLORS.get(k, "#64748b")}
+        for k, v in err_counts.items()
+        if v > 0
+    ]
 
     MODEL_COLORS = {
-        "gpt-4":            "#10b981",
-        "gpt-3.5-turbo":    "#f59e0b",
-        "claude-3-opus":    "#ec4899",
-        "gemini-1.5-pro":   "#3b82f6",
+        "gpt-4": "#10b981",
+        "gpt-3.5-turbo": "#f59e0b",
+        "claude-3-opus": "#ec4899",
+        "gemini-1.5-pro": "#3b82f6",
         "gemini-2.0-flash": "#3b82f6",
-        "gemma3:4b":        "#8b5cf6",
+        "gemma3:4b": "#8b5cf6",
     }
 
     model_map: dict[str, dict] = {}
@@ -106,37 +143,43 @@ def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
         if m not in model_map:
             model_map[m] = {"requests": 0, "cost": 0.0}
         model_map[m]["requests"] += 1
-        model_map[m]["cost"]     += log.get("cost", 0)
+        model_map[m]["cost"] += log.get("cost", 0)
 
     top_models = sorted(model_map.items(), key=lambda x: -x[1]["requests"])[:5]
     top_models_fmt = [
         {
-            "name":     name,
+            "name": name,
             "requests": stats["requests"],
-            "percent":  round(stats["requests"] / total_reqs * 100) if total_reqs else 0,
-            "color":    MODEL_COLORS.get(name, "#64748b"),
+            "percent": round(stats["requests"] / total_reqs * 100) if total_reqs else 0,
+            "color": MODEL_COLORS.get(name, "#64748b"),
         }
         for name, stats in top_models
     ]
 
     model_costs_fmt = sorted(
-        [{"name": n, "cost": s["cost"], "percent": round(s["cost"] / total_cost * 100) if total_cost else 0,
-          "color": MODEL_COLORS.get(n, "#64748b")} for n, s in model_map.items()],
-        key=lambda x: -x["cost"]
+        [
+            {
+                "name": n,
+                "cost": s["cost"],
+                "percent": round(s["cost"] / total_cost * 100) if total_cost else 0,
+                "color": MODEL_COLORS.get(n, "#64748b"),
+            }
+            for n, s in model_map.items()
+        ],
+        key=lambda x: -x["cost"],
     )[:5]
 
     return {
         "totalRequests": total_reqs,
-        "totalCost":     total_cost,
-        "totalTokens":   total_tokens,
-        "avgLatency":    avg_latency,
-        "requests":      requests_trend,
-        "costs":         costs_trend,
-        "latencyTrend":  latency_trend,
-
-        "errors":        error_stats,
-        "topModels":     top_models_fmt,
-        "modelCosts":    model_costs_fmt,
+        "totalCost": total_cost,
+        "totalTokens": total_tokens,
+        "avgLatency": avg_latency,
+        "requests": requests_trend,
+        "costs": costs_trend,
+        "latencyTrend": latency_trend,
+        "errors": error_stats,
+        "topModels": top_models_fmt,
+        "modelCosts": model_costs_fmt,
     }
 
 
@@ -167,7 +210,7 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
                 "messageCount": 0,
                 "status": "completed",
                 "ip": log.get("ip", "unknown"),
-                "mac": log.get("mac", "unknown")
+                "mac": log.get("mac", "unknown"),
             }
 
         sess = sessions_map[sid]
@@ -179,27 +222,34 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
 
         # Build truncated log messages as fallback
         if log.get("request"):
-            sess["_log_messages"].append({
-                "id": log["id"] + "_user",
-                "timestamp": log["timestamp"],
-                "role": "user",
-                "content": log.get("request", ""),
-                "promptTokens": 0, "completionTokens": 0, "cost": 0, "duration": 0
-            })
+            sess["_log_messages"].append(
+                {
+                    "id": log["id"] + "_user",
+                    "timestamp": log["timestamp"],
+                    "role": "user",
+                    "content": log.get("request", ""),
+                    "promptTokens": 0,
+                    "completionTokens": 0,
+                    "cost": 0,
+                    "duration": 0,
+                }
+            )
 
         content = log.get("response", "")
         if not content and log.get("status") == "error":
             content = f"[ERROR] {log.get('error')}"
-        sess["_log_messages"].append({
-            "id": log["id"],
-            "timestamp": log["timestamp"],
-            "role": log.get("role", "assistant"),
-            "content": content,
-            "promptTokens": log.get("promptTokens", 0),
-            "completionTokens": log.get("completionTokens", 0),
-            "cost": log.get("cost", 0.0),
-            "duration": log.get("duration", 0)
-        })
+        sess["_log_messages"].append(
+            {
+                "id": log["id"],
+                "timestamp": log["timestamp"],
+                "role": log.get("role", "assistant"),
+                "content": content,
+                "promptTokens": log.get("promptTokens", 0),
+                "completionTokens": log.get("completionTokens", 0),
+                "cost": log.get("cost", 0.0),
+                "duration": log.get("duration", 0),
+            }
+        )
 
     session_list = list(sessions_map.values())
     session_list.sort(key=lambda s: s["startTime"], reverse=True)
@@ -210,10 +260,24 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
     try:
         with _get_db_session() as db:
             repo = ChatRepository(db)
-            for sess in sessions:
-                sid = sess["sessionId"]
-                try:
-                    sql_msgs = repo.get_messages(sid, limit=200)
+            session_ids = [sess["sessionId"] for sess in sessions]
+
+            try:
+                # Fetch limited messages for all sessions in a single N+1 optimized query
+                all_sql_msgs = repo.get_messages_batch(
+                    session_ids, limit_per_session=200
+                )
+
+                msgs_by_session = {}
+                for m in all_sql_msgs:
+                    sid = m.oturum_kimlik
+                    if sid not in msgs_by_session:
+                        msgs_by_session[sid] = []
+                    msgs_by_session[sid].append(m)
+
+                for sess in sessions:
+                    sid = sess["sessionId"]
+                    sql_msgs = msgs_by_session.get(sid, [])
                     if sql_msgs:
                         sess["messages"] = [
                             {
@@ -230,7 +294,8 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
                         ]
                     else:
                         sess["messages"] = sess["_log_messages"]
-                except Exception:
+            except Exception:
+                for sess in sessions:
                     sess["messages"] = sess["_log_messages"]
     except Exception:
         for sess in sessions:
@@ -246,7 +311,7 @@ def get_sessions_stats(limit: int = 50) -> list[dict]:
 def get_computers_stats() -> list[dict]:
     all_logs = get_all_logs_for_dashboard()
     comp_map: Dict[str, Any] = {}
-    
+
     # Predictable naming: Sort by first seen timestamp
     unique_devices = []
     seen = set()
@@ -255,15 +320,17 @@ def get_computers_stats() -> list[dict]:
         if key not in seen:
             unique_devices.append(key)
             seen.add(key)
-            
-    device_names = {key: f"computer{str(i+1).zfill(3)}" for i, key in enumerate(unique_devices)}
+
+    device_names = {
+        key: f"computer{str(i+1).zfill(3)}" for i, key in enumerate(unique_devices)
+    }
 
     for log in all_logs:
         mac = log.get("mac", "00:00:00:00:00:00")
         ip = log.get("ip", "127.0.0.1")
         key = f"{mac}_{ip}"
         cid = device_names.get(key, "computer999")
-        
+
         if cid not in comp_map:
             comp_map[cid] = {
                 "id": cid,
@@ -275,9 +342,9 @@ def get_computers_stats() -> list[dict]:
                 "totalCost": 0.0,
                 "totalTokens": 0,
                 "models": set(),
-                "logs": []
+                "logs": [],
             }
-        
+
         c = comp_map[cid]
         c["totalRequests"] += 1
         c["totalCost"] += log.get("cost", 0.0)
@@ -287,7 +354,7 @@ def get_computers_stats() -> list[dict]:
             c["lastActive"] = log["timestamp"]
         if log["timestamp"] < c["firstSeen"]:
             c["firstSeen"] = log["timestamp"]
-            
+
         c["logs"].append(log)
 
     result = []
@@ -296,7 +363,7 @@ def get_computers_stats() -> list[dict]:
         # Sort logs by timestamp
         data["logs"].sort(key=lambda x: x["timestamp"], reverse=True)
         result.append(data)
-        
+
     result.sort(key=lambda x: x["id"])
     return result
 
@@ -358,7 +425,11 @@ def get_user_consumption() -> list[dict]:
             u.kimlik: {
                 "name": u.tam_ad,
                 "email": u.eposta,
-                "role": "Sistem Yöneticisi" if u.super_kullanici_mi else "Standart Kullanıcı",
+                "role": (
+                    "Sistem Yöneticisi"
+                    if u.super_kullanici_mi
+                    else "Standart Kullanıcı"
+                ),
                 "status": "Aktif" if u.aktif_mi else "Askıya Alındı",
                 "department": (u.meta or {}).get("department"),
             }
@@ -369,22 +440,24 @@ def get_user_consumption() -> list[dict]:
         for row in agg:
             uid = row.kullanici_kimlik
             info = user_info.get(uid, {})
-            result.append({
-                "user_id": uid,
-                "name": info.get("name") or "Anonim / Sistem",
-                "email": info.get("email") or "—",
-                "role": info.get("role") or "—",
-                "status": info.get("status") or "—",
-                "department": info.get("department"),
-                "total_requests": int(row.total_requests or 0),
-                "error_count": int(err_map.get(uid, 0)),
-                "total_tokens": int(row.total_tokens or 0),
-                "total_cost": round(float(row.total_cost or 0.0), 6),
-                "avg_duration_ms": int(row.avg_duration or 0),
-                "first_at": row.first_at,
-                "last_at": row.last_at,
-                "models_used": model_map.get(uid, []),
-            })
+            result.append(
+                {
+                    "user_id": uid,
+                    "name": info.get("name") or "Anonim / Sistem",
+                    "email": info.get("email") or "—",
+                    "role": info.get("role") or "—",
+                    "status": info.get("status") or "—",
+                    "department": info.get("department"),
+                    "total_requests": int(row.total_requests or 0),
+                    "error_count": int(err_map.get(uid, 0)),
+                    "total_tokens": int(row.total_tokens or 0),
+                    "total_cost": round(float(row.total_cost or 0.0), 6),
+                    "avg_duration_ms": int(row.avg_duration or 0),
+                    "first_at": row.first_at,
+                    "last_at": row.last_at,
+                    "models_used": model_map.get(uid, []),
+                }
+            )
 
         result.sort(key=lambda x: -x["total_cost"])
         return result
@@ -392,6 +465,7 @@ def get_user_consumption() -> list[dict]:
 
 def set_computer_alias(mac: str, ip: str, name: str) -> None:
     _computer_aliases[f"{mac}_{ip}"] = name
+
 
 def remove_computer_alias(mac: str, ip: str) -> None:
     _computer_aliases.pop(f"{mac}_{ip}", None)
@@ -416,11 +490,13 @@ async def verify_custom_model_api(
     """
     from services import provider_registry
 
-    spec = provider_registry.resolve({
-        "api_key": api_key,
-        "provider": provider or "",
-        "base_url": base_url or "",
-    })
+    spec = provider_registry.resolve(
+        {
+            "api_key": api_key,
+            "provider": provider or "",
+            "base_url": base_url or "",
+        }
+    )
     protocol = spec["protocol"]
     base = spec["base_url"]
     label = spec["label"]
@@ -450,10 +526,13 @@ async def verify_custom_model_api(
                         **extra_headers,
                     }
                     payload = {
-                        "model": model_name, "max_tokens": 1,
+                        "model": model_name,
+                        "max_tokens": 1,
                         "messages": [{"role": "user", "content": "hi"}],
                     }
-                    res = await client.post(f"{base}/messages", headers=headers, json=payload)
+                    res = await client.post(
+                        f"{base}/messages", headers=headers, json=payload
+                    )
                 else:  # openai_compatible
                     headers = {
                         "Authorization": f"Bearer {api_key}",
@@ -461,11 +540,14 @@ async def verify_custom_model_api(
                         **extra_headers,
                     }
                     payload = {
-                        "model": model_name, "max_tokens": 1,
+                        "model": model_name,
+                        "max_tokens": 1,
                         "messages": [{"role": "user", "content": "hi"}],
                     }
                     res = await client.post(
-                        f"{base}/chat/completions", headers=headers, json=payload,
+                        f"{base}/chat/completions",
+                        headers=headers,
+                        json=payload,
                     )
                 return {
                     "ok": res.status_code == 200,
@@ -496,7 +578,9 @@ async def verify_custom_model_api(
                 if res.status_code != 200:
                     return {"ok": False, "provider": label, "models": []}
                 data = res.json()
-                available_models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                available_models = [
+                    m.get("id") for m in data.get("data", []) if m.get("id")
+                ]
 
         except Exception as e:
             print("Model çekme hatası:", e)

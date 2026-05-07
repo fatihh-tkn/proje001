@@ -57,12 +57,18 @@ class ChatRepository:
         user_id: Optional[str] = None,
         limit: int = 50,
     ) -> list[SohbetOturumu]:
-        stmt = select(SohbetOturumu).order_by(desc(SohbetOturumu.guncelleme_tarihi)).limit(limit)
+        stmt = (
+            select(SohbetOturumu)
+            .order_by(desc(SohbetOturumu.guncelleme_tarihi))
+            .limit(limit)
+        )
         if user_id:
             stmt = stmt.where(SohbetOturumu.kullanici_kimlik == user_id)
         return list(self.db.scalars(stmt).all())
 
-    def update_session_title(self, session_id: str, title: str) -> Optional[SohbetOturumu]:
+    def update_session_title(
+        self, session_id: str, title: str
+    ) -> Optional[SohbetOturumu]:
         session = self.db.get(SohbetOturumu, session_id)
         if session:
             session.baslik = title
@@ -126,5 +132,44 @@ class ChatRepository:
             .where(SohbetMesaji.oturum_kimlik == session_id)
             .order_by(SohbetMesaji.olusturulma_tarihi)
             .limit(limit)
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def get_messages_batch(
+        self, session_ids: list[str], limit_per_session: int = 200
+    ) -> list[SohbetMesaji]:
+        from sqlalchemy import func
+
+        # We need a subquery to assign a row number partitioned by session_id
+        # Then we select only rows where row_number <= limit_per_session
+
+        subq = (
+            select(
+                SohbetMesaji,
+                func.row_number()
+                .over(
+                    partition_by=SohbetMesaji.oturum_kimlik,
+                    order_by=SohbetMesaji.olusturulma_tarihi,
+                )
+                .label("rn"),
+            )
+            .where(SohbetMesaji.oturum_kimlik.in_(session_ids))
+            .subquery()
+        )
+
+        # We must explicitly alias to SohbetMesaji to return instances, OR we can just fetch all and limit in python if count is small, but memory is a concern.
+        # However, SQLite doesn't support ROW_NUMBER in all old versions, but modern ones do. Let's assume it does.
+        # Actually, simpler and safer across dialects: if the N is bounded (e.g. 50 sessions), running 50 queries is bad.
+        # But wait, wait... we don't have to use ROW_NUMBER. We can fetch all messages for these sessions, but what if there are 10,000 messages?
+        # A simpler way in python: run a single query fetching ALL messages for the session IDs, BUT wait, the reviewer specifically blocked fetching ALL messages into memory!
+
+        # Let's write a safe ROW_NUMBER query.
+        from sqlalchemy.orm import aliased
+
+        stmt = (
+            select(SohbetMesaji)
+            .join(subq, SohbetMesaji.kimlik == subq.c.kimlik)
+            .where(subq.c.rn <= limit_per_session)
+            .order_by(SohbetMesaji.oturum_kimlik, SohbetMesaji.olusturulma_tarihi)
         )
         return list(self.db.scalars(stmt).all())
