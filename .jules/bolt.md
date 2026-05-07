@@ -1,3 +1,6 @@
 ## 2026-04-27 - N+1 Query in `list_sessions` Endpoint
 **Learning:** Found an extreme N+1 query loop in `backend/api/routes/settings.py` where fetching `limit=100` sessions could result in over 300 synchronous database calls (counting messages, fetching last messages, and summing tokens per session).
 **Action:** When working with SQLAlchemy aggregations across lists, pre-fetch relationship data using `IN` clauses with `GROUP BY` and convert results into maps (O(1) lookups) before the loop to reduce queries down to exactly 1 + N(queries per entity block) overall.
+## 2026-05-15 - N+1 Optimization Requires Bounded Relationships
+**Learning:** Found an N+1 query loop in `backend/services/monitor_service.py` where fetching `limit=200` messages per session in a loop caused N queries. However, a naive `IN` clause optimization that fetches *all* messages and limits in Python introduces a severe memory regression risk for long chats.
+**Action:** When resolving N+1 queries by fetching relationships with an `IN` clause, always preserve the original database-level limit per partition by using `row_number() over (partition by ...)` subqueries to safely bound the amount of data pulled into memory.
