@@ -184,7 +184,7 @@ const MessageList = ({
                             const isAI = msg.sender === 'ai';
                             const isLastInList = idx === messages.length - 1;
                             return (
-                                <div key={msg.id} className={`flex w-full ${isAI ? 'justify-start' : 'justify-end'}`}>
+                                <div key={msg.id} data-msg-id={msg.id} className={`flex w-full scroll-mt-4 ${isAI ? 'justify-start' : 'justify-end'}`}>
                                     <div className={`flex flex-col gap-1.5 max-w-[95%] ${isAI ? 'items-start' : 'items-end'}`}>
 
                                         {isAI && (
@@ -394,6 +394,7 @@ const MessageList = ({
                             );
                         })}
                         <div ref={messagesEndRef} />
+                        <div aria-hidden="true" className="min-h-[70vh] shrink-0" />
                     </div>
                 </div>
 
