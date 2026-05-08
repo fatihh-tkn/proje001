@@ -578,6 +578,8 @@ class AIAgent(Base):
     # Node-specific opsiyonlar (graph node ajanlarında: top_k, score_threshold,
     # strict_json, include_chat_memory vb. — kod tarafı gerektikçe okur).
     node_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # ChatBar'dan global model değişikliği yapıldığında bu ajan etkilenmesin.
+    model_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         Index("ix_ai_agents_ad", "ad"),

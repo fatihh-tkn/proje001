@@ -2,77 +2,99 @@ import { useState, useEffect } from 'react';
 import { Plus, CheckCircle } from 'lucide-react';
 import { mutate } from '../../api/client';
 
-/* ── Modül renk haritası ── */
+/* ── Modül renk haritası — tüm modüller kendi renklerini koruyor, FI kırmızıya alındı ── */
 const MOD_COLORS = {
-    FI: { bg: 'rgba(55,138,221,0.15)', text: '#60a5fa', border: 'rgba(55,138,221,0.4)', label: 'FI · Muhasebe' },
-    CO: { bg: 'rgba(127,119,221,0.15)', text: '#a78bfa', border: 'rgba(127,119,221,0.4)', label: 'CO · Kontrol' },
-    MM: { bg: 'rgba(29,158,117,0.15)', text: '#34d399', border: 'rgba(29,158,117,0.4)', label: 'MM · Malzeme' },
-    SD: { bg: 'rgba(239,159,39,0.15)', text: '#fbbf24', border: 'rgba(239,159,39,0.4)', label: 'SD · Satış' },
-    HR: { bg: 'rgba(212,83,126,0.15)', text: '#f472b6', border: 'rgba(212,83,126,0.4)', label: 'HR · İK' },
-    PP: { bg: 'rgba(99,170,34,0.15)', text: '#86efac', border: 'rgba(99,170,34,0.4)', label: 'PP · Üretim' },
-    ABAP: { bg: 'rgba(216,90,48,0.15)', text: '#fb923c', border: 'rgba(216,90,48,0.4)', label: 'ABAP' },
-    Fiori: { bg: 'rgba(239,159,39,0.1)', text: '#facc15', border: 'rgba(239,159,39,0.35)', label: 'Fiori' },
+    FI:   { bg: 'rgba(220,38,38,0.12)',   text: '#f87171', border: 'rgba(220,38,38,0.35)',   label: 'FI · Muhasebe' },
+    CO:   { bg: 'rgba(127,119,221,0.12)', text: '#a78bfa', border: 'rgba(127,119,221,0.35)', label: 'CO · Kontrol' },
+    MM:   { bg: 'rgba(29,158,117,0.12)',  text: '#34d399', border: 'rgba(29,158,117,0.35)',  label: 'MM · Malzeme' },
+    SD:   { bg: 'rgba(239,159,39,0.12)',  text: '#fbbf24', border: 'rgba(239,159,39,0.35)',  label: 'SD · Satış' },
+    HR:   { bg: 'rgba(212,83,126,0.12)',  text: '#f472b6', border: 'rgba(212,83,126,0.35)',  label: 'HR · İK' },
+    PP:   { bg: 'rgba(99,170,34,0.12)',   text: '#86efac', border: 'rgba(99,170,34,0.35)',   label: 'PP · Üretim' },
+    ABAP: { bg: 'rgba(216,90,48,0.12)',   text: '#fb923c', border: 'rgba(216,90,48,0.35)',   label: 'ABAP' },
+    Fiori:{ bg: 'rgba(239,159,39,0.10)',  text: '#facc15', border: 'rgba(239,159,39,0.30)',  label: 'Fiori' },
 };
 
-const MODULES = ['FI', 'CO', 'MM', 'SD', 'HR', 'PP', 'ABAP', 'Fiori'];
-const DEPTS = ['Finans', 'Satın Alma', 'İK', 'Satış', 'IT', 'Üretim', 'Lojistik', 'Pazarlama'];
+const MODULES  = ['FI', 'CO', 'MM', 'SD', 'HR', 'PP', 'ABAP', 'Fiori'];
+const DEPTS    = ['Finans', 'Satın Alma', 'İK', 'Satış', 'IT', 'Üretim', 'Lojistik', 'Pazarlama'];
 const MOD_OPTS = ['', 'FI', 'CO', 'MM', 'SD', 'HR', 'PP', 'ABAP', 'Fiori', 'Diğer'];
 
-/* ── Stil sabitleri ── */
+/* ── Stil sabitleri — uygulama teması ── */
 const css = {
     section: {
-        background: '#0f172a', border: '0.5px solid #2a2a2d',
-        borderRadius: 10, padding: '18px 20px', marginBottom: 14,
+        background: '#111110',
+        border: '1px solid #292524',
+        borderRadius: 8,
+        padding: '18px 20px',
+        marginBottom: 14,
     },
     secTitle: {
-        fontSize: 15, fontWeight: 600, color: '#f1f5f9',
+        fontSize: 14, fontWeight: 600, color: '#f1f5f9',
         display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4,
     },
     stepNum: {
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 24, height: 24, borderRadius: '50%',
-        background: '#334155', color: '#e2e8f0', fontSize: 12, fontWeight: 600, flexShrink: 0,
+        width: 22, height: 22, borderRadius: '50%',
+        background: 'rgba(220,38,38,0.15)', color: '#f87171',
+        fontSize: 11, fontWeight: 700, flexShrink: 0,
+        border: '1px solid rgba(220,38,38,0.3)',
     },
     hint: { fontSize: 12, color: '#64748b', marginBottom: 14 },
     label: {
-        fontSize: 12, color: '#94a3b8', textTransform: 'uppercase',
-        letterSpacing: '0.04em', fontWeight: 500, marginBottom: 5,
+        fontSize: 11, color: '#64748b', textTransform: 'uppercase',
+        letterSpacing: '0.05em', fontWeight: 500, marginBottom: 5,
     },
     input: {
-        width: '100%', background: '#1e293b', border: '1px solid #334155',
-        color: '#f1f5f9', padding: '10px 12px', borderRadius: 6,
-        fontSize: 14, outline: 'none', fontFamily: 'sans-serif',
+        width: '100%',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid #292524',
+        color: '#f1f5f9',
+        padding: '9px 12px',
+        borderRadius: 4,
+        fontSize: 13,
+        outline: 'none',
+        fontFamily: 'sans-serif',
+        transition: 'border-color 0.15s',
     },
     select: {
-        width: '100%', background: '#1e293b', border: '1px solid #334155',
-        color: '#f1f5f9', padding: '10px 12px', borderRadius: 6,
-        fontSize: 14, outline: 'none', fontFamily: 'sans-serif', cursor: 'pointer',
+        width: '100%',
+        background: '#1a1917',
+        border: '1px solid #292524',
+        color: '#f1f5f9',
+        padding: '9px 12px',
+        borderRadius: 4,
+        fontSize: 13,
+        outline: 'none',
+        fontFamily: 'sans-serif',
+        cursor: 'pointer',
     },
     entryCard: {
-        background: '#1e293b', borderRadius: 8, padding: '14px 16px', marginBottom: 10,
+        background: '#1a1917',
+        border: '1px solid #292524',
+        borderRadius: 6,
+        padding: '14px 16px',
+        marginBottom: 10,
     },
     entryHead: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10,
     },
     entryTitle: {
-        fontSize: 12, fontWeight: 600, color: '#94a3b8',
-        textTransform: 'uppercase', letterSpacing: '0.04em',
+        fontSize: 11, fontWeight: 600, color: '#64748b',
+        textTransform: 'uppercase', letterSpacing: '0.05em',
     },
     removeBtn: {
-        background: 'transparent', border: 'none', color: '#64748b',
-        cursor: 'pointer', fontSize: 18, padding: '4px 8px', borderRadius: 4,
+        background: 'transparent', border: 'none', color: '#475569',
+        cursor: 'pointer', fontSize: 18, padding: '2px 6px', borderRadius: 4,
         lineHeight: 1, fontFamily: 'sans-serif',
     },
     addBtn: {
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         width: '100%', background: 'transparent',
-        border: '0.5px dashed #475569', color: '#64748b',
-        fontSize: 13, padding: '10px 14px', borderRadius: 8,
+        border: '1px dashed #292524', color: '#475569',
+        fontSize: 12, padding: '10px 14px', borderRadius: 6,
         cursor: 'pointer', fontFamily: 'sans-serif', transition: 'all 0.15s',
     },
 };
 
-/* ── Yardımcı alt bileşenler ── */
 function Field({ label, children }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -91,9 +113,8 @@ function Row({ cols = 1, children, mb = 10 }) {
     );
 }
 
-function Req() { return <span style={{ color: '#A32D2D', marginLeft: 2 }}>*</span>; }
+function Req() { return <span style={{ color: '#DC2626', marginLeft: 2 }}>*</span>; }
 
-/* ── Dinamik kart bileşeni (Eğitim) ── */
 function ExtTrainingCard({ idx, data, onChange, onRemove }) {
     const upd = (k, v) => onChange(idx, k, v);
     return (
@@ -101,8 +122,8 @@ function ExtTrainingCard({ idx, data, onChange, onRemove }) {
             <div style={css.entryHead}>
                 <span style={css.entryTitle}>Eğitim {idx + 1}</span>
                 <button style={css.removeBtn} onClick={onRemove}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(160,27,27,0.15)'; e.currentTarget.style.color = '#ef4444'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; e.currentTarget.style.color = '#f87171'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
                 >×</button>
             </div>
             <Row cols={2} mb={8}>
@@ -130,7 +151,6 @@ function ExtTrainingCard({ idx, data, onChange, onRemove }) {
     );
 }
 
-/* ── Dinamik kart bileşeni (Sertifika) ── */
 function ExtCertCard({ idx, data, onChange, onRemove }) {
     const upd = (k, v) => onChange(idx, k, v);
     return (
@@ -138,8 +158,8 @@ function ExtCertCard({ idx, data, onChange, onRemove }) {
             <div style={css.entryHead}>
                 <span style={css.entryTitle}>Sertifika {idx + 1}</span>
                 <button style={css.removeBtn} onClick={onRemove}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(160,27,27,0.15)'; e.currentTarget.style.color = '#ef4444'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; e.currentTarget.style.color = '#f87171'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
                 >×</button>
             </div>
             <Row cols={2} mb={8}>
@@ -167,152 +187,104 @@ function ExtCertCard({ idx, data, onChange, onRemove }) {
     );
 }
 
-/* ══════════════════════════════════════
-   ANA BİLEŞEN
-══════════════════════════════════════ */
 const newTraining = () => ({ name: '', provider: '', module: '', hours: '', date: '' });
-const newCert = () => ({ name: '', issuer: '', module: '', issuedAt: '', expiresAt: '' });
+const newCert     = () => ({ name: '', issuer: '', module: '', issuedAt: '', expiresAt: '' });
 
 export default function UserVeriGirisi({ currentUser }) {
-    const [kisisel, setKisisel] = useState({
-        ad: currentUser?.tam_ad || '',
-        tarih: '',
-        departman: '',
-    });
+    const [kisisel, setKisisel] = useState({ ad: currentUser?.tam_ad || '', tarih: '', departman: '' });
     const [selectedModules, setSelectedModules] = useState([]);
     const [trainings, setTrainings] = useState([newTraining()]);
-    const [certs, setCerts] = useState([newCert()]);
-    const [toast, setToast] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [certs, setCerts]         = useState([newCert()]);
+    const [toast, setToast]         = useState(false);
+    const [loading, setLoading]     = useState(false);
 
-    /* ── Veri Yükleme ── */
     useEffect(() => {
         if (!currentUser?.kimlik) return;
-        const loadProfile = async () => {
+        const load = async () => {
             try {
                 const res = await fetch(`http://127.0.0.1:8000/api/egitim/profil/${currentUser.kimlik}`);
-                if (res.ok) {
-                    const data = await res.json();
-
-                    if (data.ise_baslama_tarihi || data.departman) {
-                        setKisisel(p => ({
-                            ...p,
-                            tarih: data.ise_baslama_tarihi || "",
-                            departman: data.departman || ""
-                        }));
-                    }
-                    if (data.kullanilan_moduller && data.kullanilan_moduller.length > 0) {
-                        setSelectedModules(data.kullanilan_moduller);
-                    }
-                    if (data.dis_egitimler && data.dis_egitimler.length > 0) {
-                        setTrainings(data.dis_egitimler);
-                    }
-                    if (data.dis_sertifikalar && data.dis_sertifikalar.length > 0) {
-                        setCerts(data.dis_sertifikalar);
-                    }
-                }
-            } catch (err) {
-                console.error("Profil Yükleme Hatası", err);
-            }
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.ise_baslama_tarihi || data.departman)
+                    setKisisel(p => ({ ...p, tarih: data.ise_baslama_tarihi || '', departman: data.departman || '' }));
+                if (data.kullanilan_moduller?.length)  setSelectedModules(data.kullanilan_moduller);
+                if (data.dis_egitimler?.length)        setTrainings(data.dis_egitimler);
+                if (data.dis_sertifikalar?.length)     setCerts(data.dis_sertifikalar);
+            } catch (err) { console.error('Profil yükleme hatası', err); }
         };
-        loadProfile();
+        load();
     }, [currentUser?.kimlik]);
 
-    /* ── Modül toggle ── */
-    const toggleMod = (m) =>
-        setSelectedModules(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
+    const toggleMod     = (m) => setSelectedModules(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
+    const addTraining   = () => setTrainings(p => [...p, newTraining()]);
+    const removeTraining= (i) => setTrainings(p => p.filter((_, idx) => idx !== i));
+    const updateTraining= (i, k, v) => setTrainings(p => p.map((t, idx) => idx === i ? { ...t, [k]: v } : t));
+    const addCert       = () => setCerts(p => [...p, newCert()]);
+    const removeCert    = (i) => setCerts(p => p.filter((_, idx) => idx !== i));
+    const updateCert    = (i, k, v) => setCerts(p => p.map((c, idx) => idx === i ? { ...c, [k]: v } : c));
 
-    /* ── Eğitim CRUD ── */
-    const addTraining = () => setTrainings(p => [...p, newTraining()]);
-    const removeTraining = (i) => setTrainings(p => p.filter((_, idx) => idx !== i));
-    const updateTraining = (i, k, v) =>
-        setTrainings(p => p.map((t, idx) => idx === i ? { ...t, [k]: v } : t));
-
-    /* ── Sertifika CRUD ── */
-    const addCert = () => setCerts(p => [...p, newCert()]);
-    const removeCert = (i) => setCerts(p => p.filter((_, idx) => idx !== i));
-    const updateCert = (i, k, v) =>
-        setCerts(p => p.map((c, idx) => idx === i ? { ...c, [k]: v } : c));
-
-    /* ── Kaydet ── */
     const handleSave = async () => {
         if (!currentUser?.kimlik) return;
         setLoading(true);
-        const payload = {
-            ise_baslama_tarihi: kisisel.tarih || null,
-            departman: kisisel.departman || null,
-            kullanilan_moduller: selectedModules,
-            dis_egitimler: trainings.filter(t => t.name), // boş olanları yollama
-            dis_sertifikalar: certs.filter(c => c.name)
-        };
-
         try {
-            await mutate.save(`/api/egitim/profil/${currentUser.kimlik}`, payload, {
-                subject: 'Eğitim profili',
-            });
+            await mutate.save(`/api/egitim/profil/${currentUser.kimlik}`, {
+                ise_baslama_tarihi: kisisel.tarih || null,
+                departman: kisisel.departman || null,
+                kullanilan_moduller: selectedModules,
+                dis_egitimler: trainings.filter(t => t.name),
+                dis_sertifikalar: certs.filter(c => c.name),
+            }, { subject: 'Eğitim profili' });
             setToast(true);
             setTimeout(() => setToast(false), 2400);
-        } catch (err) {
-            console.error("Profil Kaydetme Hatası", err);
-        }
+        } catch (err) { console.error('Profil kaydetme hatası', err); }
         setLoading(false);
     };
 
     return (
         <div style={{ fontFamily: 'sans-serif', padding: '0 0 1rem' }}>
 
-            {/* ─── Başlık ─── */}
-            <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '0.5px solid #2a2a2d' }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>
+            {/* Başlık */}
+            <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #292524' }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>
                     Bilgilerimi Gir
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
                     Kişisel bilgilerini, kullandığın modülleri ve dış eğitim/sertifikalarını buradan girebilirsin.
                 </div>
                 <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
-                    background: 'rgba(55,138,221,0.12)', color: '#60a5fa', border: '1px solid rgba(55,138,221,0.3)',
-                    fontSize: 11, padding: '3px 10px', borderRadius: 4, marginTop: 8,
+                    background: 'rgba(220,38,38,0.10)', color: '#f87171',
+                    border: '1px solid rgba(220,38,38,0.25)',
+                    fontSize: 10, padding: '2px 10px', borderRadius: 4, marginTop: 8,
                 }}>● Kullanıcı bilgi girişi</span>
             </div>
 
-            {/* ─── 1. Kişisel Bilgiler ─── */}
+            {/* 1. Kişisel Bilgiler */}
             <div style={css.section}>
                 <div style={css.secTitle}><span style={css.stepNum}>1</span>Kişisel bilgiler</div>
                 <div style={css.hint}>Ad, işe başlama tarihi ve departman</div>
-
                 <Row cols={2} mb={8}>
                     <Field label={<>Ad Soyad<Req /></>}>
-                        <input
-                            style={css.input}
-                            placeholder="Örn. Ayşe Kılıç"
+                        <input style={css.input} placeholder="Örn. Ayşe Kılıç"
                             value={kisisel.ad}
-                            onChange={e => setKisisel(p => ({ ...p, ad: e.target.value }))}
-                        />
+                            onChange={e => setKisisel(p => ({ ...p, ad: e.target.value }))} />
                     </Field>
                     <Field label={<>İşe başlama tarihi<Req /></>}>
-                        <input
-                            style={css.input}
-                            type="date"
+                        <input style={css.input} type="date"
                             value={kisisel.tarih}
-                            onChange={e => setKisisel(p => ({ ...p, tarih: e.target.value }))}
-                        />
+                            onChange={e => setKisisel(p => ({ ...p, tarih: e.target.value }))} />
                     </Field>
                 </Row>
-
                 <Field label={<>Departman<Req /></>}>
-                    <select
-                        style={css.select}
-                        value={kisisel.departman}
-                        onChange={e => setKisisel(p => ({ ...p, departman: e.target.value }))}
-                    >
+                    <select style={css.select} value={kisisel.departman}
+                        onChange={e => setKisisel(p => ({ ...p, departman: e.target.value }))}>
                         <option value="">Seçiniz...</option>
                         {DEPTS.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                 </Field>
             </div>
 
-            {/* ─── 2. Kullandığım Modüller ─── */}
+            {/* 2. Kullandığım Modüller */}
             <div style={css.section}>
                 <div style={css.secTitle}><span style={css.stepNum}>2</span>Kullandığım modüller</div>
                 <div style={css.hint}>Aktif olarak kullandığın tüm SAP modüllerini işaretle · birden fazla seçebilirsin</div>
@@ -321,17 +293,13 @@ export default function UserVeriGirisi({ currentUser }) {
                         const active = selectedModules.includes(m);
                         const c = MOD_COLORS[m];
                         return (
-                            <button
-                                key={m}
-                                onClick={() => toggleMod(m)}
-                                style={{
-                                    fontSize: 13, padding: '8px 14px', borderRadius: 6, cursor: 'pointer',
-                                    fontFamily: 'sans-serif', transition: 'all 0.15s',
-                                    background: active ? c.bg : '#1e293b',
-                                    color: active ? c.text : '#64748b',
-                                    border: `0.5px solid ${active ? c.border : '#334155'}`,
-                                }}
-                            >
+                            <button key={m} onClick={() => toggleMod(m)} style={{
+                                fontSize: 12, padding: '7px 13px', borderRadius: 4, cursor: 'pointer',
+                                fontFamily: 'sans-serif', transition: 'all 0.15s',
+                                background: active ? c.bg : 'rgba(255,255,255,0.03)',
+                                color: active ? c.text : '#64748b',
+                                border: `1px solid ${active ? c.border : '#292524'}`,
+                            }}>
                                 {c.label}
                             </button>
                         );
@@ -339,91 +307,73 @@ export default function UserVeriGirisi({ currentUser }) {
                 </div>
             </div>
 
-            {/* ─── 3. Dışarıdan Aldığım Eğitimler ─── */}
+            {/* 3. Dışarıdan Aldığım Eğitimler */}
             <div style={css.section}>
                 <div style={css.secTitle}>
                     <span style={css.stepNum}>3</span>
                     Dışarıdan aldığım eğitimler
-                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 6 }}>Dış</span>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.10)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.25)', marginLeft: 4 }}>Dış</span>
                 </div>
                 <div style={css.hint}>Udemy, Coursera, openSAP gibi platformlardan aldığın eğitimler</div>
-
                 {trainings.map((t, i) => (
-                    <ExtTrainingCard
-                        key={i} idx={i} data={t}
-                        onChange={updateTraining}
-                        onRemove={() => removeTraining(i)}
-                    />
+                    <ExtTrainingCard key={i} idx={i} data={t} onChange={updateTraining} onRemove={() => removeTraining(i)} />
                 ))}
-
-                <button
-                    style={css.addBtn}
-                    onClick={addTraining}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.borderStyle = 'solid'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderStyle = 'dashed'; }}
+                <button style={css.addBtn} onClick={addTraining}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.borderColor = '#475569'; e.currentTarget.style.borderStyle = 'solid'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#292524'; e.currentTarget.style.borderStyle = 'dashed'; }}
                 >
                     <Plus size={12} /> Dış eğitim ekle
                 </button>
             </div>
 
-            {/* ─── 4. Dış Sertifikalar ─── */}
+            {/* 4. Dış Sertifikalar */}
             <div style={css.section}>
                 <div style={css.secTitle}>
                     <span style={css.stepNum}>4</span>
                     Dış sertifikalar
-                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.12)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.3)', marginLeft: 6 }}>Dış</span>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,159,39,0.10)', color: '#fbbf24', border: '1px solid rgba(239,159,39,0.25)', marginLeft: 4 }}>Dış</span>
                 </div>
                 <div style={css.hint}>SAP, PMI, Microsoft gibi kurumlardan aldığın sertifikalar</div>
-
                 {certs.map((c, i) => (
-                    <ExtCertCard
-                        key={i} idx={i} data={c}
-                        onChange={updateCert}
-                        onRemove={() => removeCert(i)}
-                    />
+                    <ExtCertCard key={i} idx={i} data={c} onChange={updateCert} onRemove={() => removeCert(i)} />
                 ))}
-
-                <button
-                    style={css.addBtn}
-                    onClick={addCert}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.borderStyle = 'solid'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderStyle = 'dashed'; }}
+                <button style={css.addBtn} onClick={addCert}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.borderColor = '#475569'; e.currentTarget.style.borderStyle = 'solid'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#292524'; e.currentTarget.style.borderStyle = 'dashed'; }}
                 >
                     <Plus size={12} /> Sertifika ekle
                 </button>
             </div>
 
-            {/* ─── Aksiyonlar ─── */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, paddingTop: 16, borderTop: '0.5px solid #2a2a2d' }}>
+            {/* Aksiyonlar */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, paddingTop: 16, borderTop: '1px solid #292524' }}>
                 {toast && (
-                    <span style={{ marginRight: 'auto', fontSize: 13, color: '#34d399', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <CheckCircle size={16} /> Bilgiler kaydedildi
+                    <span style={{ marginRight: 'auto', fontSize: 12, color: '#34d399', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle size={14} /> Bilgiler kaydedildi
                     </span>
                 )}
                 {!toast && <span style={{ marginRight: 'auto' }} />}
 
-                <button
-                    style={{
-                        background: 'transparent', color: '#94a3b8',
-                        border: '0.5px solid #475569', fontSize: 13,
-                        padding: '9px 18px', borderRadius: 6, cursor: 'pointer', fontFamily: 'sans-serif',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.color = '#f1f5f9'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                <button style={{
+                    background: 'transparent', color: '#64748b',
+                    border: '1px solid #292524', fontSize: 12,
+                    padding: '8px 16px', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif',
+                }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#f1f5f9'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
                 >
                     Özetle ↗
                 </button>
 
-                <button
-                    onClick={handleSave}
-                    disabled={loading}
-                    style={{
-                        background: loading ? '#94a3b8' : '#378ADD', color: '#fff', border: 'none',
-                        fontSize: 14, fontWeight: 600, padding: '10px 24px',
-                        borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'sans-serif',
-                    }}
-                    onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#185FA5'; }}
-                    onMouseLeave={e => { if (!loading) e.currentTarget.style.background = '#378ADD'; }}
+                <button onClick={handleSave} disabled={loading} style={{
+                    background: loading ? '#64748b' : '#DC2626',
+                    color: '#fff', border: 'none',
+                    fontSize: 13, fontWeight: 600, padding: '9px 22px',
+                    borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'sans-serif',
+                    transition: 'background 0.15s',
+                }}
+                    onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#b91c1c'; }}
+                    onMouseLeave={e => { if (!loading) e.currentTarget.style.background = '#DC2626'; }}
                 >
                     {loading ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>

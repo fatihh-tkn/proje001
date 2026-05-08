@@ -53,6 +53,22 @@ _SYSTEM_TEMPLATE = (
 )
 
 
+def _ensure_schema(text: str, user_msg: str) -> str:
+    """LLM çıktısının şemasını doğrula; eksik zorunlu alanları tamamla."""
+    try:
+        d = json.loads(text)
+        changed = False
+        if d.get("type") != "zli_report_query":
+            d["type"] = "zli_report_query"
+            changed = True
+        if not d.get("query"):
+            d["query"] = user_msg[:120]
+            changed = True
+        return json.dumps(d, ensure_ascii=False) if changed else text
+    except Exception:
+        return text
+
+
 def _format_matches(matches: list[dict]) -> str:
     if not matches:
         return "(eşleşme yok)"
@@ -88,10 +104,16 @@ async def zli_finder_node(state: AgentState) -> dict:
 
     node_cfg = (agent_config or {}).get("node_config") or {}
     sql_match_limit = int(node_cfg.get("sql_match_limit", 5) or 5)
+    min_score = float(node_cfg.get("min_score", 0.0) or 0.0)
 
     try:
         from services.ai_service import _fetch_zli_report_matches
         matches = await run_in_threadpool(_fetch_zli_report_matches, user_msg, sql_match_limit)
+        # min_score filtresi — score alanı olan eşleşmeleri eşik altında at
+        if min_score > 0.0 and matches:
+            filtered = [m for m in matches if (m.get("score") or 0.0) >= min_score]
+            if filtered:  # tamamen boşalırsa orijinali koru (en az 1 aday dönsün)
+                matches = filtered
     except Exception as e:
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.error("[zli_finder] SQL eşleşme hatası: %s", e, exc_info=True)
@@ -106,10 +128,13 @@ async def zli_finder_node(state: AgentState) -> dict:
 
     # DB prompt'u varsa onu kullan + matches_block'u "ADAY RAPORLAR" başlığıyla
     # ekle. Yoksa kod fallback şablonunu format'la.
+    persona = ((agent_config or {}).get("persona") or "").strip()
     db_prompt = ((agent_config or {}).get("prompt") or "").strip()
     if db_prompt:
+        persona_prefix = f"[AJAN ROLÜ]: {persona}\n\n" if persona else ""
         system = (
-            db_prompt
+            persona_prefix
+            + db_prompt
             + "\n\nADAY RAPORLAR:\n"
             + matches_block
         )
@@ -163,8 +188,18 @@ async def zli_finder_node(state: AgentState) -> dict:
                 "c": result.get("completion_tokens", 0),
             }},
         }
-        if has_real_match or explicit_command:
-            out["zli_draft"] = text
+        if has_real_match:
+            out["zli_draft"] = _ensure_schema(text, user_msg)
+        elif explicit_command:
+            # Eşleşme yok ama kullanıcı hızlı aksiyonu seçti — UI kart bekliyor.
+            # Şemasız LLM çıktısı yerine proper fallback kullan.
+            out["zli_draft"] = json.dumps({
+                "type": "zli_report_query",
+                "query": user_msg[:120],
+                "best_match": None,
+                "alternatives": [],
+                "no_match_reason": "Aradığınız kriterlere uygun Z'li rapor bulunamadı.",
+            }, ensure_ascii=False)
         return out
     except Exception as e:
         elapsed_ms = int((time.time() - t0) * 1000)

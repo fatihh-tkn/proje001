@@ -307,7 +307,7 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                     style={{
                         padding: '10px 12px', fontSize: 11, fontWeight: 600, background: 'transparent',
                         color: activeTab === 'egitim' ? '#f1f5f9' : '#64748b', border: 'none', cursor: 'pointer',
-                        borderBottom: activeTab === 'egitim' && egitimSubTab === 'dashboard' ? '2px solid #378ADD' : '2px solid transparent'
+                        borderBottom: activeTab === 'egitim' ? '2px solid #DC2626' : '2px solid transparent'
                     }}
                 >
                     Eğitimlerim
@@ -352,17 +352,17 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                 {activeTab === 'egitim' && (
                     <>
                         {/* Sayfa içi alt-sekme: Dashboard / Bilgi Girişi (modal olarak) */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <button
                                 onClick={() => setEgitimSubTab('dashboard')}
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 6,
                                     padding: '6px 12px', fontSize: 11, fontWeight: 600,
-                                    borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+                                    borderRadius: 4, cursor: 'pointer', transition: 'all 0.15s',
                                     border: '1px solid',
-                                    background: egitimSubTab === 'dashboard' ? 'rgba(55,138,221,0.15)' : 'transparent',
-                                    color: egitimSubTab === 'dashboard' ? '#60a5fa' : '#64748b',
-                                    borderColor: egitimSubTab === 'dashboard' ? 'rgba(55,138,221,0.4)' : '#334155',
+                                    background: egitimSubTab === 'dashboard' ? 'rgba(220,38,38,0.12)' : 'transparent',
+                                    color: egitimSubTab === 'dashboard' ? '#f87171' : '#64748b',
+                                    borderColor: egitimSubTab === 'dashboard' ? 'rgba(220,38,38,0.35)' : '#292524',
                                 }}
                             >
                                 <BarChart2 size={12} />
@@ -373,12 +373,14 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 6,
                                     padding: '6px 12px', fontSize: 11, fontWeight: 600,
-                                    borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+                                    borderRadius: 4, cursor: 'pointer', transition: 'all 0.15s',
                                     border: '1px solid',
-                                    background: veriGirisiModalOpen ? 'rgba(55,138,221,0.15)' : 'transparent',
-                                    color: veriGirisiModalOpen ? '#60a5fa' : '#64748b',
-                                    borderColor: veriGirisiModalOpen ? 'rgba(55,138,221,0.4)' : '#334155',
+                                    background: 'transparent',
+                                    color: '#64748b',
+                                    borderColor: '#292524',
                                 }}
+                                onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.35)'; e.currentTarget.style.background = 'rgba(220,38,38,0.08)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#292524'; e.currentTarget.style.background = 'transparent'; }}
                             >
                                 <ClipboardList size={12} />
                                 Bilgi Girişi
@@ -478,12 +480,12 @@ const UserPanel = ({ open, onClose, onLogout, isCollapsed, initialTab = 'profil'
                             background: 'rgba(255,255,255,0.02)', flexShrink: 0,
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <ClipboardList size={16} style={{ color: '#60a5fa' }} />
+                                <ClipboardList size={16} style={{ color: '#DC2626' }} />
                                 <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>Bilgi Girişi</span>
                                 <span style={{
                                     fontSize: 9, padding: '2px 8px', borderRadius: 4,
-                                    background: 'rgba(55,138,221,0.12)', color: '#60a5fa',
-                                    border: '1px solid rgba(55,138,221,0.3)',
+                                    background: 'rgba(220,38,38,0.10)', color: '#f87171',
+                                    border: '1px solid rgba(220,38,38,0.25)',
                                 }}>Eğitim & Sertifika</span>
                             </div>
                             <button

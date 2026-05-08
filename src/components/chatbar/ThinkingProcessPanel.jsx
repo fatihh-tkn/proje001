@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     BrainCircuit, ChevronDown, ChevronUp, Check, FileText, Database,
     Search, Sparkles, MessageSquare, Network, Image as ImageIcon, Square, Paperclip, Cpu, Clock, Zap,
-    GitBranch, Wand2, Wrench, Webhook, AlertTriangle
+    GitBranch, Wand2, Wrench, Webhook, AlertTriangle, Loader
 } from 'lucide-react';
 
 // LangGraph node adı → ikon + insan-okur etiket
@@ -40,7 +40,13 @@ const fmtDuration = (ms) => {
 };
 
 const ThinkingProcessPanel = ({ message }) => {
+    const isStreaming = !!message.isStreaming;
     const [open, setOpen] = useState(false);
+
+    // Cevap tamamlanınca paneli otomatik kapat
+    useEffect(() => {
+        if (!isStreaming) setOpen(false);
+    }, [isStreaming]);
 
     const steps = useMemo(() => {
         const arr = [];
@@ -90,6 +96,24 @@ const ThinkingProcessPanel = ({ message }) => {
                     detail: typeof ev.elapsedMs === 'number' ? fmtDuration(ev.elapsedMs) : null,
                     accent: meta.accent,
                 });
+            }
+
+            // Aktif (started ama henüz completed olmayan) node'lar — sadece streaming'de
+            if (isStreaming) {
+                const startedSet = new Set(graphNodes.filter(ev => ev?.phase === 'started').map(ev => ev.node));
+                const completedSet = new Set(graphNodes.filter(ev => ev?.phase === 'completed').map(ev => ev.node));
+                for (const nodeName of startedSet) {
+                    if (completedSet.has(nodeName) || seen.has(nodeName)) continue;
+                    const meta = GRAPH_NODE_META[nodeName] || { icon: Cpu, label: nodeName, accent: '#64748b' };
+                    arr.push({
+                        icon: meta.icon,
+                        label: meta.label,
+                        detail: null,
+                        accent: meta.accent,
+                        isActive: true,
+                    });
+                    seen.add(nodeName);
+                }
             }
 
             // Hata olduysa kırmızı uyarı
@@ -166,7 +190,7 @@ const ThinkingProcessPanel = ({ message }) => {
                     sources: relevant,
                 });
             }
-        } else if (!isGraph) {
+        } else if (!isGraph && !isStreaming) {
             arr.push({
                 icon: BrainCircuit,
                 label: 'Genel bilgi ile yanıtlandı',
@@ -189,25 +213,26 @@ const ThinkingProcessPanel = ({ message }) => {
             });
         }
 
-        // 6) Yanıt
-        // Server-side süreyi gerçek veriden al, yoksa client-side'ı kullan
-        const duration = message.backendDurationMs
-            || ((message.completedAt && message.startedAt) ? message.completedAt - message.startedAt : null);
+        // 6) Yanıt — sadece streaming bittikten sonra
+        if (!isStreaming) {
+            const duration = message.backendDurationMs
+                || ((message.completedAt && message.startedAt) ? message.completedAt - message.startedAt : null);
 
-        if (message.isAborted) {
-            arr.push({
-                icon: Square,
-                label: 'Kullanıcı tarafından durduruldu',
-                detail: duration ? `${fmtDuration(duration)} sonra` : null,
-                accent: '#6b7280',
-            });
-        } else {
-            arr.push({
-                icon: Check,
-                label: 'Yanıt tamamlandı',
-                detail: duration ? fmtDuration(duration) : null,
-                accent: '#059669',
-            });
+            if (message.isAborted) {
+                arr.push({
+                    icon: Square,
+                    label: 'Kullanıcı tarafından durduruldu',
+                    detail: duration ? `${fmtDuration(duration)} sonra` : null,
+                    accent: '#6b7280',
+                });
+            } else {
+                arr.push({
+                    icon: Check,
+                    label: 'Yanıt tamamlandı',
+                    detail: duration ? fmtDuration(duration) : null,
+                    accent: '#059669',
+                });
+            }
         }
 
         return arr;
@@ -229,9 +254,12 @@ const ThinkingProcessPanel = ({ message }) => {
                     }`}
                 title="AI'ın bu yanıtı oluştururken izlediği akış"
             >
-                <BrainCircuit size={11} className={open ? 'text-[#DC2626]' : 'text-stone-400'} />
+                {isStreaming
+                    ? <Loader size={11} className={`${open ? 'text-[#DC2626]' : 'text-stone-400'} animate-spin`} />
+                    : <BrainCircuit size={11} className={open ? 'text-[#DC2626]' : 'text-stone-400'} />
+                }
                 <span>Süreç</span>
-                {totalMs != null && (
+                {!isStreaming && totalMs != null && (
                     <span className="font-mono opacity-70">· {fmtDuration(totalMs)}</span>
                 )}
                 {open
@@ -259,7 +287,7 @@ const ThinkingProcessPanel = ({ message }) => {
                             return (
                                 <li key={i} className="relative flex items-start gap-2.5 py-1.5">
                                     <span
-                                        className="relative z-10 shrink-0 w-5 h-5 rounded-full inline-flex items-center justify-center"
+                                        className={`relative z-10 shrink-0 w-5 h-5 rounded-full inline-flex items-center justify-center ${s.isActive ? 'animate-pulse' : ''}`}
                                         style={{
                                             color: accent,
                                             backgroundColor: accent + '14',
@@ -268,11 +296,19 @@ const ThinkingProcessPanel = ({ message }) => {
                                             borderStyle: 'solid',
                                         }}
                                     >
-                                        <Icon size={10} />
+                                        {s.isActive
+                                            ? <Loader size={10} className="animate-spin" />
+                                            : <Icon size={10} />
+                                        }
                                     </span>
                                     <div className="flex-1 min-w-0 pt-px">
-                                        <div className="text-[12px] font-semibold text-stone-800 leading-snug">
+                                        <div className={`text-[12px] font-semibold leading-snug ${s.isActive ? 'text-stone-500' : 'text-stone-800'}`}>
                                             {s.label}
+                                            {s.isActive && (
+                                                <span className="ml-1.5 text-[10px] font-normal tracking-widest animate-pulse" style={{ color: accent }}>
+                                                    çalışıyor...
+                                                </span>
+                                            )}
                                         </div>
                                         {s.detail && (
                                             <div className="text-[11px] text-stone-500 leading-snug mt-0.5 [overflow-wrap:anywhere]">

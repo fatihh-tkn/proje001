@@ -61,6 +61,8 @@ def _run_schema_migrations(eng) -> None:
         "ALTER TABLE ai_modelleri ADD COLUMN IF NOT EXISTS temel_url VARCHAR(512)",
         # AIModeli: provider tag (eski kurulumlarda eksik olabilir)
         "ALTER TABLE ai_modelleri ADD COLUMN IF NOT EXISTS tedarikci VARCHAR(64)",
+        # AIAgent: model kilidi (LG.7)
+        "ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS model_locked BOOLEAN DEFAULT FALSE",
     ]
     # Her statement kendi transaction'ında çalışsın — eski tek-connection
     # döngüsünde bir stmt fail ederse sonraki tüm stmt'ler PostgreSQL'in

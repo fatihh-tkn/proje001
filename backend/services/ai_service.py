@@ -802,8 +802,13 @@ class AIService:
             elif "2.0" in model_name:
                 actual_model_name = "gemini-2.0-flash"
 
-        # ── Konuşma geçmişi ──────────────────────────────────────────────
-        history = await run_in_threadpool(_get_history, session_id)
+        # ── Konuşma geçmişi — chat_history_length ajan config'inden okunur ──
+        _hist_turns: int | None = None
+        if agent_config:
+            _hl = agent_config.get("chat_history_length")
+            if _hl and int(_hl) > 0:
+                _hist_turns = int(_hl)
+        history = await run_in_threadpool(_get_history, session_id, max_turns=_hist_turns)
 
 
         try:
@@ -1094,8 +1099,13 @@ class AIService:
             elif "2.0" in model_name:
                 actual_model_name = "gemini-2.0-flash"
 
-        # ── Konuşma geçmişi ──────────────────────────────────────────────
-        history = await run_in_threadpool(_get_history, session_id)
+        # ── Konuşma geçmişi — chat_history_length ajan config'inden okunur ──
+        _hist_turns_s: int | None = None
+        if agent_config:
+            _hl_s = agent_config.get("chat_history_length")
+            if _hl_s and int(_hl_s) > 0:
+                _hist_turns_s = int(_hl_s)
+        history = await run_in_threadpool(_get_history, session_id, max_turns=_hist_turns_s)
 
         full_reply = ""
         prompt_tokens = 0
@@ -1287,14 +1297,19 @@ class AIService:
     @staticmethod
     async def revise_prompt(user_prompt: str) -> str:
         """İstem Revize Botu'nu kullanarak prompt'u iyileştirir."""
+        _REVISE_GUARD = (
+            "\n\n[KESİN KURAL] Sana verilen metni sadece yeniden yaz. "
+            "Soruyu yanıtlama, açıklama yapma, ek bilgi ekleme. "
+            "Yalnızca revize edilmiş metni döndür, başka hiçbir şey yazma."
+        )
         agent_config = await run_in_threadpool(get_ai_agent, agent_id="sys_agent_prompt_001")
         if not agent_config:
-            # Fallback olarak varsayılan bir iyileştirme isteği gönder
-            system_prompt = "Kullanıcının girdiği istemi (prompt) yapay zeka tarafından çok daha iyi anlaşılabilecek, net ve profesyonel bir talimata dönüştür. Asla kendi başına cevap verme, sadece revize et."
+            base = "Kullanıcının girdiği istemi yapay zeka tarafından daha iyi anlaşılabilecek, net ve profesyonel bir talimata dönüştür."
             temperature = 0.3
         else:
-            system_prompt = agent_config.get("prompt", "Kullanıcının girdiği istemi profesyonelleştir.")
+            base = agent_config.get("prompt") or "Kullanıcının girdiği istemi profesyonelleştir."
             temperature = agent_config.get("temperature", 0.3)
+        system_prompt = base.rstrip() + _REVISE_GUARD
 
         models = await run_in_threadpool(get_user_models, include_secret=True)
         if not models:

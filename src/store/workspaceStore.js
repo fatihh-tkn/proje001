@@ -20,6 +20,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Layout states for App.jsx
   isLeftCollapsed: false,
   isRightOpen: true,
+  chatBarWidth: parseInt(localStorage.getItem('chatBar:width') || '540', 10),
 
   // Authentication State
   isLoggedIn: false,
@@ -33,6 +34,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Layout Actions
   setIsLeftCollapsed: (value) => set({ isLeftCollapsed: value }),
   setIsRightOpen: (value) => set({ isRightOpen: value }),
+  setChatBarWidth: (value) => set({ chatBarWidth: value }),
   setIsN8nBooting: (value) => set({ isN8nBooting: value }),
   setIsLoggedIn: (value) => set({ isLoggedIn: value }),
   setCurrentUser: (user) => set({ currentUser: user }),

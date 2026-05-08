@@ -283,6 +283,7 @@ def get_ai_agent(agent_kind: str = None, agent_id: str = None) -> Optional[dict]
             "can_ask_follow_up": agent.can_ask_follow_up,
             "error_message": agent.error_message,
             "node_config": agent.node_config or {},
+            "model_locked": getattr(agent, "model_locked", False) or False,
         }
 
 

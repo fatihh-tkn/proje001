@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Loader2, Webhook, Key, Workflow, LineChart, Terminal, FileCode, Power } from 'lucide-react';
 import { mutate } from '../../../api/client';
@@ -139,11 +139,52 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     const [isFlowExpanded, setIsFlowExpanded] = useState(false);
     const [lowerViewMode, setLowerViewMode] = useState('config'); // 'config' | 'prompts'
 
-    const markDirty = (agentId) => {
-        setDirtyAgentIds(prev => new Set([...prev, agentId]));
-    };
+    // Debounced auto-save — her değişiklikten 1.5 sn sonra otomatik kaydeder
+    const autoSaveTimerRef = useRef(null);
+    const agentsRef = useRef(agents);
+    agentsRef.current = agents;
+    const dirtyRef = useRef(dirtyAgentIds);
+    dirtyRef.current = dirtyAgentIds;
 
+    const scheduleAutoSave = useCallback(() => {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(async () => {
+            const dirty = dirtyRef.current;
+            if (dirty.size === 0) return;
+            setIsSaving(true);
+            try {
+                await mutate.save('/api/orchestrator/save', agentsRef.current, {
+                    subject: dirty.size > 1 ? `${dirty.size} ajan` : 'Ajan ayarları',
+                    silentSuccess: false,
+                });
+                setDirtyAgentIds(new Set());
+            } catch { /* mutate toast attı */ }
+            setIsSaving(false);
+        }, 1500);
+    }, []);
+
+    // Bileşen unmount olurken bekleyen timer'ı temizle
+    useEffect(() => () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); }, []);
+
+    const markDirty = useCallback((agentId) => {
+        setDirtyAgentIds(prev => new Set([...prev, agentId]));
+        scheduleAutoSave();
+    }, [scheduleAutoSave]);
+
+    // ChatBar'dan model değiştiğinde kilitli olmayan ajanları anında güncelle
+    useEffect(() => {
+        const handler = (e) => {
+            const { model } = e.detail || {};
+            if (!model) return;
+            setAgents(prev => prev.map(a => a.modelLocked ? a : { ...a, model }));
+        };
+        window.addEventListener('agent-model-changed', handler);
+        return () => window.removeEventListener('agent-model-changed', handler);
+    }, []);
+
+    // Manuel kaydet (sekmedeki kaydet butonu hâlâ çalışır)
     const handleSave = async () => {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
         setIsSaving(true);
         const dirtyCount = dirtyAgentIds.size;
         try {

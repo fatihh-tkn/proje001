@@ -139,6 +139,8 @@ export const sendMessageStream = async (
   signal = null,
   // Clarification devam turu — { qaHistory: [...], screenshotBase64: "..." }
   clarificationOpts = null,
+  // ChatBar'dan seçilen model (gerçek model adı, alias değil)
+  modelOverride = null,
 ) => {
   try {
     const body = {
@@ -155,6 +157,9 @@ export const sendMessageStream = async (
     if (commandOpts?.commandId) body.command = commandOpts.commandId;
     if (clarificationOpts?.qaHistory?.length) body.qa_history = clarificationOpts.qaHistory;
     if (clarificationOpts?.screenshotBase64) body.screenshot_base64 = clarificationOpts.screenshotBase64;
+    if (clarificationOpts?.roundNumber) body.round_number = clarificationOpts.roundNumber;
+    if (clarificationOpts?.forceSolve) body.force_solve = true;
+    if (modelOverride) body.model_override = modelOverride;
 
     const response = await fetch(STREAM_BASE, {
       method: "POST",

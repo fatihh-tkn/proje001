@@ -39,7 +39,7 @@ logger = get_logger("agent_graph.supervisor")
 
 
 # Geçerli intent değerleri (LLM classifier çıktısı için — 'sohbet' deterministik fast-path)
-_VALID_INTENTS = {"general", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa"}
+_VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa"}
 
 # Komut → intent (deterministik)
 _COMMAND_INTENT_MAP = {
@@ -78,10 +78,27 @@ def _is_chitchat(msg: str) -> bool:
     return bool(_CHITCHAT_RE.match(text))
 
 
+def _canned_chitchat(msg: str) -> str:
+    """Chitchat için LLM çağrısı yapmadan hazır cevap üret."""
+    m = (msg or "").strip().lower().rstrip(".!? ")
+    if re.match(r"(selam|merhaba|mrb|slm|hey|hi|hello|hola|günaydın|iyi günler|iyi akşamlar|iyi geceler|tünaydın|hayırlı)", m):
+        return "Merhaba! Nasıl yardımcı olabilirim?"
+    if re.match(r"(teşekkür|sağol|eyvallah)", m):
+        return "Rica ederim! Başka bir konuda yardımcı olabilir miyim?"
+    if re.match(r"(görüşürüz|hoşçakal|bay|bb)", m):
+        return "Güle güle! İyi çalışmalar."
+    if re.match(r"(naber|nbr|n[' ]?aber|naptın|ne haber|nasılsın|nslsn)", m):
+        return "İyiyim, teşekkürler! Nasıl yardımcı olabilirim?"
+    return "Peki! Başka bir konuda yardımcı olabilir miyim?"
+
+
 # Intent → varsayılan specialist plan (paralel)
-# 'sohbet' boş plan: graph dispatcher direkt aggregator'a düşer, RAG çağrılmaz.
+# 'sohbet' boş plan: supervisor canned cevap set eder, aggregator LLM çağırmaz.
+# 'serbest' boş plan: aggregator LLM çağırır ama RAG yok (genel bilgi soruları).
+# 'general' RAG açık: şirkete/SAP'a özgü domain soruları.
 _INTENT_PLAN = {
     "sohbet":           [],
+    "serbest":          [],
     "general":          [("rag_search", True)],
     "hata_cozumu":      [("rag_search", True), ("error_solver", False)],
     "hata_cozumu_devam":[("error_solver", False)],  # clarification devamı — RAG atla
@@ -93,10 +110,14 @@ _INTENT_PLAN = {
 
 _CLASSIFIER_SYSTEM_FALLBACK = (
     "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
-    "kategorilerden birini seçersin:\n"
-    "- general: tanımlama veya açık uçlu bilgi sorusu (ör. 'CS01 nedir', "
-    "'MM modülü ne işe yarar', 'şu transaction'ı açıkla'). KOD geçse bile "
-    "soru bir SORUN bildirimi değil tanıma talebi ise general.\n"
+    "kategorilerden birini seçersin:\n\n"
+    "- general: Şirkete/SAP'a özgü domain sorusu. SAP transaction kodu "
+    "(CS01, FB60, ME083...), SAP modülü (MM, SD, FI, CO, PP, HR, PM...), "
+    "iş süreci, BPMN akışı veya kurumsal sistem hakkında bilgi/tanım talebi. "
+    "Bu sorular şirket bilgi tabanında aranmalı.\n"
+    "- serbest: Genel bilgi/teknoloji/kavram sorusu, şirkete özgü bağlam "
+    "gerektirmiyor. Ör: 'Python nedir', 'REST API ne demek', 'Excel'de VLOOKUP', "
+    "'yapay zeka nasıl çalışır'. Bilgi tabanı aramasına gerek yok.\n"
     "- hata_cozumu: Bir SİSTEM HATASI/ARIZA bildirimi. Kullanıcı 'şu hata "
     "veriyor', 'dump alıyor', 'çalışmıyor', 'ekran kilitlendi' gibi sorun "
     "ifadeleri kullanıyor. Sadece kod (ör. ME083) verilse bile bağlam bir "
@@ -106,6 +127,8 @@ _CLASSIFIER_SYSTEM_FALLBACK = (
     "- n8n: net bir otomasyon tetikleme isteği (toplantı kaydet, rapor "
     "gönder, görev oluştur).\n"
     "- dosya_qa: belirli bir dosya hakkında soru.\n\n"
+    "KARAR KURALI: SAP kodu/modülü/kurumsal terim yoksa → serbest. "
+    "Varsa ve soru sorun bildirimi değilse → general.\n\n"
     "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
     '{"intent": "<kategori>", "needs_polish": <bool>, "reasoning": '
     '"<1-cümle-gerekçe>"}\n\n'
@@ -232,6 +255,18 @@ async def _classify_with_llm(user_message: str, agent_config: dict | None = None
         return None
 
 
+_SAP_MODULES_RE = re.compile(
+    r"\b(mm|sd|fi|co|cs|pp|hr|pm|qm|wm|ps|sm|re|tr|bc|basis|abap|bapi|idoc|smartform|sap)\b",
+    re.IGNORECASE,
+)
+_SAP_CODE_RE = re.compile(r"\b[a-z]{1,3}\d{2,4}\b", re.IGNORECASE)
+
+
+def _has_domain_signal(msg: str) -> bool:
+    """SAP/kurumsal bağlam sinyali var mı? Varsa RAG açık (general), yoksa RAG kapalı (serbest)."""
+    return bool(_SAP_CODE_RE.search(msg)) or bool(_SAP_MODULES_RE.search(msg))
+
+
 def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
     """LLM yoksa basit kelime/regex eşleştirmesi.
 
@@ -244,20 +279,12 @@ def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
     if has_file:
         return "dosya_qa", "Dosya bağlamı verilmiş → dosya QA modu."
 
-    # Tanım/açıklama sorusu mu? (X nedir, X ne yapar, X nasıl çalışır, X'i açıkla)
-    is_definition_q = bool(_DEFINITION_RE.search(msg))
-
     # Hata anahtar kelimeleri (gerçek arıza bildirimi sinyalleri)
     has_error_kw = any(kw in msg for kw in _ERROR_KEYWORDS)
 
-    # SAP/sistem kodu paterni (CS01, FB60, ME083, MM02, vs.)
-    has_sap_code = bool(re.search(r"\b[a-z]{1,3}\d{2,4}\b", msg))
+    # Tanım/açıklama sorusu mu? (X nedir, X ne yapar, X nasıl çalışır, X'i açıkla)
+    is_definition_q = bool(_DEFINITION_RE.search(msg))
 
-    # Karar tablosu:
-    # - Tanım sorusu varsa, kod olsa bile general (CS01 nedir → general)
-    # - Tanım sorusu yok + hata keyword varsa → hata_cozumu
-    # - Tanım sorusu yok + sadece kod (sorun bağlamı yok) → general (riskli kategorize etmektense bilgi ver)
-    # - Tanım sorusu yok + hata keyword + kod → hata_cozumu (klasik 'FB60 hata veriyor')
     if has_error_kw:
         return "hata_cozumu", "Hata bildirimi anahtar kelimesi tespit edildi."
 
@@ -273,13 +300,16 @@ def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
                                  "otomatik gönder", "tetikle")):
         return "n8n", "Bilinen otomasyon ifadesi tespit edildi."
 
-    # Tanım sorusu veya sadece kod / belirsiz → general
-    if is_definition_q:
-        return "general", "Tanım/açıklama sorusu — bilgi tabanına bak."
-    if has_sap_code:
-        return "general", "Kod var ama hata bildirimi sinyali yok — tanım/bilgi sorusu olarak değerlendir."
+    # Domain sinyali varsa (SAP kodu, SAP modülü) → bilgi tabanına bak (general)
+    if _has_domain_signal(msg):
+        return "general", "SAP/domain sinyali tespit edildi — bilgi tabanına bak."
 
-    return "general", "Belirgin bir sinyal yok → genel sohbet."
+    # Tanım sorusu ama domain sinyali yok → genel bilgi, RAG gereksiz (serbest)
+    if is_definition_q:
+        return "serbest", "Tanım sorusu ama SAP/domain sinyali yok — genel bilgi, RAG atla."
+
+    # Hiçbir sinyal yoksa da RAG çalıştırma
+    return "serbest", "Belirgin domain sinyali yok → serbest mod, RAG atla."
 
 
 def _plan_for_intent(intent: str) -> list[dict]:
@@ -336,11 +366,24 @@ async def supervisor_node(state: AgentState) -> dict:
         reasoning = f"Hızlı aksiyon '{cmd}' → intent='{intent}'."
         needs_polish = False  # JSON cevap, polish istemez
     elif _is_chitchat(user_msg):
-        # Kısa sohbet (selam, nbr, teşekkürler, ok ...) — LLM classifier'a uğramadan
-        # direkt sohbet moduna düş. Aggregator minimal prompt'la 1-2 cümle döner.
+        # Kısa sohbet (selam, nbr, teşekkürler, ok ...) — LLM çağrısı hiç yapılmaz.
+        # Supervisor hazır cevabı final_reply'a yazar; aggregator LLM atlar.
         intent = "sohbet"
-        reasoning = "Kısa sohbet kalıbı tespit edildi → LLM atlandı."
+        reasoning = "Kısa sohbet kalıbı tespit edildi → LLM atlandı, hazır cevap."
         needs_polish = False
+        elapsed_ms = int((time.time() - t0) * 1000)
+        logger.info("[supervisor] chitchat fast-path → canned response (%d ms)", elapsed_ms)
+        return {
+            "intent": "sohbet",
+            "plan": [],
+            "plan_reasoning": reasoning,
+            "needs_polish": False,
+            "final_reply": _canned_chitchat(user_msg),
+            "agent_configs": agent_configs,
+            "nodes_executed": ["supervisor"],
+            "node_timings": {"supervisor": elapsed_ms},
+            "total_tokens": {"supervisor": {"p": 0, "c": 0}},
+        }
     elif has_file:
         intent = "dosya_qa"
         reasoning = f"file_name='{state['file_name']}' → dosya QA modu."
@@ -369,10 +412,10 @@ async def supervisor_node(state: AgentState) -> dict:
     # yapılandırılmış JSON döner, msg_polish sonradan çalışırsa şemayı bozabilir
     # veya stream sonunda gereksiz LLM çağrısı + olası hata fırlatır. UI kartı
     # zaten bütün halinde gösteriyor, post-process'e gerek yok.
-    if intent in ("hata_cozumu", "hata_cozumu_devam", "rapor_arama", "sohbet"):
+    if intent in ("hata_cozumu", "hata_cozumu_devam", "rapor_arama", "sohbet", "serbest"):
         if needs_polish:
             logger.info(
-                "[supervisor] intent=%s için needs_polish zorla False (JSON/sohbet pass-through)",
+                "[supervisor] intent=%s için needs_polish zorla False (JSON/sohbet/serbest pass-through)",
                 intent,
             )
         needs_polish = False

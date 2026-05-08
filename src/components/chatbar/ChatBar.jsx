@@ -17,6 +17,7 @@ const CHAT_WIDTH_MAX_RATIO = 0.7;  // ekran genişliğinin %70'inden büyük ola
 
 const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
+    const setChatBarWidth = useWorkspaceStore(state => state.setChatBarWidth);
     const addToast = useErrorStore(state => state.addToast);
     const [isChatsOpen, setIsChatsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
@@ -28,16 +29,22 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const [attachedFiles, setAttachedFiles] = useState([]); // { id, name, type, url, size, source }
     const [isDragOver, setIsDragOver] = useState(false);
     const [activeCommand, setActiveCommand] = useState(null);
+    const [activeModelName, setActiveModelName] = useState(null);
 
     const [isChatScrolling, setIsChatScrolling] = useState(false);
     const [isTextareaScrolling, setIsTextareaScrolling] = useState(false);
     const chatScrollTimeout = useRef(null);
     const textareaScrollTimeout = useRef(null);
     const messagesEndRef = useRef(null);
+    const lastUserMsgRef = useRef(null);
+    const pendingScrollToUser = useRef(false);
+    const scrollAnchorTimer = useRef(null);
+    const scrollAnchoredRef = useRef(false);
     const textareaRef = useRef(null);
     const streamingMsgIdRef = useRef(null);
     const abortControllerRef = useRef(null);
     const justSentRef = useRef(false);
+    const isTypingRef = useRef(false);
 
     // ── Yeniden boyutlandırma (sola doğru sürükleyerek genişlet) ──────────
     const [chatWidth, setChatWidth] = useState(() => {
@@ -48,7 +55,9 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         return CHAT_WIDTH_DEFAULT;
     });
     const [isResizing, setIsResizing] = useState(false);
-    const dragStateRef = useRef(null); // { startX, startWidth }
+    const dragStateRef = useRef(null);
+
+    useEffect(() => { setChatBarWidth(chatWidth); }, [chatWidth, setChatBarWidth]);
 
     const clampWidth = (w) => {
         const max = Math.max(CHAT_WIDTH_MIN, Math.floor(window.innerWidth * CHAT_WIDTH_MAX_RATIO));
@@ -175,24 +184,30 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         return () => {
             if (chatScrollTimeout.current) clearTimeout(chatScrollTimeout.current);
             if (textareaScrollTimeout.current) clearTimeout(textareaScrollTimeout.current);
+            if (scrollAnchorTimer.current) clearTimeout(scrollAnchorTimer.current);
         };
     }, []);
 
     useEffect(() => {
-        if (justSentRef.current) {
-            justSentRef.current = false;
-            const lastUserMsg = [...messages].reverse().find(m => m.sender !== 'ai');
-            if (!lastUserMsg) return;
-            requestAnimationFrame(() => {
-                const el = document.querySelector(`[data-msg-id="${lastUserMsg.id}"]`);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                }
-            });
+        if (pendingScrollToUser.current && lastUserMsgRef.current) {
+            const el = lastUserMsgRef.current;
+            const container = el.closest('[data-chat-scroll]');
+            if (container) {
+                const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+                container.scrollBy({ top: delta, behavior: 'smooth' });
+            } else {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            pendingScrollToUser.current = false;
+            scrollAnchoredRef.current = true;
+            if (scrollAnchorTimer.current) clearTimeout(scrollAnchorTimer.current);
+            scrollAnchorTimer.current = setTimeout(() => {
+                scrollAnchoredRef.current = false;
+            }, 700);
+        } else if (!scrollAnchoredRef.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [messages]);
+    }, [messages, isTyping]);
 
     useEffect(() => {
         requestAnimationFrame(() => {
@@ -256,7 +271,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
 
     const handleSendMessage = async (overrideText) => {
         const textPayload = overrideText ?? inputValue;
-        if (textPayload.trim() === '' || isTyping) return;
+        if (textPayload.trim() === '' || isTypingRef.current) return;
+        isTypingRef.current = true;
 
         const filesSnapshot = [...attachedFiles];
 
@@ -290,6 +306,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         };
 
         justSentRef.current = true;
+        pendingScrollToUser.current = true;
         setMessages((prev) => [...prev, userMsg, aiPlaceholder]);
         if (!overrideText) { setInputValue(''); setIsExpanded(false); }
         setIsTyping(true);
@@ -387,7 +404,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         }
                     }
 
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
 
                     // Dinamik takip sorusu önerileri (Grok-stili). Mesaj balonunun altında
@@ -437,7 +454,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             return { ...m, text: errText, isStreaming: false, isError: true };
                         })
                     );
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                     abortControllerRef.current = null;
                 },
@@ -451,7 +468,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             : '_Yanıt başlamadan durduruldu._';
                         return { ...m, text: stub, isStreaming: false, isAborted: true, completedAt: Date.now() };
                     }));
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                     abortControllerRef.current = null;
                 },
@@ -542,6 +559,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                 : m
         ));
         streamingMsgIdRef.current = aiMsgId;
+        isTypingRef.current = true;
         setIsTyping(true);
 
         const controller = new AbortController();
@@ -587,7 +605,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             backendDurationMs: duration_ms,
                         };
                     }));
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                 },
                 onError: (errText) => {
@@ -597,7 +615,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         if (hasRealContent) return { ...m, isStreaming: false };
                         return { ...m, text: errText, isStreaming: false, isError: true };
                     }));
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                 },
                 onAbort: () => {
@@ -610,7 +628,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             completedAt: Date.now(),
                         }
                     ));
-                    setIsTyping(false);
+                    setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                 },
                 onProgress: ({ node, phase, elapsed_ms }) => {
@@ -716,6 +734,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                         handleChatScroll={handleChatScroll}
                         isChatScrolling={isChatScrolling}
                         messagesEndRef={messagesEndRef}
+                        lastUserMsgRef={lastUserMsgRef}
                         handleNewChat={handleNewChat}
                         onEditAndResend={handleEditAndResend}
                         onSendFollowup={(q) => handleSendMessage(q)}

@@ -122,7 +122,8 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     """
     intent = state.get("intent") or "general"
 
-    # Sohbet modu — full RAG/template katmanlamasını atla, kısa ve sade tut.
+    # Sohbet modu — aggregator'a gelmemeli (supervisor canned response set etti),
+    # ama defansif olarak bırakıldı.
     if intent == "sohbet":
         if agent_config and agent_config.get("prompt"):
             return f"{agent_config['prompt']}\n\n{_CHITCHAT_PROMPT}"
@@ -130,14 +131,26 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
 
     parts: list[str] = []
 
+    # Persona varsa sistem prompt'unun başına ekle
+    persona = ((agent_config or {}).get("persona") or "").strip()
+    if persona:
+        parts.append(f"[AJAN ROLÜ]: {persona}")
+
     if agent_config and agent_config.get("prompt"):
         parts.append(agent_config["prompt"])
     else:
         parts.append(_DEFAULT_SYSTEM)
 
-    # Prompt Templates sekmesinden gelen şablon (SistemAyari'de saklı)
-    intent = state.get("intent") or "general"
+    # Serbest mod — domain bağlamı yok, RAG template ve RAG context eklenmez.
     file_name = state.get("file_name")
+    if intent == "serbest":
+        if agent_config and agent_config.get("negative_prompt"):
+            parts.append(
+                f"\n[KESİNLİKLE YAPMAMAN GEREKENLER]\n{agent_config['negative_prompt']}"
+            )
+        return "\n\n".join(parts)
+
+    # Prompt Templates sekmesinden gelen şablon (SistemAyari'de saklı)
     try:
         if intent == "dosya_qa" and file_name:
             parts.append(get_file_qa_prompt(file_name))
@@ -177,7 +190,7 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     # zorluyor olabilir. Sohbetsel intent'lerde (general/dosya_qa/n8n) bu
     # davranış istenmez — kullanıcı doğal cevap bekliyor. En sona explicit
     # "düz metin" kuralı koyuyoruz; LLM'ler son talimatı önceler.
-    if intent in ("general", "dosya_qa", "n8n"):
+    if intent in ("general", "serbest", "dosya_qa", "n8n", "rapor_arama"):
         parts.append(
             "[ÖNEMLİ ÇIKTI KURALI]\n"
             "Cevabını mutlaka DOĞAL DİL (Markdown veya düz metin) olarak ver. "
@@ -222,13 +235,30 @@ async def aggregator_node(state: AgentState) -> dict:
     # Her specialist artık kendi alanına yazıyor (error_draft / zli_draft) —
     # paylaşılan chat_draft alanı kaldırıldı, race riski yok.
     structured_draft = ""
-    if intent == "hata_cozumu":
+    if intent in ("hata_cozumu", "hata_cozumu_devam"):
         structured_draft = state.get("error_draft") or ""
     elif intent == "rapor_arama":
         structured_draft = state.get("zli_draft") or ""
 
-    # ── 0) Supervisor cost cap'i tespit ettiyse ek LLM çağrısı yapma,
-    #      onun hazırladığı cap mesajını direkt yayınla.
+    # ── 0a) Supervisor chitchat için hazır cevap set ettiyse LLM çağrısı yapma.
+    if intent == "sohbet" and state.get("final_reply"):
+        canned = state["final_reply"]
+        elapsed_ms = int((time.time() - t0) * 1000)
+        writer = _try_get_writer()
+        if writer:
+            try:
+                writer({"type": "replace", "text": canned})
+            except Exception as e:
+                logger.warning("[aggregator] writer hatası (sohbet canned): %s", e)
+        logger.info("[aggregator] sohbet canned pass-through (%d ms)", elapsed_ms)
+        return {
+            "final_reply": canned,
+            "nodes_executed": ["aggregator"],
+            "node_timings": {"aggregator": elapsed_ms},
+        }
+
+    # ── 0b) Supervisor cost cap'i tespit ettiyse ek LLM çağrısı yapma,
+    #       onun hazırladığı cap mesajını direkt yayınla.
     if state.get("cost_capped"):
         cap_msg = state.get("final_reply") or ""
         elapsed_ms = int((time.time() - t0) * 1000)

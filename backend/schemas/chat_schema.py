@@ -24,6 +24,14 @@ class ChatMessage(BaseModel):
     qa_history: list[dict] | None = Field(default=None)
     # Opsiyonel ekran görüntüsü (base64); vision destekli modellerde analiz edilir
     screenshot_base64: str | None = Field(default=None)
+    # Kullanıcının submit ettiği tur (1-indexed). Backend tur sayacını
+    # buradan okur — qa_history uzunluğundan değil (multi-question/round).
+    round_number: int | None = Field(default=None, ge=1, le=10)
+    # "Yeterli, çöz" butonuna basıldığında True — backend ask_more atlayıp
+    # mevcut bilgilerle çözüm üretir.
+    force_solve: bool = Field(default=False)
+    # ChatBar'dan seçilen model adı — kilitli olmayan ajanlar bu modeli kullanır
+    model_override: str | None = Field(default=None, max_length=128)
 
 
 class ChatResponse(BaseModel):

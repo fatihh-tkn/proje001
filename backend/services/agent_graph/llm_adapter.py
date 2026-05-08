@@ -45,6 +45,13 @@ def _resolve_active_model(agent_config: dict | None) -> dict:
 
     selected = agent_config and agent_config.get("model")
     active = next((m for m in models if m["name"] == selected), None) if selected else None
+    if selected and active is None:
+        logger.warning(
+            "[_resolve_active_model] '%s' modeli bulunamadı → fallback='%s'. Kayıtlı isimler: %s",
+            selected, models[0]["name"], [m["name"] for m in models],
+        )
+    elif selected:
+        logger.info("[_resolve_active_model] '%s' → protocol=%s", selected, active.get("protocol"))
     return active or models[0]
 
 

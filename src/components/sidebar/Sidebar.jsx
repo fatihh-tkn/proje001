@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder, Settings, User,
-    ChevronsRight, ChevronsLeft, Files, LayoutGrid, Webhook, Search, X
+    ChevronsRight, ChevronsLeft, Files, LayoutGrid, MessageSquare, Hash, Search, X,
+    ChevronDown, Plus
 } from 'lucide-react';
 
 import FullLogoImage from '../../assets/logo-acik.png';
@@ -11,18 +12,41 @@ import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
 import UserPanel from './UserPanel';
 import UserMenu from './UserMenu';
+import GlobalChatRoom from '../workspace/GlobalChatRoom';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
 import { useArchiveChangedListener } from '../../utils/archiveEvents';
 
+const STORAGE_CHANNELS = 'global_chat_channels';
+const DEFAULT_CHANNELS = [
+    { id: 'genel', name: 'genel' },
+    { id: 'duyurular', name: 'duyurular' },
+];
+
+const loadChannelsFromStorage = () => {
+    try {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_CHANNELS) || 'null');
+        if (Array.isArray(stored) && stored.length) return stored;
+    } catch (_) { /* ignore */ }
+    return DEFAULT_CHANNELS;
+};
+
+const slugifyChannel = (s) =>
+    s.trim().toLocaleLowerCase('tr-TR')
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9çğıöşü_-]/g, '')
+        .substring(0, 32);
+
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
-    const isN8nBooting = useWorkspaceStore(state => state.isN8nBooting);
     const currentUser = useWorkspaceStore(state => state.currentUser);
+    const [channels, setChannels] = useState(() => loadChannelsFromStorage());
+    const [chatPanelOpen, setChatPanelOpen] = useState(false);
+    const [activeChannelId, setActiveChannelId] = useState(() => loadChannelsFromStorage()[0]?.id || null);
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
-    const [settingsOpen,  setSettingsOpen]  = useState(false);
-    const [userMenuOpen,  setUserMenuOpen]  = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [userPanelOpen, setUserPanelOpen] = useState(false);
     const [userPanelInitialTab, setUserPanelInitialTab] = useState('profil');
     const [searchQuery, setSearchQuery] = useState('');
@@ -71,6 +95,39 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     }, [currentUser]);
 
     useArchiveChangedListener(fetchArchive);
+
+    useEffect(() => {
+        const onChannelsUpdate = () => setChannels(loadChannelsFromStorage());
+        window.addEventListener('channel:list-updated', onChannelsUpdate);
+        return () => window.removeEventListener('channel:list-updated', onChannelsUpdate);
+    }, []);
+
+    const persistChannels = (next) => {
+        localStorage.setItem(STORAGE_CHANNELS, JSON.stringify(next));
+        setChannels(next);
+        window.dispatchEvent(new CustomEvent('channel:list-updated'));
+    };
+
+    const toggleChatPanel = () => setChatPanelOpen(prev => !prev);
+
+    const handleSelectChannel = (channelId) => {
+        setChatPanelOpen(true);
+        setActiveChannelId(channelId);
+    };
+
+    const handleCreateChannel = () => {
+        const name = window.prompt('Yeni kanal adı:');
+        if (!name) return;
+        const id = slugifyChannel(name);
+        if (!id) return;
+        if (channels.some(c => c.id === id)) {
+            handleSelectChannel(id);
+            return;
+        }
+        const next = [...channels, { id, name: id, createdAt: Date.now() }];
+        persistChannels(next);
+        handleSelectChannel(id);
+    };
 
     useEffect(() => {
         if (!searchQuery.trim()) {
@@ -235,6 +292,15 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 }}
                 isCollapsed={isCollapsed}
             />
+
+            {/* GlobalChatRoom — MessageSquare butonuyla açılan inline yan panel */}
+            <GlobalChatRoom
+                open={chatPanelOpen}
+                onClose={() => setChatPanelOpen(false)}
+                isCollapsed={isCollapsed}
+                activeChannelId={activeChannelId}
+                setActiveChannelId={setActiveChannelId}
+            />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
                 onMouseDown={handleSidebarMouseDown}
@@ -289,7 +355,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 onClick={e => e.stopPropagation()}
-                                placeholder="Dosya ara..."
+                                placeholder={chatPanelOpen ? "Kanal ara..." : "Dosya ara..."}
                                 className="flex-1 bg-transparent text-[12px] text-slate-300 placeholder-slate-600 outline-none min-w-0"
                                 autoComplete="off"
                                 spellCheck={false}
@@ -314,41 +380,98 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     [&::-webkit-scrollbar-thumb]:rounded-none
                     hover:[&::-webkit-scrollbar-thumb]:bg-slate-600"
                 >
-                    {/* DOSYALAR */}
-                    {(archiveData.length === 0) && !isCollapsed && (
-                        <div
-                            onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
-                            className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
-                            style={{ borderRadius: 0 }}
-                        >
-                            <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#DC2626] transition-colors" />
-                            <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
-                                Sistemde hiç dosya bulunumadı.<br />
-                                <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
-                            </p>
-                        </div>
+                    {chatPanelOpen ? (
+                        <>
+                            {/* Kategori başlığı */}
+                            {!isCollapsed && (
+                                <div className="flex items-center justify-between px-1 mb-1 mt-1 group/cat cursor-default select-none">
+                                    <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
+                                        <ChevronDown size={10} className="shrink-0" />
+                                        <span>Metin Kanallar</span>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleCreateChannel(); }}
+                                        className="opacity-0 group-hover/cat:opacity-100 text-slate-500 hover:text-[#DC2626] transition-all interactive"
+                                        title="Yeni Kanal"
+                                    >
+                                        <Plus size={13} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {channels.length === 0 && !isCollapsed && (
+                                <div className="text-[10px] text-slate-600 text-center py-6 px-2">
+                                    Henüz kanal yok.
+                                </div>
+                            )}
+
+                            <div className="flex flex-col gap-px">
+                                {channels.map(ch => {
+                                    const isActive = activeChannelId === ch.id;
+                                    return (
+                                        <button
+                                            key={ch.id}
+                                            onClick={(e) => { e.stopPropagation(); handleSelectChannel(ch.id); }}
+                                            className={`interactive relative flex items-center gap-1.5 w-full text-left transition-all duration-100
+                                                ${isCollapsed ? 'justify-center py-2' : 'px-2 py-[5px]'}
+                                                ${isActive
+                                                    ? 'text-slate-100 bg-white/[0.06]'
+                                                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'}
+                                            `}
+                                            title={`#${ch.name}`}
+                                        >
+                                            {/* Aktif göstergesi — sol çizgi */}
+                                            {isActive && !isCollapsed && (
+                                                <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#DC2626] rounded-r" />
+                                            )}
+                                            <Hash size={isCollapsed ? 18 : 14} className={`shrink-0 ${isActive ? 'text-[#DC2626]' : 'text-slate-600'}`} />
+                                            {!isCollapsed && (
+                                                <span className="truncate text-[12px]">{ch.name}</span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {/* DOSYALAR */}
+                            {(archiveData.length === 0) && !isCollapsed && (
+                                <div
+                                    onClick={(e) => { e.stopPropagation(); setSettingsOpen(true); }}
+                                    className="flex flex-col items-center text-center mt-10 px-4 py-6 border border-dashed border-slate-700/60 cursor-pointer group transition-colors"
+                                    style={{ borderRadius: 0 }}
+                                >
+                                    <Folder size={20} className="mb-2 text-slate-600 group-hover:text-[#DC2626] transition-colors" />
+                                    <p className="text-[10px] text-slate-500 group-hover:text-slate-300 leading-relaxed transition-colors">
+                                        Sistemde hiç dosya bulunumadı.<br />
+                                        <span className="text-slate-400 group-hover:text-white font-medium">Ayarlardan Dosya İşleme</span> bölümünü açın.
+                                    </p>
+                                </div>
+                            )}
+                            <div className="flex flex-col space-y-0.5 w-full">
+                                {getArchiveTree().map((node) => (
+                                    <TreeNode
+                                        key={node.id}
+                                        node={node}
+                                        level={0}
+                                        openFolders={openFolders}
+                                        toggleFolder={toggleFolder}
+                                        activeFile={activeFile}
+                                        setActiveFile={setActiveFile}
+                                        isCollapsed={isCollapsed}
+                                        setIsCollapsed={setIsCollapsed}
+                                        setOpenFolders={setOpenFolders}
+                                        onOpenFile={onOpenFile}
+                                        tabs={tabs}
+                                        searchQuery={searchQuery}
+                                        matchedFileIds={matchedFileIds}
+                                        matchedFolderIds={matchedFolderIds}
+                                    />
+                                ))}
+                            </div>
+                        </>
                     )}
-                    <div className="flex flex-col space-y-0.5 w-full">
-                        {getArchiveTree().map((node) => (
-                            <TreeNode
-                                key={node.id}
-                                node={node}
-                                level={0}
-                                openFolders={openFolders}
-                                toggleFolder={toggleFolder}
-                                activeFile={activeFile}
-                                setActiveFile={setActiveFile}
-                                isCollapsed={isCollapsed}
-                                setIsCollapsed={setIsCollapsed}
-                                setOpenFolders={setOpenFolders}
-                                onOpenFile={onOpenFile}
-                                tabs={tabs}
-                                searchQuery={searchQuery}
-                                matchedFileIds={matchedFileIds}
-                                matchedFolderIds={matchedFolderIds}
-                            />
-                        ))}
-                    </div>
                 </div>
 
                 <div className={`shrink-0 flex items-center relative transition-all duration-300 px-3 py-4 gap-4
@@ -373,23 +496,20 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                         </button>
                     )}
 
-                    {/* Otomasyon (n8n) Butonu */}
-                    {hasPermission('ui_agent', false) && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (isN8nBooting) return;
-                                window.dispatchEvent(new CustomEvent('open-n8n-workspace'));
-                            }}
-                            className={`flex items-center justify-center transition-all duration-200 group text-[#f06e57]/80 hover:text-[#f06e57] ${isN8nBooting ? 'cursor-wait opacity-80' : ''}`}
-                            title={isN8nBooting ? "Otomasyon (Motor Hazırlanıyor...)" : "Otomasyon (n8n)"}
-                        >
-                            <Webhook
-                                size={isCollapsed ? 24 : 20}
-                                className={`${isN8nBooting ? 'animate-spin text-[#f06e57]' : 'group-hover:scale-110 shadow-sm'} transition-transform duration-300`}
-                            />
-                        </button>
-                    )}
+                    {/* Global Chat Butonu — sidebar içi paneli aç/kapat */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleChatPanel();
+                        }}
+                        className={`flex items-center justify-center transition-all duration-200 group ${chatPanelOpen ? 'text-[#DC2626]' : 'text-slate-500 hover:text-slate-200'}`}
+                        title={chatPanelOpen ? 'Global Sohbeti Kapat' : 'Global Sohbeti Aç'}
+                    >
+                        <MessageSquare
+                            size={isCollapsed ? 24 : 20}
+                            className="group-hover:scale-110 transition-transform duration-300"
+                        />
+                    </button>
 
                     <div
                         data-user-menu-trigger

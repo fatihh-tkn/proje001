@@ -127,21 +127,17 @@ const AgentChromeTabBar = ({ agents, selectedItemId, onSelect, onRename, dirtyAg
                                 <span className={`text-[12px] tracking-tight truncate flex-1 ml-2 ${isActive ? 'font-black' : 'font-bold'}`}>{agent.name}</span>
                             ))}
 
-                            {/* Kaydet butonu — kirli ve label modunda görünür */}
+                            {/* Kaydet göstergesi — kirli ve label modunda görünür; auto-save bekleniyorsa spinner */}
                             {isDirty && showLabel && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onSave?.(agent.id);
                                     }}
-                                    title="Kaydet"
+                                    title={isSaving ? 'Kaydediliyor...' : 'Kaydedilmemiş değişiklik — tıkla veya 1.5sn bekle'}
                                     className="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[#378ADD] hover:bg-[#378ADD]/15 transition-colors ml-1"
                                 >
-                                    {isSaving ? (
-                                        <Loader2 size={11} className="animate-spin" strokeWidth={2.5} />
-                                    ) : (
-                                        <Save size={11} strokeWidth={2.5} />
-                                    )}
+                                    <Loader2 size={11} className="animate-spin" strokeWidth={2.5} />
                                 </button>
                             )}
 

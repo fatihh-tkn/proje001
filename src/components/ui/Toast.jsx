@@ -32,7 +32,7 @@ function Toast({ id, type = 'error', message, count = 1, copyable = false }) {
 
     return (
         <div
-            className={`flex items-start gap-2 px-3 py-2.5 rounded-lg border text-sm text-slate-200 shadow-xl backdrop-blur max-w-sm w-full animate-slide-in ${BG[type] || BG.error}`}
+            className={`flex items-start gap-2 px-3 py-2.5 rounded-lg border text-sm text-slate-200 shadow-xl backdrop-blur w-full animate-slide-in ${BG[type] || BG.error}`}
         >
             {ICONS[type] || ICONS.error}
             <span className="flex-1 leading-snug min-w-0 [overflow-wrap:anywhere]">
@@ -68,18 +68,19 @@ function Toast({ id, type = 'error', message, count = 1, copyable = false }) {
 export function ToastContainer() {
     const toasts = useErrorStore((s) => s.toasts);
     const isRightOpen = useWorkspaceStore((s) => s.isRightOpen);
+    const chatBarWidth = useWorkspaceStore((s) => s.chatBarWidth);
 
     if (!toasts.length) return null;
 
-    // Chatbar açıkken toast sola kayar, kapalıyken tam sağda kalır.
-    const rightOffset = isRightOpen ? 'calc(27rem + 12px)' : '20px';
+    const maxWidth = isRightOpen ? Math.min(chatBarWidth - 32, 384) : 384;
 
     return (
         <div
             className="fixed bottom-5 z-[9999] flex flex-col gap-2 pointer-events-none"
             style={{
-                right: rightOffset,
-                transition: 'right 500ms cubic-bezier(0.22, 1, 0.36, 1)',
+                right: 16,
+                maxWidth,
+                transition: 'max-width 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
         >
             {toasts.map((t) => (

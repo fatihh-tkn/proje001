@@ -1,10 +1,14 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Plus, FileText, Database, Copy, Pencil, Check, Image, Network, X, CornerDownRight, Sparkles } from 'lucide-react';
-import AILogo from '../../assets/logo-kapali.png';
+import AILogo from '../../assets/logo-white-y.png';
 import { useErrorStore } from '../../store/errorStore';
 import ErrorSolutionCard, { parseErrorSolution } from './ErrorSolutionCard';
 import ZliReportSuggestionCard, { parseZliReportQuery } from './ZliReportSuggestionCard';
 import ThinkingProcessPanel from './ThinkingProcessPanel';
+import RippleLoader from './RippleLoader';
 
 const ChunkPreviewModal = ({ source, onClose }) => {
     const isBpmn = (source.chunk_type || '').startsWith('bpmn') || (source.file || '').toLowerCase().endsWith('.bpmn');
@@ -90,6 +94,61 @@ const ChunkPreviewModal = ({ source, onClose }) => {
     );
 };
 
+const ListCtx = React.createContext('ul');
+
+const mdComponents = {
+    p:          ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+    h1:         ({ children }) => <h1 className="text-[15px] font-bold text-stone-900 mt-4 mb-1.5 first:mt-0 border-b border-stone-100 pb-1">{children}</h1>,
+    h2:         ({ children }) => <h2 className="text-[14px] font-bold text-stone-800 mt-3 mb-1 first:mt-0">{children}</h2>,
+    h3:         ({ children }) => <h3 className="text-[13px] font-semibold text-stone-700 mt-2.5 mb-0.5 first:mt-0">{children}</h3>,
+    ul:         ({ children }) => (
+        <ListCtx.Provider value="ul">
+            <ul className="my-1.5 space-y-0.5 pl-1">{children}</ul>
+        </ListCtx.Provider>
+    ),
+    ol:         ({ children }) => (
+        <ListCtx.Provider value="ol">
+            <ol className="my-1.5 space-y-0.5 pl-5 list-decimal">{children}</ol>
+        </ListCtx.Provider>
+    ),
+    li:         ({ children }) => {
+        const listType = React.useContext(ListCtx);
+        return listType === 'ol' ? (
+            <li className="text-stone-800 leading-relaxed pl-0.5 marker:text-stone-400 marker:text-[12px] marker:font-semibold">{children}</li>
+        ) : (
+            <li className="flex gap-2 items-baseline text-stone-800 leading-relaxed list-none">
+                <span className="shrink-0 mt-[5px] w-1.5 h-1.5 rounded-full bg-stone-400 inline-block" aria-hidden="true" />
+                <span className="flex-1 min-w-0">{children}</span>
+            </li>
+        );
+    },
+    strong:     ({ children }) => <strong className="font-semibold text-stone-900">{children}</strong>,
+    em:         ({ children }) => <em className="italic text-stone-700">{children}</em>,
+    code:       ({ inline, children }) => inline
+        ? <code className="font-mono text-[12px] bg-stone-100 text-stone-700 rounded px-1 py-0.5 border border-stone-200">{children}</code>
+        : <code className="block font-mono text-[12px] bg-stone-950 text-stone-100 rounded-lg p-3 my-2 overflow-x-auto whitespace-pre">{children}</code>,
+    pre:        ({ children }) => <div className="my-2">{children}</div>,
+    blockquote: ({ children }) => <blockquote className="border-l-2 border-stone-300 pl-3 my-2 text-stone-500 italic">{children}</blockquote>,
+    hr:         () => <hr className="my-3 border-stone-200" />,
+    a:          ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline underline-offset-2 hover:text-blue-800 transition-colors">{children}</a>,
+    table:      ({ children }) => (
+        <div className="my-2 overflow-x-auto rounded-lg border border-stone-200">
+            <table className="w-full text-[13px] border-collapse">{children}</table>
+        </div>
+    ),
+    thead:      ({ children }) => <thead className="bg-stone-50">{children}</thead>,
+    tbody:      ({ children }) => <tbody className="divide-y divide-stone-100">{children}</tbody>,
+    tr:         ({ children }) => <tr className="hover:bg-stone-50/50 transition-colors">{children}</tr>,
+    th:         ({ children }) => <th className="text-left font-semibold text-stone-700 px-3 py-2 border-b border-stone-200 whitespace-nowrap">{children}</th>,
+    td:         ({ children }) => <td className="text-stone-700 px-3 py-1.5 align-top">{children}</td>,
+};
+
+const AiMarkdown = ({ text }) => (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+        {text}
+    </ReactMarkdown>
+);
+
 const StreamingCursor = () => (
     <span
         className="inline-block w-[2px] h-[1em] bg-stone-400 ml-0.5 align-middle"
@@ -107,14 +166,19 @@ if (typeof document !== 'undefined' && !document.getElementById('blink-style')) 
             0%, 100% { opacity: 0.85; transform: scale(1); }
             50%      { opacity: 1;    transform: scale(1.04); }
         }
+        @keyframes card-fade-in {
+            0%   { opacity: 0; transform: translateY(8px) scale(0.985); }
+            100% { opacity: 1; transform: translateY(0)   scale(1); }
+        }
         .ai-logo-spinner { animation: ai-logo-spin 1.2s linear infinite; transform-origin: 50% 50%; }
         .ai-logo-pulse   { animation: ai-logo-soft-pulse 1.6s ease-in-out infinite; }
+        .card-fade-in    { animation: card-fade-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
     `;
     document.head.appendChild(s);
 }
 
 const MessageList = ({
-    messages, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, handleNewChat,
+    messages, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, lastUserMsgRef, handleNewChat,
     onEditAndResend, onSendFollowup, onClarificationContinue, currentUser, currentSessionId,
 }) => {
     const [copiedId, setCopiedId] = React.useState(null);
@@ -174,6 +238,7 @@ const MessageList = ({
                 <div
                     onScroll={handleChatScroll}
                     data-scrolling={isChatScrolling}
+                    data-chat-scroll="1"
                     className={`absolute inset-0 overflow-y-auto overflow-x-hidden scroll-smooth transition-opacity duration-300
           [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-stone-300 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400 [&::-webkit-scrollbar-thumb]:rounded-full
@@ -184,23 +249,50 @@ const MessageList = ({
                             const isAI = msg.sender === 'ai';
                             const isLastInList = idx === messages.length - 1;
                             return (
-                                <div key={msg.id} data-msg-id={msg.id} className={`flex w-full scroll-mt-4 ${isAI ? 'justify-start' : 'justify-end'}`}>
-                                    <div className={`flex flex-col gap-1.5 max-w-[95%] ${isAI ? 'items-start' : 'items-end'}`}>
+                                <div
+                                    key={msg.id}
+                                    data-msg-id={msg.id}
+                                    ref={!isAI && msg.id === lastUserMsgId ? lastUserMsgRef : null}
+                                    className={`flex w-full scroll-mt-4 ${isAI ? 'justify-start' : 'justify-end'}`}
+                                >
+                                    <div className={`flex flex-col gap-1.5 max-w-[95%] ${isAI ? 'items-start' : 'items-end'} ${editingId === msg.id ? 'w-full' : ''}`}>
 
                                         {isAI && (
                                             <div className="flex flex-col no-toggle pl-1.5 mb-0.5">
                                                 <div className="flex items-start gap-2">
-                                                    <div className="w-9 h-9 flex items-center justify-center shrink-0">
+                                                    <div className="w-12 h-12 flex items-center justify-center shrink-0 relative">
+                                                        <AnimatePresence>
+                                                            {msg.isStreaming && (
+                                                                <motion.div
+                                                                    key="streaming-anim"
+                                                                    className="absolute inset-0 bg-[#AA1416]"
+                                                                    initial={{ borderRadius: '18%', rotate: 0 }}
+                                                                    animate={{
+                                                                        borderRadius: ['18%', '50%', '18%'],
+                                                                        rotate: [0, 360],
+                                                                    }}
+                                                                    exit={{
+                                                                        borderRadius: '18%',
+                                                                        rotate: 0,
+                                                                        transition: { duration: 0.6, ease: [0.4, 0, 0.2, 1] },
+                                                                    }}
+                                                                    transition={{
+                                                                        borderRadius: { duration: 2.5, repeat: Infinity, ease: 'easeInOut', repeatType: 'mirror' },
+                                                                        rotate: { duration: 4, repeat: Infinity, ease: 'linear' },
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </AnimatePresence>
                                                         <img
-                                                            src={AILogo} alt="AI"
-                                                            className={`w-7 h-7 object-contain mix-blend-multiply transition-opacity duration-300
-                                                                    ${msg.isStreaming ? 'opacity-95 ai-logo-pulse' : 'opacity-80'}`}
+                                                            src={AILogo}
+                                                            alt="AI"
+                                                            className="relative z-10 w-9 h-9 object-contain"
                                                         />
                                                     </div>
 
                                                     {/* Düşünme süreci paneli — logo hizasında ama genişlediğinde logoyu aşağı çekmez */}
                                                     <div className="mt-1">
-                                                        {!msg.isStreaming && msg.completedAt && (
+                                                        {!!msg.completedAt && (
                                                             <ThinkingProcessPanel message={msg} />
                                                         )}
                                                     </div>
@@ -208,7 +300,7 @@ const MessageList = ({
                                             </div>
                                         )}
 
-                                        <div className="flex flex-col gap-1 no-toggle min-w-0 group relative">
+                                        <div className={`flex flex-col gap-1 no-toggle group relative ${editingId === msg.id ? 'w-full' : 'min-w-0'}`}>
                                             {!isAI && msg.fileContext && (
                                                 <div className="flex justify-end">
                                                     <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 backdrop-blur-sm border border-white/30 text-stone-700 shadow-sm rounded-lg px-2.5 py-1 mb-1">
@@ -259,12 +351,22 @@ const MessageList = ({
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        {isAI && msg.isStreaming && msg.text === '' ? (
-                                                            <span className="text-[10px] text-stone-400 tracking-widest animate-pulse">
-                                                                Yanıt oluşturuluyor...
-                                                            </span>
-                                                        ) : (() => {
-                                                            if (isAI && !msg.isStreaming) {
+                                                        {(() => {
+                                                            if (!isAI) {
+                                                                return (
+                                                                    <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                                                        {msg.text}
+                                                                    </p>
+                                                                );
+                                                            }
+                                                            // AI yolu — streaming/text/structured ayrımı
+                                                            const trimmed = (msg.text || '').trimStart();
+                                                            // Backend pass-through: replace event geldi (wasRevised)
+                                                            // veya text JSON ile başlıyor → structured kart denemesi
+                                                            const looksStructured = trimmed.startsWith('{') || trimmed.startsWith('```json');
+                                                            const canTryStructured = !msg.isStreaming || msg.wasRevised;
+
+                                                            if (canTryStructured) {
                                                                 const zliQuery = parseZliReportQuery(msg.text);
                                                                 if (zliQuery) {
                                                                     return <ZliReportSuggestionCard data={zliQuery} userId={currentUser?.id} />;
@@ -273,6 +375,7 @@ const MessageList = ({
                                                                 if (errorSolution) {
                                                                     return (
                                                                         <ErrorSolutionCard
+                                                                            key={`${msg.id}-${errorSolution.needs_clarification ? 'clar' : 'sol'}-${errorSolution.round || 1}`}
                                                                             data={errorSolution}
                                                                             userId={currentUser?.id}
                                                                             sessionId={currentSessionId}
@@ -286,11 +389,21 @@ const MessageList = ({
                                                                     );
                                                                 }
                                                             }
+
+                                                            // JSON akışı sırasında ham metin gösterme
+                                                            if (msg.isStreaming && looksStructured) {
+                                                                return <RippleLoader />;
+                                                            }
+                                                            // Metin henüz gelmedi — boş balon, logo animasyonu yeterli
+                                                            if (msg.isStreaming && msg.text === '') {
+                                                                return null;
+                                                            }
+
                                                             return (
-                                                                <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                                                                    {msg.text}
-                                                                    {isAI && msg.isStreaming && msg.text !== '' && <StreamingCursor />}
-                                                                </p>
+                                                                <div className="prose-ai [overflow-wrap:anywhere]">
+                                                                    <AiMarkdown text={msg.text} />
+                                                                    {msg.isStreaming && !msg.completedAt && msg.text !== '' && <StreamingCursor />}
+                                                                </div>
                                                             );
                                                         })()}
 

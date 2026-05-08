@@ -30,6 +30,7 @@ class AgentBase(BaseModel):
     # Graph node'larına özel ayarlar (top_k, score_threshold, strict_json,
     # include_chat_memory vb.). UI'da kart başına özel panel açar.
     nodeConfig: Optional[Dict[str, Any]] = Field(None, alias="node_config")
+    modelLocked: bool = Field(False, alias="model_locked")
     # Transient — DB'de ayrı kolon yok, allowed_rags içinde "!file_id" prefix'iyle saklanır.
     # Save endpoint'i bu alanı !-prefix'iyle allowed_rags'e merge eder; get endpoint'i ayrıştırır.
     excludedFiles: Optional[List[str]] = Field(default=None, exclude=True)

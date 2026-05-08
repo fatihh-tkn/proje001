@@ -10,6 +10,9 @@ from __future__ import annotations
 import operator
 from typing import Any, Annotated, TypedDict
 
+from core.logger import get_logger as _get_logger
+_log = _get_logger("agent_graph.state")
+
 
 # ── Reducer'lar — list/dict alanlarını birikimli güncellemek için ───────────
 
@@ -30,11 +33,41 @@ def append_list(left: list | None, right: list | None) -> list:
 def get_agent_config(state: "AgentState | dict", role: str) -> dict | None:
     """
     State'e supervisor tarafından doldurulmuş `agent_configs` cache'inden
-    rolün ajan konfigürasyonunu döner. Cache'de yoksa None — çağıran
-    taraf isterse `core.db_bridge.get_assigned_agent(role)`'e fallback yapar.
+    rolün ajan konfigürasyonunu döner.
+
+    Cache'de yoksa DB'den doğrudan çeker (node'ların kendi fallback
+    mantığını kopyalamak yerine buraya merkezlendi).
+
+    model_override varsa ve ajan kilitli değilse config'e enjekte edilir;
+    böylece tüm node'lar otomatik olarak seçilen modeli kullanır.
     """
     cache = (state or {}).get("agent_configs") or {}
-    return cache.get(role)
+    config = cache.get(role)
+
+    # Cache miss → DB'den doğrudan çek
+    if config is None:
+        try:
+            from core.db_bridge import get_assigned_agent as _get_assigned
+            config = _get_assigned(role)
+        except Exception:
+            pass
+
+    model_override = (state or {}).get("model_override")
+    if model_override and config is not None:
+        if not config.get("model_locked", False):
+            _log.info(
+                "[get_agent_config] role=%s → model override uygulandı: '%s' → '%s'",
+                role, config.get("model"), model_override,
+            )
+            config = {**config, "model": model_override}
+        else:
+            _log.info(
+                "[get_agent_config] role=%s → model kilitli, override yok (model='%s')",
+                role, config.get("model"),
+            )
+    elif model_override and config is None:
+        _log.warning("[get_agent_config] role=%s → config None, override '%s' uygulanamadı", role, model_override)
+    return config
 
 
 # ── State şeması ────────────────────────────────────────────────────────────
@@ -63,6 +96,8 @@ class AgentState(TypedDict, total=False):
     # ── CLARIFICATION (çok turlu hata teşhisi) ───────────────────────
     qa_history: list[dict] | None              # [{question, answer, is_other}] önceki Q&A
     screenshot_base64: str | None              # opsiyonel ekran görüntüsü (base64)
+    round_number: int | None                   # submit edilen turun numarası (1-indexed)
+    force_solve: bool                          # "Yeterli, çöz" → ask_more atla
 
     # ── PROVENANCE / TELEMETRY (log_entry için aggregator set eder) ──────
     model_used: str
@@ -72,6 +107,8 @@ class AgentState(TypedDict, total=False):
     # supervisor başında bir kez DB'den yüklenir, paralel specialist'ler
     # state üzerinden okur — node başına tekrar DB sorgusu önlenir.
     agent_configs: dict[str, dict]             # {role: agent_config}
+    # ChatBar'dan gönderilen model adı (kilitli olmayan ajanlar bu modeli kullanır)
+    model_override: str | None
 
     # ── PLAN (Supervisor çıktısı) ────────────────────────────────────────
     intent: str                                # 'general' | 'hata_cozumu' | 'rapor_arama' | 'n8n' | 'dosya_qa'

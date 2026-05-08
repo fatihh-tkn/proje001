@@ -132,44 +132,53 @@ def _has_enough_error_info(msg: str) -> bool:
 
 _CLARIFICATION_SYSTEM = (
     "Sen kıdemli bir SAP/kurumsal sistem destek uzmanısın. Kullanıcı kısa "
-    "ve eksik bir hata bildirimi yaptı. Görevin: ROOT CAUSE'a inebilmek "
-    "için 4-5 keskin soru sor ve her soruya 4-5 BAĞLAMA UYGUN seçmece "
-    "şık öner. Son şık her zaman 'Diğer' olsun.\n\n"
-    "[SORU SORMA İLKELERİ]\n"
-    "- Yüzeyde kalma. 'Hangi T-code' gibi tek başına yetersiz sorular yerine "
-    "tam hata mesajının metnini, hangi alanlarda hata aldığını, ne zamandır "
-    "olduğunu sor.\n"
-    "- Çözüm değil, TANI peşinde ol. 'Şunu denedin mi?' yerine 'Hata kaydet "
-    "tuşuna basınca mı yoksa alan değiştirince mi çıkıyor?' tarzı diagnostic.\n"
-    "- Kullanıcı verdiyse o sinyali genişlet: kod 'FB60' ise vendor/şirket "
-    "kodu/posting key/dönem alanlarına özgü sorular sor.\n"
-    "- Soru sayısı 4-5; gerekirse her birinde root cause'a yardımcı olacak "
-    "bilgi iste (kullanıcı rolü, son sistem değişikliği, başka kullanıcılarda "
-    "var mı, ilk mi yoksa tekrarlayan mı).\n"
-    "- Şıklar SOMUT olsun, 'Bilmiyorum' bir şık olarak DAİMA bulunsun.\n"
-    "- Soruları sormaktan çekinme — kullanıcıya yardım etmek için sormalısın. "
-    "Bilgi yetersizse direkt cevap verme; sor, sonra çöz.\n\n"
-    "Sorular kullanıcının yazdığı koda/duruma özgü olsun (ör. 'FB60' → MM/FI "
-    "bağlamlı; 'CS01' → PP/MM; 'ME21N' → satınalma; kod yoksa genel teşhis).\n\n"
-    "SADECE şu JSON formatında cevap ver, başka HİÇBİR metin yazma:\n"
+    "ve eksik bir hata bildirimi yaptı. Bu TEK TUR sorgulamadır — sadece bu "
+    "turda bilgi toplayıp sonraki adımda çözüme geçeceksin, ikinci tur YOK.\n\n"
+    "[GÖREV]\n"
+    "Kullanıcının yazdığı hatayı dikkatlice oku. Root cause'a götürecek "
+    "EN KRİTİK 3 TANI SORUSU üret (ne 2, ne 5 — tam 3). Her soruya 4-5 SOMUT "
+    "şık ver; sondan iki şık MUTLAKA 'Bilmiyorum' ve 'Diğer'.\n\n"
+    "[KURALLAR]\n"
+    "- Sorular MUTLAKA kullanıcının yazdığı bağlama özgü olsun. Genel "
+    "şablon yapma. T-code 'FB60' geçtiyse vendor/posting-key/şirket kodu "
+    "sor; 'ME21N' ise PO type/PR ref/onay düzeyi; 'CS01' ise BOM kullanım/"
+    "alternatif/madde. Kod yoksa modül/ekran/eylem üzerinden git.\n"
+    "- 'Şunu denedin mi?' YASAK. Tanı peşinde ol: 'Hata KAYDET butonuna "
+    "basınca mı, alan değiştirince mi çıkıyor?' tarzı.\n"
+    "- Şıkların hepsi SOMUT olsun ('vendor zaten kayıtlı / yeni vendor / "
+    "açıklamadan girilen' gibi). Soyut şık ('uygun', 'ilgili') YASAK.\n"
+    "- Soruların hepsi farklı bir bilinmeyene odaklansın — tekrar etme.\n\n"
+    "[INPUT TÜRÜ — input_type]\n"
+    "Her soru için EN UYGUN cevap alanı türünü seç:\n"
+    "- 'choice'  → Sınırlı sayıda somut alternatif var. Çoktan seçmeli.\n"
+    "- 'text'    → Cevap KULLANICIYA ÖZGÜ yazılı bir bilgi. Hata mesajının\n"
+    "             tam metni, dump kodu, vendor numarası, kullanıcı adı vb.\n"
+    "             Şıklarla sınırlamak anlamsız. options=[] bırak.\n"
+    "- 'screenshot' → Sorun görsel; ekrandaki yerleşim/hata penceresi/uyarı\n"
+    "             gerekiyor. Kullanıcı ekran görüntüsü yüklesin. options=[]\n"
+    "             bırak.\n"
+    "Bu 3 türü AKILLICA dağıt — örn. 1 choice + 1 text + 1 screenshot iyi\n"
+    "bir karışım olabilir; ama duruma göre 2 choice + 1 text de olabilir.\n"
+    "Hata mesajının TAM METNİNİ soracaksan input_type='text' KULLAN.\n\n"
+    "[ÇIKTI ŞEMASI]\n"
+    "SADECE aşağıdaki JSON'u döndür, başka HİÇBİR metin yazma. Şablonu "
+    "DOLDUR — köşeli parantezli placeholder'ları (örn. <KESKİN_TANI_SORUSU>) "
+    "ASLA olduğu gibi bırakma:\n"
     "```json\n"
     "{\n"
     '  "type": "error_solution",\n'
     '  "needs_clarification": true,\n'
-    '  "id": "<kullanıcı_yazdıysa_SAP_kodu_yoksa_boş>",\n'
+    '  "id": "<varsa_SAP_kodu>",\n'
     '  "title": "Hatayı netleştirelim",\n'
-    '  "module": "<varsa_modül_ör_MM/FI>",\n'
+    '  "module": "<varsa_modül>",\n'
     '  "severity": "medium",\n'
     '  "frequency": 0,\n'
-    '  "summary": "<1_cümle_kullanıcının_söylediğini_özetle>+<1_cümle_root_cause_için_neyi_öğrenmen_gerektiğini_açıkla>",\n'
+    '  "summary": "<1_cümle_kullanıcının_durumunu_özetle> Tek tur sorgulama: aşağıdaki soruları cevapla, hemen çözüm üreteceğim.",\n'
     '  "cause": "",\n'
     '  "clarification_questions": [\n'
-    '    {\n'
-    '      "id": "q1",\n'
-    '      "question": "<KESKİN_TANI_SORUSU>",\n'
-    '      "options": ["<somut_şık_1>", "<somut_şık_2>", "<somut_şık_3>", "Bilmiyorum", "Diğer"],\n'
-    '      "allow_other": true\n'
-    '    }\n'
+    '    {"id": "q1", "question": "<choice_için_keskin_tanı_sorusu>", "input_type": "choice", "options": ["<somut_şık>", "<somut_şık>", "<somut_şık>", "Bilmiyorum", "Diğer"], "allow_other": true},\n'
+    '    {"id": "q2", "question": "<text_için_açık_uçlu_soru_ör_hata_mesajının_tam_metni>", "input_type": "text", "options": [], "allow_other": true},\n'
+    '    {"id": "q3", "question": "<screenshot_için_görsel_isteyen_soru_ör_ekran_görüntüsü>", "input_type": "screenshot", "options": [], "allow_other": false}\n'
     "  ],\n"
     '  "steps": [], "docs": [], "similar": []\n'
     "}\n"
@@ -182,26 +191,23 @@ _GENERIC_CLARIFICATION_QUESTIONS = [
     {
         "id": "q1",
         "question": "Hata hangi T-code/ekranda ortaya çıktı?",
+        "input_type": "choice",
         "options": ["Liste/rapor ekranı", "Veri girişi ekranı", "Kaydet butonuna bastığımda", "Açılış ekranı", "Diğer"],
         "allow_other": True,
     },
     {
         "id": "q2",
-        "question": "Hata mesajı/kodu nedir?",
-        "options": ["Ekran bir kod gösterdi", "Sadece 'hata oluştu' dedi", "Dump/abort verdi", "Sessiz başarısız oldu", "Diğer"],
+        "question": "Hata mesajının tam metnini yazar mısın?",
+        "input_type": "text",
+        "options": [],
         "allow_other": True,
     },
     {
         "id": "q3",
-        "question": "Aynı işlem daha önce çalışıyor muydu?",
-        "options": ["Evet, ilk kez bu hata", "Hayır, ilk denememdi", "Bilmiyorum", "Bazen çalışıyor"],
-        "allow_other": True,
-    },
-    {
-        "id": "q4",
-        "question": "Aynı hatayı başka kullanıcılar da alıyor mu?",
-        "options": ["Sadece ben alıyorum", "Birden fazla kullanıcı", "Bilmiyorum", "Diğer"],
-        "allow_other": True,
+        "question": "Mümkünse hatanın ekran görüntüsünü ekle",
+        "input_type": "screenshot",
+        "options": [],
+        "allow_other": False,
     },
 ]
 
@@ -237,51 +243,88 @@ async def _generate_clarification_with_llm(
     user_msg: str,
     agent_config: dict | None,
 ) -> dict | None:
-    """LLM'le bağlama uygun seçmeceli clarification soruları üret.
+    """LLM'le bağlama uygun seçmeceli clarification soruları üret (tek tur).
 
     Hata olursa None döner; çağıran kod fallback'e (generic sorular) düşer.
+    Parser leniency: LLM 'type' alanını unutsa veya needs_clarification'ı
+    boolean yerine string döndürse bile, clarification_questions listesi
+    dolu ve makul ise kabul ediyoruz — fallback'e gereksiz düşmemek için.
     """
+    user_payload = (
+        f"[KULLANICININ HATA BİLDİRİMİ]\n{user_msg or '(boş)'}\n\n"
+        "Şimdi yukarıdaki bildirime ÖZGÜ 3 keskin tanı sorusunu hazırla "
+        "ve şemada belirtilen JSON formatında döndür."
+    )
     try:
         messages = build_messages(
             system=_CLARIFICATION_SYSTEM,
             history=None,
-            user=user_msg or "(boş)",
+            user=user_payload,
         )
         result = await call_llm(
             agent_config,
             messages,
-            temperature=0.3,
-            response_format="json_object",
-            max_tokens=800,
-            timeout=25.0,
+            temperature=0.6,           # çeşitlilik için yükseldi
+            response_format=None,      # prompt şemayı içeriyor; MIME zorla verme
+            max_tokens=900,
+            timeout=30.0,
         )
         raw = (result.get("text") or "").strip()
-        parsed = json.loads(_strip_json_fence(raw))
-        if (
-            isinstance(parsed, dict)
-            and parsed.get("type") == "error_solution"
-            and parsed.get("needs_clarification") is True
-            and isinstance(parsed.get("clarification_questions"), list)
-            and len(parsed["clarification_questions"]) > 0
-        ):
-            # Eksik alanları doldur (defensive)
-            parsed.setdefault("module", "")
-            parsed.setdefault("severity", "medium")
-            parsed.setdefault("frequency", 0)
-            parsed.setdefault("title", "Daha fazla bilgi gerekli")
-            parsed.setdefault("summary", "Birkaç sorum var.")
-            parsed.setdefault("cause", "")
-            parsed.setdefault("steps", [])
-            parsed.setdefault("docs", [])
-            parsed.setdefault("similar", [])
-            parsed.setdefault("round", 1)
-            parsed.setdefault("max_rounds", _MAX_CLARIFICATION_ROUNDS)
-            parsed.setdefault("original_error", (user_msg or "")[:500])
-            parsed.setdefault("qa_history", [])
-            if not parsed.get("id"):
-                m = _CODE_RE.search(user_msg or "")
-                parsed["id"] = m.group(1) if m else ""
-            return parsed
+        logger.info("[error_solver] clarification LLM raw (ilk 300): %r", raw[:300])
+        try:
+            parsed = json.loads(_strip_json_fence(raw))
+        except Exception as pe:
+            logger.warning("[error_solver] LLM clarification JSON parse: %s | raw=%r",
+                           pe, raw[:400])
+            return None
+
+        if not isinstance(parsed, dict):
+            logger.warning("[error_solver] LLM clarification dict değil: %r", type(parsed))
+            return None
+
+        # Bazı modeller 'questions' diye döndürür → 'clarification_questions'a normalize.
+        questions = parsed.get("clarification_questions")
+        if not isinstance(questions, list) or len(questions) == 0:
+            alt = parsed.get("questions")
+            if isinstance(alt, list) and len(alt) > 0:
+                questions = alt
+                parsed["clarification_questions"] = alt
+
+        if not isinstance(questions, list) or len(questions) == 0:
+            logger.warning("[error_solver] LLM clarification soru üretmedi")
+            return None
+
+        # Placeholder bırakma kontrolü — LLM şablonu olduğu gibi yapıştırmış mı?
+        first_q = (questions[0] or {}).get("question", "")
+        if "<" in first_q and ">" in first_q:
+            logger.warning("[error_solver] LLM placeholder bıraktı: %s", first_q[:80])
+            return None
+
+        # Eksik üst-alanları varsayılanlarla doldur — şemayı esnek tutuyoruz
+        # ki LLM 'type' veya 'needs_clarification' unuttuğunda fallback'e
+        # düşmeyelim.
+        parsed["type"] = "error_solution"
+        parsed["needs_clarification"] = True
+        parsed.setdefault("module", "")
+        parsed.setdefault("severity", "medium")
+        parsed.setdefault("frequency", 0)
+        parsed.setdefault("title", "Hatayı netleştirelim")
+        parsed.setdefault(
+            "summary",
+            "Doğru çözümü üretmek için aşağıdaki sorulara cevap verir misin?",
+        )
+        parsed.setdefault("cause", "")
+        parsed.setdefault("steps", [])
+        parsed.setdefault("docs", [])
+        parsed.setdefault("similar", [])
+        parsed.setdefault("round", 1)
+        parsed.setdefault("max_rounds", _MAX_CLARIFICATION_ROUNDS)
+        parsed.setdefault("original_error", (user_msg or "")[:500])
+        parsed.setdefault("qa_history", [])
+        if not parsed.get("id"):
+            m = _CODE_RE.search(user_msg or "")
+            parsed["id"] = m.group(1) if m else ""
+        return parsed
     except Exception as e:
         logger.warning("[error_solver] LLM clarification başarısız: %s", e)
     return None
@@ -324,7 +367,10 @@ def _normalize_error_solution(parsed: dict | None, user_msg: str) -> dict:
 
 # ── Clarification-Continue: çok turlu teşhis ────────────────────────────────
 
-_MAX_CLARIFICATION_ROUNDS = 3
+# Tek tur clarification: kullanıcı sorulara cevap verince hemen çözüm
+# üretilir, ikinci tur soru sorulmaz. ask_more dalı pratikte kullanılmaz
+# ama kod yine güvenlik için duruyor.
+_MAX_CLARIFICATION_ROUNDS = 1
 
 _CONTINUATION_SYSTEM = (
     "Sen kıdemli bir SAP/kurumsal sistem destek uzmanısın. Kullanıcı bir hata\n"
@@ -363,7 +409,7 @@ _CONTINUATION_SYSTEM = (
     "{\n"
     '  "decision": "ask_more",\n'
     '  "questions": [\n'
-    '    {"id": "q_next_1", "question": "...", '
+    '    {"id": "q_next_1", "question": "...", "input_type": "choice|text|screenshot", '
     '"options": ["...", "...", "Diğer"], "allow_other": true}\n'
     "  ]\n"
     "}\n"
@@ -395,11 +441,17 @@ async def _handle_clarification_continue(
     user_msg = state.get("user_message") or state.get("original_message") or ""
     qa_history: list[dict] = state.get("qa_history") or []
     screenshot_b64: str | None = state.get("screenshot_base64")
-    current_round = len(qa_history)          # kaç tur tamamlandı
-    force_solve = current_round >= _MAX_CLARIFICATION_ROUNDS
+
+    # Submit edilen tur (1-indexed). Frontend kart'ın round değerini gönderir.
+    # qa_history uzunluğundan ÇIKARMA — bir turda birden fazla soru olabilir.
+    submitted_round = int(state.get("round_number") or 1)
+    explicit_force_solve = bool(state.get("force_solve"))
+    # Tur limiti dolduysa veya kullanıcı "Yeterli, çöz" tıkladıysa solve zorla.
+    force_solve = explicit_force_solve or (submitted_round >= _MAX_CLARIFICATION_ROUNDS)
+    next_round = submitted_round + 1
 
     system = _CONTINUATION_SYSTEM.replace(
-        "{round}", str(current_round)
+        "{round}", str(submitted_round)
     ).replace(
         "{max_rounds}", str(_MAX_CLARIFICATION_ROUNDS)
     )
@@ -408,7 +460,12 @@ async def _handle_clarification_continue(
         f"[Orijinal Hata Bildirimi]\n{user_msg}\n\n"
         f"[Soru-Cevap Geçmişi]\n{_format_qa_history(qa_history)}"
     )
-    if force_solve:
+    if explicit_force_solve:
+        user_prompt += (
+            "\n\n[ÖNEMLİ] Kullanıcı 'Yeterli, çöz' tuşuna bastı. Daha SORU SORMA. "
+            "Elindeki bilgilerle en iyi çözümü üret."
+        )
+    elif force_solve:
         user_prompt += (
             f"\n\n[ÖNEMLİ] Tur limiti ({_MAX_CLARIFICATION_ROUNDS}) doldu. "
             "Elindeki bilgilerle en iyi çözümü üret; daha soru sorma."
@@ -427,7 +484,7 @@ async def _handle_clarification_continue(
             agent_config,
             messages,
             temperature=0.2,
-            response_format="json_object",
+            response_format=None,      # prompt şemayı içeriyor; MIME zorla verme
             max_tokens=1200,
             timeout=45.0,
         )
@@ -457,8 +514,11 @@ async def _handle_clarification_continue(
             raw_qs = (parsed or {}).get("questions") or []
             questions = [
                 {
-                    "id": q.get("id") or f"q_r{current_round + 1}_{i}",
+                    "id": q.get("id") or f"q_r{next_round}_{i}",
                     "question": q.get("question") or "",
+                    "input_type": q.get("input_type") or (
+                        "choice" if (q.get("options") or []) else "text"
+                    ),
                     "options": q.get("options") or [],
                     "allow_other": q.get("allow_other", True),
                 }
@@ -473,14 +533,14 @@ async def _handle_clarification_continue(
                 clarification = {
                     "type": "error_solution",
                     "needs_clarification": True,
-                    "round": current_round + 1,
+                    "round": next_round,
                     "max_rounds": _MAX_CLARIFICATION_ROUNDS,
                     "id": code_match.group(1) if code_match else "",
                     "title": "Hatayı netleştirelim",
                     "module": "",
                     "severity": "medium",
                     "frequency": 0,
-                    "summary": f"Tur {current_round + 1}/{_MAX_CLARIFICATION_ROUNDS} — önceki cevaplarınız alındı.",
+                    "summary": f"Tur {next_round}/{_MAX_CLARIFICATION_ROUNDS} — önceki cevaplarınız alındı.",
                     "cause": "",
                     "original_error": user_msg[:500],
                     "qa_history": qa_history,
@@ -492,17 +552,20 @@ async def _handle_clarification_continue(
                 draft = json.dumps(clarification, ensure_ascii=False)
                 logger.info(
                     "[error_solver] clarification_continue → ask_more tur=%d, %d soru, %d ms",
-                    current_round + 1, len(questions), elapsed_ms,
+                    next_round, len(questions), elapsed_ms,
                 )
                 return {**base_out, "error_solution": clarification, "error_draft": draft}
 
         # ── solve: tam çözüm normalize et ────────────────────────────
         normalized = _normalize_error_solution(parsed, user_msg)
         normalized.pop("decision", None)   # LLM'in eklediği decision alanını temizle
+        # Solve modunda needs_clarification False olmalı — frontend kartı çözüm
+        # modunda render eder, bir daha clarification döngüsüne girmez.
+        normalized["needs_clarification"] = False
         draft = json.dumps(normalized, ensure_ascii=False)
         logger.info(
-            "[error_solver] clarification_continue → solve tur=%d, %d ms",
-            current_round, elapsed_ms,
+            "[error_solver] clarification_continue → solve tur=%d, force=%s, %d ms",
+            submitted_round, explicit_force_solve, elapsed_ms,
         )
         return {**base_out, "error_solution": normalized, "error_draft": draft}
 
@@ -511,7 +574,7 @@ async def _handle_clarification_continue(
         logger.error("[error_solver] clarification_continue hatası: %s", e, exc_info=True)
         # Fallback: generic clarification veya minimal çözüm
         fallback = _build_clarification_solution(user_msg)
-        fallback["round"] = current_round + 1
+        fallback["round"] = next_round
         fallback["max_rounds"] = _MAX_CLARIFICATION_ROUNDS
         fallback["original_error"] = user_msg[:500]
         fallback["qa_history"] = qa_history
@@ -572,7 +635,9 @@ async def error_solver_node(state: AgentState) -> dict:
         }
 
     # DB'den prompt çek; yoksa kod fallback'ini kullan.
-    system_prompt = ((agent_config or {}).get("prompt") or "").strip() or _SYSTEM_BASE
+    persona = ((agent_config or {}).get("persona") or "").strip()
+    base_prompt = ((agent_config or {}).get("prompt") or "").strip() or _SYSTEM_BASE
+    system_prompt = f"[AJAN ROLÜ]: {persona}\n\n{base_prompt}" if persona else base_prompt
     negative = ((agent_config or {}).get("negative_prompt") or "").strip()
     if negative:
         system_prompt += f"\n\n[KESİNLİKLE YAPMAMAN GEREKENLER]\n{negative}"
@@ -598,7 +663,7 @@ async def error_solver_node(state: AgentState) -> dict:
             agent_config,
             messages,
             temperature=temperature,
-            response_format="json_object",
+            response_format=None,      # prompt şemayı içeriyor; MIME zorla verme
             max_tokens=max_tokens,
             timeout=45.0,
         )

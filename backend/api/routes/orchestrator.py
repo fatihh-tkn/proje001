@@ -72,6 +72,19 @@ def save_agents(agents_data: List[AgentBase], db: Session = Depends(get_db)):
 
     return {"message": "Ajan konfigürasyonları başarıyla kaydedildi"}
 
+@router.post("/set-global-model")
+def set_global_model(body: dict, db: Session = Depends(get_db)):
+    """ChatBar'dan seçilen modeli kilitli olmayan tüm ajanlara uygular."""
+    model_name = (body.get("model") or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="model gereklidir")
+    agents = db.query(AIAgent).filter(AIAgent.model_locked == False).all()  # noqa: E712
+    for agent in agents:
+        agent.model = model_name
+    db.commit()
+    return {"ok": True, "updated": len(agents)}
+
+
 @router.patch("/agents/{agent_id}/toggle")
 def toggle_agent(agent_id: str, db: Session = Depends(get_db)):
     """Bir ajanı tek tıklamayla aktif/pasif yapar."""

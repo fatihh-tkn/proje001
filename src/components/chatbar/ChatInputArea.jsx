@@ -2,8 +2,8 @@ import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Settings2, Send, ChevronsUp, X, FileText,
-    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square
+    Settings2, Send, X, FileText,
+    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2
 } from 'lucide-react';
 import FilePickerModal from './FilePickerModal';
 import { useErrorStore } from '../../store/errorStore';
@@ -34,6 +34,7 @@ const ChatInputArea = ({
     handleSendMessage, handleKeyDown, handleTextareaScroll, isTextareaScrolling, textareaRef,
     attachedFiles = [], onAddFiles, onRemoveFile, maxAttach = 5, maxBytes = 20 * 1024 * 1024,
     isTyping, onStop, activeCommand, setActiveCommand,
+    onModelChange,
 }) => {
     const addToast = useErrorStore(s => s.addToast);
     const fileInputRef = useRef(null);
@@ -43,9 +44,48 @@ const ChatInputArea = ({
     const [isFileMenuOpen,  setIsFileMenuOpen]  = React.useState(false);
     const [isPickerOpen,    setIsPickerOpen]    = React.useState(false);
     const [isUploading,     setIsUploading]     = React.useState(false);
+    const [isRevising,      setIsRevising]      = React.useState(false);
+    const [originalText,    setOriginalText]    = React.useState(null); // revize öncesi orijinal
+
+    const handleRevisePrompt = async () => {
+        const text = (inputValue || '').trim();
+        if (!text || isRevising) return;
+        setIsRevising(true);
+        setOriginalText(text); // orijinali sakla
+        try {
+            const res = await fetch('/api/chat/revise-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text }),
+            });
+            const data = await res.json();
+            if (data.success && data.revised_prompt) {
+                setInputValue(data.revised_prompt);
+                textareaRef.current?.focus();
+            } else {
+                setOriginalText(null);
+                addToast({ type: 'error', message: data.error || 'İstem revize edilemedi.' });
+            }
+        } catch {
+            setOriginalText(null);
+            addToast({ type: 'error', message: 'Bağlantı hatası: revize servisi yanıt vermedi.' });
+        } finally {
+            setIsRevising(false);
+        }
+    };
+
+    const handleRevertPrompt = () => {
+        if (!originalText) return;
+        setInputValue(originalText);
+        setOriginalText(null);
+        textareaRef.current?.focus();
+    };
     const sparklesBtnRef = useRef(null);
+    // activeModel = görüntülenen etiket (alias veya gerçek ad)
+    // modelNameMap = etiket → gerçek model adı (backend'e gönderilecek)
     const [activeModel, setActiveModel] = React.useState('Model Seçiliyor...');
     const [availableModels, setAvailableModels] = React.useState([]);
+    const modelNameMapRef = React.useRef({}); // label → actual model name
 
     React.useEffect(() => {
         if (!isSideOpen) {
@@ -61,9 +101,19 @@ const ChatInputArea = ({
             .then(data => {
                 if (data?.models?.length > 0) {
                     const aliases = JSON.parse(localStorage.getItem('model_aliases') || '{}');
-                    const loaded = data.models.map(m => aliases[m.id] || m.name);
+                    const map = {};
+                    // Her model için etiket → gerçek ad eşleşmesini sakla
+                    const loaded = data.models.map(m => {
+                        const label = aliases[m.id] || m.name;
+                        map[label] = m.name; // alias varsa asıl ada çevir
+                        return label;
+                    });
+                    modelNameMapRef.current = map;
                     setAvailableModels([...new Set(loaded)]);
                     setActiveModel(loaded[0]);
+                    // Varsayılan modeli hemen üst bileşene bildir — kullanıcı
+                    // dropdown'a dokunmasa bile ilk mesajdan itibaren aktif olsun
+                    onModelChange?.(map[loaded[0]] || loaded[0]);
                 } else {
                     setAvailableModels(['Varsayılan Model']);
                     setActiveModel('Varsayılan Model');
@@ -169,10 +219,6 @@ const ChatInputArea = ({
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20, height: 0, marginTop: 0 }}
                             className="relative flex flex-col w-full bg-white/80 backdrop-blur-xl border-2 border-white/60 rounded-md focus-within:border-[#DC2626]/40 transition-all shadow-[0_4px_20px_rgb(0,0,0,0.04)] no-toggle"
                         >
-                            {/* Genişlet/Daralt */}
-                            <div onClick={() => setIsExpanded(!isExpanded)} className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center justify-center cursor-pointer z-30 group px-4 py-0.5 interactive">
-                                <ChevronsUp size={13} className={`text-stone-300 group-hover:text-[#DC2626] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                            </div>
 
                             {/* ── Ekli Dosya Chip'leri ── */}
                             <AnimatePresence>
@@ -208,16 +254,15 @@ const ChatInputArea = ({
                             <textarea
                                 ref={textareaRef}
                                 value={inputValue}
-                                onChange={(e) => setInputValue(e.target.value)}
+                                onChange={(e) => { setInputValue(e.target.value); if (originalText) setOriginalText(null); }}
                                 onKeyDown={handleKeyDown}
                                 onScroll={handleTextareaScroll}
-                                onDoubleClick={() => setIsExpanded(!isExpanded)}
                                 data-scrolling={isTextareaScrolling}
                                 placeholder={placeholderText}
-                                className={`w-full bg-transparent text-[15px] text-stone-800 px-4 pb-2 resize-none border-none outline-none focus:ring-0 placeholder:text-stone-400/80 leading-relaxed transition-all duration-300
+                                rows={1}
+                                className={`w-full bg-transparent text-[15px] text-stone-800 px-4 pb-2 resize-none border-none outline-none focus:ring-0 placeholder:text-stone-400/80 leading-relaxed overflow-y-auto
                     [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-stone-200 [&::-webkit-scrollbar-thumb]:rounded-full
-                    ${isExpanded ? 'overflow-y-auto' : 'overflow-hidden'}
-                    ${attachedFiles.length ? 'pt-2' : 'pt-6'}`}
+                    ${attachedFiles.length ? 'pt-2' : 'pt-3'}`}
                                 style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' }}
                             />
 
@@ -378,8 +423,52 @@ const ChatInputArea = ({
                                     )}
                                 </div>
 
-                                {/* Sağ: Model + Gönder */}
+                                {/* Sağ: Revize + Model + Gönder */}
                                 <div className="flex items-center gap-1.5 shrink-0">
+
+                                    {/* İstem Revize / Geri Al Butonu */}
+                                    <AnimatePresence mode="wait">
+                                        {originalText ? (
+                                            <motion.button
+                                                key="revert"
+                                                initial={{ opacity: 0, width: 0 }}
+                                                animate={{ opacity: 1, width: 'auto' }}
+                                                exit={{ opacity: 0, width: 0 }}
+                                                transition={{ duration: 0.15 }}
+                                                type="button"
+                                                onClick={handleRevertPrompt}
+                                                title="Orijinal metne geri dön"
+                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-all focus:outline-none overflow-hidden whitespace-nowrap text-amber-600 bg-amber-50 border-amber-200/80 hover:bg-amber-100"
+                                            >
+                                                <Undo2 size={11} className="shrink-0" />
+                                                <span>Geri Al</span>
+                                            </motion.button>
+                                        ) : inputValue.trim() ? (
+                                            <motion.button
+                                                key="revise"
+                                                initial={{ opacity: 0, width: 0 }}
+                                                animate={{ opacity: 1, width: 'auto' }}
+                                                exit={{ opacity: 0, width: 0 }}
+                                                transition={{ duration: 0.15 }}
+                                                type="button"
+                                                onClick={handleRevisePrompt}
+                                                disabled={isRevising}
+                                                title="İstemi daha anlaşılır hale getir"
+                                                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border transition-all focus:outline-none overflow-hidden whitespace-nowrap
+                                                    ${isRevising
+                                                        ? 'text-violet-500 bg-violet-50 border-violet-200 cursor-wait'
+                                                        : 'text-stone-400 border-stone-200/80 bg-white/60 hover:text-violet-600 hover:bg-violet-50 hover:border-violet-200/80'
+                                                    }`}
+                                            >
+                                                {isRevising
+                                                    ? <Loader2 size={11} className="animate-spin shrink-0" />
+                                                    : <Wand2 size={11} className="shrink-0" />
+                                                }
+                                                <span>{isRevising ? 'Düzenleniyor...' : 'Revize Et'}</span>
+                                            </motion.button>
+                                        ) : null}
+                                    </AnimatePresence>
+
                                     <div className="relative">
                                         <button
                                             onClick={() => { setIsModelMenuOpen(v => !v); setIsCommandsOpen(false); setIsFileMenuOpen(false); }}
@@ -409,7 +498,19 @@ const ChatInputArea = ({
                                                         return (
                                                             <button
                                                                 key={m}
-                                                                onClick={() => { setActiveModel(m); setIsModelMenuOpen(false); }}
+                                                                onClick={() => {
+                                                                    setActiveModel(m);
+                                                                    setIsModelMenuOpen(false);
+                                                                    // Alias varsa gerçek model adına çevir
+                                                                    const actualName = modelNameMapRef.current[m] || m;
+                                                                    onModelChange?.(actualName);
+                                                                    fetch('/api/orchestrator/set-global-model', {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ model: actualName }),
+                                                                    }).catch(() => {});
+                                                                    window.dispatchEvent(new CustomEvent('agent-model-changed', { detail: { model: actualName } }));
+                                                                }}
                                                                 title={m}
                                                                 className={`flex items-center gap-2 px-2.5 py-2 rounded-md text-[11px] font-semibold text-left transition-colors w-full
                                                                     ${isActive

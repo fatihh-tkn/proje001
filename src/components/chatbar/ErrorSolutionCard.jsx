@@ -76,7 +76,7 @@ const PreviousRoundSummary = ({ round, qaItems }) => {
 };
 
 /* ── Screenshot dropzone ───────────────────────────────────────────── */
-const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled }) => {
+const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled, inline = false }) => {
     const [isDrag, setIsDrag] = useState(false);
     const inputRef = useRef(null);
 
@@ -94,9 +94,12 @@ const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled }) => {
         if (file) readFile(file);
     };
 
+    // inline=true → soru içinde kullanılıyor, kart-içi marginleri aç
+    const wrapClass = inline ? '' : 'mx-5 mb-3';
+
     if (screenshot) {
         return (
-            <div className="mx-5 mb-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            <div className={`${wrapClass} flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2`}>
                 <Image size={13} className="text-emerald-600 shrink-0" />
                 <span className="flex-1 text-[11px] text-emerald-700 font-medium truncate">
                     Ekran görüntüsü eklendi
@@ -119,7 +122,7 @@ const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled }) => {
             onDragLeave={() => setIsDrag(false)}
             onDrop={handleDrop}
             onClick={() => !disabled && inputRef.current?.click()}
-            className={`mx-5 mb-3 flex items-center gap-2 rounded-lg px-3 py-2 border border-dashed cursor-pointer transition
+            className={`${wrapClass} flex items-center gap-2 rounded-lg px-3 py-2 border border-dashed cursor-pointer transition
                 ${isDrag
                     ? 'bg-amber-50 border-amber-400'
                     : 'bg-stone-50/60 border-stone-200 hover:border-amber-300 hover:bg-amber-50/30'}
@@ -127,7 +130,9 @@ const ScreenshotZone = ({ screenshot, onScreenshot, onClear, disabled }) => {
         >
             <Upload size={12} className="text-stone-400 shrink-0" />
             <span className="text-[10.5px] text-stone-400">
-                Ekran görüntüsü ekle <span className="text-stone-300">(opsiyonel — sürükle veya tıkla)</span>
+                {inline
+                    ? 'Sürükle bırak veya tıklayarak görsel ekle'
+                    : <>Ekran görüntüsü ekle <span className="text-stone-300">(opsiyonel — sürükle veya tıkla)</span></>}
             </span>
             <input
                 ref={inputRef}
@@ -164,18 +169,27 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
     const docs    = Array.isArray(data?.docs)     ? data.docs    : [];
     const similar = Array.isArray(data?.similar)  ? data.similar : [];
 
-    /* Sorular normalize (string uyumu) */
+    /* Sorular normalize (string uyumu + input_type tespiti) */
     const normalizedQuestions = (clarification_questions || []).map((q, i) => {
         if (typeof q === 'string') {
-            return { id: `q${i + 1}`, question: q, options: [], allow_other: true };
+            return { id: `q${i + 1}`, question: q, input_type: 'text', options: [], allow_other: true };
         }
+        const opts = Array.isArray(q.options) ? q.options : [];
+        // input_type LLM'den geldiyse ona güven; yoksa options sayısına göre tahmin et
+        const inputType = q.input_type
+            || (opts.length > 0 ? 'choice' : 'text');
         return {
             id: q.id || `q${i + 1}`,
             question: q.question || '',
-            options: Array.isArray(q.options) ? q.options : [],
+            input_type: inputType,
+            options: opts,
             allow_other: q.allow_other !== false,
         };
     });
+
+    /* Herhangi bir soru screenshot istiyorsa, alt kısımdaki global dropzone gizlenir
+       (cevap inline alandan veriliyor zaten). */
+    const hasScreenshotQuestion = normalizedQuestions.some(q => q.input_type === 'screenshot');
 
     const setAnswer     = (qId, value, isOther = false) =>
         setAnswers(p => ({ ...p, [qId]: { value, isOther } }));
@@ -213,6 +227,8 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
             qaHistory:       fullHistory,
             screenshotBase64: screenshot?.base64 || null,
             screenshotMime:  screenshot?.mime || 'image/jpeg',
+            roundNumber:     round,
+            forceSolve:      false,
         });
     };
 
@@ -227,7 +243,8 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
             qaHistory:       fullHistory,
             screenshotBase64: screenshot?.base64 || null,
             screenshotMime:  screenshot?.mime || 'image/jpeg',
-            forceMaxRound:   true,
+            roundNumber:     round,
+            forceSolve:      true,
         });
     };
 
@@ -256,10 +273,11 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
     /* ── Clarification modu ──────────────────────────────────────────── */
     if (needs_clarification) {
         const isLastRound = round >= max_rounds;
+        const isSingleRound = max_rounds <= 1;
 
         return (
             <div
-                className="w-full max-w-[680px] bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden"
+                className="card-fade-in w-full max-w-[680px] bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden"
                 style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, sans-serif' }}
             >
                 {/* Header */}
@@ -275,10 +293,12 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                     <h2 className="text-[13px] font-semibold text-stone-800 flex-1 min-w-0 truncate">
                         {title || 'Hatayı netleştirelim'}
                     </h2>
-                    {/* Tur göstergesi */}
-                    <span className="text-[10px] font-mono text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
-                        Tur {round}/{max_rounds}
-                    </span>
+                    {/* Tur göstergesi — yalnızca çoklu tur kalmışsa anlamlı */}
+                    {!isSingleRound && (
+                        <span className="text-[10px] font-mono text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                            Tur {round}/{max_rounds}
+                        </span>
+                    )}
                 </div>
 
                 {/* Önceki turların özeti */}
@@ -301,12 +321,16 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                     </div>
                 )}
 
-                {/* Sorular */}
+                {/* Sorular — input_type'a göre dinamik render */}
                 {normalizedQuestions.length > 0 && (
                     <div className="divide-y divide-amber-50">
                         {normalizedQuestions.map((q, qi) => {
                             const a = answers[q.id];
                             const otherChosen = !!(a && a.isOther);
+                            const isText       = q.input_type === 'text';
+                            const isScreenshot = q.input_type === 'screenshot';
+                            const isChoice     = !isText && !isScreenshot;
+
                             return (
                                 <div key={q.id} className="px-5 py-3.5">
                                     <div className="flex items-start gap-2 mb-2.5">
@@ -316,9 +340,13 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                                         <h4 className="text-[12.5px] font-semibold text-stone-800 leading-snug flex-1">
                                             {q.question}
                                         </h4>
+                                        {isScreenshot && (
+                                            <Image size={12} className="text-stone-400 shrink-0 mt-0.5" title="Görsel cevap" />
+                                        )}
                                     </div>
 
-                                    {q.options.length > 0 && (
+                                    {/* CHOICE — şıklar */}
+                                    {isChoice && q.options.length > 0 && (
                                         <div className="flex flex-wrap gap-1.5 ml-7">
                                             {q.options.map((opt, oi) => {
                                                 const isOtherOpt = (opt || '').toLowerCase().startsWith('diğer');
@@ -347,7 +375,8 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                                         </div>
                                     )}
 
-                                    {q.allow_other && otherChosen && (
+                                    {/* CHOICE → "Diğer" seçildiyse serbest metin */}
+                                    {isChoice && q.allow_other && otherChosen && (
                                         <div className="ml-7 mt-2">
                                             <input
                                                 type="text"
@@ -360,15 +389,39 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                                         </div>
                                     )}
 
-                                    {q.options.length === 0 && (
+                                    {/* TEXT — açık uçlu, doğrudan textarea */}
+                                    {isText && (
                                         <div className="ml-7">
-                                            <input
-                                                type="text"
+                                            <textarea
                                                 value={a?.value || ''}
                                                 onChange={(e) => setOtherText(q.id, e.target.value)}
-                                                placeholder="Cevabını yaz..."
+                                                placeholder="Cevabını yaz... (birkaç cümle olabilir)"
                                                 disabled={submitting}
-                                                className="w-full text-[12px] bg-white border border-stone-200 rounded-md px-2.5 py-1.5 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:bg-stone-100"
+                                                rows={3}
+                                                className="w-full text-[12px] bg-white border border-stone-200 rounded-md px-2.5 py-1.5 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:bg-stone-100 resize-y leading-relaxed"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* SCREENSHOT — inline dropzone */}
+                                    {isScreenshot && (
+                                        <div className="ml-7">
+                                            <ScreenshotZone
+                                                screenshot={screenshot}
+                                                onScreenshot={(base64, mime) => {
+                                                    setScreenshot({ base64, mime });
+                                                    setAnswer(q.id, 'Ekran görüntüsü eklendi', false);
+                                                }}
+                                                onClear={() => {
+                                                    setScreenshot(null);
+                                                    setAnswers(p => {
+                                                        const next = { ...p };
+                                                        delete next[q.id];
+                                                        return next;
+                                                    });
+                                                }}
+                                                disabled={submitting}
+                                                inline
                                             />
                                         </div>
                                     )}
@@ -378,15 +431,18 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                     </div>
                 )}
 
-                {/* Screenshot dropzone */}
-                <div className="pt-2">
-                    <ScreenshotZone
-                        screenshot={screenshot}
-                        onScreenshot={(base64, mime) => setScreenshot({ base64, mime })}
-                        onClear={() => setScreenshot(null)}
-                        disabled={submitting}
-                    />
-                </div>
+                {/* Global screenshot dropzone — yalnızca hiçbir soru screenshot
+                    istemediğinde gösteriliyor (yoksa inline alan zaten var). */}
+                {!hasScreenshotQuestion && (
+                    <div className="pt-2">
+                        <ScreenshotZone
+                            screenshot={screenshot}
+                            onScreenshot={(base64, mime) => setScreenshot({ base64, mime })}
+                            onClear={() => setScreenshot(null)}
+                            disabled={submitting}
+                        />
+                    </div>
+                )}
 
                 {/* Footer */}
                 <div className="px-4 py-3 bg-stone-50/60 border-t border-amber-100 flex items-center justify-between gap-3">
@@ -414,7 +470,13 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                             className="text-[11px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 bg-amber-500 text-white hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-400 transition shadow-sm"
                         >
                             {submitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                            {submitting ? 'Analiz ediliyor...' : isLastRound ? 'Son tur — çözüm iste' : 'Devam et'}
+                            {submitting
+                                ? 'Analiz ediliyor...'
+                                : isSingleRound
+                                    ? 'Çözüm üret'
+                                    : isLastRound
+                                        ? 'Son tur — çözüm iste'
+                                        : 'Devam et'}
                         </button>
                     </div>
                 </div>
@@ -425,7 +487,7 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
     /* ── Çözüm modu ──────────────────────────────────────────────────── */
     return (
         <div
-            className="w-full max-w-[760px] bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden"
+            className="card-fade-in w-full max-w-[760px] bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden"
             style={{ fontFamily: 'Söhne, ui-sans-serif, system-ui, sans-serif' }}
         >
             {/* Header */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle, GitBranch, Settings2 } from 'lucide-react';
+import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle, GitBranch, Settings2, Lock, Unlock } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
 
 /* ── LG.7: Graph Node Ajanları için node_config Editörü ──────────────── */
@@ -321,30 +321,54 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                             <span>Zekâ Modeli</span>
                             {loadingModels && <Loader2 size={12} className="animate-spin text-[#378ADD]" />}
                         </label>
-                        <select
-                            value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
-                            onChange={(e) => updateAgent('model', e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 cursor-pointer font-mono transition-all"
-                        >
-                            {loadingModels ? (
-                                <option value="">Modeller yükleniyor...</option>
-                            ) : fetchedModels.length === 0 ? (
-                                <option value="">— Sistemde kayıtlı model yok —</option>
-                            ) : (
-                                <>
-                                    <option value="">Model seçin...</option>
-                                    {Object.entries(groupedModels).map(([providerName, mList]) => (
-                                        <optgroup key={providerName} label={providerName}>
-                                            {mList.map(m => (
-                                                <option key={m.id} value={m.name}>
-                                                    {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </>
-                            )}
-                        </select>
+                        <div className="flex items-center gap-1.5">
+                            <select
+                                value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
+                                onChange={(e) => updateAgent('model', e.target.value)}
+                                className="flex-1 min-w-0 bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 cursor-pointer font-mono transition-all"
+                            >
+                                {loadingModels ? (
+                                    <option value="">Modeller yükleniyor...</option>
+                                ) : fetchedModels.length === 0 ? (
+                                    <option value="">— Sistemde kayıtlı model yok —</option>
+                                ) : (
+                                    <>
+                                        <option value="">Model seçin...</option>
+                                        {Object.entries(groupedModels).map(([providerName, mList]) => (
+                                            <optgroup key={providerName} label={providerName}>
+                                                {mList.map(m => (
+                                                    <option key={m.id} value={m.name}>
+                                                        {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </>
+                                )}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => updateAgent('modelLocked', !selectedItem.modelLocked)}
+                                title={selectedItem.modelLocked
+                                    ? "Kilitli — ChatBar model değişikliğinden etkilenmez. Kilidi kaldırmak için tıkla."
+                                    : "Kilitsiz — ChatBar'dan model değiştirilince bu ajan da güncellenir. Kilitlemek için tıkla."}
+                                className={`shrink-0 p-2 rounded-lg border transition-all focus:outline-none ${
+                                    selectedItem.modelLocked
+                                        ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626] hover:bg-[#FEF2F2]/80'
+                                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:text-[#DC2626] hover:border-[#DC2626]/30 hover:bg-[#FEF2F2]/50'
+                                }`}
+                            >
+                                {selectedItem.modelLocked
+                                    ? <Lock size={13} strokeWidth={2.5} />
+                                    : <Unlock size={13} strokeWidth={2} />
+                                }
+                            </button>
+                        </div>
+                        {selectedItem.modelLocked && (
+                            <p className="text-[10px] font-semibold text-[#DC2626]/70 mt-1.5 tracking-tight flex items-center gap-1">
+                                <Lock size={9} strokeWidth={2.5} /> ChatBar model değişikliğinden etkilenmez
+                            </p>
+                        )}
                     </div>
                     {selectedItem.agentKind === 'chatbot' && (
                         <div>

@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from './components/sidebar/Sidebar';
 import Workspace from './components/workspace/Workspace';
+import GlobalChatRoom from './components/workspace/GlobalChatRoom';
 import ChatInput from './components/chatbar/ChatBar';
 import { BootLogs } from './components/workspace/BootLogs';
 import { useWorkspaceStore } from './store/workspaceStore';
@@ -9,6 +10,11 @@ import Login from './components/auth/Login';
 import OnboardingWizard from './components/auth/OnboardingWizard';
 import ErrorBoundary from './components/ErrorBoundary';
 import ToastContainer from './components/ui/Toast';
+
+const CHAT_PANEL_KEY = 'global_chat_panel_width';
+const CHAT_PANEL_DEFAULT = 340;
+const CHAT_PANEL_MIN = 180;
+const CHAT_PANEL_CLOSE_THRESHOLD = 100; // bu genişliğin altına düşünce panel kapanır
 
 function App() {
   const {
@@ -21,7 +27,7 @@ function App() {
     handleOpenFile, handleCloseTab, handleMaximizeTab,
     handleFocusTab, handleMinimize, handleAddWorkspace,
     handleCloseWorkspace, handleSwitchWorkspace, handleReopenTab,
-    handleCloseAllTabs, isN8nBooting, setIsN8nBooting
+    handleCloseAllTabs: _handleCloseAllTabs, isN8nBooting: _isN8nBooting, setIsN8nBooting
   } = useWorkspaceStore();
 
   const addToast = useErrorStore((s) => s.addToast);
@@ -31,18 +37,57 @@ function App() {
   const activeTabId = activeWorkspace?.activeTabId || null;
   const maximizedTabId = activeWorkspace?.maximizedTabId || null;
 
+  // ── Global Chat Panel ───────────────────────────────────────────────────
+  const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [activeChannelId, setActiveChannelId] = useState('genel');
+  const [chatPanelWidth, setChatPanelWidth] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(CHAT_PANEL_KEY) || '', 10);
+      return Number.isFinite(v) && v >= CHAT_PANEL_MIN ? v : CHAT_PANEL_DEFAULT;
+    } catch (_) { return CHAT_PANEL_DEFAULT; }
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  const startResize = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startW = chatPanelWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (mv) => {
+      const next = startW + mv.clientX - startX;
+      if (next < CHAT_PANEL_CLOSE_THRESHOLD) {
+        setChatPanelWidth(CHAT_PANEL_DEFAULT);
+        setChatPanelOpen(false);
+      } else {
+        setChatPanelWidth(Math.min(next, 700));
+      }
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem(CHAT_PANEL_KEY, String(chatPanelWidth)); } catch (_) { }
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [chatPanelWidth]);
+
   // PC Heartbeat — login olunca PC'yi sisteme kaydet, 60 sn'de bir güncelle
   useEffect(() => {
     if (!isLoggedIn) return;
 
     const getPcId = () => {
       let fp = localStorage.getItem('_pc_fp');
-      if (!fp) { fp = 'pc_' + Math.random().toString(36).substr(2, 12); localStorage.setItem('_pc_fp', fp); }
+      if (!fp) { fp = 'pc_' + Math.random().toString(36).substring(2, 14); localStorage.setItem('_pc_fp', fp); }
       return fp;
     };
     const getTabId = () => {
       let tok = sessionStorage.getItem('_tab_tok');
-      if (!tok) { tok = 'tab_' + Math.random().toString(36).substr(2, 12); sessionStorage.setItem('_tab_tok', tok); }
+      if (!tok) { tok = 'tab_' + Math.random().toString(36).substring(2, 14); sessionStorage.setItem('_tab_tok', tok); }
       return tok;
     };
 
@@ -55,7 +100,7 @@ function App() {
           tab_id: getTabId(),
           user_id: currentUser?.id || null,
         }),
-      }).catch(() => {});
+      }).catch(() => { });
     };
 
     sendHeartbeat();
@@ -73,7 +118,7 @@ function App() {
     return () => window.removeEventListener('auth:logout', handleAuthLogout);
   }, [setIsLoggedIn, setCurrentUser]);
 
-  // Audit: Sekme Görüntüleme Loglayıcı — hata sessizce yutulur (kritik değil)
+  // Audit: Sekme Görüntüleme Loglayıcı
   useEffect(() => {
     if (activeTabId && currentUser) {
       fetch('/api/auth/audit/event', {
@@ -93,7 +138,6 @@ function App() {
     let evtSource = null;
 
     const handleOpenWorkspace = async () => {
-      // 1. Zaten çalışıyorsa anında aç
       try {
         const res = await fetch('/api/n8n/status');
         if (res.ok) {
@@ -107,7 +151,6 @@ function App() {
         console.warn('[N8n] Durum kontrol hatası:', e.message);
       }
 
-      // 2. Çalışmıyorsa logoyu döndür ve başlatmayı dene
       setIsN8nBooting(true);
 
       try {
@@ -119,7 +162,6 @@ function App() {
         return;
       }
 
-      // 3. Çalışana kadar SSE ile bekle (polling yerine sunucu itişi)
       evtSource = new EventSource('/api/n8n/status/stream');
       evtSource.onmessage = (event) => {
         try {
@@ -177,9 +219,43 @@ function App() {
           onCloseWorkspace={handleCloseWorkspace}
           recentlyClosed={recentlyClosed}
           onReopenTab={handleReopenTab}
+          chatPanelOpen={chatPanelOpen}
+          activeChannelId={activeChannelId}
+          onSelectChannel={(id) => { setActiveChannelId(id); setChatPanelOpen(true); }}
+          onToggleChatPanel={() => setChatPanelOpen(v => !v)}
         />
 
-        {/* 2. SÜTUN: ORTA ANA ÇALIŞMA ALANI */}
+        {/* 2. SÜTUN: MESAJ PANELİ (genişlik ayarlanabilir, kenara çekerek kapatılabilir) */}
+        <div
+          style={{
+            width: chatPanelOpen ? chatPanelWidth : 0,
+            minWidth: 0,
+            flexShrink: 0,
+            height: '100%',
+            overflow: 'hidden',
+            position: 'relative',
+            transition: isResizing ? 'none' : 'width 0.22s cubic-bezier(0.16,1,0.3,1)',
+          }}
+        >
+          {/* İçerik sabit genişlikte — animasyon sırasında sıkışmasın */}
+          <div style={{ width: chatPanelWidth, height: '100%', position: 'absolute', top: 0, left: 0 }}>
+            <GlobalChatRoom
+              activeChannelId={activeChannelId}
+              setActiveChannelId={setActiveChannelId}
+              onClose={() => setChatPanelOpen(false)}
+            />
+          </div>
+          {/* Resize handle — sol tarafa sürükleyince panel kapanır */}
+          {chatPanelOpen && (
+            <div
+              onMouseDown={startResize}
+              className="absolute right-0 top-0 h-full w-[4px] z-50 cursor-col-resize bg-transparent hover:bg-white/10 active:bg-[#DC2626]/40 transition-colors"
+              title="Sürükle: genişlet / daralt · Sola çek: kapat"
+            />
+          )}
+        </div>
+
+        {/* 3. SÜTUN: ORTA ANA ÇALIŞMA ALANI */}
         <main className="flex-1 flex flex-col h-full relative overflow-hidden z-10">
           <div className="flex flex-col h-full z-10 relative">
             <BootLogs />
@@ -199,7 +275,7 @@ function App() {
           </div>
         </main>
 
-        {/* 3. SÜTUN: SAĞ YAPAY ZEKA ASİSTANI */}
+        {/* 4. SÜTUN: SAĞ YAPAY ZEKA ASİSTANI */}
         <ErrorBoundary compact>
           <ChatInput
             onOpenFile={handleOpenFile}

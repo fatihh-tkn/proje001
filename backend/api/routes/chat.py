@@ -127,6 +127,8 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
     if not file_names and payload.file_name:
         file_names = [payload.file_name]
 
+    model_ov = (payload.model_override or "").strip() or None
+    logger.info("[_build_initial_state] model_override=%r session=%s", model_ov, payload.session_id)
     return {
         "user_message":      payload.message,
         "original_message":  payload.message,
@@ -141,8 +143,12 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
         "history":           history,
         "qa_history":        payload.qa_history or None,
         "screenshot_base64": payload.screenshot_base64 or None,
+        "round_number":      payload.round_number,
+        "force_solve":       bool(payload.force_solve),
+        "model_override":    model_ov,
         "started_at":        time.time() * 1000,
     }
+
 
 
 async def _graph_stream_response(request: Request, payload: ChatMessage):
