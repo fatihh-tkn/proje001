@@ -37,6 +37,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const textareaRef = useRef(null);
     const streamingMsgIdRef = useRef(null);
     const abortControllerRef = useRef(null);
+    const justSentRef = useRef(false);
 
     // ── Yeniden boyutlandırma (sola doğru sürükleyerek genişlet) ──────────
     const [chatWidth, setChatWidth] = useState(() => {
@@ -178,8 +179,26 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     }, []);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, isTyping]);
+        if (justSentRef.current) {
+            justSentRef.current = false;
+            const lastUserMsg = [...messages].reverse().find(m => m.sender !== 'ai');
+            if (!lastUserMsg) return;
+            requestAnimationFrame(() => {
+                const el = document.querySelector(`[data-msg-id="${lastUserMsg.id}"]`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+    }, [messages]);
+
+    useEffect(() => {
+        requestAnimationFrame(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+    }, [currentSessionId]);
 
     useEffect(() => {
         if (!isSideOpen) setIsChatsOpen(false);
@@ -270,6 +289,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             graphErrors: [],
         };
 
+        justSentRef.current = true;
         setMessages((prev) => [...prev, userMsg, aiPlaceholder]);
         if (!overrideText) { setInputValue(''); setIsExpanded(false); }
         setIsTyping(true);
