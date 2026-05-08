@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Loader2, Webhook, Key, Workflow, LineChart, Terminal, FileCode, Power } from 'lucide-react';
+import { Bot, Loader2, Webhook, Key, Workflow, Terminal, FileCode, Power } from 'lucide-react';
 import { mutate } from '../../../api/client';
 
 // Components
@@ -10,8 +10,10 @@ import { LogsTab } from './tabs/LogsTab';
 import InlineTopologyOverview from './orchestrator/InlineTopologyOverview';
 import AgentChromeTabBar from './orchestrator/AgentChromeTabBar';
 import AgentConfigPanel from './orchestrator/AgentConfigPanel';
+import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
+import ConversationTraceTab from './orchestrator/ConversationTraceTab';
 
 import { DEFAULT_AGENTS } from './orchestrator/constants';
 
@@ -41,8 +43,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     // Top Navigation (Now hidden from UI, managed by SettingsMenu props)
     const [activeMainTab, setActiveMainTab] = useState(defaultMainTab);
     const [upperViewMode, setUpperViewMode] = useState(
-        defaultMainTab === 'dashboard' ? 'dashboard' :
-            defaultMainTab === 'logs' ? 'logs' : 'diagram'
+        defaultMainTab === 'logs' ? 'logs' : 'diagram'
     );
     const [activeSidePanel, setActiveSidePanel] = useState(
         defaultMainTab === 'models' ? 'models' : null
@@ -52,8 +53,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     useEffect(() => {
         setActiveMainTab(defaultMainTab);
         setUpperViewMode(
-            defaultMainTab === 'dashboard' ? 'dashboard' :
-                defaultMainTab === 'logs' ? 'logs' : 'diagram'
+            defaultMainTab === 'logs' ? 'logs' : 'diagram'
         );
         setActiveSidePanel(
             defaultMainTab === 'models' ? 'models' : null
@@ -258,21 +258,12 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                             <div className="w-[1px] h-4 bg-stone-200 my-auto mx-1" />
                                             <button
                                                 onClick={() => {
-                                                    setUpperViewMode('dashboard');
-                                                    if (!isFlowExpanded) setIsFlowExpanded(true);
-                                                }}
-                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-widest uppercase transition-all ${upperViewMode === 'dashboard' ? 'bg-[#b91d2c]/10 text-[#b91d2c] shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                                            >
-                                                <LineChart size={14} strokeWidth={2.5} /> <span className="hidden xl:inline">API</span> Maliyetleri
-                                            </button>
-                                            <button
-                                                onClick={() => {
                                                     setUpperViewMode('logs');
                                                     if (!isFlowExpanded) setIsFlowExpanded(true);
                                                 }}
                                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-widest uppercase transition-all ${upperViewMode === 'logs' ? 'bg-[#378ADD]/10 text-[#378ADD] shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
                                             >
-                                                <Terminal size={14} strokeWidth={2.5} /> <span className="hidden xl:inline">API</span> Logları
+                                                <Terminal size={14} strokeWidth={2.5} /> Sohbet İzleri
                                             </button>
                                         </div>
 
@@ -310,17 +301,10 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 />
                                             </ErrorBoundary>
                                         )}
-                                        {upperViewMode === 'dashboard' && (
+                                        {upperViewMode === 'logs' && (
                                             <div className="w-full h-full pt-14 relative z-10 overflow-hidden bg-stone-50 animate-in fade-in duration-300">
                                                 <ErrorBoundary>
-                                                    <DashboardTab agent={selectedItem} />
-                                                </ErrorBoundary>
-                                            </div>
-                                        )}
-                                        {upperViewMode === 'logs' && (
-                                            <div className="w-full h-full pt-14 relative z-10 overflow-hidden bg-white animate-in fade-in duration-300">
-                                                <ErrorBoundary>
-                                                    <LogsTab agent={selectedItem} />
+                                                    <ConversationTraceTab />
                                                 </ErrorBoundary>
                                             </div>
                                         )}
@@ -369,6 +353,9 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                             else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false);
                                         }}
                                     >
+                                        {/* EN SOL: Hazır Cevaplar */}
+                                        <CannedResponsesPanel />
+
                                         {/* SOL: Ajan Sekmeleri */}
                                         <div className="flex items-end overflow-x-auto flex-1 px-4" style={{ scrollbarWidth: 'none' }}>
                                             <AgentChromeTabBar

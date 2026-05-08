@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, RefreshCw, Terminal, X } from 'lucide-react';
-// Activity, RefreshCw used in backendReady=false screen only
+import { Activity, RefreshCw, Terminal, X, LayoutDashboard, Users, ScrollText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE, fetchWithTimeout } from './utils';
 import { UsersOverviewTab } from './tabs/UsersOverviewTab';
 import { LogsTab } from './tabs/LogsTab';
+import { MonitoringTab } from './tabs/MonitoringTab';
+
+const TABS = [
+    { id: 'monitoring', label: 'Genel Yönetim', icon: LayoutDashboard },
+    { id: 'users',      label: 'Kullanıcılar',  icon: Users },
+    { id: 'logs',       label: 'Loglar',         icon: ScrollText },
+];
 
 export default function ApiUsageViewer() {
-    const [logsOpen, setLogsOpen] = useState(false);
-    const [logFilterUser, setLogFilterUser] = useState(null); // { id, name, email }
+    const [activeTab, setActiveTab] = useState('monitoring');
+    const [logFilterUser, setLogFilterUser] = useState(null);
     const [backendReady, setBackendReady] = useState(null);
 
     const fetchData = useCallback(async () => {
@@ -45,60 +51,71 @@ export default function ApiUsageViewer() {
     }
 
     return (
-        <div className="flex flex-col h-full w-full bg-[#f8f9fa] font-sans">
-            {/* ── İÇERİK: Kullanıcılar + opsiyonel Loglar paneli ── */}
-            <div className="flex-1 overflow-hidden flex">
-
-                {/* Kullanıcı listesi */}
-                <div className="flex-1 overflow-hidden min-w-0">
-                    <UsersOverviewTab
-                        logsOpen={logsOpen}
-                        onToggleLogs={() => setLogsOpen(v => !v)}
-                        logFilterUser={logFilterUser}
-                        onSelectLogUser={(user) => {
-                            setLogFilterUser(user);
-                            setLogsOpen(true);
-                        }}
-                    />
-                </div>
-
-                {/* Loglar paneli */}
-                <AnimatePresence initial={false}>
-                    {logsOpen && (
-                        <motion.div
-                            key="logs-panel"
-                            initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: 700, opacity: 1 }}
-                            exit={{ width: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="shrink-0 flex flex-col border-l border-slate-200 bg-white shadow-[-4px_0_20px_-8px_rgba(0,0,0,0.08)] overflow-hidden"
+        <div className="flex flex-col h-full w-full bg-[#f4f5f7] font-sans overflow-hidden">
+            {/* ── Tab Bar ─────────────────────────────────────────── */}
+            <div className="flex items-center gap-1 px-4 h-10 bg-white border-b border-slate-200 shrink-0">
+                {TABS.map(tab => {
+                    const Icon = tab.icon;
+                    const active = activeTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-1.5 px-3 h-8 text-[11px] font-bold uppercase tracking-widest transition-all rounded-md ${
+                                active
+                                    ? 'bg-[#b91d2c]/10 text-[#b91d2c]'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                            }`}
                         >
-                            <div className="w-[700px] flex flex-col h-full overflow-hidden">
-                                {/* Panel başlık */}
-                                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
-                                    <div className="flex items-center gap-2">
-                                        <Terminal size={14} className="text-[#378ADD]" strokeWidth={2.5} />
-                                        <span className="text-[12px] font-black uppercase tracking-widest text-slate-700">Sistem Logları</span>
-                                    </div>
-                                    <button
-                                        onClick={() => setLogsOpen(false)}
-                                        className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-white transition-colors"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                                {/* LogsTab içeriği */}
-                                <div className="flex-1 overflow-hidden">
-                                    <LogsTab
-                                        compact
-                                        filterUser={logFilterUser}
-                                        onClearUserFilter={() => setLogFilterUser(null)}
-                                    />
-                                </div>
+                            <Icon size={13} strokeWidth={2.5} />
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* ── Tab Content ─────────────────────────────────────── */}
+            <div className="flex-1 overflow-hidden">
+                {activeTab === 'monitoring' && <MonitoringTab />}
+
+                {activeTab === 'users' && (
+                    <div className="flex h-full overflow-hidden">
+                        <div className="flex-1 overflow-hidden min-w-0">
+                            <UsersOverviewTab
+                                logsOpen={false}
+                                onToggleLogs={() => setActiveTab('logs')}
+                                logFilterUser={logFilterUser}
+                                onSelectLogUser={(user) => {
+                                    setLogFilterUser(user);
+                                    setActiveTab('logs');
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'logs' && (
+                    <div className="flex flex-col h-full overflow-hidden bg-white">
+                        {logFilterUser && (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-[#378ADD]/5 border-b border-[#378ADD]/20 shrink-0">
+                                <span className="text-[11px] text-[#378ADD] font-bold">Filtre:</span>
+                                <span className="text-[11px] text-slate-600">{logFilterUser.name || logFilterUser.email}</span>
+                                <button
+                                    onClick={() => setLogFilterUser(null)}
+                                    className="ml-auto p-1 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X size={13} />
+                                </button>
                             </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                        )}
+                        <div className="flex-1 overflow-hidden">
+                            <LogsTab
+                                filterUser={logFilterUser}
+                                onClearUserFilter={() => setLogFilterUser(null)}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

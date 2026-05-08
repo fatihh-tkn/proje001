@@ -57,6 +57,78 @@ from .state import AgentState
 logger = get_logger("agent_graph.runner")
 
 
+def _extract_node_output_summary(node_name: str, update: dict) -> str | None:
+    """Node çıktısından kısa bir özet metni üretir (log için)."""
+    if node_name == "supervisor":
+        intent = update.get("intent", "")
+        plan = [p.get("node") for p in (update.get("plan") or [])]
+        return f"intent={intent} plan={plan}"
+    if node_name == "rag_search":
+        ctx = (update.get("rag_context") or "").strip()
+        return ctx[:300] if ctx else None
+    if node_name in ("aggregator", "msg_polish"):
+        reply = (update.get("final_reply") or "").strip()
+        return reply[:300] if reply else None
+    if node_name == "critic":
+        approved = update.get("critic_approved")
+        fb = update.get("critic_feedback") or ""
+        return f"approved={approved} feedback={fb[:200]}"
+    if node_name == "error_solver":
+        sol = update.get("error_solution") or {}
+        return (sol.get("title") or update.get("error_draft") or "")[:300] or None
+    if node_name == "zli_finder":
+        matches = update.get("zli_matches") or []
+        if matches:
+            return f"{len(matches)} eşleşme: {matches[0].get('kod','?')}"
+        return update.get("zli_draft", "")[:300] or None
+    if node_name == "n8n_trigger":
+        act = update.get("n8n_action") or {}
+        return f"workflow={act.get('workflow','?')} status={act.get('status','?')}"
+    if node_name == "skill_reader":
+        ctx = (update.get("skill_context") or "").strip()
+        return ctx[:300] if ctx else None
+    return None
+
+
+def _log_node(
+    node_name: str,
+    update: dict,
+    initial_state: dict,
+    aggregated: dict,
+) -> None:
+    """Sync helper — threadpool'da çağrılır; her node tamamlandığında kaydeder."""
+    try:
+        from core.db_bridge import log_agent_execution
+        tok_map = update.get("total_tokens") or {}
+        node_tok = tok_map.get(node_name) or {}
+        p_tok = int(node_tok.get("p", 0) or 0)
+        c_tok = int(node_tok.get("c", 0) or 0)
+
+        elapsed = (update.get("node_timings") or {}).get(node_name)
+        err_map = update.get("node_errors") or {}
+        hata = err_map.get(node_name)
+
+        log_agent_execution(
+            ajan_rolu=node_name,
+            oturum_kimlik=initial_state.get("session_id"),
+            kullanici_mesaji=initial_state.get("user_message") or initial_state.get("original_message"),
+            intent=aggregated.get("intent") or update.get("intent"),
+            intent_confidence=aggregated.get("intent_confidence") or update.get("intent_confidence"),
+            complexity=aggregated.get("complexity") or update.get("complexity"),
+            brief=(aggregated.get("plan_briefs") or {}).get(node_name),
+            cikti_ozet=_extract_node_output_summary(node_name, update),
+            basarili_mi=(hata is None),
+            hata_mesaji=hata,
+            sure_ms=int(elapsed) if elapsed is not None else None,
+            prompt_token=p_tok or None,
+            completion_token=c_tok or None,
+            critic_onayladi_mi=update.get("critic_approved") if node_name == "critic" else None,
+            revision_sayisi=update.get("revision_count") if node_name == "critic" else None,
+        )
+    except Exception as _e:
+        logger.debug("[runner] _log_node '%s' hatası: %s", node_name, _e)
+
+
 # Klasik ai_service.py ile aynı tarife — log birim maliyetleri (USD)
 _COST_PER_PROMPT_TOKEN = 0.000005
 _COST_PER_COMPLETION_TOKEN = 0.000015
@@ -93,6 +165,11 @@ def _persist_run(
     model = aggregated.get("model_used") or ""
     provider = aggregated.get("provider_used") or ""
 
+    # Aggregator ajanının DB kimliğini al — ajan bazlı maliyet filtrelemesi için
+    agent_configs = aggregated.get("agent_configs") or initial_state.get("agent_configs") or {}
+    agg_cfg = agent_configs.get("aggregator") or {}
+    ajan_kimlik = agg_cfg.get("kimlik") or None
+
     # 1) API log
     log_entry = {
         "id":               f"log_{uuid.uuid4().hex[:8]}",
@@ -115,6 +192,7 @@ def _persist_run(
         "mac":              mac,
         "rag_used":         bool(aggregated.get("rag_context")),
         "rag_file":         file_name,
+        "agent_id":         ajan_kimlik,
     }
     try:
         add_log_to_db(log_entry)
@@ -251,7 +329,19 @@ async def stream_run(
                     evt["plan"] = [p.get("node") for p in (update.get("plan") or [])]
                     evt["reasoning"] = update.get("plan_reasoning", "")
                     intent_emitted = True
+
+                # Critic sonucunu yield'dan ÖNCE ekle — sonra eklemek SSE'de kaybolur
+                if node_name == "critic":
+                    evt["approved"]       = bool(update.get("critic_approved"))
+                    evt["feedback"]       = update.get("critic_feedback") or ""
+                    evt["revision_count"] = int(update.get("revision_count") or 0)
+
                 yield _sse(evt)
+
+                # Per-node execution log (arka planda, bloklamaz)
+                asyncio.ensure_future(
+                    run_in_threadpool(_log_node, node_name, update, dict(state), dict(aggregated))
+                )
 
                 # rag_search çıktısı varsa kaynakları yayınla
                 if node_name == "rag_search":

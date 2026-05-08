@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
 from typing import Optional
 
 import torch
@@ -156,14 +157,15 @@ def set_active_model(model_key: str, persist: bool = True) -> dict:
         )
 
     global _current_model_key, _loaded_model, _openai_client
-    
+
     old_key = _current_model_key
     _current_model_key = model_key
 
-    # Eski yüklü modeli temizle (RAM'den sil)
+    # Eski yüklü modeli ve LRU embedding cache'ini temizle
     if old_key != model_key:
         _loaded_model = None
         _openai_client = None
+        _get_single_embedding_cached.cache_clear()
         logger.info(f"Embedding modeli değiştirildi: {old_key} → {model_key}")
 
     # Veritabanına kaydet
@@ -258,36 +260,59 @@ def _pad_or_truncate(vec: list[float], target_dim: int) -> list[float]:
 
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     """Metinleri aktif embedding modeli ile vektöre çevirir.
-    
-    Tüm çıktılar MAX_VECTOR_DIM boyutuna normalize edilir.
-    
-    Returns:
-        Her metin için MAX_VECTOR_DIM boyutlu float listesi
+
+    Tek sorguluk çağrılar LRU cache'den yararlanır.
+    Cache key = (text, model_key) → model değişimlerinde stale hit olmaz.
+    Batch çağrılar (>1 metin) her zaman hesaplanır.
     """
     if not texts:
         return []
+
+    # Tek sorgu: model_key cache key'inin parçası olduğu için stale olmaz
+    if len(texts) == 1:
+        mk = get_active_model_key()
+        return [list(_get_single_embedding_cached(texts[0], mk))]
 
     model_key = get_active_model_key()
     model_info = EMBEDDING_MODELS[model_key]
     provider = model_info["provider"]
     model_id = model_info["model_id"]
-    native_dim = model_info["dimension"]
 
     if provider == "sentence-transformers":
         model = _get_sentence_transformer(model_id)
         raw_vecs = [v.tolist() for v in model.encode(texts)]
     elif provider == "openai":
         client = _get_openai_client()
-        response = client.embeddings.create(
-            model=model_id,
-            input=texts,
-        )
+        response = client.embeddings.create(model=model_id, input=texts)
         raw_vecs = [item.embedding for item in response.data]
     else:
         raise ValueError(f"Bilinmeyen provider: {provider}")
 
-    # Boyut normalizasyonu
     return [_pad_or_truncate(v, MAX_VECTOR_DIM) for v in raw_vecs]
+
+
+@lru_cache(maxsize=512)
+def _get_single_embedding_cached(text: str, model_key: str) -> tuple[float, ...]:
+    """Tek metin + model_key çifti için embedding; LRU cache'de sakla.
+
+    model_key parametresi cache key'inin parçası — model değiştiğinde
+    eski (text, eski_model) girdisi otomatik olarak miss eder.
+    """
+    model_info = EMBEDDING_MODELS[model_key]
+    provider = model_info["provider"]
+    model_id = model_info["model_id"]
+
+    if provider == "sentence-transformers":
+        model = _get_sentence_transformer(model_id)
+        vec = model.encode([text])[0].tolist()
+    elif provider == "openai":
+        client = _get_openai_client()
+        response = client.embeddings.create(model=model_id, input=[text])
+        vec = response.data[0].embedding
+    else:
+        raise ValueError(f"Bilinmeyen provider: {provider}")
+
+    return tuple(_pad_or_truncate(vec, MAX_VECTOR_DIM))
 
 
 def get_native_dimension() -> int:

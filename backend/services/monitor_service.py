@@ -26,8 +26,8 @@ def calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     return (prompt_tokens / 1000) * table["prompt"] + (completion_tokens / 1000) * table["completion"]
 
 
-def get_dashboard_stats(project_id: Optional[str] = None) -> dict:
-    logs = get_all_logs_for_dashboard(project_id)
+def get_dashboard_stats(project_id: Optional[str] = None, agent_id: Optional[str] = None) -> dict:
+    logs = get_all_logs_for_dashboard(project_id, agent_id=agent_id)
     total_reqs  = len(logs)
     total_cost  = sum(l.get("cost", 0) for l in logs)
     total_tokens= sum(l.get("totalTokens", 0) for l in logs)

@@ -112,8 +112,11 @@ class AgentState(TypedDict, total=False):
 
     # ── PLAN (Supervisor çıktısı) ────────────────────────────────────────
     intent: str                                # 'general' | 'hata_cozumu' | 'rapor_arama' | 'n8n' | 'dosya_qa'
+    intent_confidence: float                   # 0.0–1.0 (supervisor LLM güven skoru)
+    complexity: str                            # 'low' | 'medium' | 'high'
     plan: list[dict]                           # [{node, mode, optional, input?}]
     plan_reasoning: str
+    plan_briefs: dict[str, str]                # {node_name: "Bu node şunu yapmalı..."}
 
     # ── SPECIALIST OUTPUTS ───────────────────────────────────────────────
     rag_context: str
@@ -125,6 +128,12 @@ class AgentState(TypedDict, total=False):
     zli_matches: list[dict]
     zli_draft: str                             # zli_finder çıktısı (ham JSON)
     n8n_action: dict | None                    # {workflow, status, detail}
+    skill_context: str                          # skill_reader yüklediği SKILL.md içeriği
+
+    # ── CRİTİC (denetleyici döngüsü) ────────────────────────────────────
+    critic_approved: bool                       # True → döngüden çık
+    critic_feedback: str                        # Neyi düzeltmesi gerektiği (aggregator'a enjekte edilir)
+    revision_count: int                         # Kaç kez geri gönderildi (döngü sınırı için)
 
     # ── FINAL ────────────────────────────────────────────────────────────
     final_reply: str

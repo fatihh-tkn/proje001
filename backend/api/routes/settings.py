@@ -450,3 +450,73 @@ def export_session(session_id: str):
         "createdAt": s.olusturulma_tarihi,
         "messages": [{"role": m.rol, "content": m.icerik, "timestamp": m.olusturulma_tarihi} for m in msgs],
     }
+
+
+# ── Hazır Cevaplar (SistemAyari: anahtar = 'hazir_cevaplar') ─────────────────
+# Veri formatı: [{"id": str, "triggers": [str], "response": str, "active": bool}]
+
+_DEFAULT_CANNED = [
+    {"id": "builtin_1", "triggers": ["selam", "merhaba", "mrb", "slm", "hey", "hi", "hello", "günaydın", "iyi günler", "iyi akşamlar", "iyi geceler"], "response": "Merhaba! Nasıl yardımcı olabilirim?", "active": True},
+    {"id": "builtin_2", "triggers": ["teşekkürler", "teşekkür ederim", "teşekkür", "sağol", "sağ ol", "eyvallah"], "response": "Rica ederim! Başka bir konuda yardımcı olabilir miyim?", "active": True},
+    {"id": "builtin_3", "triggers": ["görüşürüz", "hoşçakal", "bay", "bb", "güle güle"], "response": "Güle güle! İyi çalışmalar.", "active": True},
+    {"id": "builtin_4", "triggers": ["naber", "nbr", "nasılsın", "nslsn", "ne haber", "naptın"], "response": "İyiyim, teşekkürler! Nasıl yardımcı olabilirim?", "active": True},
+    {"id": "builtin_5", "triggers": ["tamam", "ok", "peki", "oldu", "anladım", "tamamdır", "okey"], "response": "Anlaşıldı! Başka yardımcı olabileceğim bir konu var mı?", "active": True},
+]
+
+
+@router.get("/canned-responses")
+def get_canned_responses():
+    """Hazır cevap listesini döner; DB'de yoksa varsayılanları döner."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+
+    with get_session() as db:
+        row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "hazir_cevaplar"))
+        data = row.deger if row and isinstance(row.deger, list) else None
+
+    return {"items": data if data is not None else _DEFAULT_CANNED}
+
+
+@router.post("/canned-responses")
+def save_canned_responses(body: dict):
+    """Hazır cevap listesini SistemAyari tablosuna kaydeder."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    import datetime
+
+    items = body.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=422, detail="'items' listesi gerekli")
+
+    # Basit doğrulama
+    for item in items:
+        if not isinstance(item.get("triggers"), list) or not item.get("response"):
+            raise HTTPException(status_code=422, detail="Her kayıt triggers[] ve response içermeli")
+
+    now = datetime.datetime.utcnow().isoformat()
+    with get_session() as db:
+        row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "hazir_cevaplar"))
+        if row:
+            row.deger = items
+            row.guncelleme_tarihi = now
+        else:
+            db.add(SistemAyari(
+                anahtar="hazir_cevaplar",
+                deger=items,
+                aciklama="Sohbet hazır cevap listesi (chitchat bypass)",
+                hassas_mi=False,
+                olusturulma_tarihi=now,
+                guncelleme_tarihi=now,
+            ))
+        db.commit()
+
+    # Supervisor cache'ini sıfırla
+    try:
+        from services.agent_graph.nodes.supervisor import invalidate_canned_cache
+        invalidate_canned_cache()
+    except Exception:
+        pass
+
+    return {"ok": True}

@@ -63,8 +63,8 @@ async def add_log(payload: dict):
 # ── Dashboard Özet ─────────────────────────────────────────────────────────────
 
 @router.get("/dashboard")
-async def get_dashboard(project_id: Optional[str] = None):
-    stats = get_dashboard_stats(project_id)
+async def get_dashboard(project_id: Optional[str] = None, agentId: Optional[str] = None):
+    stats = get_dashboard_stats(project_id, agent_id=agentId)
     return JSONResponse(stats)
 
 

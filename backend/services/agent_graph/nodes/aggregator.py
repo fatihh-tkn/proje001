@@ -173,6 +173,31 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     rag_ctx = state.get("rag_context")
     strict = bool((agent_config or {}).get("strict_fact_check"))
 
+    # ── Karmaşıklık seviyesine göre yanıt derinliği ──
+    complexity = state.get("complexity") or "medium"
+    if complexity == "low":
+        parts.append(
+            "[YANIT DERECESİ] Soru basit ve kısa. Tek paragraf veya birkaç madde yeterli; "
+            "gereksiz açıklama ve bağlam ekleme."
+        )
+    elif complexity == "high":
+        parts.append(
+            "[YANIT DERECESİ] Soru çok boyutlu veya teknik. Kapsamlı yanıt ver: "
+            "arka plan, adım adım süreç, olası edge case'ler ve referansları dahil et."
+        )
+    # medium = default, ek hint gerekmez
+
+    # ── Specialist briefleri (her ajanın ne aradığını aggregator'a haber ver) ──
+    plan_briefs = state.get("plan_briefs") or {}
+    active_briefs = {k: v for k, v in plan_briefs.items() if k not in ("aggregator",) and v}
+    if active_briefs and intent not in ("sohbet", "serbest"):
+        brief_lines = "\n".join(f"• {k}: {v}" for k, v in active_briefs.items())
+        parts.append(
+            f"[ARAŞTIRMA KAPSAMLARI]\nAşağıdaki uzmanlar bu yanıt için bilgi topladı:\n"
+            f"{brief_lines}\n"
+            "Sentez yaparken her uzmanın katkısını bütünleşik bir cevaba dönüştür."
+        )
+
     if rag_ctx:
         # RAG okuma modu (raw/structured/chunked) — read_mode'a göre ipucu
         read_mode = (agent_config or {}).get("read_mode")
@@ -309,7 +334,7 @@ async def aggregator_node(state: AgentState) -> dict:
 
         system = _build_chat_system(state, agent_config)
         node_cfg = (agent_config or {}).get("node_config") or {}
-        history = state.get("history") or [] if node_cfg.get("include_history", True) else []
+        history = (state.get("history") or []) if node_cfg.get("include_history", True) else []
         user_msg = state.get("user_message") or state.get("original_message") or ""
 
         # Semantik sohbet hafızası — node_config.include_chat_memory ile
@@ -337,6 +362,18 @@ async def aggregator_node(state: AgentState) -> dict:
                 "'tetiklendi/başlatıldı' gibi cümlelerle başlama. Kullanıcının "
                 "asıl sorusuna doğrudan cevap ver; otomasyon yalnızca bağlam."
             )
+
+        # Critic geri bildirimi varsa (revizyon döngüsündeyiz) prompt'a ekle
+        critic_feedback = (state.get("critic_feedback") or "").strip()
+        if critic_feedback and (state.get("revision_count") or 0) > 0:
+            system += (
+                "\n\n[DENETÇİ GERİ BİLDİRİMİ — ÖNCELİKLİ DÜZELTME]\n"
+                f"{critic_feedback}\n"
+                "Yukarıdaki geri bildirimi dikkate alarak cevabını yeniden üret. "
+                "Sadece belirtilen sorunu düzelt, genel kaliteyi koru."
+            )
+            logger.info("[aggregator] critic feedback enjekte edildi (rev=%d): '%s'",
+                        state.get("revision_count"), critic_feedback[:80])
 
         messages = build_messages(system=system, history=history, user=user_msg)
         temperature = (agent_config or {}).get("temperature", 0.7)

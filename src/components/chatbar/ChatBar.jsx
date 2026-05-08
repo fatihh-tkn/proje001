@@ -473,19 +473,24 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     abortControllerRef.current = null;
                 },
                 // ── LangGraph telemetri callback'leri ─────────────────
-                onProgress: ({ node, phase, elapsed_ms, intent, plan, reasoning }) => {
+                onProgress: ({ node, phase, elapsed_ms, intent, plan, reasoning, approved, feedback, revision_count }) => {
                     setMessages(prev => prev.map(m => {
                         if (m.id !== aiMsgId) return m;
                         const next = {
                             ...m,
                             graphNodes: [
                                 ...(m.graphNodes || []),
-                                { node, phase, elapsedMs: elapsed_ms },
+                                { node, phase, elapsedMs: elapsed_ms, approved, feedback, revision_count },
                             ],
                         };
                         if (intent && !m.graphIntent) next.graphIntent = intent;
                         if (Array.isArray(plan) && !m.graphPlan) next.graphPlan = plan;
                         if (reasoning && !m.graphReasoning) next.graphReasoning = reasoning;
+                        if (node === 'critic') {
+                            next.criticApproved = approved !== false;
+                            next.criticFeedback = feedback || '';
+                            next.criticRevisionCount = (m.criticRevisionCount || 0) + (approved === false ? 1 : 0);
+                        }
                         return next;
                     }));
                 },
@@ -631,13 +636,20 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                     setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
                 },
-                onProgress: ({ node, phase, elapsed_ms }) => {
-                    setMessages(prev => prev.map(m =>
-                        m.id !== aiMsgId ? m : {
+                onProgress: ({ node, phase, elapsed_ms, approved, feedback, revision_count }) => {
+                    setMessages(prev => prev.map(m => {
+                        if (m.id !== aiMsgId) return m;
+                        const next = {
                             ...m,
-                            graphNodes: [...(m.graphNodes || []), { node, phase, elapsedMs: elapsed_ms }],
+                            graphNodes: [...(m.graphNodes || []), { node, phase, elapsedMs: elapsed_ms, approved, feedback, revision_count }],
+                        };
+                        if (node === 'critic') {
+                            next.criticApproved = approved !== false;
+                            next.criticFeedback = feedback || '';
+                            next.criticRevisionCount = (m.criticRevisionCount || 0) + (approved === false ? 1 : 0);
                         }
-                    ));
+                        return next;
+                    }));
                 },
                 onNodeError: ({ node, text }) => {
                     setMessages(prev => prev.map(m =>

@@ -39,6 +39,7 @@ def add_log_to_db(log_entry: dict) -> None:
         repo.add(
             session_id=session_id,
             user_id=log_entry.get("user_id") or log_entry.get("userId"),
+            agent_id=log_entry.get("agent_id") or log_entry.get("agentId"),
             provider=log_entry.get("provider"),
             model=log_entry.get("model"),
             status=log_entry.get("status", "success"),
@@ -62,11 +63,11 @@ def add_log_to_db(log_entry: dict) -> None:
 
 
 # -- get_all_logs_for_dashboard -----------------------------------------------
-def get_all_logs_for_dashboard(project_id: Optional[str] = None) -> list[dict]:
+def get_all_logs_for_dashboard(project_id: Optional[str] = None, agent_id: Optional[str] = None) -> list[dict]:
     with get_session() as db:
         repo = LogRepository(db)
-        logs = repo.list_logs(limit=2000)
-        
+        logs = repo.list_logs(agent_id=agent_id, limit=2000)
+
         # Format logs for dashboard
         formatted_logs = []
         for log in logs:
@@ -90,7 +91,7 @@ def get_all_logs_for_dashboard(project_id: Optional[str] = None) -> list[dict]:
                 "ip": log.ip_adresi or "unknown",
                 "mac": log.mac_adresi or "unknown",
             })
-            
+
         return formatted_logs
 
 
@@ -314,25 +315,29 @@ def get_system_settings() -> dict:
 # Önceki "her rol chatbot ajanına düşer" yapısı yerine: rol → ajan ID 1:1 eşleşme.
 # `agent_assignments` SistemAyari override mekanizması korunuyor.
 _DEFAULT_ROLE_AGENT_ID = {
-    "supervisor":   "sys_node_supervisor",
-    "rag_search":   "sys_node_rag_search",
-    "aggregator":   "sys_node_aggregator",
-    "error_solver": "sys_node_error_solver",
-    "zli_finder":   "sys_node_zli_finder",
-    "msg_polish":   "sys_node_msg_polish",
-    "n8n_trigger":  "sys_node_n8n_trigger",
+    "supervisor":    "sys_node_supervisor",
+    "rag_search":    "sys_node_rag_search",
+    "aggregator":    "sys_node_aggregator",
+    "error_solver":  "sys_node_error_solver",
+    "zli_finder":    "sys_node_zli_finder",
+    "msg_polish":    "sys_node_msg_polish",
+    "n8n_trigger":   "sys_node_n8n_trigger",
+    "critic":        "sys_node_critic",
+    "skill_reader":  "sys_node_skill_reader",
 }
 
 # Yeni node ajanı silinmiş veya seed çalışmamışsa son çare olarak hangi
 # kind'ın aktif kaydına düşelim
 _FALLBACK_KIND_BY_ROLE = {
-    "supervisor":   "graph_node",
-    "rag_search":   "graph_node",
-    "aggregator":   "graph_node",
-    "error_solver": "graph_node",
-    "zli_finder":   "graph_node",
-    "msg_polish":   "graph_node",
-    "n8n_trigger":  "graph_node",
+    "supervisor":    "graph_node",
+    "rag_search":    "graph_node",
+    "aggregator":    "graph_node",
+    "error_solver":  "graph_node",
+    "zli_finder":    "graph_node",
+    "msg_polish":    "graph_node",
+    "n8n_trigger":   "graph_node",
+    "critic":        "graph_node",
+    "skill_reader":  "graph_node",
 }
 
 
@@ -542,3 +547,142 @@ def add_audit_log(
         )
         db.add(log)
         db.commit()
+
+
+# -- log_agent_execution -------------------------------------------------------
+def log_agent_execution(
+    ajan_rolu: str,
+    *,
+    oturum_kimlik: Optional[str] = None,
+    kullanici_mesaji: Optional[str] = None,
+    intent: Optional[str] = None,
+    intent_confidence: Optional[float] = None,
+    complexity: Optional[str] = None,
+    brief: Optional[str] = None,
+    cikti_ozet: Optional[str] = None,
+    basarili_mi: bool = True,
+    hata_mesaji: Optional[str] = None,
+    sure_ms: Optional[int] = None,
+    prompt_token: Optional[int] = None,
+    completion_token: Optional[int] = None,
+    critic_onayladi_mi: Optional[bool] = None,
+    revision_sayisi: Optional[int] = None,
+) -> None:
+    """Her graph node'unun çalışma kaydını ajan_calisma_siralari tablosuna yazar."""
+    try:
+        from database.sql.models import AjanCalismaSirasi
+        with get_session() as db:
+            kayit = AjanCalismaSirasi(
+                ajan_rolu=ajan_rolu,
+                oturum_kimlik=oturum_kimlik,
+                kullanici_mesaji=(kullanici_mesaji or "")[:500] if kullanici_mesaji else None,
+                intent=intent,
+                intent_confidence=intent_confidence,
+                complexity=complexity,
+                brief=brief,
+                cikti_ozet=(cikti_ozet or "")[:300] if cikti_ozet else None,
+                basarili_mi=basarili_mi,
+                hata_mesaji=hata_mesaji,
+                sure_ms=sure_ms,
+                prompt_token=prompt_token,
+                completion_token=completion_token,
+                critic_onayladi_mi=critic_onayladi_mi,
+                revision_sayisi=revision_sayisi,
+                olusturulma_tarihi=_utcnow(),
+            )
+            db.add(kayit)
+            db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("db_bridge").warning("[log_agent_execution] hata: %s", e)
+
+
+# -- get_agent_execution_logs -------------------------------------------------
+def get_agent_execution_logs(
+    ajan_rolu: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    """AgentConfigPanel için çalışma geçmişini döner."""
+    from database.sql.models import AjanCalismaSirasi
+    from sqlalchemy import select, desc
+    with get_session() as db:
+        q = select(AjanCalismaSirasi)
+        if ajan_rolu:
+            q = q.where(AjanCalismaSirasi.ajan_rolu == ajan_rolu)
+        q = q.order_by(desc(AjanCalismaSirasi.olusturulma_tarihi)).limit(limit)
+        rows = db.scalars(q).all()
+        return [
+            {
+                "kimlik": r.kimlik,
+                "ajan_rolu": r.ajan_rolu,
+                "oturum_kimlik": r.oturum_kimlik,
+                "kullanici_mesaji": r.kullanici_mesaji,
+                "intent": r.intent,
+                "intent_confidence": r.intent_confidence,
+                "complexity": r.complexity,
+                "brief": r.brief,
+                "cikti_ozet": r.cikti_ozet,
+                "basarili_mi": r.basarili_mi,
+                "hata_mesaji": r.hata_mesaji,
+                "sure_ms": r.sure_ms,
+                "prompt_token": r.prompt_token,
+                "completion_token": r.completion_token,
+                "critic_onayladi_mi": r.critic_onayladi_mi,
+                "revision_sayisi": r.revision_sayisi,
+                "olusturulma_tarihi": r.olusturulma_tarihi,
+            }
+            for r in rows
+        ]
+
+
+# -- get_conversation_traces --------------------------------------------------
+def get_conversation_traces(limit: int = 30) -> list[dict]:
+    """
+    Sohbet bazlı ajan iz raporu.
+    Her benzersiz oturum_kimlik için: kullanıcı mesajı + o sohbette çalışan
+    tüm ajan adımlarını kronolojik sırayla döner.
+    """
+    from database.sql.models import AjanCalismaSirasi
+    from sqlalchemy import select, desc
+    with get_session() as db:
+        # Son N konuşmada olan tüm kayıtları çek
+        rows = db.scalars(
+            select(AjanCalismaSirasi)
+            .order_by(desc(AjanCalismaSirasi.olusturulma_tarihi))
+            .limit(limit * 20)  # buffer — per session may have many rows
+        ).all()
+
+    # Group by session
+    sessions: dict = {}
+    for r in rows:
+        sid = r.oturum_kimlik or "bilinmiyor"
+        if sid not in sessions:
+            sessions[sid] = {
+                "oturum_kimlik": sid,
+                "kullanici_mesaji": r.kullanici_mesaji,
+                "baslangi_tarihi": r.olusturulma_tarihi,
+                "intent": r.intent,
+                "complexity": r.complexity,
+                "adimlar": [],
+            }
+        sessions[sid]["adimlar"].append({
+            "kimlik": r.kimlik,
+            "ajan_rolu": r.ajan_rolu,
+            "basarili_mi": r.basarili_mi,
+            "sure_ms": r.sure_ms,
+            "prompt_token": r.prompt_token,
+            "completion_token": r.completion_token,
+            "cikti_ozet": r.cikti_ozet,
+            "hata_mesaji": r.hata_mesaji,
+            "critic_onayladi_mi": r.critic_onayladi_mi,
+            "revision_sayisi": r.revision_sayisi,
+            "olusturulma_tarihi": r.olusturulma_tarihi,
+        })
+
+    # Sort sessions by start time desc, trim to limit
+    sorted_sessions = sorted(sessions.values(), key=lambda s: s["baslangi_tarihi"] or "", reverse=True)[:limit]
+    # Sort each session's steps chronologically
+    for s in sorted_sessions:
+        s["adimlar"].sort(key=lambda a: a["olusturulma_tarihi"] or "")
+
+    return sorted_sessions

@@ -38,8 +38,54 @@ from ..llm_adapter import call_llm, build_messages
 logger = get_logger("agent_graph.supervisor")
 
 
+# ── Hazır cevap DB cache (60 sn TTL) ────────────────────────────────────────
+import time as _time
+
+_CANNED_CACHE: list[dict] | None = None
+_CANNED_CACHE_TS: float = 0.0
+_CANNED_TTL = 60.0
+
+
+def invalidate_canned_cache() -> None:
+    """settings.py POST endpoint'i kayıt sonrası çağırır."""
+    global _CANNED_CACHE, _CANNED_CACHE_TS
+    _CANNED_CACHE = None
+    _CANNED_CACHE_TS = 0.0
+
+
+def _load_canned_from_db() -> list[dict]:
+    global _CANNED_CACHE, _CANNED_CACHE_TS
+    now = _time.time()
+    if _CANNED_CACHE is not None and (now - _CANNED_CACHE_TS) < _CANNED_TTL:
+        return _CANNED_CACHE
+    try:
+        from database.sql.session import get_session
+        from database.sql.models import SistemAyari
+        from sqlalchemy import select
+        with get_session() as db:
+            row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "hazir_cevaplar"))
+            _CANNED_CACHE = row.deger if row and isinstance(row.deger, list) else []
+    except Exception as e:
+        logger.debug("[supervisor] hazir_cevaplar DB okunamadı: %s", e)
+        _CANNED_CACHE = _CANNED_CACHE or []
+    _CANNED_CACHE_TS = now
+    return _CANNED_CACHE
+
+
+def _check_db_canned(msg: str) -> str | None:
+    """DB'deki aktif kayıtlarda eşleşen trigger varsa cevabı döner."""
+    normalized = (msg or "").strip().lower()
+    for item in _load_canned_from_db():
+        if not item.get("active", True):
+            continue
+        for trigger in (item.get("triggers") or []):
+            if normalized == trigger.strip().lower():
+                return item.get("response") or ""
+    return None
+
+
 # Geçerli intent değerleri (LLM classifier çıktısı için — 'sohbet' deterministik fast-path)
-_VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa"}
+_VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa", "skill_query"}
 
 # Komut → intent (deterministik)
 _COMMAND_INTENT_MAP = {
@@ -71,15 +117,25 @@ _CHITCHAT_RE = re.compile(
 
 
 def _is_chitchat(msg: str) -> bool:
-    """Çok kısa ve sohbet kalıbına oturan mesaj mı? (selam, nbr, ok, teşekkürler)"""
+    """Çok kısa ve sohbet kalıbına oturan mesaj mı?
+    Önce regex fast-path, ardından DB trigger listesi."""
     text = (msg or "").strip()
-    if not text or len(text) > 30:
+    if not text or len(text) > 60:
         return False
-    return bool(_CHITCHAT_RE.match(text))
+    if bool(_CHITCHAT_RE.match(text)):
+        return True
+    # DB'deki aktif trigger'larla eşleşiyor mu?
+    return _check_db_canned(text) is not None
 
 
 def _canned_chitchat(msg: str) -> str:
-    """Chitchat için LLM çağrısı yapmadan hazır cevap üret."""
+    """Chitchat için LLM çağrısı yapmadan hazır cevap üret.
+    Önce DB kayıtlarını kontrol eder, eşleşme yoksa hardcoded fallback'e düşer."""
+    db_resp = _check_db_canned(msg)
+    if db_resp:
+        return db_resp
+
+    # Hardcoded fallback (DB'de hiç kayıt yoksa devreye girer)
     m = (msg or "").strip().lower().rstrip(".!? ")
     if re.match(r"(selam|merhaba|mrb|slm|hey|hi|hello|hola|günaydın|iyi günler|iyi akşamlar|iyi geceler|tünaydın|hayırlı)", m):
         return "Merhaba! Nasıl yardımcı olabilirim?"
@@ -89,6 +145,8 @@ def _canned_chitchat(msg: str) -> str:
         return "Güle güle! İyi çalışmalar."
     if re.match(r"(naber|nbr|n[' ]?aber|naptın|ne haber|nasılsın|nslsn)", m):
         return "İyiyim, teşekkürler! Nasıl yardımcı olabilirim?"
+    if re.match(r"(tamam|ok|peki|oldu|anladım)", m):
+        return "Anlaşıldı! Başka yardımcı olabileceğim bir konu var mı?"
     return "Peki! Başka bir konuda yardımcı olabilir miyim?"
 
 
@@ -105,19 +163,22 @@ _INTENT_PLAN = {
     "rapor_arama":      [("rag_search", True), ("zli_finder", False)],
     "n8n":              [("n8n_trigger", False), ("rag_search", True)],
     "dosya_qa":         [("rag_search", False)],
+    "skill_query":      [("skill_reader", False)],
 }
 
 
 _CLASSIFIER_SYSTEM_FALLBACK = (
     "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
     "kategorilerden birini seçersin:\n\n"
-    "- general: Şirkete/SAP'a özgü domain sorusu. SAP transaction kodu "
+    "- general: Şirkete, iş süreçlerine, prosedürlere, politikalara, SAP'a veya "
+    "şirket bilgi tabanındaki herhangi bir konuya ilişkin soru. SAP transaction kodu "
     "(CS01, FB60, ME083...), SAP modülü (MM, SD, FI, CO, PP, HR, PM...), "
-    "iş süreci, BPMN akışı veya kurumsal sistem hakkında bilgi/tanım talebi. "
-    "Bu sorular şirket bilgi tabanında aranmalı.\n"
-    "- serbest: Genel bilgi/teknoloji/kavram sorusu, şirkete özgü bağlam "
-    "gerektirmiyor. Ör: 'Python nedir', 'REST API ne demek', 'Excel'de VLOOKUP', "
-    "'yapay zeka nasıl çalışır'. Bilgi tabanı aramasına gerek yok.\n"
+    "iş süreci, BPMN akışı, kurumsal sistem, insan kaynakları, finans, bütçe, "
+    "izin, görevlendirme, tedarik veya diğer kurumsal konular dahildir. "
+    "Belirsiz durumlarda bu kategoriyi seç — bilgi tabanında aranması zararsız.\n"
+    "- serbest: AÇIKÇA genel bilgi/teknoloji sorusu; Python, Java, matematik, "
+    "fizik, tarih, coğrafya, internet teknolojileri gibi konular ve şirkete "
+    "HİÇBİR bağlantısı olmayan sorular. Bilgi tabanı aramasına gerek yok.\n"
     "- hata_cozumu: Bir SİSTEM HATASI/ARIZA bildirimi. Kullanıcı 'şu hata "
     "veriyor', 'dump alıyor', 'çalışmıyor', 'ekran kilitlendi' gibi sorun "
     "ifadeleri kullanıyor. Sadece kod (ör. ME083) verilse bile bağlam bir "
@@ -126,12 +187,18 @@ _CLASSIFIER_SYSTEM_FALLBACK = (
     "rapor arama.\n"
     "- n8n: net bir otomasyon tetikleme isteği (toplantı kaydet, rapor "
     "gönder, görev oluştur).\n"
-    "- dosya_qa: belirli bir dosya hakkında soru.\n\n"
-    "KARAR KURALI: SAP kodu/modülü/kurumsal terim yoksa → serbest. "
-    "Varsa ve soru sorun bildirimi değilse → general.\n\n"
+    "- dosya_qa: belirli bir dosya hakkında soru.\n"
+    "- skill_query: sistemin yetenekleri, araçları veya nasıl kullanıldığı hakkında "
+    "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var', 'bana nasıl yardım edersin').\n\n"
+    "KARAR KURALI: Açıkça genel bilgi sorusu (Python, matematik, tarih vs.) ise → serbest. "
+    "Şirkete/iş süreçlerine ilişkin olabilecek her türlü soru → general. "
+    "Belirsiz → general (bilgi tabanını aramak her zaman güvenli). "
+    "Sistem yetenekleri sorusuysa → skill_query.\n\n"
     "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
-    '{"intent": "<kategori>", "needs_polish": <bool>, "reasoning": '
-    '"<1-cümle-gerekçe>"}\n\n'
+    '{"intent": "<kategori>", "confidence": 0.0-1.0, "complexity": "low|medium|high", '
+    '"needs_polish": <bool>, "reasoning": "<1-cümle-gerekçe>"}\n\n'
+    "confidence: sınıflandırma güven skoru (0.8+ → eminsin, 0.5–0.8 → belirsiz, <0.5 → çok belirsiz).\n"
+    "complexity: low=kısa/basit soru, medium=açıklama/adım gerektiriyor, high=çok boyutlu analiz.\n"
     "needs_polish: cevabın tonunun resmi/uzun olması gerekiyorsa true, "
     "kısa/teknik/JSON cevap için false."
 )
@@ -140,14 +207,40 @@ _CLASSIFIER_SYSTEM_FALLBACK = (
 # LLM classifier "hata_cozumu" döndürdüğünde gerçekten hata bildirimi mi
 # diye doğrulamak için kullanılan keyword listesi.
 _ERROR_KEYWORDS = (
+    # tam formlar
     "hata veriyor", "hata alıyor", "hata mesajı", "hata kodu",
     "dump", "çalışmıyor", "kilitlendi", "çöktü", "patladı", "donuyor",
     "error", "exception", "şu hata", "bu hata", "yeni hata",
     "kayıt edilmiyor", "kaydedilmiyor", "açılmıyor", "kapanıyor",
     "girilmiyor", "yazmıyor", "vermiyor cevap",
+    # Türkçe çekim ekleri — "hatası alıyorum", "hatasını", "hatayı alıyorum"
+    "hatası alıyor", "hatayı alıyor", "hata alıyorum", "hata alıyoruz",
+    "hata çıkıyor", "hata geliyor", "hata fırlatıyor",
+    "dump alıyor", "dump veriyor", "crash", "çalışmıyor",
 )
 _DEFINITION_RE = re.compile(
     r"\b(nedir|ne demek|ne işe yarar|ne yapar|nasıl çalışır|nasıl kullanılır|açıkla|tanımla|anlat|hakkında bilgi|nedirler)\b",
+    re.IGNORECASE,
+)
+
+# Açıkça genel bilgi alanları — SAP/şirketle bağlantısı olmayan tanım soruları
+_GENERIC_KNOWLEDGE_RE = re.compile(
+    r"\b(python|java|javascript|typescript|html|css|sql|linux|ubuntu|windows|android|ios|"
+    r"matematik|fizik|kimya|biyoloji|tarih|coğrafya|felsefe|psikoloji|sosyoloji|"
+    r"excel|word|powerpoint|outlook|teams|"
+    r"internet|wifi|bluetooth|gpu|cpu|ram|router|vpn|"
+    r"ingilizce|fransızca|almanca|ispanyolca|italyanca|rusça|arapça|"
+    r"yapay\s+zeka|makine\s+öğrenimi|derin\s+öğrenme|neural\s+network|"
+    r"blockchain|kripto|bitcoin)\b",
+    re.IGNORECASE,
+)
+
+# Türkçe çekimli hata ifadeleri — "ME083 hatası alıyorum", "şu hatayı alıyor"
+# \w* → hatası / hatayı / hatasını / hatadan gibi tüm çekim eklerini yakalar
+_ERROR_PATTERN_RE = re.compile(
+    r"\bhata\w*\s+(alıyor|alıyorum|alıyoruz|veriyor|veriyor|çıkıyor|geliyor|aldım|verdim|çıktı)"
+    r"|\b(dump|crash)\b"
+    r"|\b(sistem|ekran|uygulama|modül)\s+(çöktü|kilitlendi|dondu|çalışmıyor)\b",
     re.IGNORECASE,
 )
 
@@ -241,8 +334,21 @@ async def _classify_with_llm(user_message: str, agent_config: dict | None = None
                 intent = "general"
                 reasoning = "Rapor sinyali yok — rapor_arama'dan general'a override."
 
+        raw_confidence = parsed.get("confidence", 0.8)
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = 0.8
+        confidence = max(0.0, min(1.0, confidence))
+
+        raw_complexity = (parsed.get("complexity") or "medium").strip().lower()
+        if raw_complexity not in ("low", "medium", "high"):
+            raw_complexity = "medium"
+
         return {
             "intent": intent,
+            "confidence": confidence,
+            "complexity": raw_complexity,
             "needs_polish": bool(parsed.get("needs_polish", False)),
             "reasoning": reasoning,
             "tokens": {
@@ -280,7 +386,10 @@ def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
         return "dosya_qa", "Dosya bağlamı verilmiş → dosya QA modu."
 
     # Hata anahtar kelimeleri (gerçek arıza bildirimi sinyalleri)
-    has_error_kw = any(kw in msg for kw in _ERROR_KEYWORDS)
+    has_error_kw = (
+        any(kw in msg for kw in _ERROR_KEYWORDS)
+        or bool(_ERROR_PATTERN_RE.search(msg))
+    )
 
     # Tanım/açıklama sorusu mu? (X nedir, X ne yapar, X nasıl çalışır, X'i açıkla)
     is_definition_q = bool(_DEFINITION_RE.search(msg))
@@ -300,16 +409,59 @@ def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
                                  "otomatik gönder", "tetikle")):
         return "n8n", "Bilinen otomasyon ifadesi tespit edildi."
 
+    # Sistem yeteneği sorgulama
+    if any(kw in msg for kw in (
+        "neler yapabilirsin", "ne yapabilirsin", "hangi özellik", "yeteneklerin",
+        "nasıl yardım", "ne biliyorsun", "skill", "özelliğin", "araçların",
+        "hakkında anlat", "tanıtır mısın", "nasıl çalışıyorsun",
+    )):
+        return "skill_query", "Sistem yeteneği sorgulama tespit edildi."
+
     # Domain sinyali varsa (SAP kodu, SAP modülü) → bilgi tabanına bak (general)
     if _has_domain_signal(msg):
         return "general", "SAP/domain sinyali tespit edildi — bilgi tabanına bak."
 
-    # Tanım sorusu ama domain sinyali yok → genel bilgi, RAG gereksiz (serbest)
-    if is_definition_q:
-        return "serbest", "Tanım sorusu ama SAP/domain sinyali yok — genel bilgi, RAG atla."
+    # Açıkça genel bilgi sorusu (teknoloji, fen, coğrafya, tarih, matematik...)
+    # ve SAP/şirkete özgü hiçbir bağlam yok → serbest
+    if is_definition_q and _GENERIC_KNOWLEDGE_RE.search(msg):
+        return "serbest", "Açıkça genel bilgi/teknoloji sorusu — RAG atla."
 
-    # Hiçbir sinyal yoksa da RAG çalıştırma
-    return "serbest", "Belirgin domain sinyali yok → serbest mod, RAG atla."
+    # SAP dışı şirket belgesi (HR, finans, prosedür) olabilir — taramak zararsız
+    return "general", "Belirgin sinyal yok → bilgi tabanı aramasını dene."
+
+
+def _make_plan_briefs(intent: str, user_msg: str, plan: list[dict]) -> dict[str, str]:
+    """Her specialist node için kısa odak talimatı üretir (rule-based, sıfır LLM maliyeti)."""
+    msg_snippet = (user_msg or "")[:120].strip()
+    briefs: dict[str, str] = {}
+    for item in plan:
+        node = item.get("node", "")
+        if node == "rag_search":
+            briefs[node] = (
+                f"Şu soruyla ilgili bilgi tabanında ara: «{msg_snippet}». "
+                "Doğrudan ilgili paragrafları ve sayfa numaralarını döndür."
+            )
+        elif node == "error_solver":
+            briefs[node] = (
+                f"Şu hatayı analiz et: «{msg_snippet}». "
+                "Hata kodunu tespit et, adım adım çözüm öner, ilgili T-kodu ekle."
+            )
+        elif node == "zli_finder":
+            briefs[node] = (
+                f"Şu isteğe uygun Z'li rapor bul: «{msg_snippet}». "
+                "En iyi eşleşen rapor kodunu ve kısa açıklamasını döndür."
+            )
+        elif node == "n8n_trigger":
+            briefs[node] = (
+                f"Şu otomasyon isteğini tetikle: «{msg_snippet}». "
+                "Uygun workflow'u seç ve parametreleri doldur."
+            )
+        elif node == "skill_reader":
+            briefs[node] = (
+                f"Sistemin yeteneklerini ve araçlarını özetle. "
+                f"Kullanıcı şunu sordu: «{msg_snippet}»"
+            )
+    return briefs
 
 
 def _plan_for_intent(intent: str) -> list[dict]:
@@ -342,7 +494,10 @@ async def supervisor_node(state: AgentState) -> dict:
             logger.warning("[supervisor] cost cap aşıldı, plan iptal edildi")
             return {
                 "intent": "general",
+                "intent_confidence": 1.0,
+                "complexity": "low",
                 "plan": [],
+                "plan_briefs": {},
                 "plan_reasoning": "cost_cap_exceeded",
                 "needs_polish": False,
                 "cost_capped": True,
@@ -359,12 +514,15 @@ async def supervisor_node(state: AgentState) -> dict:
     user_msg = state.get("user_message") or state.get("original_message") or ""
     has_file = bool(state.get("file_name"))
     tokens = {"p": 0, "c": 0}
+    intent_confidence = 1.0
+    complexity = "low"
 
     # 1) Hızlı aksiyon komutu varsa deterministik
     if cmd in _COMMAND_INTENT_MAP:
         intent = _COMMAND_INTENT_MAP[cmd]
         reasoning = f"Hızlı aksiyon '{cmd}' → intent='{intent}'."
         needs_polish = False  # JSON cevap, polish istemez
+        complexity = "medium"
     elif _is_chitchat(user_msg):
         # Kısa sohbet (selam, nbr, teşekkürler, ok ...) — LLM çağrısı hiç yapılmaz.
         # Supervisor hazır cevabı final_reply'a yazar; aggregator LLM atlar.
@@ -375,7 +533,10 @@ async def supervisor_node(state: AgentState) -> dict:
         logger.info("[supervisor] chitchat fast-path → canned response (%d ms)", elapsed_ms)
         return {
             "intent": "sohbet",
+            "intent_confidence": 1.0,
+            "complexity": "low",
             "plan": [],
+            "plan_briefs": {},
             "plan_reasoning": reasoning,
             "needs_polish": False,
             "final_reply": _canned_chitchat(user_msg),
@@ -397,6 +558,8 @@ async def supervisor_node(state: AgentState) -> dict:
             reasoning = f"LLM: {llm_result['reasoning']}"
             needs_polish = llm_result["needs_polish"]
             tokens = llm_result["tokens"]
+            intent_confidence = llm_result.get("confidence", 0.8)
+            complexity = llm_result.get("complexity", "medium")
         else:
             # 3) Rule-based fallback (node_config.fallback_to_rules ile devre dışı bırakılabilir)
             _cfg = (supervisor_cfg or {}).get("node_config") or {}
@@ -421,11 +584,12 @@ async def supervisor_node(state: AgentState) -> dict:
         needs_polish = False
 
     plan = _plan_for_intent(intent)
+    plan_briefs = _make_plan_briefs(intent, user_msg, plan)
     elapsed_ms = int((time.time() - t0) * 1000)
 
     logger.info(
-        "[supervisor] intent=%s plan=%s polish=%s (%d ms)",
-        intent,
+        "[supervisor] intent=%s conf=%.2f complexity=%s plan=%s polish=%s (%d ms)",
+        intent, intent_confidence, complexity,
         [p["node"] for p in plan],
         needs_polish,
         elapsed_ms,
@@ -433,7 +597,10 @@ async def supervisor_node(state: AgentState) -> dict:
 
     return {
         "intent": intent,
+        "intent_confidence": intent_confidence,
+        "complexity": complexity,
         "plan": plan,
+        "plan_briefs": plan_briefs,
         "plan_reasoning": reasoning,
         "needs_polish": needs_polish,
         "agent_configs": agent_configs,

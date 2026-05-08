@@ -63,6 +63,33 @@ def _run_schema_migrations(eng) -> None:
         "ALTER TABLE ai_modelleri ADD COLUMN IF NOT EXISTS tedarikci VARCHAR(64)",
         # AIAgent: model kilidi (LG.7)
         "ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS model_locked BOOLEAN DEFAULT FALSE",
+        # AjanCalismaSirasi: per-node execution log (Google Expert plan)
+        """CREATE TABLE IF NOT EXISTS ajan_calisma_siralari (
+            kimlik VARCHAR(36) PRIMARY KEY,
+            ajan_rolu VARCHAR(64) NOT NULL,
+            oturum_kimlik VARCHAR(64),
+            kullanici_mesaji VARCHAR(500),
+            intent VARCHAR(64),
+            intent_confidence FLOAT,
+            complexity VARCHAR(16),
+            brief TEXT,
+            cikti_ozet VARCHAR(300),
+            basarili_mi BOOLEAN NOT NULL DEFAULT TRUE,
+            hata_mesaji TEXT,
+            sure_ms INTEGER,
+            prompt_token INTEGER,
+            completion_token INTEGER,
+            critic_onayladi_mi BOOLEAN,
+            revision_sayisi INTEGER,
+            olusturulma_tarihi VARCHAR(32) NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_ajan_calisma_rolu ON ajan_calisma_siralari (ajan_rolu)",
+        "CREATE INDEX IF NOT EXISTS ix_ajan_calisma_oturum ON ajan_calisma_siralari (oturum_kimlik)",
+        "CREATE INDEX IF NOT EXISTS ix_ajan_calisma_tarih ON ajan_calisma_siralari (olusturulma_tarihi)",
+        "CREATE INDEX IF NOT EXISTS ix_ajan_calisma_rolu_tarih ON ajan_calisma_siralari (ajan_rolu, olusturulma_tarihi)",
+        # ApiLogu: ajan bazlı maliyet filtresi için (LG.8)
+        "ALTER TABLE api_loglari ADD COLUMN IF NOT EXISTS ajan_kimlik VARCHAR(36)",
+        "CREATE INDEX IF NOT EXISTS ix_api_loglari_ajan_kimlik ON api_loglari (ajan_kimlik)",
     ]
     # Her statement kendi transaction'ında çalışsın — eski tek-connection
     # döngüsünde bir stmt fail ederse sonraki tüm stmt'ler PostgreSQL'in

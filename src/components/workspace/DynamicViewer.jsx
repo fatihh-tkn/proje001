@@ -19,6 +19,7 @@ const TalepYonetimViewer = lazy(() => import('../settings/talepler/TalepYonetimV
 const ErrorManagementViewer = lazy(() => import('../settings/errors/ErrorManagementViewer'));
 const MyResolvedErrorsViewer = lazy(() => import('../settings/errors/MyResolvedErrorsViewer'));
 const MyRequestsViewer = lazy(() => import('../settings/talepler/MyRequestsViewer'));
+const RestrictionsViewer = lazy(() => import('../settings/restrictions/RestrictionsViewer'));
 
 export const DynamicViewer = ({ tab, onOpenFile }) => {
     return (
@@ -54,8 +55,9 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
             {tab.type === 'error-management' && <ErrorManagementViewer currentUser={tab.meta?.currentUser} />}
             {tab.type === 'my-errors' && <MyResolvedErrorsViewer currentUser={tab.meta?.currentUser} />}
             {tab.type === 'my-requests' && <MyRequestsViewer currentUser={tab.meta?.currentUser} />}
+            {tab.type === 'restrictions' && <RestrictionsViewer />}
 
-            {tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'error-management' && tab.type !== 'my-errors' && tab.type !== 'my-requests' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'restrictions' && tab.type !== 'meetings' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'error-management' && tab.type !== 'my-errors' && tab.type !== 'my-requests' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

@@ -3,20 +3,22 @@ database/vector/hybrid_search.py
 ────────────────────────────────────────────────────────────────────
 Hibrit Arama Motoru — Vektör + Full-Text Search (RRF Birleştirme)
 
-Mimari:
-  1. Vektör Araması (pgvector cosine_distance) → Anlamsal benzerlik
-  2. Full-Text Search (tsvector + tsquery)     → Kelime/terim eşleştirme
-  3. Reciprocal Rank Fusion (RRF)              → İki sonuç kümesini birleştirir
-  4. Re-Ranking (Cross-Encoder)                → En alakalı sonuçları üste çıkarır
+Pipeline:
+  1. Vektör Araması   (pgvector cosine_distance)   → Anlamsal benzerlik
+  2. Full-Text Arama  (websearch_to_tsquery / OR)  → Kelime/terim eşleştirme
+  3. RRF Birleştirme  (k=60)                       → İki listeyi puan tabanlı birleştir
+  4. Re-Ranking       (multilingual Cross-Encoder) → En alakalıyı üste çıkar
+  5. Belge Çeşitliliği (max_per_doc)              → Aynı belgeden fazla yineleme önle
 
-RRF Formülü: score(d) = Σ 1 / (k + rank_i(d))
-  k = 60 (standart sabit, aşırı sıra baskısını engeller)
+NOT: `expand_inline_context=False` (varsayılan) — inline metin genişletme
+     devre dışı; ai_service NetworkX üzerinden genişletmeyi kendiüstlenir.
+     Sadece NetworkX grafiği olmayan doğrudan kullanımlarda True yapın.
 """
 
 import logging
 from typing import Any, Optional
 
-from sqlalchemy import select, text, func
+from sqlalchemy import select, text
 from database.sql.session import get_session
 from database.sql.models import VektorParcasi
 from database.vector.embedding_manager import get_embeddings
@@ -74,6 +76,28 @@ logger = logging.getLogger(__name__)
 
 # RRF sabit parametresi
 _RRF_K = 60
+
+
+def _apply_document_diversity(
+    results: list[dict],
+    max_per_doc: int = 3,
+) -> list[dict]:
+    """
+    Aynı belgeden en fazla `max_per_doc` chunk döndürür.
+    Reranker zaten en iyi sıralamayı yapmıştır; burada sadece tekrar kırpılır.
+    Bu, LLM'e aynı belgeden 10 benzer paragraf gitmesini önler.
+    """
+    if max_per_doc <= 0:
+        return results
+    doc_count: dict[str, int] = {}
+    kept: list[dict] = []
+    for r in results:
+        doc_id = str(r.get("belge_kimlik") or "")
+        count = doc_count.get(doc_id, 0)
+        if count < max_per_doc:
+            kept.append(r)
+            doc_count[doc_id] = count + 1
+    return kept
 
 
 def _vector_search(
@@ -140,20 +164,24 @@ def _fulltext_search(
     PostgreSQL tsvector/tsquery ile Full-Text arama.
     Kelime eşleştirme — özel isimler, kodlar, numaralar için mükemmel.
 
+    Strateji:
+      1. websearch_to_tsquery (örtük AND + tırnak + cümle desteği) — hassas
+      2. Sonuç yoksa to_tsquery OR mantığına fallback               — geniş kapsam
+
     allowed_doc_ids: Sorgulama yapılabilecek belge kimliklerinin listesi (havuz filtresi).
                      None ise tüm belgeler taranır.
     """
     results = []
 
-    words = [w.strip() for w in query.split() if len(w.strip()) >= 2]
+    # En az 3 karakter — stop-word gürültüsünü azaltır
+    words = [w.strip() for w in query.split() if len(w.strip()) >= 3]
     if not words:
         return []
 
     if allowed_doc_ids is not None and not allowed_doc_ids:
-        return []  # Hiç erişilebilir belge yok
+        return []
 
-    # OR mantığı kullan (daha toleranslı)
-    tsquery_str = " | ".join(words)
+    tsquery_or = " | ".join(words)
 
     try:
         with get_session() as db:
@@ -164,30 +192,41 @@ def _fulltext_search(
             else:
                 pool_clause = ""
 
-            sql = text(f"""
-                SELECT
-                    kimlik,
-                    chromadb_kimlik,
-                    icerik,
-                    belge_kimlik,
-                    sayfa_no,
-                    konum_imi,
-                    meta,
-                    ts_rank_cd(arama_vektoru, to_tsquery('simple', :tsq)) AS rank_score
+            base_params: dict = {"limit": n_results}
+            if doc_id_filter:
+                base_params["doc_id"] = doc_id_filter
+            elif allowed_doc_ids is not None:
+                base_params["allowed_ids"] = allowed_doc_ids
+
+            def _run(sql_tmpl: str, extra_params: dict) -> list:
+                return db.execute(text(sql_tmpl), {**base_params, **extra_params}).all()
+
+            # Birincil: websearch_to_tsquery — "bütçe onay" → 'bütçe' & 'onay'
+            sql_web = f"""
+                SELECT kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
+                       konum_imi, meta,
+                       ts_rank_cd(arama_vektoru, websearch_to_tsquery('simple', :wq)) AS rank_score
                 FROM vektor_parcalari
-                WHERE arama_vektoru @@ to_tsquery('simple', :tsq)
+                WHERE arama_vektoru @@ websearch_to_tsquery('simple', :wq)
                 {pool_clause}
                 ORDER BY rank_score DESC
                 LIMIT :limit
-            """)
+            """
+            rows = _run(sql_web, {"wq": query})
 
-            params: dict = {"tsq": tsquery_str, "limit": n_results}
-            if doc_id_filter:
-                params["doc_id"] = doc_id_filter
-            elif allowed_doc_ids is not None:
-                params["allowed_ids"] = allowed_doc_ids
-
-            rows = db.execute(sql, params).all()
+            # Fallback: OR mantığı — daha geniş hatırlama (recall)
+            if not rows:
+                sql_or = f"""
+                    SELECT kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
+                           konum_imi, meta,
+                           ts_rank_cd(arama_vektoru, to_tsquery('simple', :tsq)) AS rank_score
+                    FROM vektor_parcalari
+                    WHERE arama_vektoru @@ to_tsquery('simple', :tsq)
+                    {pool_clause}
+                    ORDER BY rank_score DESC
+                    LIMIT :limit
+                """
+                rows = _run(sql_or, {"tsq": tsquery_or})
 
             for row in rows:
                 results.append({
@@ -247,17 +286,19 @@ def hybrid_search(
     n_results: int = 10,
     doc_id_filter: str | None = None,
     use_reranker: bool = True,
-    vector_weight: int = 20,
-    fts_weight: int = 20,
+    vector_weight: int = 40,
+    fts_weight: int = 40,
     allowed_doc_ids: list[str] | None = None,
+    max_per_doc: int = 3,
+    expand_inline_context: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Ana Hybrid Search fonksiyonu.
 
     1. Vektör araması (semantik)
-    2. Full-Text araması (kelime eşleştirme)
+    2. Full-Text araması (websearch → OR fallback)
     3. RRF ile birleştirme
-    4. (Opsiyonel) Cross-Encoder Re-Ranking
+    4. (Opsiyonel) Cross-Encoder Re-Ranking (çok dilli model)
 
     Parameters
     ----------
@@ -270,9 +311,9 @@ def hybrid_search(
     use_reranker : bool
         Cross-Encoder re-ranking aktif mi
     vector_weight : int
-        Vektör aramada kaç aday çekilecek
+        Vektör aramada kaç aday çekilecek (default 40 — daha geniş pool)
     fts_weight : int
-        FTS aramada kaç aday çekilecek
+        FTS aramada kaç aday çekilecek (default 40)
     allowed_doc_ids : list[str] | None
         Havuz filtresi — sadece bu belge kimliklerinde ara.
         None → tüm belgeler taranır (eski davranış).
@@ -285,7 +326,7 @@ def hybrid_search(
         Her dict: kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
                   konum_imi, meta, rrf_score, in_vector, in_fts
     """
-    logger.info(f"[HybridSearch] Sorgu: '{query[:80]}...' | top_k={n_results}")
+    logger.info(f"[HybridSearch] Sorgu: '{query[:80]}...' | top_k={n_results} | pool={vector_weight}+{fts_weight}")
 
     # Havuz tamamen boşsa aramaya gerek yok
     if allowed_doc_ids is not None and len(allowed_doc_ids) == 0:
@@ -332,7 +373,18 @@ def hybrid_search(
         except Exception as e:
             logger.warning(f"[HybridSearch] Re-Ranking hatası, RRF sırasıyla devam: {e}")
 
-    # 5. Small-to-Big Retrieval (Bağlam Genişletme)
-    final_results = _expand_context_window(final_results)
+    # 5. Belge çeşitlilik filtresi — aynı belgeden fazla yinelemeyi önle
+    if max_per_doc > 0:
+        before = len(final_results)
+        final_results = _apply_document_diversity(final_results, max_per_doc=max_per_doc)
+        if len(final_results) < before:
+            logger.info(
+                "[HybridSearch] Belge çeşitlilik filtresi: %d → %d (max_per_doc=%d)",
+                before, len(final_results), max_per_doc,
+            )
+
+    # 6. Inline bağlam genişletme — sadece NetworkX olmayan doğrudan kullanımda açık
+    if expand_inline_context:
+        final_results = _expand_context_window(final_results)
 
     return final_results

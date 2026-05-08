@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
     BrainCircuit, ChevronDown, ChevronUp, Check, FileText, Database,
     Search, Sparkles, MessageSquare, Network, Image as ImageIcon, Square, Paperclip, Cpu, Clock, Zap,
-    GitBranch, Wand2, Wrench, Webhook, AlertTriangle, Loader
+    GitBranch, Wand2, Wrench, Webhook, AlertTriangle, Loader, ShieldCheck, ShieldAlert, RefreshCw
 } from 'lucide-react';
 
 // LangGraph node adı → ikon + insan-okur etiket
@@ -13,6 +13,7 @@ const GRAPH_NODE_META = {
     zli_finder:   { icon: Database,   label: "Z'li rapor sorgusu",    accent: '#0891b2' },
     n8n_trigger:  { icon: Webhook,    label: 'Otomasyon karar motoru', accent: '#16a34a' },
     aggregator:   { icon: Sparkles,   label: 'Cevap üretildi',        accent: '#2563eb' },
+    critic:       { icon: ShieldCheck, label: 'Denetleyici inceledi', accent: '#d97706' },
     msg_polish:   { icon: Wand2,      label: 'Mesaj revize edildi',   accent: '#a855f7' },
 };
 
@@ -85,17 +86,44 @@ const ThinkingProcessPanel = ({ message }) => {
             const seen = new Set(['supervisor']);
             for (const ev of graphNodes) {
                 if (!ev || ev.phase !== 'completed') continue;
-                if (seen.has(ev.node)) continue;
+                // Critic birden fazla kez çalışabilir — her turu göster
+                if (ev.node !== 'critic' && seen.has(ev.node)) continue;
                 seen.add(ev.node);
-                const meta = GRAPH_NODE_META[ev.node] || {
-                    icon: Cpu, label: ev.node, accent: '#64748b',
-                };
-                arr.push({
-                    icon: meta.icon,
-                    label: meta.label,
-                    detail: typeof ev.elapsedMs === 'number' ? fmtDuration(ev.elapsedMs) : null,
-                    accent: meta.accent,
-                });
+
+                if (ev.node === 'critic') {
+                    const approved = ev.approved !== false;
+                    arr.push({
+                        icon: approved ? ShieldCheck : ShieldAlert,
+                        label: approved
+                            ? 'Denetleyici onayladı'
+                            : `Denetleyici revizyon istedi (tur ${ev.revision_count || 1})`,
+                        detail: ev.feedback
+                            ? ev.feedback
+                            : (approved ? null : null),
+                        accent: approved ? '#059669' : '#f59e0b',
+                        isCriticRevision: !approved,
+                    });
+                    // Revizyon varsa aggregator yeniden çalışacak — görsel ayrım
+                    if (!approved) {
+                        arr.push({
+                            icon: RefreshCw,
+                            label: 'Cevap yeniden üretiliyor…',
+                            detail: null,
+                            accent: '#6366f1',
+                            isActive: false,
+                        });
+                    }
+                } else {
+                    const meta = GRAPH_NODE_META[ev.node] || {
+                        icon: Cpu, label: ev.node, accent: '#64748b',
+                    };
+                    arr.push({
+                        icon: meta.icon,
+                        label: meta.label,
+                        detail: typeof ev.elapsedMs === 'number' ? fmtDuration(ev.elapsedMs) : null,
+                        accent: meta.accent,
+                    });
+                }
             }
 
             // Aktif (started ama henüz completed olmayan) node'lar — sadece streaming'de
@@ -261,6 +289,16 @@ const ThinkingProcessPanel = ({ message }) => {
                 <span>Süreç</span>
                 {!isStreaming && totalMs != null && (
                     <span className="font-mono opacity-70">· {fmtDuration(totalMs)}</span>
+                )}
+                {!isStreaming && message.criticRevisionCount > 0 && (
+                    <span
+                        className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d' }}
+                        title="Denetleyici bu cevabı revize ettirdi"
+                    >
+                        <RefreshCw size={8} />
+                        {message.criticRevisionCount}× revize
+                    </span>
                 )}
                 {open
                     ? <ChevronUp size={10} />

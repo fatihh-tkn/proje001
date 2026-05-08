@@ -19,11 +19,13 @@ Topoloji (LG.2):
                             ▼
                        aggregator        (specialist çıktılarını birleştirir)
                             │
-                            ▼  (needs_polish?)
-                       msg_polish        (opsiyonel — sys_agent_msg_001)
-                            │
                             ▼
-                           END
+                         critic           (kalite denetimi; rev_count < MAX → geri döner)
+                          ╱ ╲
+           (rejected) ◄──╯   ╰──► (approved)
+               │                       │
+               └──► aggregator         ▼  (needs_polish?)
+                    (revizyon)    msg_polish / END
 
 Send API: supervisor'dan çıkan conditional edge `state["plan"]`'ı okur,
 plan'daki her node için bir `Send(node_name, state)` üretir. LangGraph
@@ -48,7 +50,9 @@ from .nodes import (
     error_solver_node,
     zli_finder_node,
     n8n_trigger_node,
+    skill_reader_node,
     aggregator_node,
+    critic_node,
     msg_polish_node,
 )
 
@@ -60,6 +64,7 @@ _VALID_SPECIALISTS = {
     "error_solver",
     "zli_finder",
     "n8n_trigger",
+    "skill_reader",
 }
 
 
@@ -92,8 +97,14 @@ def _dispatch_specialists(state: AgentState) -> list[Send] | str:
     return sends
 
 
-def _route_after_aggregator(state: AgentState) -> str:
-    """needs_polish flag'ine göre msg_polish veya END."""
+def _route_after_critic(state: AgentState) -> str:
+    """
+    Critic onaylamadıysa aggregator'a geri döner (revizyon döngüsü).
+    Onayladıysa normal akışa devam eder: needs_polish → msg_polish, değilse END.
+    Sonsuz döngü riski critic.py'deki MAX_REVISIONS ile engellenir.
+    """
+    if not state.get("critic_approved"):
+        return "aggregator"
     return "msg_polish" if state.get("needs_polish") else END
 
 
@@ -130,7 +141,9 @@ def build_graph(checkpointer=None):
     graph.add_node("error_solver", error_solver_node)
     graph.add_node("zli_finder",   zli_finder_node)
     graph.add_node("n8n_trigger",  n8n_trigger_node)
+    graph.add_node("skill_reader", skill_reader_node)
     graph.add_node("aggregator",   aggregator_node)
+    graph.add_node("critic",       critic_node)
     graph.add_node("msg_polish",   msg_polish_node)
 
     # START → supervisor
@@ -147,6 +160,7 @@ def build_graph(checkpointer=None):
             "error_solver",
             "zli_finder",
             "n8n_trigger",
+            "skill_reader",
             "aggregator",   # fallback (plan boşsa)
         ],
     )
@@ -156,12 +170,16 @@ def build_graph(checkpointer=None):
     graph.add_edge("error_solver", "aggregator")
     graph.add_edge("zli_finder",   "aggregator")
     graph.add_edge("n8n_trigger",  "aggregator")
+    graph.add_edge("skill_reader", "aggregator")
 
-    # aggregator → (needs_polish?) msg_polish | END
+    # aggregator → critic (her zaman; critic döngüye veya END'e karar verir)
+    graph.add_edge("aggregator", "critic")
+
+    # critic → aggregator (revizyon döngüsü) | msg_polish | END
     graph.add_conditional_edges(
-        "aggregator",
-        _route_after_aggregator,
-        path_map=["msg_polish", END],
+        "critic",
+        _route_after_critic,
+        path_map=["aggregator", "msg_polish", END],
     )
 
     # msg_polish → END

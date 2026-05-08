@@ -29,29 +29,33 @@ GRAPH_AGENTS = [
         "prompt": (
             "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
             "kategorilerden birini seçersin:\n"
-            "- general: tanımlama veya açık uçlu bilgi sorusu (ör. 'CS01 nedir', "
-            "'MM modülü ne işe yarar', 'şu transaction'ı açıkla'). KOD geçse "
-            "bile soru bir SORUN bildirimi değil tanıma talebi ise general.\n"
+            "- general: Şirkete/SAP'a özgü domain sorusu. SAP transaction kodu "
+            "(CS01, FB60, ME083...), SAP modülü (MM, SD, FI, CO, PP...), iş "
+            "süreci veya kurumsal sistem hakkında bilgi/tanım talebi.\n"
+            "- serbest: Genel bilgi/teknoloji/kavram sorusu, şirkete özgü bağlam "
+            "gerektirmiyor. Ör: 'Python nedir', 'REST API ne demek'.\n"
             "- hata_cozumu: Bir SİSTEM HATASI/ARIZA bildirimi. Kullanıcı 'şu "
             "hata veriyor', 'dump alıyor', 'çalışmıyor', 'ekran kilitlendi' "
-            "gibi sorun ifadeleri kullanıyor. Sadece kod (ör. ME083) verilse "
-            "bile bağlam bir SORUN tarifi olmalı.\n"
+            "gibi sorun ifadeleri kullanıyor.\n"
             "- rapor_arama: Z'li rapor (ZMM_, ZSD_), 'rapor bulamıyorum' tarzı "
             "rapor/transaction arama.\n"
             "- n8n: Net bir otomasyon tetikleme isteği (toplantı kaydet, rapor "
             "gönder, görev oluştur).\n"
-            "- dosya_qa: Belirli bir dosya hakkında soru.\n\n"
+            "- dosya_qa: Belirli bir dosya hakkında soru.\n"
+            "- skill_query: Sistemin yetenekleri veya nasıl kullanıldığı hakkında "
+            "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var').\n\n"
             "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
-            '{"intent": "<kategori>", "needs_polish": <bool>, "reasoning": '
-            '"<1-cümle-gerekçe>"}\n\n'
-            "needs_polish: cevabın tonunun resmi/uzun olması gerekiyorsa true, "
-            "kısa/teknik/JSON cevap için false."
+            '{"intent": "<kategori>", "confidence": 0.0-1.0, "complexity": "low|medium|high", '
+            '"needs_polish": <bool>, "reasoning": "<1-cümle-gerekçe>"}\n\n'
+            "confidence: sınıflandırma güven skoru (0.9=çok emin, 0.6=belirsiz).\n"
+            "complexity: low=basit/kısa soru, medium=açıklama gerektiriyor, high=çok boyutlu.\n"
+            "needs_polish: cevabın uzun/resmi olması gerekiyorsa true, kısa/JSON için false."
         ),
         "negative_prompt": "JSON dışında metin yazma. Açıklama yapma.",
         "provider": "openai",
         "model": "gpt-4o-mini",
         "temperature": 0.0,
-        "max_tokens": 256,
+        "max_tokens": 300,
         "strict_fact_check": False,
         "chat_history_length": 0,
         "can_ask_follow_up": False,
@@ -79,6 +83,15 @@ GRAPH_AGENTS = [
             "top_k": 10,
             "score_threshold": 0.05,
             "expand_chunk_graph": True,
+            "candidate_pool_size": 40,
+            "max_per_doc": 3,
+            "use_query_expansion": False,
+            "adaptive_score_filter": True,
+            "use_reranker": True,
+            "use_rule_expansion": True,
+            "near_dup_threshold": 0.65,
+            "max_query_variants": 4,
+            "context_max_chars": 24000,
         },
     },
     {
@@ -201,6 +214,55 @@ GRAPH_AGENTS = [
         },
     },
     {
+        "kimlik": "sys_node_skill_reader",
+        "agent_kind": "graph_node",
+        "ad": "Skill Okuyucu (Yetenek Listesi)",
+        "persona": "Sistem yetenek rehberi",
+        "prompt": "(LLM çağrısı yapmaz; .claude/skills/ dizinindeki SKILL.md dosyalarını okur.)",
+        "negative_prompt": None,
+        "provider": "openai",
+        "model": "n/a",
+        "temperature": 0.0,
+        "max_tokens": 0,
+        "strict_fact_check": False,
+        "chat_history_length": 0,
+        "can_ask_follow_up": False,
+        "node_config": {
+            "skills_dir": ".claude/skills",
+        },
+    },
+    {
+        "kimlik": "sys_node_critic",
+        "agent_kind": "graph_node",
+        "ad": "Denetçi (Kalite Kontrolü)",
+        "persona": "Kalite denetçisi",
+        "prompt": (
+            "Sen bir kalite denetçisisin. Kullanıcının sorusunu ve AI asistanın "
+            "verdiği cevabı değerlendirip kısa bir JSON döndüreceksin.\n\n"
+            "Değerlendirme kriterleri — YALNIZCA şu ciddi problemler için "
+            '"approved": false döndür:\n'
+            "1. Cevap kullanıcının sorusunu hiç yanıtlamamış (tamamen alakasız veya boş).\n"
+            "2. Cevap açıkça yanlış veya yanıltıcı bilgi içeriyor.\n"
+            "3. Cevap sorunun temel gereksinimini atlamış (ör. adımlar istendi, liste yok).\n\n"
+            "Küçük stil sorunları, farklı kelime tercihi, eksik detay için TRUE döndür.\n"
+            "Eğer cevap makul düzeyde doğru ve yararlıysa kesinlikle TRUE döndür.\n\n"
+            'YALNIZCA şu JSON formatında cevap ver, başka hiçbir şey yazma:\n'
+            '{"approved": true/false, "feedback": "eğer false ise kısa Türkçe düzeltme notu, true ise boş string"}'
+        ),
+        "negative_prompt": "JSON dışında metin yazma. Stil sorunları için false döndürme.",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.0,
+        "max_tokens": 120,
+        "strict_fact_check": False,
+        "chat_history_length": 0,
+        "can_ask_follow_up": False,
+        "node_config": {
+            "auto_approve_intents": ["sohbet", "serbest"],
+            "auto_approve_json": True,
+        },
+    },
+    {
         "kimlik": "sys_node_msg_polish",
         "agent_kind": "graph_node",
         "ad": "Mesaj Revize (Post-process)",
@@ -266,6 +328,18 @@ def seed_graph_agents() -> None:
             legacy_row = db.scalar(select(AIAgent).where(AIAgent.kimlik == legacy_id))
             if legacy_row:
                 legacy_data[legacy_id] = legacy_row
+
+        # ── Supervisor prompt versiyonu: confidence/complexity eksikse zorla güncelle ──
+        # Eski installs'da DB prompt'u eski formatta olabilir; bu migration onu düzeltir.
+        _SUPERVISOR_NEW_MARKER = '"confidence"'  # yeni format işareti
+        _supervisor_seed = next((s for s in GRAPH_AGENTS if s["kimlik"] == "sys_node_supervisor"), None)
+        if _supervisor_seed:
+            existing_sup = db.scalar(select(AIAgent).where(AIAgent.kimlik == "sys_node_supervisor"))
+            if existing_sup and existing_sup.prompt and _SUPERVISOR_NEW_MARKER not in existing_sup.prompt:
+                existing_sup.prompt = _supervisor_seed["prompt"]
+                existing_sup.max_tokens = _supervisor_seed["max_tokens"]
+                existing_sup.guncelleme_tarihi = now
+                logger.info("[seed] sys_node_supervisor prompt'u confidence/complexity formatına güncellendi")
 
         for spec in GRAPH_AGENTS:
             existing = db.scalar(select(AIAgent).where(AIAgent.kimlik == spec["kimlik"]))

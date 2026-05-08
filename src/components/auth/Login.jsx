@@ -4,6 +4,12 @@ import {
     Mail, Lock, Eye, EyeOff, Check, ArrowRight, X,
     UserPlus, AlertTriangle, Search, Clock, Shield,
 } from 'lucide-react';
+import sapLogo from '../../assets/sap yılgenci logo.png';
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 10 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.22, 1, 0.36, 1] } },
+};
 
 /* ══════════════════════════════════════════════════════════════════
    Hızlı Oturum Yönetimi (localStorage)
@@ -279,12 +285,19 @@ const Login = ({ onLogin }) => {
        Render
        ════════════════════════════════════════════════════════════════ */
     return (
-        <div className="flex h-screen w-full items-center justify-center overflow-hidden font-sans bg-[#F4F4F5]">
+        <div
+            className="flex h-screen w-full items-center justify-center overflow-hidden font-sans"
+            style={{
+                backgroundColor: '#EFEFEF',
+                backgroundImage: 'radial-gradient(circle, #d1d5db 1px, transparent 1px)',
+                backgroundSize: '22px 22px',
+            }}
+        >
             <motion.div
                 className="relative w-full max-w-[420px] px-6"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
             >
                 {isStarting && (
                     <style>{`@keyframes traceCCW { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(-360deg); } }`}</style>
@@ -298,14 +311,20 @@ const Login = ({ onLogin }) => {
                         />
                     )}
 
-                    <div className={`relative z-10 px-8 py-8 ${isStarting ? 'bg-white rounded-[14px]' : 'bg-white rounded-2xl border border-stone-200/80 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.10)]'}`}>
+                    <div className={`relative z-10 px-8 py-8 ${isStarting ? 'bg-white rounded-[14px]' : 'bg-white rounded-2xl border border-stone-200/60 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.13),0_4px_16px_-4px_rgba(0,0,0,0.06)]'}`}>
 
-                        {/* ── Header: GİRİŞ ── */}
-                        <div className="flex justify-end mb-6">
-                            <h2 className="text-[13px] font-black tracking-[0.25em] text-stone-400 uppercase">
-                                {mode === 'register' ? 'KAYIT' : 'GİRİŞ'}
-                            </h2>
-                        </div>
+                        {/* ── Kırmızı üst çizgi aksanı ── */}
+                        <div className="absolute top-0 left-8 right-8 h-[2px] bg-gradient-to-r from-transparent via-[#DC2626] to-transparent rounded-full opacity-60" />
+
+                        {/* ── Header: Logo ── */}
+                        <motion.div
+                            className="flex items-center justify-center mb-7 pb-6 border-b border-stone-100"
+                            initial={{ opacity: 0, y: -8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                            <img src={sapLogo} alt="SAP Yılgenci" className="w-full h-auto object-contain max-h-48" draggable={false} />
+                        </motion.div>
 
                         {/* ── Hata Mesajı ── */}
                         <AnimatePresence mode="wait">
@@ -343,11 +362,18 @@ const Login = ({ onLogin }) => {
                             )}
                         </AnimatePresence>
 
-                        <form onSubmit={handleSubmit} className="flex flex-col gap-5" autoComplete="off">
+                        <motion.form
+                            onSubmit={handleSubmit}
+                            className="flex flex-col gap-5"
+                            autoComplete="off"
+                            initial="hidden"
+                            animate="visible"
+                            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.07, delayChildren: 0.18 } } }}
+                        >
 
                             {/* ── KAYITLI HESAPLAR (sadece login modu) ── */}
                             {mode === 'login' && quickSessions.length > 0 && (
-                                <div className="flex flex-col gap-2.5">
+                                <motion.div variants={itemVariants} className="flex flex-col gap-2.5">
                                     <p className="text-[10px] font-black tracking-[0.2em] text-stone-500 uppercase">
                                         Kayıtlı Hesaplar
                                     </p>
@@ -377,12 +403,12 @@ const Login = ({ onLogin }) => {
                                             </button>
                                         )}
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
 
                             {/* ── Ad Soyad (sadece kayıt) ── */}
                             {mode === 'register' && (
-                                <div className="space-y-1.5">
+                                <motion.div variants={itemVariants} className="space-y-1.5">
                                     <label htmlFor="reg-name" className="text-[12px] font-bold text-stone-700">Ad Soyad</label>
                                     <div className="relative">
                                         <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
@@ -394,11 +420,11 @@ const Login = ({ onLogin }) => {
                                             required
                                         />
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
 
                             {/* ── E-posta ── */}
-                            <div className="space-y-1.5">
+                            <motion.div variants={itemVariants} className="space-y-1.5">
                                 <label htmlFor="login-email" className="text-[12px] font-bold text-stone-700">E-posta</label>
                                 <div className="relative">
                                     <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10" />
@@ -420,10 +446,10 @@ const Login = ({ onLogin }) => {
                                         </span>
                                     )}
                                 </div>
-                            </div>
+                            </motion.div>
 
                             {/* ── Şifre ── */}
-                            <div className="space-y-1.5">
+                            <motion.div variants={itemVariants} className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <label htmlFor="login-password" className="text-[12px] font-bold text-stone-700">Şifre</label>
                                     {mode === 'login' && (
@@ -462,11 +488,11 @@ const Login = ({ onLogin }) => {
                                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
                                 </div>
-                            </div>
+                            </motion.div>
 
                             {/* ── Şifre gücü (kayıt) ── */}
                             {mode === 'register' && password.length > 0 && (
-                                <div className="-mt-2">
+                                <motion.div variants={itemVariants} className="-mt-2">
                                     <div className="h-1 w-full overflow-hidden rounded-full bg-stone-100 mb-2">
                                         <div className={`h-full transition-all duration-500 ease-out ${strengthBarColor}`}
                                             style={{ width: `${(strengthScore / 3) * 100}%` }} />
@@ -481,12 +507,12 @@ const Login = ({ onLogin }) => {
                                             </li>
                                         ))}
                                     </ul>
-                                </div>
+                                </motion.div>
                             )}
 
                             {/* ── Şifre Tekrar (kayıt) ── */}
                             {mode === 'register' && (
-                                <div className="space-y-1.5">
+                                <motion.div variants={itemVariants} className="space-y-1.5">
                                     <label htmlFor="reg-pwd2" className="text-[12px] font-bold text-stone-700">Şifre Tekrar</label>
                                     <div className="relative">
                                         <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
@@ -507,12 +533,12 @@ const Login = ({ onLogin }) => {
                                             required
                                         />
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
 
                             {/* ── Bu cihazda beni hatırla (sadece login) ── */}
                             {mode === 'login' && (
-                                <label className="flex items-center gap-2.5 cursor-pointer select-none -my-1">
+                                <motion.label variants={itemVariants} className="flex items-center gap-2.5 cursor-pointer select-none -my-1">
                                     <span className="relative flex items-center justify-center">
                                         <input
                                             type="checkbox"
@@ -529,15 +555,18 @@ const Login = ({ onLogin }) => {
                                     <span className="text-[12px] font-semibold text-stone-700">
                                         Bu cihazda beni hatırla
                                     </span>
-                                </label>
+                                </motion.label>
                             )}
 
                             {/* ── Giriş Yap / Hesabı Aç butonu ── */}
-                            <button
+                            <motion.button
+                                variants={itemVariants}
                                 type="submit"
                                 disabled={isLoading}
-                                className={`w-full h-12 rounded-md bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold text-[13px] tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_14px_-4px_rgba(220,38,38,0.5)] transition-all duration-200 ${
-                                    isLoading ? 'opacity-70 cursor-wait' : 'hover:shadow-[0_6px_18px_-4px_rgba(220,38,38,0.6)] hover:-translate-y-0.5'
+                                whileHover={!isLoading ? { y: -2, boxShadow: '0 8px 22px -4px rgba(220,38,38,0.55)' } : {}}
+                                whileTap={!isLoading ? { scale: 0.98 } : {}}
+                                className={`w-full h-12 rounded-md bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold text-[13px] tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_14px_-4px_rgba(220,38,38,0.45)] transition-colors duration-200 ${
+                                    isLoading ? 'opacity-70 cursor-wait' : ''
                                 }`}
                             >
                                 {isLoading ? (
@@ -548,10 +577,10 @@ const Login = ({ onLogin }) => {
                                         <ArrowRight size={16} strokeWidth={2.5} />
                                     </>
                                 )}
-                            </button>
+                            </motion.button>
 
                             {/* ── Alt bağlantı: Kayıt ol / Giriş'e dön ── */}
-                            <div className="text-center pt-1">
+                            <motion.div variants={itemVariants} className="text-center pt-1">
                                 {mode === 'login' ? (
                                     <p className="text-[12px] font-semibold text-stone-500">
                                         Hesabın yok mu?{' '}
@@ -575,8 +604,8 @@ const Login = ({ onLogin }) => {
                                         </button>
                                     </p>
                                 )}
-                            </div>
-                        </form>
+                            </motion.div>
+                        </motion.form>
 
                     </div>
                 </div>

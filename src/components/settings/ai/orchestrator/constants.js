@@ -1,5 +1,6 @@
 import {
     Compass, Search, Wrench, BarChart3, Zap, Bot, Wand2, PencilLine, GitBranch, Brain,
+    ShieldCheck, Library,
 } from 'lucide-react';
 
 // --- DATA CONSTANTS ---
@@ -232,7 +233,20 @@ export const DEFAULT_NODE_RAG_SEARCH = {
     widgetColor: '#0EA5E9',
     offlineMessage: '',
     errorMessage: 'Bilgi tabanı arama başarısız oldu.',
-    nodeConfig: { top_k: 10, score_threshold: 0.05, expand_chunk_graph: true },
+    nodeConfig: {
+        top_k: 10,
+        score_threshold: 0.05,
+        expand_chunk_graph: true,
+        candidate_pool_size: 40,
+        max_per_doc: 3,
+        use_query_expansion: false,
+        adaptive_score_filter: true,
+        use_reranker: true,
+        use_rule_expansion: true,
+        near_dup_threshold: 0.65,
+        max_query_variants: 4,
+        context_max_chars: 24000,
+    },
 };
 
 export const DEFAULT_NODE_ERROR_SOLVER = {
@@ -391,6 +405,68 @@ export const DEFAULT_NODE_MSG_POLISH = {
     nodeConfig: { skip_if_already_clean: true, min_chars_to_revise: 50 },
 };
 
+export const DEFAULT_NODE_SKILL_READER = {
+    id: 'sys_node_skill_reader',
+    type: 'agent',
+    agentKind: 'graph_node',
+    name: 'Skill Okuyucu (Yetenek Listesi)',
+    active: true,
+    persona: 'Sistem yetenek rehberi',
+    tone: 'professional',
+    prompt: '(LLM çağrısı yapmaz; .claude/skills/ dizinindeki SKILL.md dosyalarını okur.)',
+    negativePrompt: '',
+    provider: 'openai',
+    model: 'n/a',
+    temp: 0.0,
+    maxTokens: 0,
+    outputFormat: 'plain',
+    logicCondition: 'intent=skill_query olduğunda paralel çalışır.',
+    allowedRags: [],
+    readMode: 'raw',
+    strictFactCheck: false,
+    excludedFiles: [],
+    welcomeMessage: '',
+    chatHistoryLength: 0,
+    canAskFollowUp: false,
+    followUpCount: 0,
+    avatarEmoji: '📚',
+    widgetColor: '#6366F1',
+    offlineMessage: '',
+    errorMessage: 'Yetenek listesi okunamadı.',
+    nodeConfig: { skills_dir: '.claude/skills' },
+};
+
+export const DEFAULT_NODE_CRITIC = {
+    id: 'sys_node_critic',
+    type: 'agent',
+    agentKind: 'graph_node',
+    name: 'Denetçi (Kalite Kontrolü)',
+    active: true,
+    persona: 'Kalite denetçisi',
+    tone: 'professional',
+    prompt: 'Sen bir kalite denetçisisin. Kullanıcının sorusu ile AI cevabını karşılaştır. Ciddi sorunlar varsa false, aksi hâlde true döndür. SADECE JSON: {"approved": true/false, "feedback": "..."}',
+    negativePrompt: 'JSON dışında metin yazma. Stil sorunları için false döndürme.',
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    temp: 0.0,
+    maxTokens: 120,
+    outputFormat: 'json',
+    logicCondition: 'Aggregator sonrası her zaman çalışır; sohbet/serbest intentlerde otomatik onaylar.',
+    allowedRags: [],
+    readMode: 'raw',
+    strictFactCheck: false,
+    excludedFiles: [],
+    welcomeMessage: '',
+    chatHistoryLength: 0,
+    canAskFollowUp: false,
+    followUpCount: 0,
+    avatarEmoji: '🛡️',
+    widgetColor: '#10B981',
+    offlineMessage: '',
+    errorMessage: 'Kalite denetimi yapılamadı.',
+    nodeConfig: { auto_approve_intents: ['sohbet', 'serbest'], auto_approve_json: true },
+};
+
 // İstem Revize Botu (sys_agent_prompt_001) graph dışı /revise-prompt endpoint'i
 // için aktif kalır; bu yüzden DEFAULT_AGENTS'ta tutulur.
 export const DEFAULT_AGENTS = [
@@ -400,6 +476,8 @@ export const DEFAULT_AGENTS = [
     DEFAULT_NODE_ZLI_FINDER,
     DEFAULT_NODE_N8N_TRIGGER,
     DEFAULT_NODE_AGGREGATOR,
+    DEFAULT_NODE_SKILL_READER,
+    DEFAULT_NODE_CRITIC,
     DEFAULT_NODE_MSG_POLISH,
     DEFAULT_PROMPT_BOT,
 ];
@@ -427,6 +505,8 @@ export const AGENT_ICON_MAP = {
     sys_node_zli_finder:   BarChart3,
     sys_node_n8n_trigger:  Zap,
     sys_node_aggregator:   Bot,
+    sys_node_skill_reader: Library,
+    sys_node_critic:       ShieldCheck,
     sys_node_msg_polish:   Wand2,
     sys_agent_prompt_001:  PencilLine,
 };

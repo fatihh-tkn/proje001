@@ -91,8 +91,30 @@ def toggle_agent(agent_id: str, db: Session = Depends(get_db)):
     agent = db.query(AIAgent).filter(AIAgent.kimlik == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Ajan bulunamadı")
-        
+
     agent.aktif_mi = not agent.aktif_mi
     db.commit()
-    
+
     return {"message": "Ajan durumu güncellendi", "aktif_mi": agent.aktif_mi, "kimlik": agent.kimlik}
+
+
+@router.get("/agents/{role}/logs")
+def get_agent_logs(role: str, limit: int = 50):
+    """Belirli bir graph node'unun son N çalışma kaydını döner (AgentLogsPanel için)."""
+    from core.db_bridge import get_agent_execution_logs
+    try:
+        logs = get_agent_execution_logs(ajan_rolu=role, limit=min(limit, 200))
+        return {"role": role, "logs": logs, "count": len(logs)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversation-traces")
+def get_conversation_traces(limit: int = 30):
+    """Sohbet bazlı ajan iz raporu — her konuşmada hangi ajanların ne ürettiğini döner."""
+    from core.db_bridge import get_conversation_traces as _get
+    try:
+        traces = _get(limit=min(limit, 100))
+        return {"traces": traces, "count": len(traces)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

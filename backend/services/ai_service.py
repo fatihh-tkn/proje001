@@ -351,6 +351,35 @@ def _build_file_context(
     )
 
 
+_AUDIO_EXTS: frozenset[str] = frozenset({
+    "mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
+    "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv",
+})
+
+# LLM context penceresi için yaklaşık karakter bütçesi (~6 000 token × 4 ort.)
+_CONTEXT_MAX_CHARS: int = 24_000
+
+_DOC_TYPE_LABEL: dict[str, str] = {
+    "pdf": "PDF", "docx": "Word", "doc": "Word",
+    "xlsx": "Excel", "xls": "Excel", "pptx": "PowerPoint",
+    "ppt": "PowerPoint", "txt": "Metin", "csv": "CSV",
+    "mp3": "Ses", "wav": "Ses", "mp4": "Video",
+}
+
+
+def _jaccard_trigram(a: str, b: str) -> float:
+    """İki metin arasında trigram Jaccard benzerliği döndürür [0,1]."""
+    words_a = a.lower().split()
+    words_b = b.lower().split()
+    if len(words_a) < 3 or len(words_b) < 3:
+        return 0.0
+    tg_a = {tuple(words_a[i:i+3]) for i in range(len(words_a) - 2)}
+    tg_b = {tuple(words_b[i:i+3]) for i in range(len(words_b) - 2)}
+    if not tg_a or not tg_b:
+        return 0.0
+    return len(tg_a & tg_b) / len(tg_a | tg_b)
+
+
 def _build_semantic_context(
     user_message: str,
     file_name: str | None = None,
@@ -359,15 +388,26 @@ def _build_semantic_context(
     excluded_file_ids: list[str] = None,
     allowed_pools: list[str] = None,
     user_id: str | None = None,
+    expand_chunk_graph: bool = True,
+    candidate_pool_size: int | None = None,
+    query_variants: list[str] | None = None,
+    max_per_doc: int = 3,
+    use_reranker: bool = True,
+    near_dup_threshold: float = 0.65,
+    context_max_chars: int | None = None,
 ) -> tuple[str, list[dict], dict | None]:
     """
     RAG Pipeline — Hybrid Search + Re-Ranking Mimarisi:
-    1. Hybrid Search: pgvector (vektörel) + tsvector (kelime eşleştirme) → RRF birleştirme
-    2. Re-Ranking: Cross-Encoder ile sonuçları yeniden sıralama
-    3. ChunkGraph ile komşu genişletmesi
-    4. DocumentRepository ile zengin bağlam çekme
+    1. Hybrid Search: pgvector (vektörel) + websearch FTS → RRF birleştirme
+    2. Multi-query: query_variants varsa her sorgudan sonuç al, en iyiyi tut
+    3. Belge çeşitlilik filtresi (max_per_doc)
+    4. Re-Ranking: Çok dilli Cross-Encoder ile sıralama (use_reranker=True)
+    5. ChunkGraph ile komşu genişletmesi
+    6. DocumentRepository ile zengin bağlam çekme
+    7. Near-duplicate detection (near_dup_threshold) + token budget (context_max_chars)
     """
     top_k = top_k or SETTINGS.GENERAL_RAG_TOP_K
+    _budget = context_max_chars if context_max_chars and context_max_chars > 0 else _CONTEXT_MAX_CHARS
     try:
         from database.vector.pgvector_db import vector_db
         from database.sql.session import get_session
@@ -390,15 +430,57 @@ def _build_semantic_context(
             logger.warning("[RAG-POOL] Havuz filtresi alınamadı, tüm belgeler taranacak: %s", _e)
 
         # ── Hybrid Search: Vektör + FTS + RRF + Re-Ranking ──────────────
-        try:
-            hybrid_results = vector_db.hybrid_query(
-                query_text=user_message,
-                n_results=top_k * 2,  # Re-ranking için fazla çek
-                use_reranker=True,
+        _pool_size = candidate_pool_size or 40
+        _queries = list(dict.fromkeys(q for q in (query_variants or []) if q.strip()))
+        if not _queries:
+            _queries = [user_message]
+
+        def _run_hybrid(q: str) -> list[dict]:
+            return vector_db.hybrid_query(
+                query_text=q,
+                n_results=top_k * 2,
+                use_reranker=use_reranker,
                 allowed_doc_ids=pool_doc_ids,
+                vector_weight=_pool_size,
+                fts_weight=_pool_size,
+                max_per_doc=max_per_doc,
+                expand_inline_context=False,  # NetworkX genişletmesi aşağıda yapılır
             )
-        except Exception as e:
-            logger.warning("[RAG-HYBRID] Hybrid search hatası, klasik yola düşülüyor: %s", e)
+
+        # Multi-query: tüm variant'lardan sonuç al, chroma_id başına en iyi skoru tut.
+        # Per-query try-except — bir variant patlarsa diğerlerinin sonuçları korunur.
+        seen_cids: dict[str, dict] = {}
+        _any_query_ok = False
+        for q in _queries:
+            try:
+                for r in _run_hybrid(q):
+                    cid = r.get("chromadb_kimlik")
+                    if not cid:
+                        continue
+                    rerank = r.get("rerank_score")
+                    rrf    = r.get("rrf_score") or 0.0
+                    score  = float(rerank) if rerank is not None else float(rrf)
+                    prev   = seen_cids.get(cid)
+                    prev_score = (
+                        float(prev.get("rerank_score") if prev.get("rerank_score") is not None else (prev.get("rrf_score") or 0.0))
+                        if prev else -1.0
+                    )
+                    if score > prev_score:
+                        seen_cids[cid] = r
+                _any_query_ok = True
+            except Exception as _qe:
+                logger.warning("[RAG-MULTI] Sorgu atlandı ('%s…'): %s", q[:40], _qe)
+
+        if _any_query_ok:
+            hybrid_results: list[dict] = sorted(
+                seen_cids.values(),
+                key=lambda x: float(x.get("rerank_score") if x.get("rerank_score") is not None else (x.get("rrf_score") or 0)),
+                reverse=True,
+            )
+            if len(_queries) > 1:
+                logger.info("[RAG-MULTI] %d sorgu → %d tekil aday", len(_queries), len(hybrid_results))
+        else:
+            logger.warning("[RAG-HYBRID] Tüm sorgular başarısız, klasik yola düşülüyor.")
             hybrid_results = []
 
         if hybrid_results:
@@ -406,28 +488,32 @@ def _build_semantic_context(
             hybrid_ids = []
             for r in hybrid_results:
                 cid = r.get("chromadb_kimlik")
-                # Dinamik alaka filtresi: rerank_score veya rrf_score
-                rerank = r.get("rerank_score")
-                rrf = r.get("rrf_score", 0) or 0
-                score = float(rerank) if rerank is not None else float(rrf)
-                
-                # Sadece genel bir filtre: Eğer skor aşırı düşükse (ilkisizse) ekleme
-                if score >= 0.01 and cid:
+                if cid:
                     hybrid_ids.append(cid)
 
             if hybrid_ids:
-                # ChunkGraph ile komşu genişletmesi
-                try:
-                    from database.graph.networkx_db import chunk_graph
-                    expanded_ids = chunk_graph.expand(hybrid_ids)
-                except Exception as _e:
-                    logger.warning("[RAG] Graf genişletme başarısız, ham ID'ler kullanılıyor: %s", _e)
+                # ChunkGraph ile komşu genişletmesi (node_config.expand_chunk_graph ile kapatılabilir)
+                if expand_chunk_graph:
+                    try:
+                        from database.graph.networkx_db import chunk_graph
+                        expanded_ids = chunk_graph.expand(hybrid_ids)
+                    except Exception as _e:
+                        logger.warning("[RAG] Graf genişletme başarısız, ham ID'ler kullanılıyor: %s", _e)
+                        expanded_ids = hybrid_ids
+                else:
                     expanded_ids = hybrid_ids
 
                 # DocumentRepository ile zengin bağlam
                 with get_session() as db:
                     repo = DocumentRepository(db)
                     rich_contexts = repo.node_ids_to_context(expanded_ids[:top_k])
+
+                    # Near-dup karşılaştırması için sadece içerik tutulur
+                    # (parts listesi header+graph_note içerdiğinden kullanılamaz)
+                    _seen_contents: list[str] = []
+
+                    # O(1) hybrid meta erişimi için önceden indeksle
+                    hybrid_map = {hr.get("chromadb_kimlik"): hr for hr in hybrid_results}
 
                     for ctx in rich_contexts:
                         doc_info = ctx["document"]
@@ -439,21 +525,34 @@ def _build_semantic_context(
                         if excluded_file_ids and doc_info.get("id") in excluded_file_ids:
                             continue
 
+                        # f_type tek seferde hesaplanır; pool kontrolü ve başlık için paylaşılır
+                        f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
+
                         # Havuz yetki kontrolü
                         if allowed_pools:
-                            f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
-                            AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
-                            pool_id = "rag_2" if f_type in AUDIO_EXTS else "rag_1"
+                            pool_id = "rag_2" if f_type in _AUDIO_EXTS else "rag_1"
                             if pool_id not in allowed_pools:
                                 continue
 
-                        marker = ctx["location_marker"]
-                        content = ctx["content"]
+                        marker  = ctx["location_marker"]
+                        content = ctx["content"] or ""
                         page    = ctx.get("page")
                         bbox    = ctx.get("bbox")
-                        pdf_path = doc_info.get("pdf_path") or doc_info.get("file_path") or ""
 
-                        # Graf Okuması
+                        # ── Near-duplicate tespiti (token budget öncesi hesaplanır) ──
+                        truncated_content = _truncate(content)
+                        if any(_jaccard_trigram(truncated_content, c) > near_dup_threshold for c in _seen_contents):
+                            logger.debug("[RAG] Near-duplicate chunk atlandı: %s", src)
+                            continue
+                        _seen_contents.append(truncated_content)
+
+                        # ── Token budget kontrolü ──────────────────────────
+                        total_chars = sum(len(p) for p in parts)
+                        if total_chars + len(truncated_content) > _budget:
+                            logger.info("[RAG] Context bütçesi doldu (%d char), kalan chunk'lar atlandı.", total_chars)
+                            break
+
+                        # ── Graf notu ──────────────────────────────────────
                         graph_note = ""
                         if ctx["related_nodes"]:
                             graph_note = "\n[Sistem Graph Notu: Bu düğüm şunlarla ilişkilidir:\n"
@@ -463,26 +562,29 @@ def _build_semantic_context(
                                 graph_note += f"- '{tgt}' ({r_type})\n"
                             graph_note += "]\n"
 
-                        # Hybrid arama bilgisi — hangi yöntemle bulunduğunu işaretle
+                        # ── Hybrid arama meta-bilgisi (O(1) map lookup) ───
                         hybrid_info = ""
                         chroma_id = ctx.get("chroma_id", "")
                         rrf_score = 0.0
                         rerank_score = None
-                        for hr in hybrid_results:
-                            if hr.get("chromadb_kimlik") == chroma_id:
-                                methods = []
-                                if hr.get("in_vector"): methods.append("Vektör")
-                                if hr.get("in_fts"):    methods.append("FTS")
-                                rrf_score = float(hr.get("rrf_score", 0) or 0)
-                                rerank_score = hr.get("rerank_score")
-                                score_str = f"RRF:{rrf_score:.4f}"
-                                if rerank_score is not None:
-                                    score_str += f" | ReRank:{float(rerank_score):.4f}"
-                                hybrid_info = f" [{'+'.join(methods)} | {score_str}]"
-                                break
+                        hr = hybrid_map.get(chroma_id)
+                        if hr:
+                            methods = []
+                            if hr.get("in_vector"): methods.append("Vektör")
+                            if hr.get("in_fts"):    methods.append("FTS")
+                            rrf_score    = float(hr.get("rrf_score", 0) or 0)
+                            rerank_score = hr.get("rerank_score")
+                            score_str    = f"RRF:{rrf_score:.4f}"
+                            if rerank_score is not None:
+                                score_str += f" | ReRank:{float(rerank_score):.2f}"
+                            hybrid_info = f" [{'+'.join(methods)} | {score_str}]"
 
-                        header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + f"{hybrid_info}]"
-                        parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
+                        # ── Zengin başlık: dosya türü de göster ───────────
+                        type_label = _DOC_TYPE_LABEL.get(f_type, f_type.upper() if f_type else "")
+                        type_str = f" | {type_label}" if type_label else ""
+
+                        header = f"[{src}{type_str}" + (f" | {marker}" if marker else "") + f"{hybrid_info}]"
+                        parts.append(f"{header}\n{truncated_content}{graph_note}")
 
                         # UI Action — sadece kullanıcı belirli bir dosyaya soru soruyorsa
                         # otomatik sekme aç. Genel RAG'da AI alaka derecesini chip listesinde
@@ -554,16 +656,22 @@ def _build_semantic_context(
                 if not filtered_ids:
                     continue
 
-                try:
-                    from database.graph.networkx_db import chunk_graph
-                    expanded_ids = chunk_graph.expand(filtered_ids)
-                except Exception as _e:
-                    logger.warning("[RAG] Dosya modu graf genişletme başarısız: %s", _e)
+                if expand_chunk_graph:
+                    try:
+                        from database.graph.networkx_db import chunk_graph
+                        expanded_ids = chunk_graph.expand(filtered_ids)
+                    except Exception as _e:
+                        logger.warning("[RAG] Dosya modu graf genişletme başarısız: %s", _e)
+                        expanded_ids = filtered_ids
+                else:
                     expanded_ids = filtered_ids
 
                 with get_session() as db:
                     repo = DocumentRepository(db)
                     rich_contexts = repo.node_ids_to_context(expanded_ids[:top_k])
+
+                    _seen_contents_fb: list[str] = []
+                    _doc_counts_fb: dict[str, int] = {}
 
                     for ctx in rich_contexts:
                         doc_info = ctx["document"]
@@ -575,17 +683,33 @@ def _build_semantic_context(
                         if excluded_file_ids and doc_info.get("id") in excluded_file_ids:
                             continue
 
+                        _ft = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
+
                         if allowed_pools:
-                            f_type = (doc_info.get("dosya_turu") or doc_info.get("file_type") or "").lower().replace(".", "")
-                            AUDIO_EXTS = {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
-                            pool_id = "rag_2" if f_type in AUDIO_EXTS else "rag_1"
+                            pool_id = "rag_2" if _ft in _AUDIO_EXTS else "rag_1"
                             if pool_id not in allowed_pools:
                                 continue
+
+                        doc_id_fb = doc_info.get("id") or src
+                        if _doc_counts_fb.get(doc_id_fb, 0) >= max_per_doc:
+                            continue
 
                         marker = ctx["location_marker"]
                         content = ctx["content"]
                         page    = ctx.get("page")
                         bbox    = ctx.get("bbox")
+
+                        _tc = _truncate(content or "")
+                        if any(_jaccard_trigram(_tc, c) > near_dup_threshold for c in _seen_contents_fb):
+                            logger.debug("[RAG-FB] Near-duplicate chunk atlandı: %s", src)
+                            continue
+                        _seen_contents_fb.append(_tc)
+                        _doc_counts_fb[doc_id_fb] = _doc_counts_fb.get(doc_id_fb, 0) + 1
+
+                        total_chars_fb = sum(len(p) for p in parts)
+                        if total_chars_fb + len(_tc) > _budget:
+                            logger.info("[RAG-FB] Context bütçesi doldu (%d char), kalan chunk'lar atlandı.", total_chars_fb)
+                            break
 
                         graph_note = ""
                         if ctx["related_nodes"]:
@@ -596,8 +720,10 @@ def _build_semantic_context(
                                 graph_note += f"- '{tgt}' ({r_type})\n"
                             graph_note += "]\n"
 
-                        header = f"[{src}" + (f" | Konum: {marker}" if marker else "") + "]"
-                        parts.append(f"{header}\n{_truncate(content or '')}{graph_note}")
+                        _tl = _DOC_TYPE_LABEL.get(_ft, _ft.upper() if _ft else "")
+                        _ts = f" | {_tl}" if _tl else ""
+                        header = f"[{src}{_ts}" + (f" | {marker}" if marker else "") + "]"
+                        parts.append(f"{header}\n{_tc}{graph_note}")
 
                         # UI Action — sadece dosya QA modunda otomatik aç
                         if file_name and not best_ui_action:

@@ -616,6 +616,7 @@ class ApiLogu(Base):
     yanit_onizleme: Mapped[str | None] = mapped_column(Text, nullable=True)
     rag_kullanildi_mi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     rag_dosya_adi: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ajan_kimlik: Mapped[str | None] = mapped_column(String(36), nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
 
     __table_args__ = (
@@ -625,6 +626,7 @@ class ApiLogu(Base):
         Index("ix_api_loglari_oturum_kimlik", "oturum_kimlik"),
         Index("ix_api_loglari_tarih", "olusturulma_tarihi"),
         Index("ix_api_loglari_tedarikci", "tedarikci"),
+        Index("ix_api_loglari_ajan_kimlik", "ajan_kimlik"),
     )
 
 
@@ -910,4 +912,111 @@ class KullaniciHataKaydi(Base):
 
     __table_args__ = (
         Index("ix_user_error_user_date", "kullanici_id", "kayit_tarihi"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 12. GLOBAL SOHBET KATMANI
+#     global_kanallar, global_mesajlar
+# ═══════════════════════════════════════════════════════════════════
+
+class GlobalKanal(Base):
+    """Kullanıcıların gerçek zamanlı mesajlaştığı sohbet kanalı."""
+    __tablename__ = "global_kanallar"
+
+    kimlik:             Mapped[str]           = mapped_column(String(36), primary_key=True, default=_uuid)
+    ad:                 Mapped[str]           = mapped_column(String(64), nullable=False, unique=True)
+    aciklama:           Mapped[str | None]    = mapped_column(String(256), nullable=True)
+    olusturulma_tarihi: Mapped[str]           = mapped_column(String(32), nullable=False, default=_simdi)
+
+    mesajlar: Mapped[list["GlobalMesaj"]] = relationship(
+        "GlobalMesaj", back_populates="kanal",
+        foreign_keys="[GlobalMesaj.kanal_id]",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (Index("ix_global_kanallar_ad", "ad"),)
+
+
+class GlobalMesaj(Base):
+    """Bir global sohbet kanalındaki tek mesaj."""
+    __tablename__ = "global_mesajlar"
+
+    kimlik:             Mapped[str]           = mapped_column(String(36), primary_key=True, default=_uuid)
+    kanal_id:           Mapped[str]           = mapped_column(
+        String(36), ForeignKey("global_kanallar.kimlik", ondelete="CASCADE"), nullable=False
+    )
+    yazar_id:           Mapped[str | None]    = mapped_column(
+        String(36), ForeignKey("kullanicilar.kimlik", ondelete="SET NULL"), nullable=True
+    )
+    yazar_adi:          Mapped[str]           = mapped_column(String(128), nullable=False)
+    metin:              Mapped[str]           = mapped_column(Text, nullable=False)
+    yanit_id:           Mapped[str | None]    = mapped_column(
+        String(36), ForeignKey("global_mesajlar.kimlik", ondelete="SET NULL"), nullable=True
+    )
+    reaksiyonlar:       Mapped[dict | None]   = mapped_column(JSON, nullable=True)
+    silindi:            Mapped[bool]          = mapped_column(Boolean, nullable=False, default=False)
+    olusturulma_tarihi: Mapped[str]           = mapped_column(String(32), nullable=False, default=_simdi)
+
+    kanal:  Mapped["GlobalKanal"]              = relationship("GlobalKanal", back_populates="mesajlar", foreign_keys="[GlobalMesaj.kanal_id]")
+    yazar:  Mapped["Kullanici | None"]         = relationship("Kullanici", foreign_keys="[GlobalMesaj.yazar_id]")
+    yanit:  Mapped["GlobalMesaj | None"]       = relationship(
+        "GlobalMesaj",
+        foreign_keys="[GlobalMesaj.yanit_id]",
+        primaryjoin="GlobalMesaj.yanit_id == GlobalMesaj.kimlik",
+        remote_side="GlobalMesaj.kimlik",
+        uselist=False,
+    )
+
+    __table_args__ = (
+        Index("ix_global_mesajlar_kanal_id", "kanal_id"),
+        Index("ix_global_mesajlar_tarih",    "olusturulma_tarihi"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 13. AJAN ÇALIŞMA SIRASI (Per-Node Execution Log)
+#     ajan_calisma_siralari
+# ═══════════════════════════════════════════════════════════════════
+
+class AjanCalismaSirasi(Base):
+    """
+    LangGraph'taki her node'un çalışma kaydı.
+    AgentConfigPanel'de ajan başına tarihçe + performans göstermek için.
+    """
+    __tablename__ = "ajan_calisma_siralari"
+
+    kimlik:             Mapped[str]           = mapped_column(String(36), primary_key=True, default=_uuid)
+    # Hangi graph node'u? (supervisor, rag_search, aggregator, critic, ...)
+    ajan_rolu:          Mapped[str]           = mapped_column(String(64), nullable=False)
+    oturum_kimlik:      Mapped[str | None]    = mapped_column(String(64), nullable=True)
+    # Kullanıcının sorusu (ilk 500 karakter)
+    kullanici_mesaji:   Mapped[str | None]    = mapped_column(String(500), nullable=True)
+    # Supervisor'ın belirlediği intent
+    intent:             Mapped[str | None]    = mapped_column(String(64), nullable=True)
+    # Confidence skoru (0.0–1.0)
+    intent_confidence:  Mapped[float | None]  = mapped_column(Float, nullable=True)
+    # Karmaşıklık seviyesi: low | medium | high
+    complexity:         Mapped[str | None]    = mapped_column(String(16), nullable=True)
+    # Supervisor'ın bu node için ürettiği kısa brief (görev tanımı)
+    brief:              Mapped[str | None]    = mapped_column(Text, nullable=True)
+    # Node'un ürettiği çıktının özeti (ilk 300 karakter)
+    cikti_ozet:         Mapped[str | None]    = mapped_column(String(300), nullable=True)
+    # Başarı durumu
+    basarili_mi:        Mapped[bool]          = mapped_column(Boolean, nullable=False, default=True)
+    hata_mesaji:        Mapped[str | None]    = mapped_column(Text, nullable=True)
+    # Performans
+    sure_ms:            Mapped[int | None]    = mapped_column(Integer, nullable=True)
+    prompt_token:       Mapped[int | None]    = mapped_column(Integer, nullable=True)
+    completion_token:   Mapped[int | None]    = mapped_column(Integer, nullable=True)
+    # Critic sonucu (aggregator ve critic node'larında anlamlı)
+    critic_onayladi_mi: Mapped[bool | None]   = mapped_column(Boolean, nullable=True)
+    revision_sayisi:    Mapped[int | None]    = mapped_column(Integer, nullable=True)
+    olusturulma_tarihi: Mapped[str]           = mapped_column(String(32), nullable=False, default=_simdi)
+
+    __table_args__ = (
+        Index("ix_ajan_calisma_rolu",    "ajan_rolu"),
+        Index("ix_ajan_calisma_oturum",  "oturum_kimlik"),
+        Index("ix_ajan_calisma_tarih",   "olusturulma_tarihi"),
+        Index("ix_ajan_calisma_rolu_tarih", "ajan_rolu", "olusturulma_tarihi"),
     )

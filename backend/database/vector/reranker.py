@@ -6,9 +6,12 @@ Cross-Encoder Re-Ranking Modülü
 Hybrid Search'ten gelen kaba sonuçları, Cross-Encoder ile yeniden puanlayıp
 en alakalı sonuçları en üste çıkarır.
 
-Model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  - Küçük (~80MB), hızlı, İngilizce + çok dilli sorguları iyi sıralar.
-  - Input: (query, passage) çiftleri → Output: relevance skoru
+Öncelik sırası:
+  1. cross-encoder/mmarco-mMiniLMv2-L12-H384-v1  (~180MB, 26 dil, Türkçe dahil)
+  2. cross-encoder/ms-marco-MiniLM-L-6-v2         (~80MB, İngilizce fallback)
+
+Çıkış skorları sigmoid ile [0, 1] aralığına normalize edilir.
+Ortam değişkeni RERANKER_MODEL ile model değiştirilebilir.
 
 Kullanım:
     from database.vector.reranker import rerank
@@ -16,42 +19,65 @@ Kullanım:
 """
 
 import logging
+import math
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Multilingual (26 dil, Türkçe dahil) — İngilizce modelden belirgin iyileşme sağlar
+_RERANKER_MODEL_PRIMARY  = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+_RERANKER_MODEL_FALLBACK = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_RERANKER_MODEL = os.getenv("RERANKER_MODEL", _RERANKER_MODEL_PRIMARY)
+
 # ── Lazy load — model sadece ilk kullanımda yüklenir ─────────────────────────
 _cross_encoder = None
-_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_loaded_model_name: str | None = None
+
+
+def _sigmoid(x: float) -> float:
+    """Raw cross-encoder logit → [0, 1] olasılık."""
+    try:
+        return 1.0 / (1.0 + math.exp(-x))
+    except OverflowError:
+        return 0.0 if x < 0 else 1.0
 
 
 def _load_model():
-    """Cross-Encoder modelini lazy olarak yükler."""
-    global _cross_encoder
+    """Cross-Encoder modelini lazy olarak yükler; multilingual başarısız olursa fallback."""
+    global _cross_encoder, _loaded_model_name
     if _cross_encoder is not None:
         return _cross_encoder
     try:
         from sentence_transformers import CrossEncoder
-        logger.info(f"[Reranker] Model yükleniyor: {_RERANKER_MODEL}")
-        _cross_encoder = CrossEncoder(_RERANKER_MODEL, max_length=512)
-        logger.info(f"[Reranker] Model başarıyla yüklendi.")
-        return _cross_encoder
     except ImportError:
         logger.warning(
             "[Reranker] sentence-transformers kurulu değil. "
             "Re-ranking devre dışı. Kurmak için: pip install sentence-transformers"
         )
         return None
-    except Exception as e:
-        logger.error(f"[Reranker] Model yüklenemedi: {e}")
-        return None
+
+    for model_name in [_RERANKER_MODEL, _RERANKER_MODEL_FALLBACK]:
+        if not model_name:
+            continue
+        try:
+            logger.info("[Reranker] Model yükleniyor: %s", model_name)
+            _cross_encoder = CrossEncoder(model_name, max_length=512)
+            _loaded_model_name = model_name
+            logger.info("[Reranker] Model hazır: %s", model_name)
+            return _cross_encoder
+        except Exception as e:
+            logger.warning("[Reranker] %s yüklenemedi, sıradaki deneniyor: %s", model_name, e)
+
+    logger.error("[Reranker] Tüm modeller başarısız, re-ranking devre dışı.")
+    return None
 
 
 def rerank(
     query: str,
     candidates: list[dict[str, Any]],
     top_k: int = 10,
-    text_key: str = "content",
+    text_key: str = "icerik",
 ) -> list[dict[str, Any]]:
     """
     Aday chunk'ları Cross-Encoder ile yeniden sıralar.
@@ -97,12 +123,11 @@ def rerank(
             # Cross-Encoder max_length=512, çok uzun metinleri kırp
             pairs.append((query, text[:2000]))
 
-        # Puanlama
+        # Puanlama — sigmoid ile [0,1] normalize et
         scores = model.predict(pairs)
 
-        # Puanları candidate'lere ekle
         for i, score in enumerate(scores):
-            candidates[i]["rerank_score"] = float(score)
+            candidates[i]["rerank_score"] = _sigmoid(float(score))
 
         # En yüksek puandan düşüğe sırala
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)

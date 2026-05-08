@@ -1,142 +1,246 @@
-import React, { useState, useEffect } from 'react';
-import { User, Hash, AlignLeft, ShieldCheck, Database, CheckCircle2, ToggleRight, ToggleLeft, Sparkles, Loader2, ChevronDown, ChevronUp, FileText, Webhook, RefreshCw, AlertCircle, GitBranch, Settings2, Lock, Unlock } from 'lucide-react';
+import React, { useState, useEffect, useContext, useCallback, createContext } from 'react';
+import { ShieldCheck, CheckCircle2, Loader2, ChevronDown, ChevronUp, FileText, RefreshCw, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
+
+/* ── NodeConfigPanel primitifleri — MODÜL DÜZEYINDE (render'da yeniden tanımlanmaz) ── */
+const _NCCtx = createContext({ cfg: {}, setKey: () => {} });
+
+const Section = ({ title }) => (
+    <div className="flex items-center gap-3 pt-5 pb-1.5">
+        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">{title}</span>
+        <div className="flex-1 h-px bg-stone-100" />
+    </div>
+);
+
+const Row = ({ label, desc, children, noBorder }) => (
+    <div className={`flex items-center gap-4 py-3 ${noBorder ? '' : 'border-b border-stone-100'}`}>
+        <div className="flex-shrink-0" style={{ width: '44%' }}>
+            <div className="text-[12px] font-semibold text-stone-700 leading-snug">{label}</div>
+            {desc && <div className="text-[10px] text-stone-400 mt-0.5 leading-snug">{desc}</div>}
+        </div>
+        <div className="flex-1 min-w-0">{children}</div>
+    </div>
+);
+
+const Pill = ({ k, defaultVal = false }) => {
+    const { cfg, setKey } = useContext(_NCCtx);
+    const on = cfg[k] !== undefined ? !!cfg[k] : defaultVal;
+    return (
+        <div className="flex justify-end">
+            <button
+                type="button"
+                onClick={() => setKey(k, !on)}
+                className={`relative w-[38px] h-[20px] rounded-full transition-colors focus:outline-none ${on ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}
+            >
+                <span className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-150 ${on ? 'left-[20px]' : 'left-[2px]'}`} />
+            </button>
+        </div>
+    );
+};
+
+const SSlider = ({ k, min, max, step, fmt, defaultVal }) => {
+    const { cfg, setKey } = useContext(_NCCtx);
+    const raw = cfg[k];
+    const val = raw !== undefined && raw !== null && !isNaN(Number(raw)) ? Number(raw) : (defaultVal ?? min);
+    const display = fmt ? fmt(val) : val;
+    return (
+        <div className="flex items-center gap-3">
+            <span className="text-[13px] font-black text-[#378ADD] font-mono tabular-nums" style={{ minWidth: 42, textAlign: 'right' }}>{display}</span>
+            <div className="flex-1">
+                <input
+                    type="range" min={min} max={max} step={step}
+                    value={val}
+                    onChange={(e) => setKey(k, step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))}
+                    className="w-full h-[3px] bg-stone-200 rounded-full appearance-none cursor-pointer accent-[#D44B4B]"
+                />
+                <div className="flex justify-between mt-0.5">
+                    <span className="text-[9px] text-stone-300 font-mono">{min}</span>
+                    <span className="text-[9px] text-stone-300 font-mono">{max}</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SNumInput = ({ k, min }) => {
+    const { cfg, setKey } = useContext(_NCCtx);
+    return (
+        <input
+            type="number" min={min}
+            value={cfg[k] ?? ''}
+            onChange={e => setKey(k, e.target.value === '' ? null : parseInt(e.target.value))}
+            className="w-full bg-white border border-stone-200 text-stone-700 text-[12px] font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 transition-all font-mono text-right"
+        />
+    );
+};
 
 /* ── LG.7: Graph Node Ajanları için node_config Editörü ──────────────── */
 function NodeConfigPanel({ selectedItem, updateAgent }) {
     const cfg = selectedItem.nodeConfig || {};
-    const setKey = (k, v) => {
-        updateAgent('nodeConfig', { ...cfg, [k]: v });
-    };
-
-    const Toggle = ({ label, k, desc }) => (
-        <div
-            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${cfg[k] ? 'bg-[#EAF3DE] border-[#EAF3DE]/60' : 'bg-white border-stone-200 hover:bg-stone-50'}`}
-            onClick={() => setKey(k, !cfg[k])}
-        >
-            <div>
-                <div className={`text-[11px] font-black tracking-tight ${cfg[k] ? 'text-[#3B6D11]' : 'text-stone-700'}`}>{label}</div>
-                {desc && <div className="text-[10px] font-semibold tracking-tight mt-0.5 text-stone-500">{desc}</div>}
-            </div>
-            {cfg[k] ? <ToggleRight size={24} strokeWidth={2} className="text-[#3B6D11]" /> : <ToggleLeft size={24} strokeWidth={2} className="text-stone-300" />}
-        </div>
+    const setKey = useCallback(
+        (k, v) => updateAgent('nodeConfig', { ...(selectedItem.nodeConfig || {}), [k]: v }),
+        [updateAgent, selectedItem.nodeConfig]
     );
-
-    const Slider = ({ label, k, min, max, step, fmt }) => (
-        <div>
-            <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center justify-between">
-                <span>{label}</span>
-                <span className="text-[#378ADD] font-black text-xs font-mono">{fmt ? fmt(cfg[k]) : (cfg[k] ?? '—')}</span>
-            </label>
-            <input
-                type="range" min={min} max={max} step={step}
-                value={Number(cfg[k]) || 0}
-                onChange={(e) => setKey(k, step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))}
-                className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#378ADD]"
-            />
-        </div>
-    );
-
-    const NumInput = ({ label, k, min }) => (
-        <div>
-            <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">{label}</label>
-            <input
-                type="number" min={min}
-                value={cfg[k] ?? ''}
-                onChange={e => setKey(k, e.target.value === '' ? null : parseInt(e.target.value))}
-                className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
-            />
-        </div>
-    );
-
-    // Node ID'sine göre özel kontroller
     const id = selectedItem.id;
+
+    // ── Node'a özel gövde ─────────────────────────────────────────────────
+
     let body = null;
+
     if (id === 'sys_node_rag_search') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Slider label="Top-K (kaynak sayısı)" k="top_k" min={3} max={30} step={1} />
-                <Slider label="Minimum Skor Eşiği" k="score_threshold" min={0} max={1} step={0.01} fmt={(v) => (Number(v) || 0).toFixed(2)} />
-                <div className="col-span-2">
-                    <Toggle label="Komşu Chunk Genişletmesi" k="expand_chunk_graph" desc="Eşleşen chunk'ın etrafındaki paragrafları da dahil et." />
-                </div>
+            <div className="">
+                <Section title="Kaynak Havuzu" />
+                <Row label="Top-K" desc="Kaç kaynak döndürülsün">
+                    <SSlider k="top_k" min={3} max={30} step={1} defaultVal={10} />
+                </Row>
+                <Row label="Min. Skor Eşiği" desc="Bunun altındaki sonuçlar elenir">
+                    <SSlider k="score_threshold" min={0} max={1} step={0.01} defaultVal={0.05} fmt={v => v.toFixed(2)} />
+                </Row>
+                <Row label="Aday Havuzu" desc="Her arama kolundan kaç aday çekilir">
+                    <SNumInput k="candidate_pool_size" min={10} />
+                </Row>
+                <Row label="Belgede Max Chunk" desc="Aynı belgeden max parça sayısı">
+                    <SNumInput k="max_per_doc" min={1} />
+                </Row>
+
+                <Section title="Sorgu Genişletme" />
+                <Row label="Max Sorgu Varianti" desc="Kaç farklı ifadeyle aranacak">
+                    <SSlider k="max_query_variants" min={1} max={5} step={1} defaultVal={4} />
+                </Row>
+                <Row label="Kural Tabanlı Genişletme" desc="Türkçe soru eklerini (nedir, nasıl…) kaldırır">
+                    <Pill k="use_rule_expansion" defaultVal={true} />
+                </Row>
+                <Row label="LLM Sorgu Genişletme" desc="2 alternatif ifade üretir; gecikme ekler">
+                    <Pill k="use_query_expansion" />
+                </Row>
+
+                <Section title="Bağlam" />
+                <Row label="Bağlam Bütçesi" desc="LLM'e gönderilecek max karakter">
+                    <SSlider k="context_max_chars" min={4000} max={64000} step={4000} defaultVal={24000} fmt={v => `${Math.round(v / 1000)}K`} />
+                </Row>
+                <Row label="Duplikat Eşiği" desc="Bu benzerliğin üstündeki chunk'lar atlanır">
+                    <SSlider k="near_dup_threshold" min={0.5} max={0.95} step={0.05} defaultVal={0.65} fmt={v => v.toFixed(2)} />
+                </Row>
+                <Row label="Komşu Chunk Genişletme" desc="Graf komşularını (önceki/sonraki paragraf) dahil et">
+                    <Pill k="expand_chunk_graph" defaultVal={true} />
+                </Row>
+                <Row label="Adaptif Skor Filtresi" desc="Eşik sonrası top skorun %25 altındakileri at">
+                    <Pill k="adaptive_score_filter" defaultVal={true} />
+                </Row>
+
+                <Section title="Performans" />
+                <Row label="Cross-Encoder Re-Ranker" desc="Çok dilli AI ile yeniden sırala; kapatmak hızlandırır" noBorder>
+                    <Pill k="use_reranker" defaultVal={true} />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_error_solver') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Toggle label="RAG Bağlamını Kullan" k="use_rag_context" desc="Bilgi tabanı varsa çözüme dahil et." />
-                <NumInput label="Çıktı Şema Versiyonu" k="output_schema_version" min={1} />
+            <div className="">
+                <Section title="Ayarlar" />
+                <Row label="RAG Bağlamını Kullan" desc="Bilgi tabanı varsa çözüme dahil et">
+                    <Pill k="use_rag_context" defaultVal={true} />
+                </Row>
+                <Row label="Çıktı Şema Versiyonu" desc="JSON kart şema sürümü" noBorder>
+                    <SNumInput k="output_schema_version" min={1} />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_aggregator') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Toggle label="Sohbet Hafızasını Dahil Et" k="include_chat_memory" desc="Önceki sohbetlerden alakalı kesitler eklenir." />
-                <Toggle label="Tur Geçmişini Dahil Et" k="include_history" desc="Aynı oturumdaki son turlar prompt'a eklenir." />
-                <div className="col-span-2">
-                    <Toggle label="Düşük Skorlu RAG'ları Filtrele" k="trim_low_score_rag" desc="rag_search'in score_threshold'una uymayanları at." />
-                </div>
+            <div className="">
+                <Section title="Hafıza" />
+                <Row label="Sohbet Hafızası" desc="Önceki sohbetlerden alakalı kesitler eklenir">
+                    <Pill k="include_chat_memory" defaultVal={true} />
+                </Row>
+                <Row label="Tur Geçmişi" desc="Aynı oturumdaki son turlar prompt'a eklenir">
+                    <Pill k="include_history" defaultVal={true} />
+                </Row>
+                <Section title="Kalite" />
+                <Row label="Düşük Skorlu RAG'ları Filtrele" desc="rag_search score_threshold'una uymayanları at" noBorder>
+                    <Pill k="trim_low_score_rag" />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_supervisor') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Toggle label="LLM Sınıflandırıcı Kullan" k="use_llm_classifier" desc="Kapalıysa sadece kural tabanlı sınıflandırma çalışır." />
-                <Toggle label="Kural Tabanlı Yedek" k="fallback_to_rules" desc="LLM erişilemezse regex/anahtar kelimelere düş." />
+            <div className="">
+                <Section title="Sınıflandırma" />
+                <Row label="LLM Sınıflandırıcı" desc="Kapalıysa sadece kural tabanlı sınıflandırma çalışır">
+                    <Pill k="use_llm_classifier" defaultVal={true} />
+                </Row>
+                <Row label="Kural Tabanlı Yedek" desc="LLM erişilemezse regex/anahtar kelimelere düş" noBorder>
+                    <Pill k="fallback_to_rules" defaultVal={true} />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_zli_finder') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <NumInput label="SQL Aday Limiti" k="sql_match_limit" min={1} />
-                <Slider label="Minimum Skor" k="min_score" min={0} max={1} step={0.05} fmt={(v) => (Number(v) || 0).toFixed(2)} />
+            <div className="">
+                <Section title="Arama" />
+                <Row label="SQL Aday Limiti" desc="Veritabanından kaç aday çekilsin">
+                    <SNumInput k="sql_match_limit" min={1} />
+                </Row>
+                <Row label="Minimum Skor" desc="Bu skorun altındaki eşleşmeler atlanır" noBorder>
+                    <SSlider k="min_score" min={0} max={1} step={0.05} defaultVal={0.3} fmt={v => v.toFixed(2)} />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_n8n_trigger') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Toggle label="Açık Niyet Şartı" k="require_explicit_intent" desc="Sadece supervisor intent='n8n' verdiğinde tetikle." />
+            <div className="">
+                <Section title="Tetikleme" />
+                <Row label="Açık Niyet Şartı" desc="Sadece supervisor intent='n8n' verdiğinde tetikle" noBorder>
+                    <Pill k="require_explicit_intent" defaultVal={true} />
+                </Row>
             </div>
         );
     } else if (id === 'sys_node_msg_polish') {
         body = (
-            <div className="grid grid-cols-2 gap-5 p-5">
-                <Toggle label="Temizse Atla" k="skip_if_already_clean" desc="Heuristik olarak zaten profesyonel görünen metni revize etme." />
-                <NumInput label="Min Karakter Eşiği" k="min_chars_to_revise" min={0} />
+            <div className="">
+                <Section title="Revizyon" />
+                <Row label="Temizse Atla" desc="Zaten profesyonel görünen metni revize etme">
+                    <Pill k="skip_if_already_clean" defaultVal={true} />
+                </Row>
+                <Row label="Min Karakter Eşiği" desc="Bu uzunluğun altındaki yanıtlar revize edilmez" noBorder>
+                    <SNumInput k="min_chars_to_revise" min={0} />
+                </Row>
+            </div>
+        );
+    } else if (id === 'sys_node_critic') {
+        body = (
+            <div className="">
+                <Section title="Denetim" />
+                <Row label="JSON Kartları Otomatik Onayla" desc="error_solver / zli_finder JSON kartlarını denetimsiz geçir" noBorder>
+                    <Pill k="auto_approve_json" defaultVal={true} />
+                </Row>
             </div>
         );
     } else {
-        // Bilinmeyen node — JSON editörü göster
         const text = JSON.stringify(cfg, null, 2);
         body = (
-            <div className="p-5">
-                <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">Ham JSON</label>
+            <div className="pt-1">
+                <label className="block text-[9px] font-black text-stone-400 mb-2 uppercase tracking-widest">Ham JSON</label>
                 <textarea
                     defaultValue={text}
                     onBlur={(e) => {
                         try {
                             const parsed = JSON.parse(e.target.value || '{}');
                             updateAgent('nodeConfig', parsed);
-                        } catch {
-                            // sessizce yoksay
-                        }
+                        } catch { /* sessizce yoksay */ }
                     }}
-                    className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-mono rounded-lg px-3 py-2 min-h-[140px] outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30"
+                    className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-mono rounded-lg px-3 py-2 min-h-[140px] outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 resize-none"
                 />
-                <p className="text-[10px] text-stone-400 mt-1">Geçersiz JSON yok sayılır.</p>
+                <p className="text-[10px] text-stone-400 mt-1.5">Geçersiz JSON yok sayılır.</p>
             </div>
         );
     }
 
     return (
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-            <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-violet-50/50">
-                <Settings2 size={13} className="text-violet-600" />
-                <span className="text-[10px] font-black text-violet-700 uppercase tracking-widest">Node Yapılandırması ({id})</span>
-            </div>
+        <_NCCtx.Provider value={{ cfg, setKey }}>
             {body}
-        </div>
+        </_NCCtx.Provider>
     );
 }
 
@@ -190,43 +294,41 @@ function RouterWorkflowPanel({ selectedItem, updateAgent }) {
     };
 
     return (
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-stone-100 bg-[#4E4EBA]/5">
-                <div className="flex items-center gap-2">
-                    <Webhook size={13} className="text-[#4E4EBA]" />
-                    <span className="text-[10px] font-black text-[#4E4EBA] uppercase tracking-widest">n8n Tetikleyici Workflow'lar</span>
-                </div>
-                <button onClick={fetchWorkflows} className="p-1 rounded text-stone-400 hover:text-[#4E4EBA] hover:bg-stone-100 transition-colors">
-                    <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        <>
+            <div className="flex items-center gap-3 pt-5 pb-1.5">
+                <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">N8N Tetikleyiciler</span>
+                <div className="flex-1 h-px bg-stone-100" />
+                <button onClick={fetchWorkflows} className="p-1 rounded text-stone-300 hover:text-stone-500 transition-colors">
+                    <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
                 </button>
             </div>
-            <div className="p-5">
+            <div className="pb-1 border-b border-stone-100">
                 {loading ? (
-                    <div className="flex items-center gap-2 text-stone-400 text-[11px] py-2">
-                        <Loader2 size={14} className="animate-spin" /> n8n workflow'ları çekiliyor...
+                    <div className="flex items-center gap-2 text-stone-400 text-[11px] py-3">
+                        <Loader2 size={13} className="animate-spin" /> Workflow'lar yükleniyor…
                     </div>
                 ) : error ? (
-                    <div className="flex items-center gap-2 text-[#854F0B] text-[11px] bg-[#FAEEDA] rounded-lg px-3 py-2.5">
-                        <AlertCircle size={13} /> n8n sunucusuna bağlanılamadı. API anahtarını kontrol edin.
+                    <div className="flex items-center gap-2 text-[#854F0B] text-[11px] bg-[#FAEEDA]/60 rounded-lg px-3 py-2 mt-1">
+                        <AlertCircle size={12} /> n8n sunucusuna bağlanılamadı. API anahtarını kontrol edin.
                     </div>
                 ) : workflows.length === 0 ? (
-                    <p className="text-[11px] text-stone-400 py-2">n8n'de aktif workflow bulunamadı.</p>
+                    <p className="text-[11px] text-stone-400 py-3">n8n'de aktif workflow bulunamadı.</p>
                 ) : (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 py-2">
                         {workflows.map(wf => {
                             const isSelected = allowedWorkflows.includes(wf.name);
                             return (
                                 <div
                                     key={wf.id}
                                     onClick={() => toggleWorkflow(wf)}
-                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs cursor-pointer transition-all ${isSelected
-                                        ? 'bg-white border-[#4E4EBA]/30 text-stone-700 font-bold shadow-sm ring-1 ring-[#4E4EBA]/10'
-                                        : 'bg-stone-50 border-stone-100/50 text-stone-500 font-medium hover:bg-stone-100'
+                                    className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all ${isSelected
+                                        ? 'bg-white border-[#378ADD]/25 text-stone-700 font-bold shadow-sm'
+                                        : 'bg-stone-50 border-stone-100 text-stone-500 font-medium hover:bg-stone-100'
                                     }`}
                                 >
                                     {isSelected
-                                        ? <CheckCircle2 size={16} className="text-[#4E4EBA] shrink-0" strokeWidth={2.5} />
-                                        : <div className="w-4 h-4 rounded-full border-2 border-stone-300 shrink-0 bg-white" />
+                                        ? <CheckCircle2 size={14} className="text-[#378ADD] shrink-0" strokeWidth={2.5} />
+                                        : <div className="w-3.5 h-3.5 rounded-full border-2 border-stone-300 shrink-0" />
                                     }
                                     <span className="flex-1">{wf.name}</span>
                                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${wf.active ? 'bg-[#1D9E75]' : 'bg-stone-300'}`} />
@@ -236,12 +338,12 @@ function RouterWorkflowPanel({ selectedItem, updateAgent }) {
                     </div>
                 )}
                 {allowedWorkflows.length > 0 && (
-                    <p className="text-[10px] text-stone-400 mt-3 tracking-tight">
-                        <span className="font-bold text-[#4E4EBA]">{allowedWorkflows.length}</span> workflow seçili — prompt otomatik güncellendi.
+                    <p className="text-[10px] text-stone-400 pb-2 tracking-tight">
+                        <span className="font-bold text-[#378ADD]">{allowedWorkflows.length}</span> workflow seçili — prompt otomatik güncellendi.
                     </p>
                 )}
             </div>
-        </div>
+        </>
     );
 }
 
@@ -299,290 +401,252 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
     if (!selectedItem) return null;
 
+    // ── Settings-tema primitifleri (ajan düzeyi alanlar için) ─────────────
+    const ASection = ({ title }) => (
+        <div className="flex items-center gap-3 pt-5 pb-1.5">
+            <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">{title}</span>
+            <div className="flex-1 h-px bg-stone-100" />
+        </div>
+    );
+
+    const ARow = ({ label, desc, children, noBorder }) => (
+        <div className={`flex items-center gap-4 py-3 ${noBorder ? '' : 'border-b border-stone-100'}`}>
+            <div className="flex-shrink-0" style={{ width: '42%' }}>
+                <div className="text-[12px] font-semibold text-stone-700 leading-snug">{label}</div>
+                {desc && <div className="text-[10px] text-stone-400 mt-0.5 leading-snug">{desc}</div>}
+            </div>
+            <div className="flex-1 min-w-0">{children}</div>
+        </div>
+    );
+
+    const APill = ({ field }) => {
+        const on = !!selectedItem[field];
+        return (
+            <div className="flex justify-end">
+                <button type="button" onClick={() => updateAgent(field, !on)}
+                    className={`relative w-[38px] h-[20px] rounded-full transition-colors focus:outline-none ${on ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}>
+                    <span className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-150 ${on ? 'left-[20px]' : 'left-[2px]'}`} />
+                </button>
+            </div>
+        );
+    };
+
+    const ASlider = ({ field, min, max, step, fmt, defaultVal }) => {
+        const raw = selectedItem[field];
+        const val = (raw !== undefined && raw !== null && !isNaN(Number(raw))) ? Number(raw) : (defaultVal ?? min);
+        return (
+            <div className="flex items-center gap-3">
+                <span className="text-[13px] font-black text-[#378ADD] font-mono tabular-nums" style={{ minWidth: 40, textAlign: 'right' }}>
+                    {fmt ? fmt(val) : val}
+                </span>
+                <div className="flex-1">
+                    <input type="range" min={min} max={max} step={step} value={val}
+                        onChange={(e) => updateAgent(field, step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))}
+                        className="w-full h-[3px] bg-stone-200 rounded-full appearance-none cursor-pointer accent-[#D44B4B]" />
+                    <div className="flex justify-between mt-0.5">
+                        <span className="text-[9px] text-stone-300 font-mono">{min}</span>
+                        <span className="text-[9px] text-stone-300 font-mono">{max}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const AInput = ({ field, type = 'text', min, max, placeholder, mono }) => (
+        <input type={type} min={min} max={max} placeholder={placeholder}
+            value={selectedItem[field] ?? ''}
+            onChange={e => updateAgent(field, type === 'number' ? parseInt(e.target.value) : e.target.value)}
+            className={`w-full bg-white border border-stone-200 text-stone-700 text-[12px] rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 transition-all placeholder:text-stone-300 ${mono ? 'font-mono font-black text-right' : 'font-semibold'}`}
+        />
+    );
+
     return (
-        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* ── KUTU 1: Karakter & Yetkinlik ── */}
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
-                    <User size={13} className="text-[#378ADD]" />
-                    <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Karakter &amp; Yetkinlik</span>
+        <div className="px-5 pb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+            {/* ── DAVRANMIŞ ── */}
+            <ASection title="Davranış" />
+            <ARow label="Rol / Yeteneği" desc="Bu ajanın uzmanlık tanımı">
+                <AInput field="persona" placeholder="Örn: Finansal Asistan, Müşteri Temsilcisi" />
+            </ARow>
+            <ARow label="Zekâ Modeli" desc="Yapay zeka motoru">
+                <div className="flex items-center gap-1.5">
+                    <select
+                        value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
+                        onChange={(e) => updateAgent('model', e.target.value)}
+                        className="flex-1 min-w-0 bg-white border border-stone-200 text-stone-700 text-[12px] font-semibold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 cursor-pointer transition-all"
+                    >
+                        {loadingModels
+                            ? <option value="">Yükleniyor…</option>
+                            : fetchedModels.length === 0
+                                ? <option value="">— Model bulunamadı —</option>
+                                : <>
+                                    <option value="">Seçin…</option>
+                                    {Object.entries(groupedModels).map(([prov, mList]) => (
+                                        <optgroup key={prov} label={prov}>
+                                            {mList.map(m => (
+                                                <option key={m.id} value={m.name}>
+                                                    {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
+                                </>
+                        }
+                    </select>
+                    <button type="button"
+                        onClick={() => updateAgent('modelLocked', !selectedItem.modelLocked)}
+                        title={selectedItem.modelLocked ? 'Kilitli — kilidi kaldırmak için tıkla' : 'Kilitsiz — kilitlemek için tıkla'}
+                        className={`shrink-0 p-2 rounded-lg border transition-all focus:outline-none ${selectedItem.modelLocked
+                            ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626]'
+                            : 'bg-white border-stone-200 text-stone-300 hover:text-[#DC2626] hover:border-[#DC2626]/30'}`}>
+                        {selectedItem.modelLocked ? <Lock size={13} strokeWidth={2.5} /> : <Unlock size={13} strokeWidth={2} />}
+                    </button>
                 </div>
-                <div className="grid grid-cols-2 gap-5 p-5">
-                    <div>
-                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide">Ajan Rolü / Yeteneği</label>
-                        <input
-                            type="text" value={selectedItem.persona} onChange={(e) => updateAgent('persona', e.target.value)}
-                            placeholder="Örn: Finansal Asistan, Müşteri Temsilcisi"
-                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-semibold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:bg-white focus:ring-1 focus:ring-[#378ADD]/30 transition-all placeholder:text-stone-400 placeholder:font-medium"
-                        />
+                {selectedItem.modelLocked && (
+                    <p className="text-[10px] text-[#DC2626]/60 mt-1 flex items-center gap-1">
+                        <Lock size={9} strokeWidth={2.5} /> ChatBar model değişikliğinden etkilenmez
+                    </p>
+                )}
+            </ARow>
+            {selectedItem.agentKind === 'chatbot' && (
+                <ARow label="Konuşma Hafızası" desc="Son kaç mesajı hatırlasın">
+                    <AInput field="chatHistoryLength" type="number" min={1} max={50} mono />
+                </ARow>
+            )}
+            <ARow label="Yaratıcılık" desc="0 = analitik · 1 = dengeli · 2 = serbest">
+                <ASlider field="temp" min={0} max={2} step={0.1} defaultVal={0.7} fmt={v => v.toFixed(1)} />
+            </ARow>
+            <ARow label="Maks. Çıktı (Token)" desc="Daha kısa = daha düşük maliyet">
+                <AInput field="maxTokens" type="number" min={1} mono />
+            </ARow>
+
+            {/* ── GÖREV TANIMI ── */}
+            <ASection title="Görev Tanımı & Talimatlar" />
+            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-stone-100">
+                <div>
+                    <div className="text-[9px] font-black tracking-[0.15em] text-stone-400 uppercase mb-2 flex items-center gap-1.5">
+                        <CheckCircle2 size={10} className="text-stone-300" /> Pozitif Görevler
                     </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex justify-between items-center">
-                            <span>Zekâ Modeli</span>
-                            {loadingModels && <Loader2 size={12} className="animate-spin text-[#378ADD]" />}
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                            <select
-                                value={fetchedModels.find(m => m.name === selectedItem.model) ? selectedItem.model : ''}
-                                onChange={(e) => updateAgent('model', e.target.value)}
-                                className="flex-1 min-w-0 bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 cursor-pointer font-mono transition-all"
-                            >
-                                {loadingModels ? (
-                                    <option value="">Modeller yükleniyor...</option>
-                                ) : fetchedModels.length === 0 ? (
-                                    <option value="">— Sistemde kayıtlı model yok —</option>
-                                ) : (
-                                    <>
-                                        <option value="">Model seçin...</option>
-                                        {Object.entries(groupedModels).map(([providerName, mList]) => (
-                                            <optgroup key={providerName} label={providerName}>
-                                                {mList.map(m => (
-                                                    <option key={m.id} value={m.name}>
-                                                        {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
-                            <button
-                                type="button"
-                                onClick={() => updateAgent('modelLocked', !selectedItem.modelLocked)}
-                                title={selectedItem.modelLocked
-                                    ? "Kilitli — ChatBar model değişikliğinden etkilenmez. Kilidi kaldırmak için tıkla."
-                                    : "Kilitsiz — ChatBar'dan model değiştirilince bu ajan da güncellenir. Kilitlemek için tıkla."}
-                                className={`shrink-0 p-2 rounded-lg border transition-all focus:outline-none ${
-                                    selectedItem.modelLocked
-                                        ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626] hover:bg-[#FEF2F2]/80'
-                                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:text-[#DC2626] hover:border-[#DC2626]/30 hover:bg-[#FEF2F2]/50'
-                                }`}
-                            >
-                                {selectedItem.modelLocked
-                                    ? <Lock size={13} strokeWidth={2.5} />
-                                    : <Unlock size={13} strokeWidth={2} />
-                                }
-                            </button>
-                        </div>
-                        {selectedItem.modelLocked && (
-                            <p className="text-[10px] font-semibold text-[#DC2626]/70 mt-1.5 tracking-tight flex items-center gap-1">
-                                <Lock size={9} strokeWidth={2.5} /> ChatBar model değişikliğinden etkilenmez
-                            </p>
-                        )}
+                    <textarea value={selectedItem.prompt} onChange={(e) => updateAgent('prompt', e.target.value)}
+                        className="w-full bg-white border border-stone-200 text-stone-700 text-[12px] font-medium rounded-lg px-3 py-2.5 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-stone-300"
+                        placeholder="Görevi ve beklentileri girin…" />
+                </div>
+                <div>
+                    <div className="text-[9px] font-black tracking-[0.15em] text-stone-400 uppercase mb-2 flex items-center gap-1.5">
+                        <ShieldCheck size={10} className="text-stone-300" /> Kısıtlamalar
                     </div>
-                    {selectedItem.agentKind === 'chatbot' && (
-                        <div>
-                            <label className="block text-[10px] font-bold text-stone-500 mb-1.5 flex items-center gap-1.5 uppercase tracking-wide">
-                                <Hash size={12} className="text-[#378ADD]" /> Konuşma Hafızası <span className="normal-case tracking-normal opacity-70">(son mesaj limiti)</span>
-                            </label>
-                            <input
-                                type="number" min={1} max={50} value={selectedItem.chatHistoryLength}
-                                onChange={e => updateAgent('chatHistoryLength', parseInt(e.target.value))}
-                                className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
-                            />
-                            <p className="text-[10px] font-semibold text-stone-400 mt-1.5 tracking-tight">Bot son bu kadar mesajı hatırlar.</p>
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center justify-between">
-                            <span>Yaratıcılık (Temperature)</span>
-                            <span className="text-[#378ADD] font-black text-xs font-mono">{(Number(selectedItem.temp) || 0.7).toFixed(1)}</span>
-                        </label>
-                        <input
-                            type="range" min="0.0" max="2.0" step="0.1"
-                            value={Number(selectedItem.temp) || 0.7}
-                            onChange={(e) => updateAgent('temp', parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#378ADD] mt-1"
-                        />
-                        <div className="flex justify-between text-[10px] font-bold text-stone-400 mt-1.5 tracking-tight">
-                            <span>Analitik (0.0)</span><span>Dengeli (1.0)</span><span>Yaratıcı (2.0)</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                            <Hash size={12} className="text-[#378ADD]" /> Maks. Çıktı (Max Token)
-                        </label>
-                        <input
-                            type="number" value={selectedItem.maxTokens}
-                            onChange={(e) => updateAgent('maxTokens', parseInt(e.target.value))}
-                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-black rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 transition-all font-mono"
-                        />
-                        <p className="text-[10px] font-semibold text-stone-400 mt-1.5 tracking-tight">Daha kısa değer = daha düşük maliyet.</p>
-                    </div>
+                    <textarea value={selectedItem.negativePrompt} onChange={(e) => updateAgent('negativePrompt', e.target.value)}
+                        className="w-full bg-white border border-stone-200 text-stone-700 text-[12px] font-medium rounded-lg px-3 py-2.5 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-stone-300"
+                        placeholder="Örn: Fiyat verme, siyaset konuşma…" />
                 </div>
             </div>
 
-            {/* ── KUTU 3: Görev Tanımı & Talimatlar ── */}
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-[#FAEEDA]/40">
-                    <AlignLeft size={13} className="text-[#854F0B]" />
-                    <span className="text-[10px] font-black text-[#854F0B] uppercase tracking-widest">Görev Tanımı &amp; Talimatlar</span>
-                </div>
-                <div className="grid grid-cols-2 gap-5 p-5">
-                    <div>
-                        <label className="block text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                            <CheckCircle2 size={12} className="text-[#3B6D11]" /> Pozitif Görevler (Do's)
-                        </label>
-                        <textarea
-                            value={selectedItem.prompt}
-                            onChange={(e) => updateAgent('prompt', e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-200 text-stone-700 text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/30 focus:bg-white min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-stone-400 placeholder:font-normal"
-                            placeholder="Görevi ve beklentileri girin..."
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-[#991B1B] mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                            <ShieldCheck size={12} className="text-[#991B1B]" /> Kısıtlamalar (Don'ts)
-                        </label>
-                        <textarea
-                            value={selectedItem.negativePrompt}
-                            onChange={(e) => updateAgent('negativePrompt', e.target.value)}
-                            className="w-full bg-[#FEF2F2]/30 border border-[#FEF2F2] text-[#991B1B] text-xs font-medium rounded-lg px-4 py-3 outline-none focus:border-[#991B1B]/40 focus:ring-1 focus:ring-[#991B1B]/20 focus:bg-[#FEF2F2]/50 min-h-[130px] resize-none leading-relaxed transition-all placeholder:text-[#991B1B]/40 placeholder:font-normal"
-                            placeholder="Örn: Fiyat verme, siyaset konuşma..."
-                        />
-                    </div>
-                </div>
-            </div>
-
-            {/* ── KUTU 4: Bilgi Kaynağı — chatbot VEYA RAG kullanan graph_node ── */}
+            {/* ── BİLGİ KAYNAĞI ── */}
             {(selectedItem.agentKind === 'chatbot' ||
               selectedItem.id === 'sys_node_rag_search' ||
               selectedItem.id === 'sys_node_aggregator') && (
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-                    <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
-                        <Database size={13} className="text-stone-500" />
-                        <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Bilgi Kaynağı (Vektör Havuzları)</span>
-                    </div>
-                    <div className="p-5">
-                        <div className="space-y-1.5">
-                            {rags.map(rag => {
-                                const allowedRagsArr = Array.isArray(selectedItem.allowedRags) ? selectedItem.allowedRags : [];
-                                const hasAccess = allowedRagsArr.includes(rag.id);
-                                const isExpanded = expandedRags[rag.id];
-                                return (
-                                    <div key={rag.id} className="flex flex-col gap-1">
-                                        <div
-                                            onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
-                                            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs cursor-pointer transition-all ${hasAccess
-                                                ? 'bg-white border-[#378ADD]/30 text-stone-700 font-bold shadow-sm ring-1 ring-[#378ADD]/10'
-                                                : 'bg-stone-50 border-stone-100/50 text-stone-500 font-medium hover:bg-stone-100'
-                                                }`}
-                                        >
-                                            {hasAccess
-                                                ? <CheckCircle2 size={16} className="text-[#378ADD] shrink-0" strokeWidth={2.5} />
-                                                : <div className="w-4 h-4 rounded-full border-2 border-stone-300 shrink-0 bg-white" />}
-                                            <span className="flex-1">{rag.name}</span>
-
-                                            {rag.files && rag.files.length > 0 && (
-                                                <button
-                                                    onClick={(e) => toggleRagAccordion(e, rag.id)}
-                                                    className="p-1 hover:bg-stone-200 rounded text-stone-400 hover:text-stone-600 transition-colors"
-                                                    title="Dosyaları Göster/Gizle"
-                                                >
-                                                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                                </button>
-                                            )}
+                <>
+                    <ASection title="Bilgi Kaynağı (Vektör Havuzları)" />
+                    {rags.map((rag, ri) => {
+                        const arr = Array.isArray(selectedItem.allowedRags) ? selectedItem.allowedRags : [];
+                        const hasAccess = arr.includes(rag.id);
+                        const isExpanded = expandedRags[rag.id];
+                        const isLast = ri === rags.length - 1 && !isExpanded;
+                        return (
+                            <div key={rag.id}>
+                                {/* Havuz satırı */}
+                                <div className={`flex items-center gap-4 py-3 ${isLast ? '' : 'border-b border-stone-100'}`}>
+                                    <div className="flex-shrink-0 cursor-pointer select-none" style={{ width: '42%' }}
+                                        onClick={() => toggleRagAccess(selectedItem.id, rag.id)}>
+                                        <div className={`text-[12px] font-semibold leading-snug transition-colors ${hasAccess ? 'text-stone-700' : 'text-stone-400'}`}>
+                                            {rag.name}
                                         </div>
-
-                                        {/* Akordeon İçeriği (Dosyalar) */}
-                                        {isExpanded && rag.files && (
-                                            <div className="pl-9 pr-3 py-1 space-y-1.5 mt-2 mb-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                {rag.files.map((file) => {
-                                                    const isFileDisabled = allowedRagsArr.includes(`!${file.id}`);
-                                                    return (
-                                                        <div
-                                                            key={file.id}
-                                                            onClick={(e) => toggleFileAccess(e, file.id)}
-                                                            className={`flex items-center gap-2 text-[11px] px-3 py-2 rounded border cursor-pointer transition-colors font-semibold tracking-tight ${isFileDisabled ? 'bg-[#FEF2F2]/50 border-[#FEF2F2] text-stone-400' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'}`}
-                                                            title={isFileDisabled ? "Yapay zeka erişimine kapalı. Açmak için tıklayın." : "Yapay zeka erişimine açık. Kapatmak için tıklayın."}
-                                                        >
-                                                            <div className="flex-1 flex items-center gap-2.5 truncate">
-                                                                <FileText size={12} strokeWidth={2.5} className={isFileDisabled ? "text-[#991B1B]/50" : "text-[#378ADD]"} />
-                                                                <span className={`truncate ${isFileDisabled ? 'line-through decoration-stone-300' : ''}`}>{file.filename}</span>
-                                                            </div>
-                                                            <div className="shrink-0">
-                                                                {isFileDisabled ? <ToggleLeft size={16} strokeWidth={2.5} className="text-[#991B1B]/60" /> : <ToggleRight size={16} strokeWidth={2.5} className="text-[#378ADD]" />}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                        {rag.files?.length > 0 && (
+                                            <div className="text-[10px] text-stone-400 mt-0.5">
+                                                {rag.files.length} dosya
                                             </div>
                                         )}
                                     </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
+                                    <div className="flex-1 flex items-center justify-end gap-3">
+                                        {/* Pill — havuz erişimi */}
+                                        <button type="button"
+                                            onClick={() => toggleRagAccess(selectedItem.id, rag.id)}
+                                            className={`relative w-[38px] h-[20px] rounded-full transition-colors focus:outline-none flex-shrink-0 ${hasAccess ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}>
+                                            <span className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-150 ${hasAccess ? 'left-[20px]' : 'left-[2px]'}`} />
+                                        </button>
+                                        {/* Akordeon aç/kapat */}
+                                        {rag.files?.length > 0 && (
+                                            <button type="button"
+                                                onClick={(e) => toggleRagAccordion(e, rag.id)}
+                                                className="text-stone-300 hover:text-stone-500 transition-colors focus:outline-none">
+                                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Dosya alt-satırları */}
+                                {isExpanded && rag.files && (
+                                    <div className="pl-4 border-b border-stone-100 animate-in slide-in-from-top-1 fade-in duration-150">
+                                        {rag.files.map((file, fi) => {
+                                            const isDisabled = arr.includes(`!${file.id}`);
+                                            const isLastFile = fi === rag.files.length - 1;
+                                            return (
+                                                <div key={file.id}
+                                                    className={`flex items-center gap-4 py-2.5 cursor-pointer ${isLastFile ? '' : 'border-b border-stone-50'}`}
+                                                    onClick={(e) => toggleFileAccess(e, file.id)}>
+                                                    <div className="flex-shrink-0 flex items-center gap-2 min-w-0" style={{ width: '42%' }}>
+                                                        <FileText size={11} className={`shrink-0 ${isDisabled ? 'text-stone-300' : 'text-stone-400'}`} />
+                                                        <span className={`text-[11px] font-medium truncate leading-snug ${isDisabled ? 'text-stone-300 line-through' : 'text-stone-600'}`}>
+                                                            {file.filename}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex-1 flex justify-end">
+                                                        <button type="button"
+                                                            onClick={(e) => toggleFileAccess(e, file.id)}
+                                                            className={`relative w-[34px] h-[18px] rounded-full transition-colors focus:outline-none ${!isDisabled ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}>
+                                                            <span className={`absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full shadow-sm transition-all duration-150 ${!isDisabled ? 'left-[18px]' : 'left-[2px]'}`} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                    <div className="border-b border-stone-100" />
+                </>
             )}
 
-            {/* ── KUTU 5: n8n Tetikleyiciler (router VEYA n8n_trigger node) ── */}
+            {/* ── N8N TETİKLEYİCİLER ── */}
             {(selectedItem.agentKind === 'router' || selectedItem.id === 'sys_node_n8n_trigger') && (
                 <RouterWorkflowPanel selectedItem={selectedItem} updateAgent={updateAgent} />
             )}
 
-            {/* ── LG.7 KUTU: Node Yapılandırması (graph_node ajanları için) ── */}
+            {/* ── NODE YAPILANDIRMASI ── */}
             {selectedItem.agentKind === 'graph_node' && (
                 <NodeConfigPanel selectedItem={selectedItem} updateAgent={updateAgent} />
             )}
 
-            {/* ── KUTU 6: Akıllı Denetim (sadece chatbot) ── */}
+            {/* ── AKILLI DENETİM (chatbot) ── */}
             {selectedItem.agentKind === 'chatbot' && (
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-                    <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-100 bg-stone-50">
-                        <ShieldCheck size={13} className="text-stone-500" />
-                        <span className="text-[10px] font-black text-stone-600 uppercase tracking-widest">Akıllı Denetim</span>
+                <>
+                    <ASection title="Akıllı Denetim" />
+                    <ARow label="Sıkı Doğruluk" desc="RAG dışına çıkılmasını yasaklar">
+                        <APill field="strictFactCheck" />
+                    </ARow>
+                    <ARow label="Takip Sorusu Önerisi" desc="Cevap bitince akıllı öneriler çıkar">
+                        <APill field="canAskFollowUp" />
+                    </ARow>
+                    <div className="pt-3">
+                        <div className="text-[9px] font-black tracking-[0.15em] text-stone-400 uppercase mb-2">Hata Durumu Yanıtı</div>
+                        <textarea value={selectedItem.errorMessage} onChange={e => updateAgent('errorMessage', e.target.value)}
+                            className="w-full bg-white border border-stone-200 text-stone-700 text-[12px] font-medium rounded-lg px-3 py-2.5 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 resize-none min-h-[80px] placeholder:text-stone-300 transition-all"
+                            placeholder="Bilgi bulamazsa kullanıcıya ne desin?" />
                     </div>
-                    <div className="grid grid-cols-2 gap-5 p-5">
-                        {/* Sol sütun: Toggle'lar */}
-                        <div className="space-y-3">
-                            <div
-                                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${selectedItem.strictFactCheck ? 'bg-[#EAF3DE] border-[#EAF3DE]/60 shadow-[inset_0_2px_10px_-5px_rgba(59,109,17,0.1)]' : 'bg-white border-stone-200 hover:bg-stone-50 shadow-sm'
-                                    }`}
-                                onClick={() => updateAgent('strictFactCheck', !selectedItem.strictFactCheck)}
-                            >
-                                <div>
-                                    <div className={`text-xs font-black flex items-center gap-2 tracking-tight ${selectedItem.strictFactCheck ? 'text-[#3B6D11]' : 'text-stone-700'}`}>
-                                        <CheckCircle2 size={15} strokeWidth={2.5} className={selectedItem.strictFactCheck ? 'text-[#3B6D11]' : 'text-stone-400'} />
-                                        Sıkı Doğruluk (Fact Check)
-                                    </div>
-                                    <div className={`text-[11px] font-semibold tracking-tight mt-1 ${selectedItem.strictFactCheck ? 'text-[#3B6D11]/70' : 'text-stone-500'}`}>
-                                        RAG dışına çıkılmasını yasaklar.
-                                    </div>
-                                </div>
-                                {selectedItem.strictFactCheck ? <ToggleRight size={28} strokeWidth={2} className="text-[#3B6D11]" /> : <ToggleLeft size={28} strokeWidth={2} className="text-stone-300" />}
-                            </div>
-
-                            <div
-                                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors ${selectedItem.canAskFollowUp ? 'bg-[#378ADD]/10 border-[#378ADD]/20 shadow-[inset_0_2px_10px_-5px_rgba(55,138,221,0.1)]' : 'bg-white border-stone-200 hover:bg-stone-50 shadow-sm'
-                                    }`}
-                                onClick={() => updateAgent('canAskFollowUp', !selectedItem.canAskFollowUp)}
-                            >
-                                <div>
-                                    <div className={`text-xs font-black flex items-center gap-2 tracking-tight ${selectedItem.canAskFollowUp ? 'text-[#378ADD]' : 'text-stone-700'}`}>
-                                        <Sparkles size={14} strokeWidth={2.5} className={selectedItem.canAskFollowUp ? 'text-[#378ADD]' : 'text-stone-400'} />
-                                        Takip Sorusu Önerisi
-                                    </div>
-                                    <div className={`text-[11px] font-semibold tracking-tight mt-1 ${selectedItem.canAskFollowUp ? 'text-[#378ADD]/70' : 'text-stone-500'}`}>
-                                        Cevap bitince akıllı öneriler çıkar.
-                                    </div>
-                                </div>
-                                {selectedItem.canAskFollowUp ? <ToggleRight size={28} strokeWidth={2} className="text-[#378ADD]" /> : <ToggleLeft size={28} strokeWidth={2} className="text-stone-300" />}
-                            </div>
-                        </div>
-
-                        {/* Sağ sütun: Hata yanıtı */}
-                        <div>
-                            <label className="block text-[10px] font-bold text-[#991B1B] mb-1.5 uppercase tracking-wide">Hata Durumu Yanıtı (Fallback)</label>
-                            <textarea
-                                value={selectedItem.errorMessage}
-                                onChange={e => updateAgent('errorMessage', e.target.value)}
-                                className="w-full bg-[#FEF2F2]/30 border border-[#FEF2F2] text-[#991B1B] text-xs font-medium rounded-xl px-4 py-3 outline-none focus:border-[#991B1B]/40 focus:ring-1 focus:ring-[#991B1B]/20 focus:bg-[#FEF2F2]/50 transition-all resize-none min-h-[110px] placeholder:text-[#991B1B]/40 placeholder:font-normal"
-                                placeholder="Bilgi bulamazsa kullanıcıya ne desin?"
-                            />
-                        </div>
-                    </div>
-                </div>
+                </>
             )}
         </div>
     );

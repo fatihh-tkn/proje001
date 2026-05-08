@@ -32,6 +32,7 @@ class LogRepository:
         self,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
         status: str = "success",
@@ -51,6 +52,7 @@ class LogRepository:
         log = ApiLog(
             oturum_kimlik=session_id,
             kullanici_kimlik=user_id,
+            ajan_kimlik=agent_id,
             tedarikci=provider,
             model=model,
             durum=status,
@@ -75,6 +77,7 @@ class LogRepository:
         self,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         model: Optional[str] = None,
         status: Optional[str] = None,
         date_from: Optional[str] = None,
@@ -88,6 +91,8 @@ class LogRepository:
             stmt = stmt.where(ApiLog.oturum_kimlik == session_id)
         if user_id:
             stmt = stmt.where(ApiLog.kullanici_kimlik == user_id)
+        if agent_id:
+            stmt = stmt.where(ApiLog.ajan_kimlik == agent_id)
         if model:
             stmt = stmt.where(ApiLog.model == model)
         if status == "error":

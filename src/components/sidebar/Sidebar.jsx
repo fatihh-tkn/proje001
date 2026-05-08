@@ -16,32 +16,14 @@ import GlobalChatRoom from '../workspace/GlobalChatRoom';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
 import { useArchiveChangedListener } from '../../utils/archiveEvents';
-
-const STORAGE_CHANNELS = 'global_chat_channels';
-const DEFAULT_CHANNELS = [
-    { id: 'genel', name: 'genel' },
-    { id: 'duyurular', name: 'duyurular' },
-];
-
-const loadChannelsFromStorage = () => {
-    try {
-        const stored = JSON.parse(localStorage.getItem(STORAGE_CHANNELS) || 'null');
-        if (Array.isArray(stored) && stored.length) return stored;
-    } catch (_) { /* ignore */ }
-    return DEFAULT_CHANNELS;
-};
-
-const slugifyChannel = (s) =>
-    s.trim().toLocaleLowerCase('tr-TR')
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9çğıöşü_-]/g, '')
-        .substring(0, 32);
+import { fetchChannels, createChannel } from '../../api/globalChatService';
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
-    const [channels, setChannels] = useState(() => loadChannelsFromStorage());
+    const [channels, setChannels] = useState([]);
     const [chatPanelOpen, setChatPanelOpen] = useState(false);
-    const [activeChannelId, setActiveChannelId] = useState(() => loadChannelsFromStorage()[0]?.id || null);
+    const [activeChannelId, setActiveChannelId] = useState(null);
+    const [unreadCounts, setUnreadCounts] = useState({});
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
@@ -96,37 +78,41 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
     useArchiveChangedListener(fetchArchive);
 
+    // ── Kanalları API'den yükle ──────────────────────────────────────────────
     useEffect(() => {
-        const onChannelsUpdate = () => setChannels(loadChannelsFromStorage());
-        window.addEventListener('channel:list-updated', onChannelsUpdate);
-        return () => window.removeEventListener('channel:list-updated', onChannelsUpdate);
+        fetchChannels()
+            .then(list => {
+                setChannels(list);
+                setActiveChannelId(prev => prev || list[0]?.id || null);
+            })
+            .catch(console.error);
     }, []);
-
-    const persistChannels = (next) => {
-        localStorage.setItem(STORAGE_CHANNELS, JSON.stringify(next));
-        setChannels(next);
-        window.dispatchEvent(new CustomEvent('channel:list-updated'));
-    };
 
     const toggleChatPanel = () => setChatPanelOpen(prev => !prev);
 
     const handleSelectChannel = (channelId) => {
         setChatPanelOpen(true);
         setActiveChannelId(channelId);
+        setUnreadCounts(prev => ({ ...prev, [channelId]: 0 }));
     };
 
-    const handleCreateChannel = () => {
+    const handleCreateChannel = async () => {
         const name = window.prompt('Yeni kanal adı:');
-        if (!name) return;
-        const id = slugifyChannel(name);
-        if (!id) return;
-        if (channels.some(c => c.id === id)) {
-            handleSelectChannel(id);
-            return;
+        if (!name?.trim()) return;
+        try {
+            const ch = await createChannel(name.trim());
+            setChannels(prev => [...prev, ch]);
+            handleSelectChannel(ch.id);
+        } catch (err) {
+            alert(err.message);
         }
-        const next = [...channels, { id, name: id, createdAt: Date.now() }];
-        persistChannels(next);
-        handleSelectChannel(id);
+    };
+
+    const handleNewMessage = (channelId, _msg) => {
+        const isVisible = chatPanelOpen && activeChannelId === channelId;
+        if (!isVisible) {
+            setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] || 0) + 1 }));
+        }
     };
 
     useEffect(() => {
@@ -300,6 +286,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 isCollapsed={isCollapsed}
                 activeChannelId={activeChannelId}
                 setActiveChannelId={setActiveChannelId}
+                channels={channels}
+                onNewMessage={handleNewMessage}
             />
             <div
                 className="flex-1 flex flex-col h-full overflow-hidden w-full relative"
@@ -426,7 +414,14 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                             )}
                                             <Hash size={isCollapsed ? 18 : 14} className={`shrink-0 ${isActive ? 'text-[#DC2626]' : 'text-slate-600'}`} />
                                             {!isCollapsed && (
-                                                <span className="truncate text-[12px]">{ch.name}</span>
+                                                <span className="truncate text-[12px] flex-1">{ch.name}</span>
+                                            )}
+                                            {(unreadCounts[ch.id] || 0) > 0 && (
+                                                <span className={`shrink-0 flex items-center justify-center rounded-full text-[9px] font-bold text-white leading-none
+                                                    ${isCollapsed ? 'absolute top-0.5 right-0.5 w-3.5 h-3.5' : 'w-4 h-4 ml-auto'}`}
+                                                    style={{ background: '#DC2626', minWidth: isCollapsed ? 14 : 16 }}>
+                                                    {unreadCounts[ch.id] > 9 ? '9+' : unreadCounts[ch.id]}
+                                                </span>
                                             )}
                                         </button>
                                     );

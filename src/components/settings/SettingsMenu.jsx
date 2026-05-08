@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#DC2626'] },
@@ -198,6 +198,25 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             >
                                 <AlertTriangle size={14} className="text-[#A01B1B] shrink-0" />
                                 <span>Hata Yönetimi</span>
+                            </button>
+                        )}
+
+                        {canSeeTab('ui_restrictions') && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'restrictions-panel',
+                                            title: 'Kısıtlamalar',
+                                            type: 'restrictions',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <ShieldAlert size={14} className="text-[#b91d2c] shrink-0" />
+                                <span>Kısıtlamalar</span>
                             </button>
                         )}
 

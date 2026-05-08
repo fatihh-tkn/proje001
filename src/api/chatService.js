@@ -247,6 +247,10 @@ export const sendMessageStream = async (
                   intent: evt.intent,
                   plan: evt.plan,
                   reasoning: evt.reasoning,
+                  // critic-specific
+                  approved: evt.approved,
+                  feedback: evt.feedback,
+                  revision_count: evt.revision_count,
                 });
                 break;
               case "sources":

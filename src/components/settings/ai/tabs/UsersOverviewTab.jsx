@@ -784,28 +784,48 @@ function UserLogsView({ user }) {
     );
 }
 
-/* ─── Profil Görünümü ─────────────────────────────────────────── */
-function UserProfileView({ user }) {
+/* ─── Profil Bölümü (Section/Row pattern) ────────────────────── */
+function UserProfileSection({ user }) {
     return (
-        <div className="space-y-2 max-w-lg">
-            <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100 overflow-hidden shadow-sm">
-                {[
-                    [Mail, 'E-posta', user.email, true],
-                    [Shield, 'Rol', user.role],
-                    [Building2, 'Departman', user.department || '—'],
-                    [Briefcase, 'Pozisyon', user.meta?.position || '—'],
-                    [LogIn, 'Son Giriş', user.lastLogin && user.lastLogin !== 'Bilinmiyor' ? formatDate(user.lastLogin) : '—'],
-                    [Calendar, 'Kayıt', user.meta?.created_at ? formatDate(user.meta.created_at) : '—'],
-                ].map(([Icon, label, val, mono]) => (
-                    <div key={label} className="flex items-center justify-between px-4 py-2.5 hover:bg-stone-50">
-                        <div className="flex items-center gap-2 text-stone-400 shrink-0">
-                            <Icon size={11} />
-                            <span className="text-[10px] font-bold">{label}</span>
-                        </div>
-                        <span className={`text-[10px] font-bold text-stone-700 max-w-[200px] truncate text-right ${mono ? 'font-mono text-stone-600' : ''}`}>{val || '—'}</span>
-                    </div>
-                ))}
+        <div className="px-6 pb-6">
+            <div className="flex items-center gap-3 pt-5 pb-1.5">
+                <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">Kimlik Bilgileri</span>
+                <div className="flex-1 h-px bg-stone-100" />
             </div>
+            {[
+                [Mail, 'E-posta', user.email, true],
+                [Shield, 'Rol', user.role],
+                [Building2, 'Departman', user.department || '—'],
+                [Briefcase, 'Pozisyon', user.meta?.position || '—'],
+            ].map(([Icon, label, val, mono]) => (
+                <div key={label} className="flex items-center gap-4 py-3 border-b border-stone-100">
+                    <div style={{ width: '44%' }} className="flex items-center gap-2 text-stone-400 shrink-0">
+                        <Icon size={11} />
+                        <span className="text-[11px] font-semibold text-stone-700">{label}</span>
+                    </div>
+                    <div className="flex-1">
+                        <span className={`text-[11px] font-semibold text-stone-600 ${mono ? 'font-mono' : ''}`}>{val || '—'}</span>
+                    </div>
+                </div>
+            ))}
+            <div className="flex items-center gap-3 pt-5 pb-1.5">
+                <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">Hesap</span>
+                <div className="flex-1 h-px bg-stone-100" />
+            </div>
+            {[
+                [LogIn, 'Son Giriş', user.lastLogin && user.lastLogin !== 'Bilinmiyor' ? formatDate(user.lastLogin) : '—'],
+                [Calendar, 'Kayıt Tarihi', user.meta?.created_at ? formatDate(user.meta.created_at) : '—'],
+            ].map(([Icon, label, val]) => (
+                <div key={label} className="flex items-center gap-4 py-3 border-b border-stone-100">
+                    <div style={{ width: '44%' }} className="flex items-center gap-2 text-stone-400 shrink-0">
+                        <Icon size={11} />
+                        <span className="text-[11px] font-semibold text-stone-700">{label}</span>
+                    </div>
+                    <div className="flex-1">
+                        <span className="text-[11px] font-semibold text-stone-600">{val}</span>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
@@ -941,29 +961,54 @@ function UserSessionsView({ user, pcs, onKick, isSuper, highlightPcId = null }) 
     );
 }
 
-/* ─── Kullanıcı detayı (sekmeli) ─────────────────────────────── */
-function UserDetail({ user, pcs, onKick, isSuper, activeView, onChangeView, highlightPcId = null }) {
+/* ─── Sağ panel: Kullanıcı Detayı ────────────────────────────── */
+function UserDetailRightPanel({ user, pcs, onKick, isSuper, highlightPcId }) {
+    const [activeView, setActiveView] = useState('profile');
+
+    useEffect(() => {
+        setActiveView('profile');
+    }, [user.id]);
+
     const TABS = [
         { id: 'profile',  label: 'Profil',    icon: User },
         { id: 'sessions', label: 'Oturumlar', icon: Monitor },
         { id: 'storage',  label: 'Depolama',  icon: HardDrive },
         { id: 'usage',    label: 'Kullanım',  icon: BarChart2 },
+        { id: 'logs',     label: 'Loglar',    icon: Terminal },
     ];
 
     return (
-        <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4 animate-in slide-in-from-top-1 duration-200 space-y-3">
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* Kullanıcı başlığı */}
+            <div className="shrink-0 px-5 py-4 bg-white border-b border-stone-200 flex items-center gap-3 shadow-sm">
+                <div className="relative shrink-0">
+                    <Avatar name={user.name} size={38} />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white"
+                        style={{ backgroundColor: user.status === 'Aktif' ? '#1D9E75' : '#94a3b8' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <p className="text-[14px] font-black text-stone-800 leading-tight truncate">{user.name || 'Bilinmeyen'}</p>
+                        <StatusBadge status={user.status} />
+                    </div>
+                    <p className="text-[10px] text-stone-400 font-mono mt-0.5 truncate">{user.email}</p>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0 ${user.role === 'Sistem Yöneticisi' ? 'bg-purple-50 text-purple-600' : 'bg-stone-100 text-stone-400'}`}>
+                    {user.role === 'Sistem Yöneticisi' ? 'Admin' : 'Kullanıcı'}
+                </span>
+            </div>
 
-            {/* Sekme bar */}
-            <div className="flex items-center gap-1 p-1 bg-white border border-stone-200 rounded-xl shadow-sm w-fit flex-wrap">
+            {/* Sekme şeridi */}
+            <div className="shrink-0 flex items-center gap-1 px-4 py-1.5 bg-white border-b border-stone-200 select-none">
                 {TABS.map(tab => {
                     const isActive = activeView === tab.id;
                     return (
                         <button
                             key={tab.id}
-                            onClick={() => onChangeView(tab.id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${isActive
-                                ? 'bg-[#378ADD] text-white shadow-sm'
-                                : 'text-stone-500 hover:bg-stone-50'}`}
+                            onClick={() => setActiveView(tab.id)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                isActive ? 'bg-[#378ADD] text-white shadow-sm' : 'text-stone-500 hover:bg-stone-50'
+                            }`}
                         >
                             <tab.icon size={11} strokeWidth={2.5} />
                             {tab.label}
@@ -972,143 +1017,63 @@ function UserDetail({ user, pcs, onKick, isSuper, activeView, onChangeView, high
                 })}
             </div>
 
-            {/* Sekme içeriği */}
-            {activeView === 'profile'  && <UserProfileView user={user} />}
-            {activeView === 'sessions' && <UserSessionsView user={user} pcs={pcs} onKick={onKick} isSuper={isSuper} highlightPcId={highlightPcId} />}
-            {activeView === 'storage'  && <StorageColumn user={user} isSuper={isSuper} />}
-            {activeView === 'usage'    && <UserUsageView user={user} />}
+            {/* İçerik alanı */}
+            <div className="flex-1 overflow-y-auto bg-stone-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {activeView === 'profile'  && <UserProfileSection user={user} />}
+                {activeView === 'sessions' && (
+                    <div className="px-6 py-4">
+                        <UserSessionsView user={user} pcs={pcs} onKick={onKick} isSuper={isSuper} highlightPcId={highlightPcId} />
+                    </div>
+                )}
+                {activeView === 'storage' && (
+                    <div className="px-6 py-4">
+                        <StorageColumn user={user} isSuper={isSuper} />
+                    </div>
+                )}
+                {activeView === 'usage' && (
+                    <div className="px-6 py-4">
+                        <UserUsageView user={user} />
+                    </div>
+                )}
+                {activeView === 'logs' && (
+                    <div className="px-6 py-4">
+                        <UserLogsView user={user} />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
 
-/* ─── Kullanıcı Satırı ────────────────────────────────────────── */
-function UserRow({ user, pcs, isExpanded, onToggle, onKick, isSuper, activeView, onChangeView, onQuickOpen, logsOpen, logFilterUser, onSelectLogUser, compact = false, forceExpanded = false, forceView = null, highlightPcId = null, onContextMenu }) {
-    const sessionCount = useMemo(() => {
-        let c = 0;
-        pcs.forEach(pc => pc.sessions.forEach(s => {
-            if ((s.user?.id === user.id || s.user?.email === user.email) && s.active) c++;
-        }));
-        return c;
-    }, [pcs, user]);
-
-    const pcCount = useMemo(() => {
-        const set = new Set();
-        pcs.forEach(pc => pc.sessions.forEach(s => {
-            if (s.user?.id === user.id || s.user?.email === user.email) set.add(pc.pc_id);
-        }));
-        return set.size;
-    }, [pcs, user]);
-
-    const handleQuickClick = (e, view) => {
-        e.stopPropagation();
-        onQuickOpen(user.id, view);
-    };
-
-    const isLogFiltered = logFilterUser?.id === user.id;
-
-    const handleRowClick = () => {
-        if (logsOpen && onSelectLogUser) {
-            onSelectLogUser(isLogFiltered ? null : { id: user.id, name: user.name, email: user.email });
-        }
-        onToggle();
-    };
-
+/* ─── Kompakt kullanıcı liste öğesi ───────────────────────────── */
+function UserListItem({ user, isSelected, onClick, onContextMenu, sessionCount }) {
     return (
-        <div className={`bg-white rounded-xl border overflow-hidden shadow-sm transition-all ${
-            isLogFiltered ? 'border-[#378ADD] ring-2 ring-[#378ADD]/20' :
-            isExpanded && !compact ? 'border-[#378ADD]/40 ring-1 ring-[#378ADD]/10' : 'border-stone-200'
-        }`}>
-            {/* ── Kompakt satır (loglar açıkken) ── */}
-            {compact ? (
-                <div
-                    onClick={handleRowClick}
-                    onContextMenu={(e) => onContextMenu?.(e, user)}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${isLogFiltered ? 'bg-[#378ADD]/5' : 'hover:bg-stone-50'}`}
-                >
-                    <div className="relative shrink-0">
-                        <Avatar name={user.name} size={28} />
-                        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white"
-                            style={{ backgroundColor: user.status === 'Aktif' ? '#1D9E75' : '#94a3b8' }} />
-                    </div>
-                    <p className={`text-[11px] font-bold truncate flex-1 ${isLogFiltered ? 'text-[#378ADD]' : 'text-stone-700'}`}>
-                        {user.name || 'Bilinmeyen'}
-                    </p>
-                    {isLogFiltered && (
-                        <Terminal size={10} className="text-[#378ADD] shrink-0" strokeWidth={2.5} />
-                    )}
-                </div>
-            ) : (
-            /* ── Normal satır ── */
-            <>
-            <div onClick={handleRowClick}
-                onContextMenu={(e) => onContextMenu?.(e, user)}
-                className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-stone-50/80 transition-colors text-left cursor-pointer">
-                <div className="relative shrink-0">
-                    <Avatar name={user.name} size={38} />
-                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white"
-                        style={{ backgroundColor: user.status === 'Aktif' ? '#1D9E75' : '#94a3b8' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <p className={`text-[12px] font-bold truncate ${isExpanded ? 'text-[#378ADD]' : 'text-stone-700'}`}>
-                        {user.name || 'Bilinmeyen'}
-                    </p>
-                    <p className="text-[10px] text-stone-400 truncate font-mono mt-0.5">{user.email}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <StatusBadge status={user.status} />
-                    {sessionCount > 0 && (
-                        <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#378ADD]/10 text-[#378ADD]">
-                            <Wifi size={9} />{sessionCount}
-                        </span>
-                    )}
-                    {pcCount > 0 && (
-                        <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">
-                            <Monitor size={9} />{pcCount}
-                        </span>
-                    )}
-                    <span className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${user.role === 'Sistem Yöneticisi' ? 'bg-purple-50 text-purple-600' : 'bg-stone-100 text-stone-400'}`}>
-                        {user.role === 'Sistem Yöneticisi' ? 'Admin' : 'Kullanıcı'}
-                    </span>
-                    <div className="flex items-center gap-1 ml-1">
-                        {[
-                            { view: 'profile',  icon: User,       label: 'Profil' },
-                            { view: 'sessions', icon: Monitor,    label: 'Oturumlar' },
-                            { view: 'storage',  icon: HardDrive,  label: 'Depolama' },
-                            { view: 'usage',    icon: BarChart2,  label: 'Kullanım' },
-                        ].map(({ view, icon: Icon, label }) => (
-                            <button
-                                key={view}
-                                onClick={(e) => handleQuickClick(e, view)}
-                                title={label}
-                                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-all border ${isExpanded && activeView === view
-                                    ? 'bg-[#378ADD] text-white border-[#378ADD]'
-                                    : 'bg-white text-stone-500 border-stone-200 hover:border-[#378ADD] hover:text-[#378ADD]'}`}
-                            >
-                                <Icon size={11} strokeWidth={2.5} />
-                                <span className="hidden lg:inline">{label}</span>
-                            </button>
-                        ))}
-                    </div>
-                    {isLogFiltered && (
-                        <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#378ADD] text-white shrink-0">
-                            <Terminal size={8} strokeWidth={2.5} /> Log
-                        </span>
-                    )}
-                    <ChevronDown size={14}
-                        className={`text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-[#378ADD]' : ''}`} />
-                </div>
+        <button
+            onClick={onClick}
+            onContextMenu={(e) => onContextMenu?.(e, user)}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-all relative ${
+                isSelected
+                    ? 'bg-white border-l-2 border-l-[#378ADD]'
+                    : 'hover:bg-stone-100 border-l-2 border-l-transparent'
+            }`}
+        >
+            <div className="relative shrink-0">
+                <Avatar name={user.name} size={28} />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white"
+                    style={{ backgroundColor: user.status === 'Aktif' ? '#1D9E75' : '#94a3b8' }} />
             </div>
-            {(isExpanded || forceExpanded) && (
-                <UserDetail
-                    user={user} pcs={pcs} onKick={onKick} isSuper={isSuper}
-                    activeView={forceExpanded && forceView ? forceView : activeView}
-                    onChangeView={onChangeView}
-                    highlightPcId={highlightPcId}
-                />
+            <div className="flex-1 min-w-0">
+                <p className={`text-[11px] font-bold truncate ${isSelected ? 'text-[#378ADD]' : 'text-stone-700'}`}>
+                    {user.name || 'Bilinmeyen'}
+                </p>
+                <p className="text-[9px] text-stone-400 font-mono truncate">{user.email}</p>
+            </div>
+            {sessionCount > 0 && (
+                <span className="flex items-center gap-0.5 text-[8px] font-bold px-1 py-0.5 rounded bg-[#1D9E75]/10 text-[#1D9E75] shrink-0">
+                    <Wifi size={8} />{sessionCount}
+                </span>
             )}
-            </>
-            )}
-        </div>
+        </button>
     );
 }
 
@@ -1118,8 +1083,7 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
     const [pcs, setPcs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [expandedUserId, setExpandedUserId] = useState(null);
-    const [activeView, setActiveView] = useState('profile');
+    const [selectedUserId, setSelectedUserId] = useState(null);
     const [activeFilter, setActiveFilter] = useState(null);
     const [openMetric, setOpenMetric] = useState(null);
     const [contextMenu, setContextMenu] = useState(null); // { x, y, user }
@@ -1155,6 +1119,13 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
         const t = setInterval(fetchAll, POLL_MS);
         return () => clearInterval(t);
     }, []); // eslint-disable-line
+
+    // When onSelectLogUser is called externally, sync selectedUserId
+    useEffect(() => {
+        if (logFilterUser?.id) {
+            setSelectedUserId(logFilterUser.id);
+        }
+    }, [logFilterUser]);
 
     const totalPcs = pcs.length;
     const totalActiveSessions = pcs.reduce((s, p) => s + (p.active_count || 0), 0);
@@ -1193,6 +1164,8 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
         return applyMetricFilter(list);
     }, [users, search, applyMetricFilter]);
 
+    const selectedUser = users.find(u => u.id === selectedUserId) || null;
+
     const handleContextMenu = (e, user) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1210,7 +1183,7 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
             const res = await fetch(`/api/auth/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' });
             if (res.ok) {
                 setUsers(prev => prev.filter(u => u.id !== user.id));
-                if (expandedUserId === user.id) setExpandedUserId(null);
+                if (selectedUserId === user.id) setSelectedUserId(null);
             }
         } catch (e) {
             console.error('Silme hatası:', e);
@@ -1283,60 +1256,80 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
                 </div>
             </div>
 
-            {/* ── Kullanıcı Listesi ── */}
-            <div className="flex-1 overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center h-40 gap-3 opacity-60">
-                        <Activity className="animate-spin text-stone-400" size={22} />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Yükleniyor</span>
-                    </div>
-                ) : filteredUsers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 gap-3 opacity-60">
-                        <Users size={28} strokeWidth={1} className="text-stone-400" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                            {search || activeFilter ? 'Eşleşen kullanıcı yok' : 'Kullanıcı bulunamadı'}
-                        </span>
-                    </div>
-                ) : (
-                    <div className="space-y-2 max-w-6xl mx-auto">
-                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">
+            {/* ── İki panel gövde ── */}
+            <div className="flex flex-1 overflow-hidden">
+
+                {/* ── Sol Panel: Kullanıcı Listesi ── */}
+                <div className="w-[260px] shrink-0 flex flex-col border-r border-stone-200 bg-stone-50 overflow-hidden">
+                    {/* Liste başlığı */}
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-100 bg-white shrink-0">
+                        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">
                             {filteredUsers.length} kullanıcı
-                            {(search || activeFilter) && ` (${users.length} içinden)`}
-                        </p>
-                        {filteredUsers.map(user => (
-                            <UserRow
-                                key={user.id}
-                                user={user}
-                                pcs={pcs}
-                                isExpanded={expandedUserId === user.id}
-                                onToggle={() => {
-                                    if (expandedUserId === user.id) {
-                                        setExpandedUserId(null);
-                                    } else {
-                                        setExpandedUserId(user.id);
-                                        setActiveView('profile');
-                                    }
-                                }}
-                                onKick={fetchAll}
-                                isSuper={isSuper}
-                                activeView={expandedUserId === user.id ? activeView : 'overview'}
-                                onChangeView={setActiveView}
-                                onQuickOpen={(id, view) => {
-                                    setExpandedUserId(id);
-                                    setActiveView(view);
-                                }}
-                                logsOpen={logsOpen}
-                                logFilterUser={logFilterUser}
-                                onSelectLogUser={onSelectLogUser}
-                                compact={logsOpen}
-                                forceExpanded={activeFilter?.type === 'pc'}
-                                forceView={activeFilter?.type === 'pc' ? 'sessions' : null}
-                                highlightPcId={activeFilter?.type === 'pc' ? activeFilter.pcId : null}
-                                onContextMenu={handleContextMenu}
-                            />
-                        ))}
+                        </span>
+                        {activeFilter && (
+                            <button onClick={() => setActiveFilter(null)} className="text-[#378ADD] text-[9px] font-bold flex items-center gap-1">
+                                <X size={9} /> Filtre
+                            </button>
+                        )}
                     </div>
-                )}
+
+                    {/* Kullanıcı listesi */}
+                    <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                        {loading ? (
+                            <div className="flex items-center justify-center h-20 gap-2 text-stone-400">
+                                <Activity size={14} className="animate-spin" />
+                            </div>
+                        ) : filteredUsers.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-24 gap-2 opacity-60">
+                                <Users size={20} strokeWidth={1} className="text-stone-400" />
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">
+                                    {search || activeFilter ? 'Eşleşme yok' : 'Kullanıcı yok'}
+                                </span>
+                            </div>
+                        ) : (
+                            filteredUsers.map(user => {
+                                const sessionCount = pcs.reduce((c, pc) => {
+                                    pc.sessions.forEach(s => { if ((s.user?.id === user.id || s.user?.email === user.email) && s.active) c++; });
+                                    return c;
+                                }, 0);
+                                return (
+                                    <UserListItem
+                                        key={user.id}
+                                        user={user}
+                                        isSelected={selectedUserId === user.id}
+                                        onClick={() => setSelectedUserId(user.id === selectedUserId ? null : user.id)}
+                                        onContextMenu={handleContextMenu}
+                                        sessionCount={sessionCount}
+                                    />
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+
+                {/* ── Sağ Panel: Kullanıcı Detayı ── */}
+                <div className="flex-1 overflow-hidden">
+                    {selectedUser ? (
+                        <UserDetailRightPanel
+                            user={selectedUser}
+                            pcs={pcs}
+                            onKick={fetchAll}
+                            isSuper={isSuper}
+                            highlightPcId={activeFilter?.type === 'pc' ? activeFilter.pcId : null}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full gap-4 text-stone-400">
+                            <div className="w-16 h-16 rounded-2xl bg-white border border-stone-200 flex items-center justify-center shadow-sm">
+                                <User size={28} className="text-stone-300" strokeWidth={1.5} />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-[13px] font-black text-stone-700 tracking-tight">Kullanıcı Seçin</p>
+                                <p className="text-[11px] text-stone-400 mt-1">Sol listeden bir kullanıcı seçin</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
             </div>
 
             {/* ── Metrik filtre popupı ── */}
