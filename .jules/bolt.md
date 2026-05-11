@@ -1,3 +1,6 @@
 ## 2026-04-27 - N+1 Query in `list_sessions` Endpoint
 **Learning:** Found an extreme N+1 query loop in `backend/api/routes/settings.py` where fetching `limit=100` sessions could result in over 300 synchronous database calls (counting messages, fetching last messages, and summing tokens per session).
 **Action:** When working with SQLAlchemy aggregations across lists, pre-fetch relationship data using `IN` clauses with `GROUP BY` and convert results into maps (O(1) lookups) before the loop to reduce queries down to exactly 1 + N(queries per entity block) overall.
+## 2026-05-11 - N+1 Array Memory Bloat in Window Paging
+**Learning:** When resolving N+1 loops where the logic relies on slicing related arrays (like `parcalar[:5]`), merely fetching all chunks with an `IN` clause pulls every vector for the document into memory, causing severe RAM bloat. The efficient and memory-safe way to get the top N relations per parent in a single query is to use `row_number() over (partition by parent_id order by child_id)` and filtering where `rn <= N`.
+**Action:** Always inspect array indexing or `.limit()` equivalents inside `for` loops before pulling everything with `IN`. Use partition subqueries (`func.row_number().over(...)`) for pagination inside batched relations.
