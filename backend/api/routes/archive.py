@@ -10,7 +10,7 @@ import shutil
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from database.sql.session import get_session
@@ -233,20 +233,58 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
+        belge_ids = [b.kimlik for b in belgeler]
+        user_ids = list(set([b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik]))
+
+        kullanici_map = {}
+        if user_ids:
+            users = db.scalars(select(Kullanici).where(Kullanici.kimlik.in_(user_ids))).all()
+            kullanici_map = {u.kimlik: u.tam_ad for u in users}
+
+        chunk_counts = {}
+        chunk_previews = {}
+
+        if belge_ids:
+            # Fetch chunk counts
+            cc_rows = db.execute(
+                select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik.in_(belge_ids))
+                .group_by(VektorParcasi.belge_kimlik)
+            ).all()
+            chunk_counts = {r[0]: r[1] for r in cc_rows}
+
+            # Fetch at most 5 previews safely with window function
+            subq = (
+                select(
+                    VektorParcasi.belge_kimlik,
+                    VektorParcasi.kimlik,
+                    VektorParcasi.chromadb_kimlik,
+                    func.row_number().over(
+                        partition_by=VektorParcasi.belge_kimlik,
+                        order_by=VektorParcasi.kimlik
+                    ).label("rn")
+                )
+                .where(VektorParcasi.belge_kimlik.in_(belge_ids))
+                .subquery()
+            )
+            cp_rows = db.execute(
+                select(subq.c.belge_kimlik, subq.c.kimlik, subq.c.chromadb_kimlik)
+                .where(subq.c.rn <= 5)
+            ).all()
+
+            for r in cp_rows:
+                if r[0] not in chunk_previews:
+                    chunk_previews[r[0]] = []
+                chunk_previews[r[0]].append({"id": r[1], "chroma_id": r[2]})
+
         sonuclar = []
         for b in belgeler:
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
-            yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
+            yukleyen_adi = kullanici_map.get(b.yukleyen_kimlik, "Bilinmiyor") if b.yukleyen_kimlik else "Bilinmiyor"
+            p_count = chunk_counts.get(b.kimlik, 0)
+            p_preview = chunk_previews.get(b.kimlik, [])
 
             sonuclar.append({
                 "id": b.kimlik,
@@ -259,11 +297,8 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
                 "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
+                "total_chunks": p_count,
+                "chunks_preview": p_preview,
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
                 "havuz_turu": b.havuz_turu,
@@ -351,7 +386,7 @@ def arsiv_transkript(doc_id: str):
 
         if not full_text:
             # Eski dosyalar için: chunk'ların icerik alanlarından yeniden oluştur
-            from sqlalchemy import asc
+            from sqlalchemy import func, asc
             parcalar = db.scalars(
                 select(VektorParcasi)
                 .where(VektorParcasi.belge_kimlik == doc_id)
@@ -787,7 +822,7 @@ def _run_transcription(doc_id: str):
     from services.processors.audio_processor import parse_audio, GLOBAL_PROGRESS
     from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     logger.info("Transkripsiyon başlıyor: doc_id=%s", doc_id)
 
@@ -934,7 +969,7 @@ def _run_vectorization(doc_id: str):
     from services.processors import dispatch
     from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     logger.info("Vektörizasyon başlıyor: doc_id=%s", doc_id)
 
