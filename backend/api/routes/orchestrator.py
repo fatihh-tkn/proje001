@@ -70,6 +70,12 @@ def save_agents(agents_data: List[AgentBase], db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Kaydetme hatası: {str(e)}")
 
+    try:
+        from core.db_bridge import invalidate_settings_cache
+        invalidate_settings_cache()
+    except Exception:
+        pass
+
     return {"message": "Ajan konfigürasyonları başarıyla kaydedildi"}
 
 @router.post("/set-global-model")
@@ -94,6 +100,12 @@ def toggle_agent(agent_id: str, db: Session = Depends(get_db)):
 
     agent.aktif_mi = not agent.aktif_mi
     db.commit()
+
+    try:
+        from core.db_bridge import invalidate_settings_cache
+        invalidate_settings_cache()
+    except Exception:
+        pass
 
     return {"message": "Ajan durumu güncellendi", "aktif_mi": agent.aktif_mi, "kimlik": agent.kimlik}
 

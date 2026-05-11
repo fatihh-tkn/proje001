@@ -1,267 +1,309 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Network, RefreshCw, Loader2, Info, X, Pause, Play, Filter } from 'lucide-react';
+import { Network, RefreshCw, X, Plus, Minus, Crosshair } from 'lucide-react';
 import ForceGraph3D from 'react-force-graph-3d';
 
 const MEDIA_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm']);
 
-const GraphDatabaseViewer = () => {
-    const [graphData, setGraphData] = useState({ nodes: [], links: [] });
-    const [rawGraphData, setRawGraphData] = useState({ nodes: [], links: [] });
-    const [filterType, setFilterType] = useState('all');
-    const [loading, setLoading] = useState(true);
+// Kamera matrisi sütunlarından sağ/yukarı vektör — pan uygula
+function applyCameraPan(fg, dx, dy) {
+    try {
+        const camera   = fg.camera();
+        const controls = fg.controls();
+        if (!camera || !controls) return;
+        const e    = camera.matrixWorld.elements;
+        const dist = camera.position.length() || 200;
+        const step = dist * 0.06;
+        const mx = (e[0]*dx + e[4]*dy) * step;
+        const my = (e[1]*dx + e[5]*dy) * step;
+        const mz = (e[2]*dx + e[6]*dy) * step;
+        camera.position.x += mx; camera.position.y += my; camera.position.z += mz;
+        controls.target.x += mx; controls.target.y += my; controls.target.z += mz;
+        controls.update();
+    } catch (_) {}
+}
 
-    // Yüksek aydınlıklar için state
-    const [selectedNode, setSelectedNode] = useState(null);
+function applyCameraZoom(fg, direction) {
+    try {
+        const p = fg.cameraPosition();
+        const dist = Math.hypot(p.x, p.y, p.z) || 300;
+        const factor  = direction > 0 ? 0.75 : 1.33;
+        const newDist = Math.max(30, Math.min(dist * factor, 2000));
+        const ratio   = newDist / dist;
+        fg.cameraPosition({ x: p.x*ratio, y: p.y*ratio, z: p.z*ratio }, null, 250);
+    } catch (_) {}
+}
+
+function doCameraReset(fg) {
+    try {
+        const controls = fg.controls();
+        if (controls) { controls.target.set(0,0,0); controls.update(); }
+        fg.cameraPosition({ x:0, y:0, z:350 }, { x:0, y:0, z:0 }, 500);
+    } catch (_) {}
+}
+
+const DBtn = ({ onClick, children, title }) => (
+    <button
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={e => { e.stopPropagation(); onClick(); }}
+        title={title}
+        className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 hover:border-[#378ADD] hover:text-[#378ADD] text-stone-500 rounded-lg shadow-sm transition-all active:scale-95"
+    >
+        {children}
+    </button>
+);
+
+const GraphDatabaseViewer = () => {
+    const [graphData, setGraphData]       = useState({ nodes: [], links: [] });
+    const [rawGraphData, setRawGraphData] = useState({ nodes: [], links: [] });
+    const [filterType, setFilterType]     = useState('all');
+    const [loading, setLoading]           = useState(true);
+
+    const [selectedNode, setSelectedNode]     = useState(null);
     const [highlightNodes, setHighlightNodes] = useState(new Set());
     const [highlightLinks, setHighlightLinks] = useState(new Set());
-    const [hoverNode, setHoverNode] = useState(null);
 
-    // Otomatik Döndürme
-    const [autoRotate, setAutoRotate] = useState(true);
+    const fgRef          = useRef();
+    const isHoveredRef   = useRef(false);
+    const wheelSetupRef  = useRef(false);   // kurulum bir kez yapılsın
+    const wheelCleanRef  = useRef(null);    // önceki listener'ı temizle
 
-    const fgRef = useRef();
-
-    // PERFORMANS: Array'i döngü dışına çıkararak garbage collector kasmasını önlüyoruz
     const isMedia = useCallback((type) => MEDIA_EXTS.has((type || '').toLowerCase()), []);
+
+    // ── Klavye ok tuşları (sadece imleç grafın üzerindeyken) ──────────
+    useEffect(() => {
+        const map = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,1], ArrowDown:[0,-1] };
+        const h = (e) => {
+            if (!isHoveredRef.current || !fgRef.current || !map[e.key]) return;
+            e.preventDefault();
+            const [dx, dy] = map[e.key];
+            applyCameraPan(fgRef.current, dx, dy);
+        };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+    }, []);
+
+    // ── İmlece doğru zoom: wheel'i kanvasa doğrudan bağla ────────────
+    // Three.js col-major matrixWorld: col0=sağ col1=yukarı col2=-ileri
+    // İmleç NDC'si → kamera uzayı → dünya uzayı → kamera + target'ı kaydır
+    const setupWheelZoom = useCallback(() => {
+        if (wheelSetupRef.current || !fgRef.current) return;
+        try {
+            const renderer = fgRef.current.renderer();
+            const controls = fgRef.current.controls();
+            const camera   = fgRef.current.camera();
+            if (!renderer || !controls || !camera) return;
+
+            controls.enableZoom = false; // OrbitControls zoom'unu kapat, kendimiz yönetiriz
+
+            const canvas = renderer.domElement;
+
+            const onWheel = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const rect   = canvas.getBoundingClientRect();
+                // Fare NDC [-1,+1]
+                const mx = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+                const my = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+                // Kamera perspektif parametreleri
+                const fovTan = Math.tan((camera.fov || 75) * (Math.PI / 360));
+                const aspect = camera.aspect || 1;
+
+                // Kamera uzayında yön: (mx*fovTan*aspect, my*fovTan, -1)
+                // Dünya uzayına çevir: matrixWorld * yön (col-major, w=0)
+                const em = camera.matrixWorld.elements;
+                const cdx = mx * fovTan * aspect;
+                const cdy = my * fovTan;
+                // col0*cdx + col1*cdy + col2*(-1)
+                let wx = em[0]*cdx + em[4]*cdy - em[8];
+                let wy = em[1]*cdx + em[5]*cdy - em[9];
+                let wz = em[2]*cdx + em[6]*cdy - em[10];
+                const wl = Math.hypot(wx, wy, wz) || 1;
+                wx /= wl; wy /= wl; wz /= wl;
+
+                const cp   = camera.position;
+                const ct   = controls.target;
+                const dist = Math.hypot(cp.x-ct.x, cp.y-ct.y, cp.z-ct.z);
+                const safe = Math.max(30, Math.min(dist, 2000));
+
+                // deltaMode: 0=piksel 1=satır 2=sayfa — normalize et
+                let dy = e.deltaY;
+                if (e.deltaMode === 1) dy *= 20;
+                if (e.deltaMode === 2) dy *= 400;
+
+                const zoomDir = dy > 0 ? -1 : 1; // tekerlek yukarı → yakınlaştır
+                const amount  = safe * 0.18 * zoomDir;
+
+                // Kamerayı imleç yönünde taşı
+                cp.x += wx*amount; cp.y += wy*amount; cp.z += wz*amount;
+                // Hedefi de bir miktar taşı — orbit merkezi de kaymalı
+                ct.x += wx*amount*0.25; ct.y += wy*amount*0.25; ct.z += wz*amount*0.25;
+
+                controls.update();
+            };
+
+            canvas.addEventListener('wheel', onWheel, { passive: false });
+            wheelCleanRef.current  = () => canvas.removeEventListener('wheel', onWheel);
+            wheelSetupRef.current  = true;
+        } catch (_) {}
+    }, []);
+
+    // graphData değişince (filtre / yenile) kurulumu sıfırla
+    useEffect(() => {
+        wheelSetupRef.current = false;
+        if (wheelCleanRef.current) { wheelCleanRef.current(); wheelCleanRef.current = null; }
+    }, [graphData]);
+
+    // Unmount temizliği
+    useEffect(() => () => { if (wheelCleanRef.current) wheelCleanRef.current(); }, []);
 
     const fetchGraph = async () => {
         setLoading(true);
         try {
             const res = await fetch('/api/sql/graph');
             if (res.ok) {
-                const data = await res.json();
-
+                const data     = await res.json();
                 const degreeMap = {};
-                const validIds = new Set(data.nodes.map(n => n.id));
-
-                // Sadece geçerli node'lara sahip kenarları al (Aksi takdirde ForceGraph motoru çöker)
+                const validIds  = new Set(data.nodes.map(n => n.id));
                 const validEdges = data.edges.filter(e => validIds.has(e.source) && validIds.has(e.target));
-
                 validEdges.forEach(e => {
-                    degreeMap[e.source] = (degreeMap[e.source] || 0) + 1;
-                    degreeMap[e.target] = (degreeMap[e.target] || 0) + 1;
+                    degreeMap[e.source] = (degreeMap[e.source]||0) + 1;
+                    degreeMap[e.target] = (degreeMap[e.target]||0) + 1;
                 });
-
                 const gData = {
                     nodes: data.nodes.map(n => {
-                        const len = n.content ? n.content.length : 0;
+                        const len    = n.content ? n.content.length : 0;
                         const degree = degreeMap[n.id] || 0;
-
-                        let sizeVal = 1.0;
+                        let sizeVal  = 1.0;
                         if (len > 0) {
-                            sizeVal = 1 + (Math.log2(len + 10) - 3.3) * 0.35;
+                            sizeVal = 1 + (Math.log2(len+10) - 3.3) * 0.35;
                             sizeVal = Math.max(1.0, Math.min(sizeVal, 4.0));
                         }
-
-                        if (degree > 4) {
-                            sizeVal += Math.min(1.0, degree * 0.08);
-                        }
-
-                        return { ...n, val: sizeVal, degree: degree };
+                        if (degree > 4) sizeVal += Math.min(1.0, degree*0.08);
+                        return { ...n, val: sizeVal, degree };
                     }),
                     links: validEdges.map(e => ({
-                        source: e.source,
-                        target: e.target,
-                        weight: e.weight || 1,
-                        name: e.relation
+                        source: e.source, target: e.target,
+                        weight: e.weight||1, name: e.relation
                     }))
                 };
-
                 setRawGraphData(gData);
-                // graphData will be updated by the filter useEffect
-
-                // Fetch attiktan sonra secimleri sifirla
                 clearSelection();
             }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
+        } catch (err) { console.error(err); }
+        finally { setLoading(false); }
     };
 
-    useEffect(() => {
-        fetchGraph();
-    }, []);
+    useEffect(() => { fetchGraph(); }, []);
 
     useEffect(() => {
-        if (!rawGraphData.nodes.length) {
-            setGraphData({ nodes: [], links: [] });
-            return;
-        }
-
-        if (filterType === 'all') {
-            setGraphData(rawGraphData);
-            return;
-        }
-
-        const checkMedia = (type) => MEDIA_EXTS.has((type || '').toLowerCase());
-
-        const filteredNodes = rawGraphData.nodes.filter(n => {
-            if (filterType === 'media') return checkMedia(n.file_type);
-            if (filterType === 'text') return !checkMedia(n.file_type);
-            return true;
-        });
-
+        if (!rawGraphData.nodes.length) { setGraphData({ nodes:[], links:[] }); return; }
+        if (filterType === 'all') { setGraphData(rawGraphData); return; }
+        const checkMedia = (t) => MEDIA_EXTS.has((t||'').toLowerCase());
+        const filteredNodes = rawGraphData.nodes.filter(n =>
+            filterType === 'media' ? checkMedia(n.file_type) : !checkMedia(n.file_type)
+        );
         const nodeIds = new Set(filteredNodes.map(n => n.id));
-
         const filteredLinks = rawGraphData.links.filter(l => {
-            const sId = typeof l.source === 'object' ? l.source.id : l.source;
-            const tId = typeof l.target === 'object' ? l.target.id : l.target;
+            const sId = typeof l.source==='object' ? l.source.id : l.source;
+            const tId = typeof l.target==='object' ? l.target.id : l.target;
             return nodeIds.has(sId) && nodeIds.has(tId);
         });
-
         setGraphData({ nodes: filteredNodes, links: filteredLinks });
         clearSelection();
     }, [filterType, rawGraphData]);
 
-    // Seçimleri temizleme
     const clearSelection = useCallback(() => {
-        setSelectedNode(null);
-        setHighlightNodes(new Set());
-        setHighlightLinks(new Set());
+        setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set());
     }, []);
 
     const handleNodeClick = useCallback((node) => {
-        if (!node) {
-            clearSelection();
-            return;
-        }
-
-        const linkedNodes = new Set();
-        const connectedLinks = new Set();
-
+        if (!node) { clearSelection(); return; }
+        const linkedNodes = new Set(); const connectedLinks = new Set();
         graphData.links.forEach(link => {
-            const sId = typeof link.source === 'object' ? link.source.id : link.source;
-            const tId = typeof link.target === 'object' ? link.target.id : link.target;
-
-            if (sId === node.id || tId === node.id) {
-                connectedLinks.add(link);
-                linkedNodes.add(sId);
-                linkedNodes.add(tId);
+            const sId = typeof link.source==='object' ? link.source.id : link.source;
+            const tId = typeof link.target==='object' ? link.target.id : link.target;
+            if (sId===node.id || tId===node.id) {
+                connectedLinks.add(link); linkedNodes.add(sId); linkedNodes.add(tId);
             }
         });
-
-        setHighlightNodes(linkedNodes);
-        setHighlightLinks(connectedLinks);
-        setSelectedNode(node);
-
-        if (fgRef.current) {
-            // Sadece otomatik dönüşü durdur, kamerayla oynama (oto-zoom kapalı)
-            setAutoRotate(false);
-        }
+        setHighlightNodes(linkedNodes); setHighlightLinks(connectedLinks); setSelectedNode(node);
     }, [graphData.links, clearSelection]);
 
-    // Otomatik Döndürme (Kamera Animasyonu)
     useEffect(() => {
-        let animationFrameId;
-
-        const rotateCamera = () => {
-            try {
-                if (autoRotate && fgRef.current && !selectedNode) {
-                    const camPos = fgRef.current.cameraPosition();
-
-                    // Güvenlik kontrolü (Graf tam yüklenmeden önce çalışırsa çökmesin)
-                    if (camPos && typeof camPos.x === 'number') {
-                        const distance = Math.hypot(camPos.x, camPos.z) || 300;
-                        const currentAngle = Math.atan2(camPos.z, camPos.x);
-                        const nextAngle = currentAngle + 0.0015;
-
-                        fgRef.current.cameraPosition({
-                            x: distance * Math.cos(nextAngle),
-                            z: distance * Math.sin(nextAngle),
-                            y: camPos.y // Y yüksekliği sabit kalır
-                        }, null, 0);
-                    }
-                }
-            } catch (err) { }
-            animationFrameId = requestAnimationFrame(rotateCamera);
-        };
-
-        if (autoRotate && !selectedNode) {
-            animationFrameId = requestAnimationFrame(rotateCamera);
-        }
-
-        return () => {
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        };
-    }, [autoRotate, selectedNode]);
-
-    // Fizik Ayarları
-    useEffect(() => {
-        if (!fgRef.current || typeof fgRef.current.d3Force !== 'function' || !graphData.nodes.length) return;
-
+        if (!fgRef.current || typeof fgRef.current.d3Force!=='function' || !graphData.nodes.length) return;
         try {
-            fgRef.current.d3Force('charge').strength(node => {
-                const degree = node.degree || 1;
-                return -150 - (degree * 20);
-            });
-
-            fgRef.current.d3Force('link').distance(link => {
-                const w = link.weight || 1;
-                return 80 / w;
-            });
-
+            fgRef.current.d3Force('charge').strength(n => -200 - ((n.degree||1)*15));
+            fgRef.current.d3Force('link').distance(()=>60).strength(0.5);
+            const cf = fgRef.current.d3Force('center');
+            if (cf) cf.strength(0.05);
             fgRef.current.d3ReheatSimulation();
-        } catch (err) { }
+        } catch (_) {}
     }, [graphData]);
 
+    const hasGraph = !loading && graphData.nodes.length > 0;
+
     return (
-        <div className="flex flex-col w-full h-full bg-[#fafafa] relative overflow-hidden font-sans">
-            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-stone-200 bg-white shrink-0 z-20 shadow-sm">
-                <div className="p-1.5 bg-[#378ADD]/10 border border-[#378ADD]/20 rounded-lg">
-                    <Network size={15} className="text-[#378ADD]" />
+        <div className="flex flex-col w-full h-full bg-white relative overflow-hidden font-sans">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-stone-100 bg-white shrink-0 z-20">
+                <div className="p-1.5 bg-[#E6F1FB] border border-[#B8D4F0] rounded-lg shrink-0">
+                    <Network size={14} className="text-[#378ADD]" />
                 </div>
                 <div>
-                    <h2 className="text-[13px] font-bold text-stone-800 leading-none">Ağ İlişki Haritası (Knowledge Graph)</h2>
-                    <p className="text-[10px] text-stone-400 mt-0.5">
-                        Düğümlere tıklayarak ilişkileri izole edebilir, fare ile haritayı döndürebilirsiniz.
+                    <h2 className="text-[13px] font-black text-stone-800 leading-none">Graf Veritabanı</h2>
+                    <p className="text-[10px] text-stone-400 mt-0.5 tracking-wide">
+                        Sol tık: döndür · Sağ tık / ← → ↑ ↓: kaydır · Tekerlek: imlece yakınlaştır
                     </p>
                 </div>
 
                 <div className="ml-auto flex items-center gap-2">
-                    {/* Auto Rotate Toggle */}
-                    <button
-                        onClick={() => setAutoRotate(!autoRotate)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors duration-200 border ${autoRotate
-                            ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
-                            : 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
-                            }`}
-                        title="Otomatik Döndürme (Tüm ağı yavaşça çevirir)"
-                    >
-                        {autoRotate ? <Pause size={12} className="fill-blue-600" /> : <Play size={12} className="fill-stone-500" />}
-                        {autoRotate ? 'Durdur' : 'Döndür'}
-                    </button>
-
-                    <span className="w-[1px] h-4 bg-stone-200 mx-1"></span>
-
                     <select
                         value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
-                        className="text-[11px] font-semibold text-stone-600 bg-stone-50 px-2.5 py-1 rounded-md border border-stone-200 focus:outline-none focus:border-[#378ADD] appearance-none"
+                        onChange={e => setFilterType(e.target.value)}
+                        className="text-[11px] font-black text-stone-600 bg-white px-2.5 py-1.5 rounded-lg border border-stone-200 focus:outline-none focus:border-[#378ADD] shadow-sm appearance-none cursor-pointer"
                     >
-                        <option value="all">Tümü (Metin + Medya)</option>
+                        <option value="all">Tümü</option>
                         <option value="text">Sadece Metinler</option>
                         <option value="media">Sadece Ses & Video</option>
                     </select>
 
-                    <span className="text-[11px] font-semibold text-stone-500 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200">
-                        {graphData.nodes?.length || 0} Node, {graphData.links?.length || 0} Edge
-                    </span>
-                    <button
-                        onClick={fetchGraph}
-                        className="p-1.5 hover:bg-stone-100 text-stone-500 rounded-lg transition-colors border border-transparent hover:border-stone-200"
-                    >
-                        <RefreshCw size={13} className={`${loading ? 'animate-spin' : ''}`} />
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-100 border border-stone-200 rounded-lg">
+                        <span className="text-[10px] font-black font-mono text-stone-500">
+                            {graphData.nodes?.length||0} node · {graphData.links?.length||0} edge
+                        </span>
+                    </div>
+
+                    <button onClick={fetchGraph} className="p-1.5 bg-white border border-stone-200 hover:bg-stone-50 rounded-lg transition-colors shadow-sm" title="Yenile">
+                        <RefreshCw size={13} className={`text-stone-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
+
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#EAF3DE] border border-[#C5DFA8] rounded-lg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#3B6D11] shadow-[0_0_4px_rgba(59,109,17,0.5)] inline-block" />
+                        <span className="text-[10px] text-[#3B6D11] font-black tracking-wide">Bağlı</span>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-gradient-to-b from-white to-stone-50">
+            {/* Graf Alanı */}
+            <div
+                className="flex-1 relative overflow-hidden bg-stone-50"
+                onMouseEnter={() => { isHoveredRef.current = true; }}
+                onMouseLeave={() => { isHoveredRef.current = false; }}
+            >
                 {loading ? (
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="w-8 h-8 border-[3px] border-[#378ADD] border-t-transparent rounded-full animate-spin" />
-                        <span className="text-sm font-semibold text-stone-500 tracking-wide">Graf Yükleniyor...</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                        <div className="w-7 h-7 border-[2.5px] border-[#378ADD] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[11px] font-black text-stone-500 uppercase tracking-[0.18em]">Graf Yükleniyor...</span>
+                    </div>
+                ) : graphData.nodes.length === 0 ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                        <div className="p-4 bg-stone-100 border border-stone-200 rounded-xl">
+                            <Network size={28} className="text-stone-300" />
+                        </div>
+                        <p className="text-[12px] font-black text-stone-400 uppercase tracking-[0.14em]">Graf Verisi Yok</p>
+                        <p className="text-[11px] text-stone-400 font-medium">Henüz hiç dosya yüklenmemiş.</p>
                     </div>
                 ) : (
                     <ForceGraph3D
@@ -269,84 +311,87 @@ const GraphDatabaseViewer = () => {
                         graphData={graphData}
                         nodeLabel="content"
                         nodeVal="val"
-                        nodeResolution={32}
-
-                        // ── NODE OPACITY (Soluklaştırma) ──
+                        nodeResolution={12}
                         nodeOpacity={1}
                         nodeColor={node => {
-                            const defaultColor = isMedia(node.file_type) ? '#4F46E5' : '#E11D48'; // Indigo & Rose
-
-                            // Hiçbir şey seçili değilse herkes normal
-                            if (highlightNodes.size === 0) return defaultColor;
-
-                            // Seçili ana node
-                            if (selectedNode && node.id === selectedNode.id) return '#10B981'; // Zümrüt Yeşili (Dikkat Çekici)
-
-                            // Komşu node'lar: ana rengi korur ama biraz dikkat çekebilir
-                            if (highlightNodes.has(node.id)) return defaultColor;
-
-                            // İlgisiz düğümler tamamen soluk-gri olur
-                            return 'rgba(200, 203, 212, 0.1)';
+                            const def = isMedia(node.file_type) ? '#6366F1' : '#378ADD';
+                            if (highlightNodes.size === 0) return def;
+                            if (selectedNode && node.id === selectedNode.id) return '#10B981';
+                            if (highlightNodes.has(node.id)) return def;
+                            return 'rgba(200,200,210,0.08)';
                         }}
-
-                        // ── LINK OPACITY (Soluklaştırma) ──
-                        linkWidth={link => highlightLinks.has(link) ? 2 : 1}
+                        linkWidth={link => highlightLinks.has(link) ? 2 : 0.8}
                         linkColor={link => {
-                            if (highlightNodes.size === 0) return 'rgba(148, 163, 184, 0.4)'; // Slate-400 yari saydam
-                            if (highlightLinks.has(link)) return '#F59E0B'; // Kehribar (Amber) - çok dikkat çekici
-                            return 'rgba(226, 232, 240, 0.05)'; // Seçimsizken neredeyse görünmez
+                            if (highlightNodes.size === 0) return 'rgba(148,163,184,0.35)';
+                            if (highlightLinks.has(link)) return '#F59E0B';
+                            return 'rgba(226,232,240,0.04)';
                         }}
-                        linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
+                        linkDirectionalParticles={link => highlightLinks.has(link) ? 3 : 0}
                         linkDirectionalParticleWidth={1.5}
-
                         onNodeClick={handleNodeClick}
                         onBackgroundClick={clearSelection}
-                        onNodeHover={(node) => setHoverNode(node || null)}
-                        backgroundColor="#ffffff"
+                        onEngineTick={setupWheelZoom}
+                        backgroundColor="#f8f7f6"
                         nodeRelSize={4}
-                        warmupTicks={100}
-                        cooldownTicks={150}
+                        warmupTicks={300}
+                        cooldownTicks={0}
                     />
+                )}
+
+                {hasGraph && (
+                    <div className="absolute bottom-5 right-5 z-30 flex flex-col items-center gap-1.5 select-none">
+                        <DBtn onClick={() => applyCameraZoom(fgRef.current, 1)} title="Yakınlaştır">
+                            <Plus size={13} />
+                        </DBtn>
+                        <DBtn onClick={() => doCameraReset(fgRef.current)} title="Merkeze al">
+                            <Crosshair size={12} />
+                        </DBtn>
+                        <DBtn onClick={() => applyCameraZoom(fgRef.current, -1)} title="Uzaklaştır">
+                            <Minus size={13} />
+                        </DBtn>
+                    </div>
                 )}
             </div>
 
             {selectedNode && (
-                <div className="absolute left-6 bottom-6 w-80 bg-white/95 backdrop-blur-md border border-stone-200 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] rounded-xl p-4 z-30 flex flex-col gap-3 transition-opacity">
+                <div className="absolute left-5 bottom-5 z-30 bg-white border border-stone-200 shadow-xl rounded-xl p-4 flex flex-col gap-3" style={{ width: 300 }}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="p-1 px-1.5 bg-[#378ADD]/10 rounded-md border border-[#378ADD]/20">
-                                <span className="text-[10px] font-black tracking-wide text-[#378ADD]">ODAK</span>
+                            <div className="p-1 px-1.5 bg-[#E6F1FB] border border-[#B8D4F0] rounded-md">
+                                <span className="text-[9px] font-black tracking-[0.12em] text-[#378ADD] uppercase">Odak</span>
                             </div>
-                            <h3 className="text-[12px] font-bold text-stone-800 uppercase tracking-wide truncate max-w-[150px]">{selectedNode.file_type || 'Metin'}</h3>
+                            <h3 className="text-[12px] font-black text-stone-800 uppercase tracking-wide truncate max-w-[140px]">
+                                {selectedNode.file_type || 'Metin'}
+                            </h3>
                         </div>
-                        <button
-                            onClick={clearSelection}
-                            className="text-stone-400 hover:text-red-500 transition-colors p-1 rounded-md"
-                        >
-                            <X size={14} />
+                        <button onClick={clearSelection} className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors">
+                            <X size={13} />
                         </button>
                     </div>
                     <div className="space-y-2.5">
                         <div>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Doküman:</span>
-                            <span className="text-[11px] text-indigo-700 font-semibold bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded inline-block truncate max-w-full">{selectedNode.document_id}</span>
+                            <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] block mb-1">Doküman</span>
+                            <span className="text-[11px] text-[#378ADD] font-black bg-[#E6F1FB] border border-[#B8D4F0] px-1.5 py-0.5 rounded inline-block truncate max-w-full font-mono">
+                                {selectedNode.document_id}
+                            </span>
                         </div>
                         {selectedNode.location && (
                             <div>
-                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest block mb-0.5">Harita Konumu (Chunk P.):</span>
-                                <span className="text-[11px] text-stone-600 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">{selectedNode.location}</span>
+                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] block mb-1">Konum</span>
+                                <span className="text-[11px] text-stone-600 font-black bg-stone-100 border border-stone-200 px-1.5 py-0.5 rounded font-mono">
+                                    {selectedNode.location}
+                                </span>
                             </div>
                         )}
                         <div>
-                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest block mb-0.5">Vektörel İçerik:</span>
-                            <p className="text-[10.5px] text-stone-700 font-serif leading-relaxed line-clamp-4 border-l-2 border-[#378ADD] pl-2 mt-1">
+                            <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] block mb-1">İçerik</span>
+                            <p className="text-[11px] text-stone-700 font-medium leading-relaxed line-clamp-4 border-l-2 border-[#378ADD] pl-2">
                                 {selectedNode.content || 'İçerik yok'}
                             </p>
                         </div>
-
-                        <div className="pt-2 mt-2 border-t border-stone-100 flex items-center justify-between">
-                            <span className="text-[10px] font-medium text-stone-500">
-                                Toplam <strong className="text-[#378ADD] font-bold">{highlightLinks.size}</strong> ağ bağlantısı
+                        <div className="pt-2 border-t border-stone-100">
+                            <span className="text-[10px] font-medium text-stone-400">
+                                <strong className="text-[#378ADD] font-black">{highlightLinks.size}</strong> bağlantı
                             </span>
                         </div>
                     </div>

@@ -229,11 +229,14 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
 
     return (
         <div className="flex-1 bg-white flex flex-col h-full overflow-x-hidden overflow-y-auto min-w-[300px]">
-            <div className="px-4 py-2 bg-stone-50 border-b border-stone-100 font-semibold text-[11px] tracking-wide text-stone-600 uppercase shrink-0 sticky top-0 z-10">
-                Bilgi Parçacıkları (Chunks)
+            <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 shrink-0 sticky top-0 z-10 flex items-center gap-2">
+                <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">Bilgi Parçacıkları</span>
+                {activeChunks.length > 0 && (
+                    <span className="ml-auto text-[10px] font-black text-stone-400 font-mono">{activeChunks.length}</span>
+                )}
             </div>
 
-            <div className="p-4 space-y-4 pb-20">
+            <div className="p-4 space-y-3 pb-20">
                 {activeChunks.map((chunk, idx) => {
                     const isTarget  = targetChunkId === chunk.id;
                     const chunkType = chunk.rawMeta?.type;
@@ -247,27 +250,28 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                             ref={el => chunkRefs.current[chunk.id] = el}
                             style={{ scrollMarginTop: '100px' }}
                             className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group
-                                ${isTarget ? 'border-[#F5DDB3] ring-4 ring-[#FAEEDA] bg-[#FAEEDA]/50' : 'border-stone-200 bg-white'}
+                                ${isTarget ? 'border-amber-200 ring-2 ring-amber-100 bg-amber-50/30' : 'border-stone-100 bg-white'}
                             `}
                         >
                             {/* Header */}
-                            <div className="bg-stone-50 px-3 py-1.5 border-b border-stone-100 flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-1.5">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${isTarget ? 'bg-[#854F0B]' : 'bg-[#378ADD]'}`} />
-                                    Parça {idx + 1}
+                            <div className={`px-3 py-2 border-b flex items-center justify-between ${isTarget ? 'bg-amber-50 border-amber-100' : 'bg-stone-50 border-stone-100'}`}>
+                                <span className="flex items-center gap-1.5">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isTarget ? 'bg-amber-500' : 'bg-[#378ADD]'}`} />
+                                    <span className={`text-[9px] font-black uppercase tracking-[0.18em] ${isTarget ? 'text-amber-600' : 'text-stone-400'}`}>
+                                        Parça {idx + 1}
+                                    </span>
                                     <ChunkTypeBadge type={chunkType} />
                                 </span>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-mono text-stone-400 bg-white border border-stone-200 px-1 py-0.5 rounded">
-                                        ID: {chunk.id.substring(0, 8)}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-black font-mono text-stone-400 bg-white border border-stone-200 px-1.5 py-0.5 rounded">
+                                        {chunk.id.substring(0, 8)}
                                     </span>
                                     <button
                                         onClick={() => handleDeleteChunk(chunk.id)}
-                                        className="p-1 px-1.5 text-stone-400 hover:text-[#991B1B] hover:bg-[#FEF2F2] rounded transition-colors flex items-center gap-1 border border-transparent hover:border-[#FEF2F2]/50"
+                                        className="flex items-center gap-1 px-2 py-1 text-[9px] font-black text-stone-400 hover:text-red-600 hover:bg-red-50 bg-white border border-stone-200 hover:border-red-200 rounded-lg shadow-sm transition-all opacity-0 group-hover:opacity-100"
                                         title="Bu Chunk'ı Veritabanından Sil"
                                     >
-                                        <Trash2 size={10} />
-                                        <span className="text-[9px] font-semibold invisible group-hover:visible">Sil</span>
+                                        <Trash2 size={10} /> Sil
                                     </button>
                                 </div>
                             </div>
@@ -280,53 +284,50 @@ const VdbChunkPanel = ({ activeChunks, targetChunkId, chunkRefs, searchTerm, exp
                             </div>
 
                             {/* Footer */}
-                            <div className="px-3 py-2 bg-stone-50/50 border-t border-stone-100 flex items-center justify-between text-[10px] text-stone-500">
-                                <div className="flex gap-3">
+                            <div className="px-3 py-2 bg-stone-50/60 border-t border-stone-100 flex items-center justify-between text-[10px] text-stone-500">
+                                <div className="flex gap-2">
                                     {(chunk.rawMeta?.start_time_fmt || chunk.rawMeta?.end_time_fmt) ? (
                                         <>
-                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD] font-semibold">{chunk.rawMeta.start_time_fmt || '00:00:00'}</span>
-                                            <span className="font-mono px-0.5 text-stone-400 font-bold">-</span>
-                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD] font-semibold">{chunk.rawMeta.end_time_fmt || '00:00:00'}</span>
+                                            <span className="font-black font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD]">{chunk.rawMeta.start_time_fmt || '00:00:00'}</span>
+                                            <span className="font-black text-stone-300">–</span>
+                                            <span className="font-black font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm text-[#378ADD]">{chunk.rawMeta.end_time_fmt || '00:00:00'}</span>
                                         </>
                                     ) : (
                                         <>
-                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
-                                            <span className="font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
+                                            <span className="font-black font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">X: {chunk.x}</span>
+                                            <span className="font-black font-mono bg-white border border-stone-200 px-1.5 py-0.5 rounded shadow-sm">Y: {chunk.y}</span>
                                         </>
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-1.5">
-                                    {/* PDF / PPTX görsel ikonu */}
+                                <div className="flex items-center gap-1">
                                     {imgOk && (
                                         <button
                                             onMouseEnter={(e) => handleBtnEnter(chunk, e)}
                                             onMouseLeave={handleBtnLeave}
                                             onClick={(e) => openPopup(chunk, e.clientX, e.clientY)}
-                                            className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded transition-colors font-medium"
+                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-black text-stone-500 hover:text-emerald-700 hover:bg-emerald-50 bg-white border border-stone-200 hover:border-emerald-200 rounded-lg shadow-sm transition-colors"
                                             title="Sayfada Göster"
                                         >
-                                            <Image size={12} /> Görsel
+                                            <Image size={11} /> Görsel
                                         </button>
                                     )}
-                                    {/* BPMN diyagram ikonu */}
                                     {bpmnOk && (
                                         <button
                                             onMouseEnter={(e) => handleBtnEnter(chunk, e)}
                                             onMouseLeave={handleBtnLeave}
                                             onClick={(e) => openPopup(chunk, e.clientX, e.clientY)}
-                                            className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-teal-700 hover:bg-teal-50 border border-transparent hover:border-teal-200 rounded transition-colors font-medium"
+                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-black text-stone-500 hover:text-teal-700 hover:bg-teal-50 bg-white border border-stone-200 hover:border-teal-200 rounded-lg shadow-sm transition-colors"
                                             title="BPMN Diyagramında Göster"
                                         >
-                                            <Workflow size={12} /> Diyagram
+                                            <Workflow size={11} /> Diyagram
                                         </button>
                                     )}
-                                    {/* JSON */}
                                     <button
                                         onClick={() => toggleJsonInfo(chunk.id)}
-                                        className="flex items-center gap-1 px-2 py-1 text-stone-500 hover:text-[#378ADD] hover:bg-[#E6F1FB] border border-transparent hover:border-[#B8D4F0] rounded transition-colors font-medium"
+                                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-black text-stone-500 hover:text-[#378ADD] hover:bg-[#E6F1FB] bg-white border border-stone-200 hover:border-[#B8D4F0] rounded-lg shadow-sm transition-colors"
                                     >
-                                        <Code size={12} /> {expandedJson[chunk.id] ? 'Gizle' : 'JSON'}
+                                        <Code size={11} /> {expandedJson[chunk.id] ? 'Gizle' : 'JSON'}
                                     </button>
                                 </div>
                             </div>

@@ -19,16 +19,20 @@ N8N_PROCESS = None
 @router.get("/status", summary="n8n motorunun anlık durumunu getirir")
 def get_status():
     global N8N_PROCESS
+    import urllib.request
+
+    # Port'u doğrudan kontrol et — N8N_PROCESS bağımsız (dışarıdan başlatılmış veya backend restart)
+    try:
+        urllib.request.urlopen("http://localhost:5678", timeout=2)
+        pid = N8N_PROCESS.pid if (N8N_PROCESS and N8N_PROCESS.poll() is None) else None
+        return {"status": "running", "pid": pid, "url": "http://localhost:5678"}
+    except Exception:
+        pass
+
+    # Port kapalı — process çalışıyor ama henüz hazır değil mi?
     if N8N_PROCESS and N8N_PROCESS.poll() is None:
-        import urllib.request
-        import urllib.error
-        try:
-            # Sadece port aktif mi diye hafif bir istek gonder
-            urllib.request.urlopen("http://localhost:5678", timeout=1)
-            return {"status": "running", "pid": N8N_PROCESS.pid, "url": "http://localhost:5678"}
-        except Exception:
-            # Process devrede ama port yanit vermiyor = npx su an paketi indiriyor veya nodejs ServerBoot evresinde.
-            return {"status": "installing", "pid": N8N_PROCESS.pid}
+        return {"status": "installing", "pid": N8N_PROCESS.pid}
+
     return {"status": "stopped"}
 
 @router.get("/status/stream", summary="n8n başlatılana kadar SSE ile durum yayınlar")
@@ -44,13 +48,17 @@ async def stream_n8n_status():
             current_status = "stopped"
             extra: dict = {}
 
-            if N8N_PROCESS and N8N_PROCESS.poll() is None:
-                try:
-                    async with httpx.AsyncClient() as _c:
-                        await _c.get("http://localhost:5678", timeout=1.0)
-                    current_status = "running"
-                    extra = {"pid": N8N_PROCESS.pid}
-                except Exception:
+            # Port'u doğrudan kontrol et — N8N_PROCESS bağımsız
+            try:
+                async with httpx.AsyncClient() as _c:
+                    await _c.get("http://localhost:5678", timeout=1.0)
+                current_status = "running"
+                pid = N8N_PROCESS.pid if (N8N_PROCESS and N8N_PROCESS.poll() is None) else None
+                if pid:
+                    extra = {"pid": pid}
+            except Exception:
+                # Port kapalı — process var ama hazır değil mi?
+                if N8N_PROCESS and N8N_PROCESS.poll() is None:
                     current_status = "installing"
                     extra = {"pid": N8N_PROCESS.pid}
 

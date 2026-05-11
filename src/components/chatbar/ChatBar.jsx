@@ -40,6 +40,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const pendingScrollToUser = useRef(false);
     const scrollAnchorTimer = useRef(null);
     const scrollAnchoredRef = useRef(false);
+    const userScrolledUpRef = useRef(false);
     const textareaRef = useRef(null);
     const streamingMsgIdRef = useRef(null);
     const abortControllerRef = useRef(null);
@@ -167,11 +168,17 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         }
     };
 
-    const handleChatScroll = () => {
+    const handleChatScroll = (e) => {
         setIsChatScrolling(true);
         if (chatScrollTimeout.current) clearTimeout(chatScrollTimeout.current);
         chatScrollTimeout.current = setTimeout(() => setIsChatScrolling(false), 3000);
         if (isChatsOpen) setIsChatsOpen(false);
+        // Kullanıcı bottom'dan 100px+ uzakta ise auto-scroll'u durdur
+        const el = e?.target;
+        if (el) {
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            userScrolledUpRef.current = distFromBottom > 100;
+        }
     };
 
     const handleTextareaScroll = () => {
@@ -199,19 +206,32 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                 el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
             pendingScrollToUser.current = false;
+            userScrolledUpRef.current = false;
             scrollAnchoredRef.current = true;
             if (scrollAnchorTimer.current) clearTimeout(scrollAnchorTimer.current);
             scrollAnchorTimer.current = setTimeout(() => {
                 scrollAnchoredRef.current = false;
             }, 700);
-        } else if (!scrollAnchoredRef.current) {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        } else if (!scrollAnchoredRef.current && !userScrolledUpRef.current) {
+            const endEl = messagesEndRef.current;
+            if (endEl) {
+                const container = endEl.closest('[data-chat-scroll]');
+                if (container) {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                } else {
+                    endEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }
+            }
         }
     }, [messages, isTyping]);
 
     useEffect(() => {
         requestAnimationFrame(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+            const endEl = messagesEndRef.current;
+            if (!endEl) return;
+            const container = endEl.closest('[data-chat-scroll]');
+            if (container) container.scrollTop = container.scrollHeight;
+            else endEl.scrollIntoView({ block: 'end' });
         });
     }, [currentSessionId]);
 

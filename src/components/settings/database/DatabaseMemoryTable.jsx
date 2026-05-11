@@ -42,6 +42,9 @@ const DatabaseMemoryTable = ({
                     <Database size={13} className="text-stone-500" />
                 </div>
                 <span className="text-[11px] font-bold text-stone-600 tracking-widest uppercase">Dosya Listesi</span>
+                <span className="text-[11px] font-medium text-stone-400">
+                    <span className="font-bold text-stone-600">{filteredRecords.length}</span> kayıt
+                </span>
 
                 <div className="ml-6 relative flex-1 max-w-xs">
                     <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
@@ -62,22 +65,7 @@ const DatabaseMemoryTable = ({
                     )}
                 </div>
 
-                <div className="ml-auto flex items-center gap-3">
-                    <span className="text-[11px] font-medium text-stone-400 mr-2">
-                        <span className="font-bold text-stone-700">{filteredRecords.length}</span> kayıt
-                    </span>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
-                        <BarChart3 size={12} className="text-[#378ADD]" />
-                        <span className="text-[11px] font-bold text-stone-600">
-                            {records.reduce((acc, curr) => acc + (curr.chunks || 0), 0).toLocaleString('tr-TR')} Parça
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
-                        <Zap size={12} className="text-stone-400" />
-                        <span className="text-[11px] font-bold text-stone-600">
-                            {records.length} Döküman
-                        </span>
-                    </div>
+                <div className="ml-auto flex items-center gap-2">
                     <button onClick={fetchRecords} className="p-1.5 flex items-center justify-center bg-white hover:bg-stone-50 border border-stone-200 rounded-lg shadow-sm transition-colors text-stone-500 hover:text-[#378ADD]" title="Yenile">
                         <RefreshCw size={13} className={dbLoading ? 'animate-spin text-[#378ADD]' : ''} />
                     </button>

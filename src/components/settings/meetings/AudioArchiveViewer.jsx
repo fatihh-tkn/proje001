@@ -237,8 +237,8 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
             style={{ transition: 'right 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
             {/* Header */}
-            <div className="flex-none px-5 py-3.5 flex items-center justify-between border-b border-stone-100 bg-stone-50/50">
-                <h3 className="text-[13px] font-bold text-stone-800 truncate">{doc.filename}</h3>
+            <div className="flex-none px-4 py-3 flex items-center justify-between border-b border-stone-200 bg-white">
+                <h3 className="text-[13px] font-black text-stone-800 truncate">{doc.filename}</h3>
                 <button onClick={onClose} className="p-1 hover:bg-stone-200 rounded-full text-stone-500 shrink-0 ml-2">
                     <X size={15} />
                 </button>
@@ -306,7 +306,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                         <div>
                             <div className="flex items-center gap-1 mb-2">
                                 <Tag size={12} className="text-stone-400" />
-                                <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Etiketler</span>
+                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">Etiketler</span>
                             </div>
                             <div className="flex flex-wrap gap-1.5 mb-2">
                                 {tags.map(tag => (
@@ -325,11 +325,11 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                                     onChange={e => setTagInput(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') addTag(tagInput); }}
                                     placeholder="Etiket ekle..."
-                                    className="flex-1 text-[11px] border border-stone-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-[#378ADD]"
+                                    className="flex-1 text-[11px] border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 bg-white"
                                 />
                                 <button
                                     onClick={() => addTag(tagInput)}
-                                    className="px-2 py-1.5 bg-stone-800 text-white rounded-md text-[11px] hover:bg-stone-700"
+                                    className="px-2 py-1.5 bg-[#378ADD] text-white rounded-lg text-[11px] hover:bg-[#2A68AB]"
                                 >
                                     <Plus size={13} />
                                 </button>
@@ -340,7 +340,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                         <div>
                             <div className="flex items-center gap-1 mb-2">
                                 <MessageSquare size={12} className="text-stone-400" />
-                                <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Açıklama</span>
+                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">Açıklama</span>
                             </div>
                             {descEditing ? (
                                 <div className="flex flex-col gap-1.5">
@@ -349,16 +349,16 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                                         value={desc}
                                         onChange={e => setDesc(e.target.value)}
                                         rows={3}
-                                        className="w-full text-[12px] border border-stone-200 rounded-md px-2.5 py-2 resize-none focus:outline-none focus:border-[#378ADD]"
+                                        className="w-full text-[12px] border border-stone-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20"
                                         placeholder="Bu dosya hakkında not ekleyin..."
                                     />
                                     <div className="flex gap-1.5">
                                         <button onClick={saveDesc} disabled={saving}
-                                            className="flex items-center gap-1 px-2.5 py-1 bg-[#378ADD] text-white rounded-md text-[11px] hover:bg-[#2A68AB]">
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-[#378ADD] text-white rounded-lg text-[11px] font-black hover:bg-[#2A68AB]">
                                             <Check size={12} /> {saving ? 'Kaydediliyor...' : 'Kaydet'}
                                         </button>
                                         <button onClick={() => setDescEditing(false)}
-                                            className="px-2.5 py-1 bg-stone-100 text-stone-600 rounded-md text-[11px] hover:bg-stone-200">
+                                            className="px-2.5 py-1 bg-white border border-stone-200 text-stone-600 rounded-lg text-[11px] hover:bg-stone-50">
                                             İptal
                                         </button>
                                     </div>
@@ -397,7 +397,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-1 mb-1">
                                     <Mic size={12} className="text-stone-400" />
-                                    <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Metin Dökümü</span>
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">Metin Dökümü</span>
                                 </div>
 
                                 {/* Transkript Metin Kutusu — sadece done & metin varsa */}
@@ -412,33 +412,33 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                                 {/* ── İŞLEM SÜRESINDE PROGRESS BAR KART ── */}
                                 {isProcessing ? (
                                     <div
-                                        className="mt-1 rounded-xl border border-amber-200 bg-amber-50 shadow-sm overflow-hidden cursor-pointer select-none"
+                                        className="mt-1 rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden cursor-pointer select-none"
                                         onClick={() => setShowCancelPanel(p => !p)}
                                         title="Detaylar için tıklayın"
                                     >
                                         {/* Bar alanı */}
-                                        <div className="relative h-10 bg-amber-100">
+                                        <div className="relative h-10 bg-stone-100">
                                             {/* Dolan çubuk */}
                                             <div
-                                                className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-400 to-orange-400 transition-all duration-700 ease-out"
+                                                className="absolute inset-y-0 left-0 bg-[#D44B4B] transition-all duration-700 ease-out"
                                                 style={{ width: `${Math.max(txPercent, 4)}%` }}
                                             />
                                             {/* Yüzde metni — ortada */}
                                             <div className="absolute inset-0 flex items-center justify-center">
-                                                <span className="text-[12px] font-bold text-amber-900 drop-shadow-sm select-none">
+                                                <span className="text-[12px] font-black text-stone-700 drop-shadow-sm select-none font-mono tabular-nums">
                                                     {txPercent > 0 ? `%${Math.round(txPercent)}` : '…'}
                                                 </span>
                                             </div>
                                         </div>
                                         {/* Alt durum satırı */}
-                                        <div className="px-3 py-1.5 flex items-center justify-between">
+                                        <div className="px-3 py-1.5 flex items-center justify-between border-t border-stone-100">
                                             <div className="flex items-center gap-1.5">
-                                                <Loader2 size={11} className="animate-spin text-amber-500 shrink-0" />
-                                                <span className="text-[10px] text-amber-700 font-medium animate-pulse">
+                                                <Loader2 size={11} className="animate-spin text-[#D44B4B] shrink-0" />
+                                                <span className="text-[10px] text-stone-500 font-medium animate-pulse">
                                                     Ses transkripte çevriliyor…
                                                 </span>
                                             </div>
-                                            <span className="text-[9px] text-amber-600 opacity-70">
+                                            <span className="text-[9px] text-stone-400 opacity-70">
                                                 {showCancelPanel ? '▲' : '▼'}
                                             </span>
                                         </div>
@@ -452,9 +452,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
                                             }}
                                             onClick={e => e.stopPropagation()}
                                         >
-                                            <div className="px-3 py-2.5 border-t border-amber-200 bg-amber-100/60 flex items-center gap-3">
-                                                <AlertCircle size={14} className="text-amber-600 shrink-0" />
-                                                <p className="text-[11px] text-amber-800 flex-1 leading-tight">
+                                            <div className="px-3 py-2.5 border-t border-stone-200 bg-stone-50 flex items-center gap-3">
+                                                <AlertCircle size={14} className="text-[#D44B4B] shrink-0" />
+                                                <p className="text-[11px] text-stone-700 flex-1 leading-tight">
                                                     Transkripsiyon devam ediyor. İptal etmek istiyor musunuz?
                                                 </p>
                                                 <button
@@ -919,7 +919,7 @@ export default function AudioArchiveViewer() {
     }, []);
 
     return (
-        <div className="flex bg-[#f4f5f7] h-full w-full font-sans overflow-hidden">
+        <div className="flex bg-stone-50 h-full w-full font-sans overflow-hidden">
             {/* Context Menu */}
             {ctxMenu && (
                 <ContextMenu
@@ -983,14 +983,14 @@ export default function AudioArchiveViewer() {
                             <input type="text" placeholder="Ara..." value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 autoComplete="off"
-                                className="pl-7 pr-7 py-1.5 text-[11px] border border-stone-200 rounded-md w-36 focus:outline-none focus:border-[#378ADD] bg-stone-50" />
+                                className="pl-7 pr-7 py-1.5 text-[11px] border border-stone-200 rounded-lg w-36 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 bg-white" />
                             {searchQuery && (
                                 <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -transtone-y-1/2 text-stone-300 hover:text-stone-500"><X size={12} /></button>
                             )}
                         </div>
                         <div className="relative">
                             <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-md bg-stone-50 text-stone-700 focus:outline-none focus:border-[#378ADD] appearance-none cursor-pointer">
+                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-lg bg-white text-stone-700 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 appearance-none cursor-pointer">
                                 <option value="all">Tümü (Sadece Ses/Video)</option>
                                 <option value="audio">Ses Dosyaları</option>
                                 <option value="video">Videolar</option>
@@ -1000,7 +1000,7 @@ export default function AudioArchiveViewer() {
                         </div>
                         <div className="relative">
                             <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-md bg-stone-50 text-stone-700 focus:outline-none focus:border-[#378ADD] appearance-none cursor-pointer">
+                                className="pl-7 pr-2 py-1.5 text-[11px] border border-stone-200 rounded-lg bg-white text-stone-700 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 appearance-none cursor-pointer">
                                 <option value="newest">En Yeni</option>
                                 <option value="oldest">En Eski</option>
                                 <option value="largest">En Büyük</option>
@@ -1010,11 +1010,11 @@ export default function AudioArchiveViewer() {
                         </div>
                         <div className="w-px h-5 bg-stone-200" />
                         <button onClick={() => setIsCreatingFolder(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-medium rounded-md transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 shadow-sm hover:bg-stone-50 text-stone-600 text-[11px] font-black rounded-lg transition-colors">
                             <Plus size={13} /> Klasör
                         </button>
                         <button onClick={handleUploadClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white text-[11px] font-medium rounded-md transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white text-[11px] font-black rounded-lg transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
                         <input type="file" ref={fileInputRef} accept="audio/*,video/*,.mp3,.wav,.ogg,.mp4,.avi,.mov" onChange={handleFileChange} className="hidden" />
@@ -1023,10 +1023,10 @@ export default function AudioArchiveViewer() {
 
                 {/* ── İSTATİSTİK ŞERİDİ ── */}
                 <div className="flex-none px-5 py-1.5 flex items-center gap-5 bg-stone-50 border-b border-stone-100 text-[11px] text-stone-500">
-                    <span className="flex items-center gap-1.5"><Film size={12} className="text-stone-400" /> <b className="text-stone-700">{allDocs.length}</b> Dosya</span>
-                    <span className="flex items-center gap-1.5"><Folder size={12} className="text-stone-400" /> <b className="text-stone-700">{allFolders.length}</b> Klasör</span>
-                    <span className="flex items-center gap-1.5"><Database size={12} className="text-teal-500" /> <b className="text-stone-700">{vectorCount}</b> Vektörleşmiş</span>
-                    <span className="ml-auto flex items-center gap-1"><b className="text-stone-700">{formatBytes(totalSize)}</b> Toplam</span>
+                    <span className="flex items-center gap-1.5"><Film size={12} className="text-stone-400" /> <b className="text-[#378ADD] font-black font-mono tabular-nums">{allDocs.length}</b> Dosya</span>
+                    <span className="flex items-center gap-1.5"><Folder size={12} className="text-stone-400" /> <b className="text-[#378ADD] font-black font-mono tabular-nums">{allFolders.length}</b> Klasör</span>
+                    <span className="flex items-center gap-1.5"><Database size={12} className="text-teal-500" /> <b className="text-[#378ADD] font-black font-mono tabular-nums">{vectorCount}</b> Vektörleşmiş</span>
+                    <span className="ml-auto flex items-center gap-1"><b className="text-[#378ADD] font-black font-mono tabular-nums">{formatBytes(totalSize)}</b> Toplam</span>
                     {selectedIds.size > 0 && (
                         <div className="flex items-center gap-2 pl-4 border-l border-stone-200">
                             <span className="font-semibold text-stone-700">{selectedIds.size} seçildi</span>
@@ -1054,7 +1054,7 @@ export default function AudioArchiveViewer() {
                 </div>
 
                 {/* ── CONTENT ── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50/50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
+                <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
 
                     {loading ? (
                         <div className="flex items-center justify-center h-40">
@@ -1071,7 +1071,7 @@ export default function AudioArchiveViewer() {
                             {/* Klasörler */}
                             {folders.length > 0 && (
                                 <div className="mb-6">
-                                    <h3 className="text-[12px] font-bold text-stone-500 uppercase tracking-wider mb-3 px-1">Klasörler</h3>
+                                    <h3 className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] mb-3 px-1">Klasörler</h3>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {isCreatingFolder && (
                                             <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
@@ -1144,7 +1144,7 @@ export default function AudioArchiveViewer() {
                             {/* Dosyalar */}
                             {documents.length > 0 && (
                                 <div>
-                                    <h3 className="text-[12px] font-bold text-stone-500 uppercase tracking-wider mb-3 px-1">Medya Dosyaları</h3>
+                                    <h3 className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] mb-3 px-1">Medya Dosyaları</h3>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {documents.map(doc => {
                                             const { Icon, color, bg, border } = getFileVisual(doc.file_type);

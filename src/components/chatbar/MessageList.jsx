@@ -235,11 +235,33 @@ const MessageList = ({
                 <ChunkPreviewModal source={previewSource} onClose={() => setPreviewSource(null)} />
             )}
             <div className="flex-1 relative overflow-hidden transition-all duration-500">
+                {messages.length === 0 && isSideOpen && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 z-20">
+                        <p className="text-[13px] font-semibold text-stone-400">Size nasıl yardımcı olabilirim?</p>
+                        <div className="flex flex-col gap-1.5 w-full max-w-[360px]">
+                            {[
+                                'Hangi raporlara erişebilirim?',
+                                'Bir hata mesajını çözmeme yardım eder misin?',
+                                'Toplantı özetini oluşturabilir misin?',
+                                'SAP sisteminde nasıl işlem yapabilirim?',
+                            ].map((q, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => onSendFollowup?.(q)}
+                                    className="group/s w-full text-left bg-white border border-stone-200 hover:border-[#DC2626]/40 hover:bg-[#FEF2F2]/40 rounded-xl px-3 py-2 text-[13px] text-stone-700 hover:text-stone-900 transition-all shadow-sm flex items-start gap-2"
+                                >
+                                    <CornerDownRight size={13} className="shrink-0 mt-0.5 text-stone-300 group-hover/s:text-[#DC2626] transition-colors" />
+                                    <span className="flex-1 leading-snug">{q}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div
                     onScroll={handleChatScroll}
                     data-scrolling={isChatScrolling}
                     data-chat-scroll="1"
-                    className={`absolute inset-0 overflow-y-auto overflow-x-hidden scroll-smooth transition-opacity duration-300
+                    className={`absolute inset-0 overflow-y-auto overflow-x-hidden transition-opacity duration-300
           [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent
           [&::-webkit-scrollbar-thumb]:bg-stone-300 hover:[&::-webkit-scrollbar-thumb]:bg-stone-400 [&::-webkit-scrollbar-thumb]:rounded-full
           ${isSideOpen ? 'py-5 pr-5 pl-8 opacity-100 z-10' : 'p-0 opacity-0 pointer-events-none z-0'}`}

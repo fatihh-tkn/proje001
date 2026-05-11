@@ -246,12 +246,13 @@ _ERROR_PATTERN_RE = re.compile(
 
 
 def _resolve_system_prompt(agent_config: dict | None) -> str:
-    """DB'den prompt çek; yoksa kod fallback'ine düş."""
+    """DB'den prompt çek; önce agent config, sonra prompt_template tablosu, son olarak kod fallback'i."""
     if agent_config:
         prompt = (agent_config.get("prompt") or "").strip()
         if prompt:
             return prompt
-    return _CLASSIFIER_SYSTEM_FALLBACK
+    from core.prompts import _get_prompt_template
+    return _get_prompt_template("supervisor_classifier", _CLASSIFIER_SYSTEM_FALLBACK)
 
 
 def _strip_json_fence(text: str) -> str:

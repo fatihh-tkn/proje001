@@ -201,12 +201,22 @@ def save_agent_assignments_route(body: dict):
         if v:  # null / "" / 0 atlanır → o rol fallback'e düşer
             cleaned[k] = str(v)
     set_agent_assignments(cleaned)
+    try:
+        from core.db_bridge import invalidate_settings_cache
+        invalidate_settings_cache()
+    except Exception:
+        pass
     return {"ok": True, "saved": cleaned}
 
 
 # ── Prompt Şablonları ─────────────────────────────────────────────────────────
 
 PROMPT_DEFAULTS = {
+    "aggregator_system": (
+        "Sen şirket içi yapay zeka asistanısın. Kullanıcının sorusuna açık, "
+        "kısa ve doğru cevap ver. Türkçe yaz. Bilgi tabanı bağlamı (RAG) "
+        "varsa onu temel al."
+    ),
     "general_rag": (
         "Sen çok yetenekli bir asistansın. Aşağıda kullanıcının sistemine yüklenmiş "
         "belgelerden elde edilen ilgili bilgiler yer almaktadır. Bu bilgileri kullanarak "
@@ -227,12 +237,52 @@ PROMPT_DEFAULTS = {
         "{chat_memory}\n"
         "====================================================\n\n"
     ),
+    "supervisor_classifier": (
+        "Sen bir intent sınıflandırıcısın. Kullanıcının mesajını okur ve şu "
+        "kategorilerden birini seçersin:\n\n"
+        "- general: Şirkete, iş süreçlerine, prosedürlere, politikalara, SAP'a veya "
+        "şirket bilgi tabanındaki herhangi bir konuya ilişkin soru. SAP transaction kodu "
+        "(CS01, FB60, ME083...), SAP modülü (MM, SD, FI, CO, PP, HR, PM...), "
+        "iş süreci, BPMN akışı, kurumsal sistem, insan kaynakları, finans, bütçe, "
+        "izin, görevlendirme, tedarik veya diğer kurumsal konular dahildir. "
+        "Belirsiz durumlarda bu kategoriyi seç — bilgi tabanında aranması zararsız.\n"
+        "- serbest: AÇIKÇA genel bilgi/teknoloji sorusu; Python, Java, matematik, "
+        "fizik, tarih, coğrafya, internet teknolojileri gibi konular ve şirkete "
+        "HİÇBİR bağlantısı olmayan sorular. Bilgi tabanı aramasına gerek yok.\n"
+        "- hata_cozumu: Bir SİSTEM HATASI/ARIZA bildirimi. Kullanıcı 'şu hata "
+        "veriyor', 'dump alıyor', 'çalışmıyor', 'ekran kilitlendi' gibi sorun "
+        "ifadeleri kullanıyor. Sadece kod (ör. ME083) verilse bile bağlam bir "
+        "SORUN tarifi olmalı.\n"
+        "- rapor_arama: Z'li rapor (ZMM_, ZSD_), 'rapor bulamıyorum' tarzı rapor arama.\n"
+        "- n8n: net bir otomasyon tetikleme isteği (toplantı kaydet, rapor gönder, görev oluştur).\n"
+        "- dosya_qa: belirli bir dosya hakkında soru.\n"
+        "- skill_query: sistemin yetenekleri, araçları veya nasıl kullanıldığı hakkında "
+        "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var', 'bana nasıl yardım edersin').\n\n"
+        "KARAR KURALI: Açıkça genel bilgi sorusu (Python, matematik, tarih vs.) ise → serbest. "
+        "Şirkete/iş süreçlerine ilişkin olabilecek her türlü soru → general. "
+        "Belirsiz → general (bilgi tabanını aramak her zaman güvenli). "
+        "Sistem yetenekleri sorusuysa → skill_query.\n\n"
+        "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
+        "{\"intent\": \"<kategori>\", \"confidence\": 0.0-1.0, \"complexity\": \"low|medium|high\", "
+        "\"needs_polish\": <bool>, \"reasoning\": \"<1-cümle-gerekçe>\"}\n\n"
+        "confidence: sınıflandırma güven skoru (0.8+ → eminsin, 0.5–0.8 → belirsiz, <0.5 → çok belirsiz).\n"
+        "complexity: low=kısa/basit soru, medium=açıklama/adım gerektiriyor, high=çok boyutlu analiz.\n"
+        "needs_polish: cevabın tonunun resmi/uzun olması gerekiyorsa true, kısa/teknik/JSON cevap için false."
+    ),
+    "msg_polish_base": (
+        "Sana verilen metni imla, akıcılık ve okunabilirlik açısından hafifçe iyileştir. "
+        "Bilgileri, anlamı ve yapıyı değiştirme. Yeni soru veya içerik ekleme. "
+        "Sadece revize edilmiş metni döndür, başka hiçbir şey yazma."
+    ),
 }
 
 PROMPT_META = [
-    {"key": "general_rag", "label": "Genel RAG Sistem Promptu",   "desc": "Belge olmadan genel sohbet için kullanılan sistem promptu"},
-    {"key": "file_qa",     "label": "Dosya Q&A Sistem Promptu",    "desc": "Belge/dosya sorgularında kullanılan sistem promptu"},
-    {"key": "chat_memory", "label": "Konuşma Hafızası Şablonu",    "desc": "Geçmiş sohbet bağlamı eklenirken kullanılan şablon"},
+    {"key": "aggregator_system",     "label": "Temel Asistan Kimliği",           "desc": "Asistanın kimliğini ve temel yanıt davranışını belirleyen prompt",        "category": "aggregator", "node": "Aggregator"},
+    {"key": "general_rag",           "label": "Genel RAG Sistem Promptu",         "desc": "Belge tabanlı genel sohbet için kullanılan sistem promptu",               "category": "aggregator", "node": "Aggregator"},
+    {"key": "file_qa",               "label": "Dosya Q&A Sistem Promptu",          "desc": "Belge/dosya sorgularında kullanılan sistem promptu",                      "category": "aggregator", "node": "Aggregator"},
+    {"key": "chat_memory",           "label": "Konuşma Hafızası Şablonu",          "desc": "Geçmiş sohbet bağlamı eklenirken kullanılan şablon",                      "category": "aggregator", "node": "Aggregator"},
+    {"key": "supervisor_classifier", "label": "Intent Sınıflandırıcı Promptu",    "desc": "Kullanıcı mesajını kategorize etmek için kullanılan supervisor promptu",   "category": "supervisor", "node": "Supervisor"},
+    {"key": "msg_polish_base",       "label": "Mesaj Revizyonu Temel Promptu",     "desc": "Yanıtları imla ve akıcılık açısından iyileştiren revizyon talimatı",       "category": "polish",     "node": "Msg Polish"},
 ]
 
 
@@ -512,10 +562,15 @@ def save_canned_responses(body: dict):
             ))
         db.commit()
 
-    # Supervisor cache'ini sıfırla
+    # Supervisor + settings cache'ini sıfırla
     try:
         from services.agent_graph.nodes.supervisor import invalidate_canned_cache
         invalidate_canned_cache()
+    except Exception:
+        pass
+    try:
+        from core.db_bridge import invalidate_settings_cache
+        invalidate_settings_cache()
     except Exception:
         pass
 

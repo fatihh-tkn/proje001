@@ -3,7 +3,7 @@ import {
     Database, Upload, CheckCircle2, Trash2, Zap, FileText,
     RefreshCw, Loader2, ShieldCheck, Save, CornerDownRight,
     X, AlertTriangle, Activity, Search, CheckCheck, BarChart3,
-    AlignLeft, Layers, ChevronDown, ChevronRight
+    AlignLeft, Layers, ChevronDown, ChevronRight, FileCog
 } from 'lucide-react';
 
 import DatabaseDropzone from './database/DatabaseDropzone';
@@ -621,7 +621,7 @@ const DatabaseViewer = ({ readOnly }) => {
     // Backend henüz başlatılmadıysa bilgi ekranı göster
     if (backendReady === false) {
         return (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-white text-stone-500">
+            <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-stone-50 text-stone-500">
                 <div className="p-5 bg-[#FAEEDA] border border-[#F5DDB3] rounded-2xl">
                     <Activity size={36} className="text-[#854F0B] animate-pulse" />
                 </div>
@@ -641,15 +641,44 @@ const DatabaseViewer = ({ readOnly }) => {
     }
 
     return (
-        <div className="w-full h-full flex flex-col bg-white text-stone-800 overflow-hidden font-sans">
+        <div className="w-full h-full flex flex-col bg-stone-50 text-stone-800 overflow-hidden font-sans select-none animate-in fade-in duration-300">
 
-
-
+            {/* ══ BAŞLIK RİBBON ══ */}
+            <div className="shrink-0 w-full flex items-center justify-between border-b border-stone-200 bg-white px-6 py-3 shadow-sm z-10 relative">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#378ADD]/10 border border-[#378ADD]/25 flex items-center justify-center">
+                        <FileCog size={15} className="text-[#378ADD]" />
+                    </div>
+                    <div>
+                        <h2 className="text-[14px] font-semibold text-stone-800 leading-tight">Dosya İşleme</h2>
+                        <p className="text-[11px] text-stone-400 mt-[1px]">Belge yükleme, parçalama ve vektör indeksleme</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
+                        <BarChart3 size={12} className="text-[#378ADD]" />
+                        <span className="text-[11px] font-bold text-stone-600">
+                            {records.reduce((acc, curr) => acc + (curr.chunks || 0), 0).toLocaleString('tr-TR')} Parça
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
+                        <Zap size={12} className="text-stone-400" />
+                        <span className="text-[11px] font-bold text-stone-600">{records.length} Döküman</span>
+                    </div>
+                    <button
+                        onClick={fetchRecords}
+                        className="p-1.5 rounded-lg text-stone-400 hover:text-[#378ADD] hover:bg-[#378ADD]/10 border border-stone-200 bg-white transition-all"
+                        title="Yenile"
+                    >
+                        <RefreshCw size={13} />
+                    </button>
+                </div>
+            </div>
 
             {/* ══ ÜST İKİLİ PANEL ══ */}
             {
                 !readOnly && (
-                    <div className="relative z-50 flex border-b border-stone-200 transition-[height] duration-500 ease-in-out" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
+                    <div className="relative z-50 flex border-b border-stone-200 transition-[height] duration-500 ease-in-out shadow-[0_4px_20px_-15px_rgba(0,0,0,0.1)]" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
 
                         {/* ── PANEL 1: BESLEME ALANI / MODEL SEÇİM ── */}
                         {pendingMediaFile ? (
@@ -680,38 +709,83 @@ const DatabaseViewer = ({ readOnly }) => {
                                         </div>
                                     </div>
 
-                                    <div className="p-5 flex flex-col gap-3 bg-white">
-                                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5 ml-1">Kullanılacak Yapay Zeka Modeli</div>
-                                        <div className="flex bg-stone-100 p-1.5 rounded-xl border border-stone-200 shadow-inner">
-                                            <button
-                                                onClick={() => setSelectedModel('tiny')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'tiny' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
-                                            >Hızlı</button>
-                                            <button
-                                                onClick={() => setSelectedModel('base')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'base' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
-                                            >Dengeli</button>
-                                            <button
-                                                onClick={() => setSelectedModel('large-v3')}
-                                                className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${selectedModel === 'large-v3' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
-                                            >Gelişmiş</button>
+                                    <div className="p-5 flex flex-col gap-4 bg-stone-50/50">
+
+                                        {/* Transkripsiyon modeli */}
+                                        <div>
+                                            <div className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-0.5">Transkripsiyon Modeli</div>
+                                            <div className="flex flex-col gap-1.5">
+                                                {[
+                                                    { id: 'tiny',     label: 'Whisper Tiny',    tag: 'Hızlı',     desc: 'Kabataslak notlar için',          color: '#6b7280', bg: '#f3f4f6' },
+                                                    { id: 'base',     label: 'Whisper Base',    tag: 'Dengeli',   desc: 'Normal toplantı kayıtları için',  color: '#378ADD', bg: '#EBF4FD' },
+                                                    { id: 'large-v3', label: 'Whisper Large v3',tag: 'Gelişmiş',  desc: 'GPU gerektirir · Kusursuz doğruluk',color: '#7c3aed', bg: '#f5f3ff' },
+                                                ].map(m => (
+                                                    <button
+                                                        key={m.id}
+                                                        onClick={() => setSelectedModel(m.id)}
+                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all text-left ${
+                                                            selectedModel === m.id
+                                                                ? 'bg-white border-[#378ADD] shadow-sm shadow-[#378ADD]/10'
+                                                                : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
+                                                        }`}
+                                                    >
+                                                        <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-black text-white shadow-sm"
+                                                            style={{ background: m.color }}>
+                                                            W
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[12px] font-bold text-stone-800">{m.label}</span>
+                                                                <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide" style={{ color: m.color, background: m.bg }}>{m.tag}</span>
+                                                            </div>
+                                                            <span className="text-[10px] text-stone-400 font-mono">{m.desc}</span>
+                                                        </div>
+                                                        {selectedModel === m.id && (
+                                                            <div className="w-4 h-4 rounded-full bg-[#378ADD] flex items-center justify-center shrink-0">
+                                                                <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
 
-                                        <div className="flex bg-stone-100 p-1.5 rounded-xl border border-stone-200 shadow-inner mt-1">
-                                            <button
-                                                onClick={() => setComputeDevice('cpu')}
-                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cpu' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
-                                            >İşlemci (CPU)</button>
-                                            <button
-                                                onClick={() => setComputeDevice('cuda')}
-                                                className={`flex-1 py-1.5 text-[12px] font-bold rounded-lg transition-all ${computeDevice === 'cuda' ? 'bg-white text-stone-800 shadow-sm border border-stone-200/60' : 'text-stone-500 hover:text-stone-700'}`}
-                                            >Ekran Kartı (GPU)</button>
-                                        </div>
-
-                                        <div className="mt-1 min-h-[40px] flex items-center justify-center p-3 bg-stone-50 rounded-lg border border-stone-100">
-                                            {selectedModel === 'tiny' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">İşlemcide şipşak sonuç verir. Kabataslak ve hızlı notlar içindir.</span>}
-                                            {selectedModel === 'base' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Hız ve doğruluk dengesi idealdir. Normal toplantı kayıtları için.</span>}
-                                            {selectedModel === 'large-v3' && <span className="text-[11px] text-stone-500 font-medium text-center animate-in fade-in slide-in-from-top-1">Kusursuz harfiyen metin çıkarır. Güçlü GPU ekran kartı gerektirir.</span>}
+                                        {/* Hesaplama cihazı */}
+                                        <div>
+                                            <div className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-0.5">Hesaplama Cihazı</div>
+                                            <div className="flex flex-col gap-1.5">
+                                                {[
+                                                    { id: 'cpu',  label: 'İşlemci (CPU)', tag: 'Evrensel', desc: 'Tüm sistemlerde çalışır',      color: '#0369a1', bg: '#e0f2fe' },
+                                                    { id: 'cuda', label: 'Ekran Kartı (GPU)', tag: 'Hızlı', desc: 'NVIDIA CUDA gerektirir · 4× hız', color: '#059669', bg: '#d1fae5' },
+                                                ].map(d => (
+                                                    <button
+                                                        key={d.id}
+                                                        onClick={() => setComputeDevice(d.id)}
+                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all text-left ${
+                                                            computeDevice === d.id
+                                                                ? 'bg-white border-[#378ADD] shadow-sm shadow-[#378ADD]/10'
+                                                                : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
+                                                        }`}
+                                                    >
+                                                        <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-black text-white shadow-sm"
+                                                            style={{ background: d.color }}>
+                                                            {d.id === 'cpu' ? 'C' : 'G'}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[12px] font-bold text-stone-800">{d.label}</span>
+                                                                <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide" style={{ color: d.color, background: d.bg }}>{d.tag}</span>
+                                                            </div>
+                                                            <span className="text-[10px] text-stone-400 font-mono">{d.desc}</span>
+                                                        </div>
+                                                        {computeDevice === d.id && (
+                                                            <div className="w-4 h-4 rounded-full bg-[#378ADD] flex items-center justify-center shrink-0">
+                                                                <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
 

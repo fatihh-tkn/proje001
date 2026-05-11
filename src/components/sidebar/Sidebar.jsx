@@ -8,7 +8,6 @@ import {
 
 import FullLogoImage from '../../assets/logo-acik.png';
 import SymbolImage from '../../assets/logo-kapali.png';
-import SettingsMenu from '../settings/SettingsMenu';
 import TreeNode from './TreeNode';
 import UserPanel from './UserPanel';
 import UserMenu from './UserMenu';
@@ -18,16 +17,35 @@ import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
 import { useArchiveChangedListener } from '../../utils/archiveEvents';
 import { fetchChannels, createChannel } from '../../api/globalChatService';
 
-const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab }) => {
+/* ── Arşiv sekme tanımları (component dışı — sabit) ──────────────── */
+const SIDEBAR_TABS = [
+    { key: 'belgeler',    label: 'Belgeler'    },
+    { key: 'toplantilar', label: 'Toplantılar' },
+    { key: 'kisisel',     label: 'Kişisel'     },
+    { key: 'surecler',    label: 'Süreçler'    },
+    { key: 'sohbetler',   label: 'Sohbetler'   },
+];
+const _sbAudio = t => ['mp3','wav','ogg','m4a','flac','aac','opus','wma'].includes(t);
+const _sbVideo = t => ['mp4','avi','mov','mkv','webm','m4v','wmv'].includes(t);
+const _sbWf    = t => ['bpmn','json','py','js','ts','html','xml'].includes(t);
+const SIDEBAR_TAB_FILTERS = {
+    belgeler:    i => { const t=(i.file_type||'').toLowerCase(); return !_sbAudio(t)&&!_sbVideo(t)&&!_sbWf(t); },
+    toplantilar: i => { const t=(i.file_type||'').toLowerCase(); return _sbAudio(t)||_sbVideo(t); },
+    kisisel:     (i, uid) => i.uploaded_by===uid || i.user_id===uid,
+    surecler:    i => _sbWf((i.file_type||'').toLowerCase()),
+    sohbetler:   i => i.is_vectorized===true,
+};
+
+const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab, onEnterAdmin }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const [channels, setChannels] = useState([]);
     const [chatPanelOpen, setChatPanelOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('belgeler');
     const [activeChannelId, setActiveChannelId] = useState(null);
     const [unreadCounts, setUnreadCounts] = useState({});
     const [archiveData, setArchiveData] = useState([]);
     const [openFolders, setOpenFolders] = useState({});
     const [activeFile, setActiveFile] = useState(null);
-    const [settingsOpen, setSettingsOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [userPanelOpen, setUserPanelOpen] = useState(false);
     const [userPanelInitialTab, setUserPanelInitialTab] = useState('profil');
@@ -170,11 +188,38 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const getArchiveTree = () => {
         if (!archiveData || archiveData.length === 0) return [];
 
-        const map = {};
-        const rootNodes = [];
+        // Aktif sekmeye göre dosyaları filtrele
+        const tabFn = activeTab === 'kisisel'
+            ? (i) => SIDEBAR_TAB_FILTERS.kisisel(i, currentUser?.id)
+            : (SIDEBAR_TAB_FILTERS[activeTab] || SIDEBAR_TAB_FILTERS.belgeler);
 
+        const idMap = {};
+        archiveData.forEach(i => { idMap[i.id] = i; });
+
+        const matchingFileIds = new Set(
+            archiveData.filter(i => i.file_type !== 'folder' && tabFn(i)).map(i => i.id)
+        );
+
+        // Eşleşen dosyaların üst klasörlerini dahil et
+        const includedFolderIds = new Set();
         archiveData.forEach(item => {
-            map[item.id] = {
+            if (matchingFileIds.has(item.id)) {
+                let cur = item;
+                while (cur.folder_id && idMap[cur.folder_id]) {
+                    includedFolderIds.add(cur.folder_id);
+                    cur = idMap[cur.folder_id];
+                }
+            }
+        });
+
+        const treeMap = {};
+        archiveData.forEach(item => {
+            if (item.file_type === 'folder') {
+                if (!includedFolderIds.has(item.id)) return;
+            } else {
+                if (!matchingFileIds.has(item.id)) return;
+            }
+            treeMap[item.id] = {
                 id: `archive_${item.id}`,
                 name: item.filename,
                 type: item.file_type === 'folder' ? 'folder' : 'file',
@@ -184,11 +229,13 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
             };
         });
 
+        const rootNodes = [];
         archiveData.forEach(item => {
-            const node = map[item.id];
-            if (item.folder_id && map[item.folder_id]) {
-                map[item.folder_id].children.push(node);
-            } else {
+            if (!treeMap[item.id]) return;
+            const node = treeMap[item.id];
+            if (item.folder_id && treeMap[item.folder_id]) {
+                treeMap[item.folder_id].children.push(node);
+            } else if (!item.folder_id) {
                 rootNodes.push(node);
             }
         });
@@ -196,9 +243,6 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
         return rootNodes;
     };
 
-    useEffect(() => {
-        if (settingsOpen) setSettingsOpen(false);
-    }, [isCollapsed]);
 
     const toggleFolder = (folderId) => {
         if (isCollapsed) return;
@@ -208,7 +252,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const handleSidebarMouseDown = () => {
         // mousedown anında popup'ın açık olup olmadığını kaydet
         // (click geldiğinde React re-render ile state değişmiş olabilir)
-        popupWasOpenRef.current = settingsOpen || userMenuOpen || userPanelOpen;
+        popupWasOpenRef.current = userMenuOpen || userPanelOpen;
     };
 
     const handleSidebarClick = (e) => {
@@ -231,18 +275,8 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
 
     return (
         <aside className={`relative ${isCollapsed ? 'w-[68px]' : 'w-72'} font-sans transition-all duration-300 ease-in-out flex h-screen shrink-0 z-20 cursor-default`}
-            style={{ background: 'linear-gradient(180deg, #1c1917 0%, #161310 100%)', borderRight: '1px solid #292524' }}
+            style={{ background: '#18181b', borderRight: '1px solid #27272a' }}
         >
-            {/* SettingsMenu — overflow-hidden dışında, doğrudan aside içinde */}
-            <SettingsMenu
-                isOpen={settingsOpen}
-                onClose={() => setSettingsOpen(false)}
-                onThemeChange={(themeId) => console.log('Tema değişti:', themeId)}
-                isCollapsed={isCollapsed}
-                onOpenFile={onOpenFile}
-                currentUser={currentUser}
-            />
-
             {/* UserMenu — kullanıcı ikonuna tıklayınca beliren küçük seçim popup'ı */}
             <UserMenu
                 isOpen={userMenuOpen}
@@ -332,33 +366,73 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                     </div>
                 </div>
 
-                {/* ── ARAMA ÇUBUĞU ── */}
-                {!isCollapsed && (
-                    <div className="shrink-0 px-3 pb-2">
-                        <div className="flex items-center gap-1.5 bg-slate-800/50 border border-slate-700/50 rounded-[3px] px-2 py-1.5 focus-within:border-[#DC2626]/60 transition-colors">
-                            <Search size={13} className="text-slate-500 shrink-0" />
-                            <input
-                                ref={searchInputRef}
-                                type="text"
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                onClick={e => e.stopPropagation()}
-                                placeholder={chatPanelOpen ? "Kanal ara..." : "Dosya ara..."}
-                                className="flex-1 bg-transparent text-[12px] text-slate-300 placeholder-slate-600 outline-none min-w-0"
-                                autoComplete="off"
-                                spellCheck={false}
-                            />
-                            {searchQuery && (
-                                <button
-                                    onClick={e => { e.stopPropagation(); setSearchQuery(''); }}
-                                    className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
-                                >
-                                    <X size={12} />
-                                </button>
+                {/* ── ARŞİV SEKMELERİ + ARAMA ── */}
+                {!isCollapsed && (() => {
+                    const _docs = archiveData.filter(i => i.file_type !== 'folder');
+                    const tabCounts = Object.fromEntries(
+                        SIDEBAR_TABS.map(t => [
+                            t.key,
+                            _docs.filter(i => t.key === 'kisisel'
+                                ? SIDEBAR_TAB_FILTERS.kisisel(i, currentUser?.id)
+                                : (SIDEBAR_TAB_FILTERS[t.key] || SIDEBAR_TAB_FILTERS.belgeler)(i)
+                            ).length
+                        ])
+                    );
+                    const activeLabel = SIDEBAR_TABS.find(t => t.key === activeTab)?.label || 'Dosya';
+                    return (
+                        <div className="shrink-0 px-3 pb-2 space-y-2">
+                            {/* Kategori sekmeleri — sadece arşiv modunda */}
+                            {!chatPanelOpen && (
+                                <>
+                                    <div className="flex items-center px-0.5 mb-0.5">
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-600">ARŞİVLER</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {SIDEBAR_TABS.map(tab => (
+                                            <button
+                                                key={tab.key}
+                                                onClick={e => { e.stopPropagation(); setActiveTab(tab.key); setSearchQuery(''); }}
+                                                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-all interactive
+                                                    ${activeTab === tab.key
+                                                        ? 'bg-[#1D9E75] text-white'
+                                                        : 'bg-zinc-800 text-slate-400 hover:bg-zinc-700 hover:text-slate-200'}`}
+                                            >
+                                                {tab.label}
+                                                <span className={`text-[9px] tabular-nums leading-none
+                                                    ${activeTab === tab.key ? 'text-white/75' : 'text-slate-600'}`}>
+                                                    {tabCounts[tab.key] ?? 0}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
                             )}
+                            {/* Arama */}
+                            <div className="flex items-center gap-1.5 bg-slate-800/50 border border-slate-700/50 rounded-[3px] px-2 py-1.5 focus-within:border-[#DC2626]/60 transition-colors">
+                                <Search size={13} className="text-slate-500 shrink-0" />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    placeholder={chatPanelOpen ? "Kanal ara..." : `${activeLabel} içinde ara...`}
+                                    className="flex-1 bg-transparent text-[12px] text-slate-300 placeholder-slate-600 outline-none min-w-0"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); setSearchQuery(''); }}
+                                        className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* ── İÇERİK ALANI ── */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-3
@@ -444,6 +518,11 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                     </p>
                                 </div>
                             )}
+                            {(archiveData.length > 0 && getArchiveTree().length === 0) && !isCollapsed && (
+                                <p className="text-[10px] text-slate-600 text-center py-8 px-3">
+                                    {SIDEBAR_TABS.find(t => t.key === activeTab)?.label || 'Bu kategoride'} dosya bulunamadı.
+                                </p>
+                            )}
                             <div className="flex flex-col space-y-0.5 w-full">
                                 {getArchiveTree().map((node) => (
                                     <TreeNode
@@ -474,19 +553,16 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                 `}>
 
 
-                    {/* Ayarlar Butonu */}
+                    {/* Ayarlar Butonu → Admin Paneli */}
                     {hasPermission('ui_settings') && (
                         <button
-                            data-settings-trigger
-                            onClick={(e) => { e.stopPropagation(); setSettingsOpen(s => !s); }}
-                            className={`flex items-center justify-center transition-all duration-200 group
-                                ${settingsOpen ? 'text-white' : 'text-slate-500 hover:text-slate-200'}
-                            `}
-                            title="Ayarlar"
+                            onClick={(e) => { e.stopPropagation(); onEnterAdmin?.(); }}
+                            className="flex items-center justify-center transition-all duration-200 group text-slate-500 hover:text-slate-200"
+                            title="Yönetim Paneli"
                         >
                             <Settings
                                 size={isCollapsed ? 24 : 20}
-                                className={`${settingsOpen ? 'rotate-45' : 'group-hover:rotate-12'} transition-transform duration-300`}
+                                className="group-hover:rotate-12 transition-transform duration-300"
                             />
                         </button>
                     )}

@@ -8,7 +8,10 @@ import EgitimAcmaSlideOver from './EgitimAcmaSlideOver';
 /* ─────────────────────────────────────────────────────────────
    ANA SARMALAYICI
 ───────────────────────────────────────────────────────────── */
-export default function AuthViewer() {
+export default function AuthViewer({ defaultTab = null }) {
+    if (defaultTab === 'users')            return <div className="h-full overflow-auto p-6 bg-[#f8f9fa]"><UsersTab /></div>;
+    if (defaultTab === 'egitim_yonetimi') return <SapEgitimAdminPaneli />;
+
     const [activeTab, setActiveTab] = useState('users');
     const [egitimFormOpen, setEgitimFormOpen] = useState(false);
 

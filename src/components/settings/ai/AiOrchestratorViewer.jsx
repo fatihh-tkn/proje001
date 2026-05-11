@@ -1,21 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Loader2, Webhook, Key, Workflow, Terminal, FileCode, Power } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { Bot, Loader2, Power } from 'lucide-react';
 import { mutate } from '../../../api/client';
 
 // Components
-import { ModelsTab } from './tabs/ModelsTab';
-import { DashboardTab } from './tabs/DashboardTab';
-import { LogsTab } from './tabs/LogsTab';
-import InlineTopologyOverview from './orchestrator/InlineTopologyOverview';
-import AgentChromeTabBar from './orchestrator/AgentChromeTabBar';
 import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
-import ConversationTraceTab from './orchestrator/ConversationTraceTab';
 
-import { DEFAULT_AGENTS } from './orchestrator/constants';
+import { DEFAULT_AGENTS, isAgentVisibleInGrid, getAgentIcon } from './orchestrator/constants';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -40,11 +34,7 @@ class ErrorBoundary extends React.Component {
 
 /* ─── MAIN ORCHESTRATOR HUB ──────────────────────────────────────── */
 const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' } = {}) => {
-    // Top Navigation (Now hidden from UI, managed by SettingsMenu props)
     const [activeMainTab, setActiveMainTab] = useState(defaultMainTab);
-    const [upperViewMode, setUpperViewMode] = useState(
-        defaultMainTab === 'logs' ? 'logs' : 'diagram'
-    );
     const [activeSidePanel, setActiveSidePanel] = useState(
         defaultMainTab === 'models' ? 'models' : null
     );
@@ -52,9 +42,6 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     // Sync state when prop changes from outside (e.g. from SettingsMenu clicks)
     useEffect(() => {
         setActiveMainTab(defaultMainTab);
-        setUpperViewMode(
-            defaultMainTab === 'logs' ? 'logs' : 'diagram'
-        );
         setActiveSidePanel(
             defaultMainTab === 'models' ? 'models' : null
         );
@@ -136,8 +123,30 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     const [dirtyAgentIds, setDirtyAgentIds] = useState(new Set());
     const [isSaving, setIsSaving] = useState(false);
-    const [isFlowExpanded, setIsFlowExpanded] = useState(false);
-    const [lowerViewMode, setLowerViewMode] = useState('config'); // 'config' | 'prompts'
+
+    const visibleAgents = useMemo(() => (agents || []).filter(isAgentVisibleInGrid), [agents]);
+
+    // Sol panel — inline rename
+    const [editingId, setEditingId]   = useState(null);
+    const [editValue, setEditValue]   = useState('');
+    const editInputRef                = useRef(null);
+    useEffect(() => { if (editingId && editInputRef.current) { editInputRef.current.focus(); editInputRef.current.select(); } }, [editingId]);
+    const commitRename = () => {
+        if (editingId && editValue.trim()) {
+            setAgents(prev => prev.map(a => a.id === editingId ? { ...a, name: editValue.trim() } : a));
+            markDirty(editingId);
+        }
+        setEditingId(null);
+    };
+
+    // Sol panel — context menu (sağ tık)
+    const [ctxMenu, setCtxMenu] = useState(null);
+    useEffect(() => {
+        if (!ctxMenu) return;
+        const close = () => setCtxMenu(null);
+        window.addEventListener('click', close);
+        return () => window.removeEventListener('click', close);
+    }, [ctxMenu]);
 
     // Debounced auto-save — her değişiklikten 1.5 sn sonra otomatik kaydeder
     const autoSaveTimerRef = useRef(null);
@@ -220,214 +229,80 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
         <div className="flex flex-col w-full h-full bg-stone-50 select-none text-stone-700 animate-in fade-in duration-300">
             <div className="flex-1 overflow-hidden flex flex-col">
                 {activeMainTab === 'architecture' && (
-                    <div className="flex flex-col w-full h-full overflow-hidden transition-all duration-500 bg-stone-50">
+                    <div className="flex w-full h-full overflow-hidden bg-stone-50">
                         {isLoadingAgents ? (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-white/50 border border-stone-200/50">
+                            <div className="flex-1 flex flex-col items-center justify-center bg-white/50">
                                 <Loader2 size={32} className="text-[#378ADD] animate-spin mb-4" />
                                 <p className="text-stone-500 text-sm font-bold tracking-tight animate-pulse">Ajan konfigürasyonları yükleniyor...</p>
                             </div>
-                        ) : selectedItem ? (
+                        ) : (
                             <>
-                                {/* --- ÜST KATMAN: MONITORING (Yüzen Akış Haritası) --- */}
-                                <div
-                                    className={`flex w-full shrink-0 relative z-0 transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden bg-white border-b border-stone-200 shadow-[0_4px_20px_-15px_rgba(0,0,0,0.1)] ${isFlowExpanded ? 'h-[65vh] min-h-[350px]' : 'h-[180px] xl:h-[210px]'}`}
-                                    onWheel={(e) => {
-                                        if (Math.abs(e.deltaY) < 15) return;
-                                        if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true); // Yukarı kaydır (Şemayı büyüt)
-                                        else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false); // Aşağı kaydır (Şemayı küçült)
-                                    }}
-                                >
-                                    {/* Sol Taraf: Sistem Akış Haritası */}
-                                    <div className="flex-1 flex items-center justify-center overflow-hidden transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)] bg-white relative">
-
-                                        {activeSidePanel && (
-                                            <div
-                                                className="absolute inset-0 z-10"
-                                                onClick={() => setActiveSidePanel(null)}
-                                            />
-                                        )}
-
-                                        {/* SOL ÜST MENÜ: Görünüm Seçimi */}
-                                        <div className="absolute top-4 left-4 z-20 flex gap-1 p-1 bg-white border border-stone-200 rounded-lg shadow-sm">
-                                            <button
-                                                onClick={() => setUpperViewMode('diagram')}
-                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-widest uppercase transition-all ${upperViewMode === 'diagram' ? 'bg-stone-100 text-stone-700 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                                            >
-                                                <Workflow size={14} strokeWidth={2.5} /> <span className="hidden sm:inline">Diyagram</span>
-                                            </button>
-                                            <div className="w-[1px] h-4 bg-stone-200 my-auto mx-1" />
-                                            <button
-                                                onClick={() => {
-                                                    setUpperViewMode('logs');
-                                                    if (!isFlowExpanded) setIsFlowExpanded(true);
-                                                }}
-                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-widest uppercase transition-all ${upperViewMode === 'logs' ? 'bg-[#378ADD]/10 text-[#378ADD] shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                                            >
-                                                <Terminal size={14} strokeWidth={2.5} /> Sohbet İzleri
-                                            </button>
-                                        </div>
-
-                                        <div className="absolute top-4 right-4 z-20 flex gap-1">
-                                            <button
-                                                onClick={() => {
-                                                    setUpperViewMode(upperViewMode === 'automation' ? 'diagram' : 'automation');
-                                                    if (!isFlowExpanded) setIsFlowExpanded(true);
-                                                }}
-                                                title="Otomasyon"
-                                                className={`flex items-center justify-center p-2 rounded-full transition-all ${upperViewMode === 'automation' ? 'text-rose-500 bg-rose-50' : 'text-stone-400 hover:text-rose-500 hover:bg-stone-100'}`}
-                                            >
-                                                <Webhook size={16} strokeWidth={2.5} />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const willOpen = activeSidePanel !== 'models';
-                                                    setActiveSidePanel(willOpen ? 'models' : null);
-                                                    if (willOpen && !isFlowExpanded) setIsFlowExpanded(true);
-                                                }}
-                                                title="API Anahtarları"
-                                                className={`flex items-center justify-center p-2 rounded-full transition-all ${activeSidePanel === 'models' ? 'text-amber-500 bg-amber-50' : 'text-stone-400 hover:text-amber-500 hover:bg-stone-100'}`}
-                                            >
-                                                <Key size={16} strokeWidth={2.5} />
-                                            </button>
-                                        </div>
-
-                                        {upperViewMode === 'diagram' && (
-                                            <ErrorBoundary>
-                                                <InlineTopologyOverview
-                                                    agent={selectedItem}
-                                                    allAgents={agents}
-                                                    rags={rags}
-                                                    onOpenPayload={() => setIsFlowExpanded(true)}
-                                                />
-                                            </ErrorBoundary>
-                                        )}
-                                        {upperViewMode === 'logs' && (
-                                            <div className="w-full h-full pt-14 relative z-10 overflow-hidden bg-stone-50 animate-in fade-in duration-300">
-                                                <ErrorBoundary>
-                                                    <ConversationTraceTab />
-                                                </ErrorBoundary>
-                                            </div>
-                                        )}
-                                        {upperViewMode === 'automation' && (
-                                            <div className="w-full h-full pt-14 relative z-10 overflow-hidden bg-white animate-in fade-in duration-300">
-                                                <ErrorBoundary>
-                                                    <AutomationTab />
-                                                </ErrorBoundary>
-                                            </div>
-                                        )}
-
-                                    </div>
-
-                                    {/* Sağ Taraf: API Anahtarı Paneli */}
-                                    <AnimatePresence initial={false}>
-                                        {activeSidePanel === 'models' && (
-                                            <motion.div
-                                                initial={{ width: 0, opacity: 0 }}
-                                                animate={{ width: 450, opacity: 1 }}
-                                                exit={{ width: 0, opacity: 0 }}
-                                                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                                className="h-full shrink-0 flex flex-col border-l border-stone-200 bg-white shadow-[-4px_0_15px_-5px_rgba(0,0,0,0.05)] relative z-20"
-                                            >
-                                                <div className="flex-col flex h-full overflow-hidden w-[450px]">
-                                                    <div className="flex-1 overflow-y-auto relative bg-white pt-2">
-                                                        <ErrorBoundary>
-                                                            <ModelsTab />
-                                                        </ErrorBoundary>
+                                {/* ── SOL: Ajan Listesi ─────────────────────────── */}
+                                <div className="w-52 shrink-0 flex flex-col bg-white border-r border-stone-200 overflow-hidden">
+                                    <div className="flex-1 overflow-y-auto py-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200">
+                                        {visibleAgents.map((agent) => {
+                                            const isSelected = selectedItemId === agent.id;
+                                            const isInactive = agent.active === false;
+                                            const isDirty    = dirtyAgentIds.has(agent.id);
+                                            const isEditing  = editingId === agent.id;
+                                            const AgentIcon  = getAgentIcon(agent);
+                                            return (
+                                                <div
+                                                    key={agent.id}
+                                                    onClick={() => { if (!isEditing) setSelectedItemId(agent.id); }}
+                                                    onDoubleClick={() => { setEditingId(agent.id); setEditValue(agent.name); }}
+                                                    onContextMenu={(e) => { e.preventDefault(); setSelectedItemId(agent.id); setCtxMenu({ x: e.clientX, y: e.clientY, agentId: agent.id }); }}
+                                                    className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
+                                                        ${isSelected
+                                                            ? isInactive ? 'bg-red-50 text-red-700' : 'bg-[#378ADD]/8 text-stone-800'
+                                                            : isInactive ? 'text-red-400 hover:bg-red-50/60' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+                                                        }`}
+                                                >
+                                                    {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                    <div className="relative shrink-0">
+                                                        <AgentIcon size={14} strokeWidth={isSelected ? 2.5 : 2}
+                                                            className={isSelected ? (isInactive ? 'text-red-500' : 'text-[#378ADD]') : (isInactive ? 'text-red-300' : 'text-stone-400')}
+                                                        />
+                                                        <span className={`absolute -bottom-[3px] -right-[3px] w-[5px] h-[5px] rounded-full ring-[1.5px] ${isInactive ? 'bg-red-400 ring-white' : 'bg-emerald-400 ring-white'}`} />
                                                     </div>
+                                                    {isEditing && isSelected ? (
+                                                        <input
+                                                            ref={editInputRef}
+                                                            value={editValue}
+                                                            onChange={e => setEditValue(e.target.value)}
+                                                            onBlur={commitRename}
+                                                            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
+                                                            onClick={e => e.stopPropagation()}
+                                                            className="text-[12px] font-bold bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0"
+                                                        />
+                                                    ) : (
+                                                        <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>{agent.name}</span>
+                                                    )}
+                                                    {isDirty && <span className="w-[5px] h-[5px] rounded-full bg-amber-400 animate-pulse shrink-0" />}
                                                 </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="h-px bg-stone-200 mx-0 shrink-0" />
+                                    <CannedResponsesPanel />
                                 </div>
 
-
-                                {/* --- ALT KATMAN: CONFIGURATION (Tablar + Form) --- */}
-                                <div className="flex-1 flex flex-col overflow-hidden min-h-0 w-full relative bg-stone-50">
-
-                                    {/* ── INTEGRATED RIBBON: Sekmeler + Ajan Başlığı + Aksiyonlar tek şeritte ── */}
-                                    <div
-                                        className="shrink-0 w-full flex items-stretch border-b border-stone-200 bg-white relative z-10 select-none shadow-sm"
-                                        onWheel={(e) => {
-                                            if (Math.abs(e.deltaY) < 15) return;
-                                            if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true);
-                                            else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false);
-                                        }}
-                                    >
-                                        {/* EN SOL: Hazır Cevaplar */}
-                                        <CannedResponsesPanel />
-
-                                        {/* SOL: Ajan Sekmeleri */}
-                                        <div className="flex items-end overflow-x-auto flex-1 px-4" style={{ scrollbarWidth: 'none' }}>
-                                            <AgentChromeTabBar
-                                                agents={agents}
-                                                selectedItemId={selectedItemId}
-                                                onSelect={setSelectedItemId}
-                                                dirtyAgentIds={dirtyAgentIds}
-                                                onSave={handleSave}
-                                                onToggleAgent={toggleAgent}
-                                                isSaving={isSaving}
-                                                onRename={(id, newName) => {
-                                                    setAgents(prev => prev.map(a => a.id === id ? { ...a, name: newName } : a));
-                                                    markDirty(id);
-                                                }}
-                                            />
-                                        </div>
-
-                                        {/* SAĞ: İkon Butonlar */}
-                                        <div
-                                            className="flex items-center gap-2 px-5 py-2 shrink-0 border-l border-stone-100"
-                                            onWheel={(e) => {
-                                                if (Math.abs(e.deltaY) < 15) return;
-                                                if (e.deltaY < 0 && !isFlowExpanded) setIsFlowExpanded(true);
-                                                else if (e.deltaY > 0 && isFlowExpanded) setIsFlowExpanded(false);
-                                            }}
-                                        >
-                                            {/* Prompt Şablonları Butonu */}
-                                            <button
-                                                onClick={() => setLowerViewMode(lowerViewMode === 'prompts' ? 'config' : 'prompts')}
-                                                title="Prompt Şablonları"
-                                                className={`flex items-center justify-center p-2 rounded-md transition-all ${lowerViewMode === 'prompts' ? 'text-violet-600 bg-violet-50' : 'text-stone-400 hover:text-violet-600 hover:bg-stone-100'}`}
-                                            >
-                                                <FileCode size={16} strokeWidth={2.5} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* ── İÇERİK: Prompt Şablonları, Ajan Formu veya Pasif Durumu ── */}
-                                    {lowerViewMode === 'prompts' ? (
-                                        <div className="flex-1 overflow-hidden bg-white animate-in fade-in duration-200">
-                                            <ErrorBoundary>
-                                                <PromptTemplatesTab />
-                                            </ErrorBoundary>
-                                        </div>
-                                    ) : selectedItem.active ? (
-                                        <div className="flex-1 flex flex-col bg-stone-50 overflow-hidden h-full">
-                                            <div
-                                                className="flex-1 overflow-y-auto p-6 md:p-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] mac-horizontal-scrollbar"
-                                                onWheel={(e) => {
-                                                    const target = e.currentTarget;
-                                                    if (Math.abs(e.deltaY) < 15) return;
-                                                    if (target.scrollTop <= 0 && e.deltaY < 0 && !isFlowExpanded) {
-                                                        setIsFlowExpanded(true);
-                                                    } else if (isFlowExpanded && e.deltaY > 0) {
-                                                        setIsFlowExpanded(false);
-                                                    }
-                                                }}
-                                            >
-                                                <div className="max-w-5xl mx-auto">
-                                                    <ErrorBoundary>
-                                                        <AgentConfigPanel
-                                                            selectedItem={selectedItem}
-                                                            rags={rags}
-                                                            updateAgent={updateAgent}
-                                                            toggleRagAccess={toggleRagAccess}
-                                                        />
-                                                    </ErrorBoundary>
-                                                </div>
+                                {/* ── SAĞ: Ajan Konfigürasyon Paneli ───────────── */}
+                                {selectedItem ? (
+                                    selectedItem.active ? (
+                                        <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-stone-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                                            <div className="max-w-4xl mx-auto">
+                                                <ErrorBoundary>
+                                                    <AgentConfigPanel
+                                                        selectedItem={selectedItem}
+                                                        rags={rags}
+                                                        updateAgent={updateAgent}
+                                                        toggleRagAccess={toggleRagAccess}
+                                                    />
+                                                </ErrorBoundary>
                                             </div>
                                         </div>
                                     ) : (
-                                        /* Pasif Durum: Minimal "Uyku" Ekranı */
                                         <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-in fade-in duration-300 bg-stone-50">
                                             <div className="w-16 h-16 rounded-2xl bg-white border border-stone-200 flex items-center justify-center shadow-sm">
                                                 <Power size={28} className="text-stone-300" strokeWidth={2} />
@@ -443,29 +318,54 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 <Power size={16} strokeWidth={2.5} /> AKTİFLEŞTİR
                                             </button>
                                         </div>
-                                    )}
-
-                                </div>
-
+                                    )
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-4 text-stone-500">
+                                        <Bot size={36} className="text-stone-300" strokeWidth={1.5} />
+                                        <p className="text-[13px] font-bold text-stone-400">Bir ajan seçin</p>
+                                    </div>
+                                )}
                             </>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-stone-500 p-10 bg-white border border-stone-200 rounded-xl shadow-sm max-w-md mx-auto my-auto">
-                                <div className="w-20 h-20 rounded-full bg-stone-50 flex items-center justify-center border border-stone-200">
-                                    <Bot size={36} className="text-stone-300" strokeWidth={1.5} />
-                                </div>
-                                <div className="text-center space-y-1.5">
-                                    <p className="text-[16px] font-black text-stone-700 tracking-tight">Ajan Bulunamadı</p>
-                                    <p className="text-[12px] font-bold text-stone-500 max-w-[240px] leading-relaxed mx-auto tracking-tight">
-                                        Sistemde yapılandırılmış bir ajan bulunamadı. Lütfen veritabanınızı kontrol edin.
-                                    </p>
-                                </div>
-                            </div>
                         )}
                     </div>
                 )}
                 {activeMainTab === 'automation' && <AutomationTab />}
-                {activeMainTab === 'prompts' && <PromptTemplatesTab />}
+                {activeMainTab === 'prompts'    && <PromptTemplatesTab />}
             </div>
+
+            {/* ── Context menu — sağ tık ajan toggle/rename ── */}
+            {ctxMenu && (() => {
+                const agent = visibleAgents.find(a => a.id === ctxMenu.agentId);
+                if (!agent) return null;
+                return createPortal(
+                    <div
+                        className="fixed z-[9999] min-w-[160px] bg-white border border-stone-200 rounded-xl shadow-xl py-1.5 overflow-hidden"
+                        style={{ top: ctxMenu.y, left: ctxMenu.x }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="px-3 pb-1 pt-0.5">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-stone-400 truncate">{agent.name}</p>
+                        </div>
+                        <div className="h-px bg-stone-100 mx-2 mb-1" />
+                        <button
+                            className="w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-stone-50 transition-colors flex items-center gap-2.5"
+                            onClick={() => { setEditingId(agent.id); setEditValue(agent.name); setCtxMenu(null); }}
+                        >
+                            <span className="text-stone-500">Yeniden Adlandır</span>
+                        </button>
+                        <button
+                            className="w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-stone-50 transition-colors flex items-center gap-2.5"
+                            onClick={() => { toggleAgent(agent.id); setCtxMenu(null); }}
+                        >
+                            <Power size={12} strokeWidth={2.5} className={agent.active ? 'text-rose-500' : 'text-emerald-600'} />
+                            <span className={agent.active ? 'text-rose-600' : 'text-emerald-700'}>
+                                {agent.active ? 'Pasife Al' : 'Aktifleştir'}
+                            </span>
+                        </button>
+                    </div>,
+                    document.body
+                );
+            })()}
 
 
 

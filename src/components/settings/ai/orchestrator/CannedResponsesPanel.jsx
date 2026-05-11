@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, Plus, Trash2, Check, X, ChevronDown, GripVertical, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
 
 const API = '/api/settings/canned-responses';
@@ -12,7 +13,9 @@ export default function CannedResponsesPanel() {
     const [saving, setSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [draft, setDraft] = useState({ triggers: '', response: '', active: true });
+    const [dropdownPos, setDropdownPos] = useState({ bottom: 0, left: 0 });
     const panelRef = useRef(null);
+    const btnRef = useRef(null);
 
     // Panel dışına tıklandığında kapat
     useEffect(() => {
@@ -87,11 +90,18 @@ export default function CannedResponsesPanel() {
     };
 
     return (
-        <div ref={panelRef} className="relative shrink-0 border-r border-stone-100 self-stretch flex items-center">
-            {/* Ribbon butonu */}
+        <div ref={panelRef} className="relative w-full">
+            {/* Sol panel butonu */}
             <button
-                onClick={() => setOpen(o => !o)}
-                className={`flex items-center gap-1.5 h-full px-3.5 text-[11px] font-semibold transition-all select-none whitespace-nowrap
+                ref={btnRef}
+                onClick={() => {
+                    if (!open) {
+                        const r = btnRef.current?.getBoundingClientRect();
+                        if (r) setDropdownPos({ bottom: window.innerHeight - r.top + 4, left: r.left });
+                    }
+                    setOpen(o => !o);
+                }}
+                className={`flex items-center gap-1.5 w-full px-3 py-2.5 text-[11px] font-semibold transition-all select-none
                     ${open
                         ? 'text-[#AA1416] bg-[#fef2f2]'
                         : 'text-stone-500 hover:text-[#AA1416] hover:bg-stone-50'
@@ -99,13 +109,16 @@ export default function CannedResponsesPanel() {
                 title="Hazır cevapları yönet"
             >
                 <MessageCircle size={13} strokeWidth={2.2} />
-                <span>Hazır Cevaplar</span>
+                <span className="flex-1 text-left">Hazır Cevaplar</span>
                 <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Dropdown panel */}
-            {open && (
-                <div className="absolute top-full left-0 z-50 mt-px w-[440px] bg-white border border-stone-200 rounded-b-xl shadow-xl overflow-hidden">
+            {/* Dropdown — portal ile body'e mount edilir, overflow kırpmasını önler */}
+            {open && createPortal(
+                <div
+                    className="fixed z-[9999] w-[440px] bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden"
+                    style={{ bottom: dropdownPos.bottom, left: dropdownPos.left }}
+                >
                     {/* Başlık */}
                     <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-100 bg-stone-50">
                         <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-wide">
@@ -246,7 +259,8 @@ export default function CannedResponsesPanel() {
                             Tetikleyici tam eşleşme ile çalışır · Büyük/küçük harf duyarsız · LLM çağrısı yapılmaz
                         </p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

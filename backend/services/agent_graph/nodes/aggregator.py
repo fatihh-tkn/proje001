@@ -40,6 +40,7 @@ from core.prompts import (
     attach_chat_memory,
     get_general_rag_prompt,
     get_file_qa_prompt,
+    _get_prompt_template,
 )
 from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, stream_llm, build_messages
@@ -127,7 +128,7 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     if intent == "sohbet":
         if agent_config and agent_config.get("prompt"):
             return f"{agent_config['prompt']}\n\n{_CHITCHAT_PROMPT}"
-        return f"{_DEFAULT_SYSTEM}\n\n{_CHITCHAT_PROMPT}"
+        return f"{_get_prompt_template("aggregator_system", _DEFAULT_SYSTEM)}\n\n{_CHITCHAT_PROMPT}"
 
     parts: list[str] = []
 
@@ -139,7 +140,7 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
     if agent_config and agent_config.get("prompt"):
         parts.append(agent_config["prompt"])
     else:
-        parts.append(_DEFAULT_SYSTEM)
+        parts.append(_get_prompt_template("aggregator_system", _DEFAULT_SYSTEM))
 
     # Serbest mod — domain bağlamı yok, RAG template ve RAG context eklenmez.
     file_name = state.get("file_name")

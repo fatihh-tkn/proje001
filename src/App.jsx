@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from './components/sidebar/Sidebar';
+import AdminSidebar from './components/sidebar/AdminSidebar';
 import Workspace from './components/workspace/Workspace';
 import GlobalChatRoom from './components/workspace/GlobalChatRoom';
 import ChatInput from './components/chatbar/ChatBar';
@@ -36,6 +37,8 @@ function App() {
   const tabs = activeWorkspace?.tabs || [];
   const activeTabId = activeWorkspace?.activeTabId || null;
   const maximizedTabId = activeWorkspace?.maximizedTabId || null;
+
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   // ── Global Chat Panel ───────────────────────────────────────────────────
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
@@ -138,44 +141,52 @@ function App() {
     let evtSource = null;
 
     const handleOpenWorkspace = async () => {
+      // Tab'ı hemen aç — iframe n8n hazır olduğunda yüklenir
+      handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
+
+      // n8n durumunu kontrol et, gerekirse arka planda başlat
       try {
         const res = await fetch('/api/n8n/status');
         if (res.ok) {
           const data = await res.json();
-          if (data.status === 'running') {
-            handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
+          if (data.status === 'running' || data.status === 'installing') return;
+        }
+      } catch (e) {
+        console.warn('[N8n] Durum kontrol hatası:', e.message);
+        return; // Backend'e ulaşılamıyor, tab zaten açıldı
+      }
+
+      // Durdurulmuş — arka planda başlatmayı dene
+      setIsN8nBooting(true);
+
+      try {
+        const startRes = await fetch('/api/n8n/start', { method: 'POST' });
+        if (startRes.ok) {
+          const startData = await startRes.json();
+          if (startData.status === 'already_running') { setIsN8nBooting(false); return; }
+          if (startData.status === 'error') {
+            setIsN8nBooting(false);
+            addToast({ type: 'warning', message: 'Otomasyon motoru başlatılamadı. n8n kurulu mu?' });
             return;
           }
         }
       } catch (e) {
-        console.warn('[N8n] Durum kontrol hatası:', e.message);
-      }
-
-      setIsN8nBooting(true);
-
-      try {
-        await fetch('/api/n8n/start', { method: 'POST' });
-      } catch (e) {
         console.warn('[N8n] Başlatma hatası:', e.message);
-        addToast({ type: 'error', message: 'Otomasyon motoru başlatılamadı.' });
         setIsN8nBooting(false);
         return;
       }
 
+      // SSE ile başlatma tamamlanmasını bekle (sadece booting göstergesi için)
       evtSource = new EventSource('/api/n8n/status/stream');
       evtSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.status === 'running') {
-            evtSource.close();
-            evtSource = null;
+            evtSource.close(); evtSource = null;
             setIsN8nBooting(false);
-            handleOpenFile({ id: 'n8n-viewer', title: 'Otomasyon', type: 'n8n', forceMaximize: true });
           } else if (data.status === 'timeout' || data.status === 'stopped') {
-            evtSource.close();
-            evtSource = null;
+            evtSource.close(); evtSource = null;
             setIsN8nBooting(false);
-            addToast({ type: 'error', message: 'Otomasyon motoru başlatılamadı.' });
           }
         } catch (e) {
           console.warn('[N8n] SSE mesaj ayrıştırma hatası:', e.message);
@@ -184,7 +195,6 @@ function App() {
       evtSource.onerror = () => {
         if (evtSource) { evtSource.close(); evtSource = null; }
         setIsN8nBooting(false);
-        addToast({ type: 'error', message: 'Otomasyon durumu alınamadı.' });
       };
     };
 
@@ -207,23 +217,31 @@ function App() {
       <div className="flex h-screen w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800">
 
         {/* 1. SÜTUN: SOL MENÜ */}
-        <Sidebar
-          onOpenFile={handleOpenFile}
-          tabs={tabs}
-          isCollapsed={isLeftCollapsed}
-          setIsCollapsed={setIsLeftCollapsed}
-          workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
-          onSwitchWorkspace={handleSwitchWorkspace}
-          onAddWorkspace={handleAddWorkspace}
-          onCloseWorkspace={handleCloseWorkspace}
-          recentlyClosed={recentlyClosed}
-          onReopenTab={handleReopenTab}
-          chatPanelOpen={chatPanelOpen}
-          activeChannelId={activeChannelId}
-          onSelectChannel={(id) => { setActiveChannelId(id); setChatPanelOpen(true); }}
-          onToggleChatPanel={() => setChatPanelOpen(v => !v)}
-        />
+        {isAdminMode ? (
+          <AdminSidebar
+            onOpenFile={handleOpenFile}
+            onExitAdmin={() => setIsAdminMode(false)}
+          />
+        ) : (
+          <Sidebar
+            onOpenFile={handleOpenFile}
+            tabs={tabs}
+            isCollapsed={isLeftCollapsed}
+            setIsCollapsed={setIsLeftCollapsed}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSwitchWorkspace={handleSwitchWorkspace}
+            onAddWorkspace={handleAddWorkspace}
+            onCloseWorkspace={handleCloseWorkspace}
+            recentlyClosed={recentlyClosed}
+            onReopenTab={handleReopenTab}
+            chatPanelOpen={chatPanelOpen}
+            activeChannelId={activeChannelId}
+            onSelectChannel={(id) => { setActiveChannelId(id); setChatPanelOpen(true); }}
+            onToggleChatPanel={() => setChatPanelOpen(v => !v)}
+            onEnterAdmin={() => setIsAdminMode(true)}
+          />
+        )}
 
         {/* 2. SÜTUN: MESAJ PANELİ (genişlik ayarlanabilir, kenara çekerek kapatılabilir) */}
         <div

@@ -31,6 +31,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import get_logger
+from core.prompts import _get_prompt_template
 from core.db_bridge import get_ai_agent, get_assigned_agent, get_agent_assignments
 from ..state import AgentState, get_agent_config
 from ..llm_adapter import call_llm, build_messages
@@ -97,13 +98,14 @@ def _build_polish_system(agent_config: dict | None, intent: str, source_node: st
     Kaynak node ve intent'e göre bağlamsal revize sistem prompt'u oluşturur.
     DB'deki prompt temel talimat; intent + source_node bilgisi bağlam olarak eklenir.
     """
+    _DEFAULT_MSG_POLISH_BASE = (
+        "Sana verilen metni imla, akıcılık ve okunabilirlik açısından hafifçe iyileştir. "
+        "Bilgileri, anlamı ve yapıyı değiştirme. Yeni soru veya içerik ekleme. "
+        "Sadece revize edilmiş metni döndür, başka hiçbir şey yazma."
+    )
     base = ((agent_config or {}).get("prompt") or "").strip()
     if not base:
-        base = (
-            "Sana verilen metni imla, akıcılık ve okunabilirlik açısından hafifçe iyileştir. "
-            "Bilgileri, anlamı ve yapıyı değiştirme. Yeni soru veya içerik ekleme. "
-            "Sadece revize edilmiş metni döndür, başka hiçbir şey yazma."
-        )
+        base = _get_prompt_template("msg_polish_base", _DEFAULT_MSG_POLISH_BASE)
 
     hints: list[str] = []
 

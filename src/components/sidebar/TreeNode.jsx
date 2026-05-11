@@ -1,20 +1,23 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Folder, FileText, Activity, CornerDownRight, FileQuestion,
-    ChevronRight, ChevronDown
+    Folder, ChevronRight, ChevronDown
 } from 'lucide-react';
+import { FileCard } from '../ui/file-card-collections';
 
-const getFileIcon = (ext) => {
-    switch (ext) {
-        case 'pdf': return <FileText size={14} className="shrink-0 text-red-400" />;
-        case 'bpmn': return <Activity size={14} className="shrink-0 text-teal-400" />;
-        case 'xls': case 'xlsx': return <Activity size={14} className="shrink-0 text-green-400" />;
-        case 'txt': case 'doc': case 'docx': return <FileText size={14} className="shrink-0 text-blue-400" />;
-        case 'png': case 'jpg': case 'jpeg': return <FileText size={14} className="shrink-0 text-purple-400" />;
-        default: return <FileQuestion size={14} className="shrink-0 text-slate-400" />;
-    }
-};
+/* ── FileCard'ı sidebar boyutuna küçülten wrapper ── */
+const SidebarFileIcon = ({ ext = 'file' }) => (
+    <div style={{ width: 24, height: 28, flexShrink: 0, position: 'relative', overflow: 'visible' }}>
+        <div style={{
+            position: 'absolute', top: 0, left: 0,
+            transform: 'scale(0.44)',
+            transformOrigin: 'top left',
+            pointerEvents: 'none',
+        }}>
+            <FileCard formatFile={ext || 'file'} />
+        </div>
+    </div>
+);
 
 const listVariants = {
     hidden: { height: 0, opacity: 0 },
@@ -34,56 +37,36 @@ const itemVariants = {
     exit: { opacity: 0, x: -6, transition: { duration: 0.1 } }
 };
 
+const EXT_STYLE_MAP = {
+    pdf:  { border: 'border-l-red-400',    text: 'text-red-300',    mark: 'bg-red-400/30 text-red-200',    arrow: 'text-red-400'    },
+    bpmn: { border: 'border-l-teal-400',   text: 'text-teal-300',   mark: 'bg-teal-400/30 text-teal-200',  arrow: 'text-teal-400'   },
+    xls:  { border: 'border-l-green-400',  text: 'text-green-300',  mark: 'bg-green-400/30 text-green-200',arrow: 'text-green-400'  },
+    xlsx: { border: 'border-l-green-400',  text: 'text-green-300',  mark: 'bg-green-400/30 text-green-200',arrow: 'text-green-400'  },
+    csv:  { border: 'border-l-emerald-400',text: 'text-emerald-300',mark: 'bg-emerald-400/30 text-emerald-200',arrow: 'text-emerald-400'},
+    doc:  { border: 'border-l-blue-400',   text: 'text-blue-300',   mark: 'bg-blue-400/30 text-blue-200',  arrow: 'text-blue-400'   },
+    docx: { border: 'border-l-blue-400',   text: 'text-blue-300',   mark: 'bg-blue-400/30 text-blue-200',  arrow: 'text-blue-400'   },
+    txt:  { border: 'border-l-slate-400',  text: 'text-slate-300',  mark: 'bg-slate-400/30 text-slate-200',arrow: 'text-slate-400'  },
+    md:   { border: 'border-l-slate-400',  text: 'text-slate-300',  mark: 'bg-slate-400/30 text-slate-200',arrow: 'text-slate-400'  },
+    ppt:  { border: 'border-l-orange-400', text: 'text-orange-300', mark: 'bg-orange-400/30 text-orange-200',arrow:'text-orange-400'},
+    pptx: { border: 'border-l-orange-400', text: 'text-orange-300', mark: 'bg-orange-400/30 text-orange-200',arrow:'text-orange-400'},
+    png:  { border: 'border-l-violet-400', text: 'text-violet-300', mark: 'bg-violet-400/30 text-violet-200',arrow:'text-violet-400'},
+    jpg:  { border: 'border-l-violet-400', text: 'text-violet-300', mark: 'bg-violet-400/30 text-violet-200',arrow:'text-violet-400'},
+    jpeg: { border: 'border-l-violet-400', text: 'text-violet-300', mark: 'bg-violet-400/30 text-violet-200',arrow:'text-violet-400'},
+    mp3:  { border: 'border-l-amber-400',  text: 'text-amber-300',  mark: 'bg-amber-400/30 text-amber-200',arrow: 'text-amber-400' },
+    wav:  { border: 'border-l-amber-400',  text: 'text-amber-300',  mark: 'bg-amber-400/30 text-amber-200',arrow: 'text-amber-400' },
+    mp4:  { border: 'border-l-pink-400',   text: 'text-pink-300',   mark: 'bg-pink-400/30 text-pink-200',  arrow: 'text-pink-400'   },
+    mov:  { border: 'border-l-pink-400',   text: 'text-pink-300',   mark: 'bg-pink-400/30 text-pink-200',  arrow: 'text-pink-400'   },
+};
+const _defaultExtStyle = { border: 'border-l-amber-400', text: 'text-amber-200', mark: 'bg-amber-400/30 text-amber-200', arrow: 'text-amber-400' };
+
 const getExtStyle = (ext) => {
-    switch (ext) {
-        case 'pdf':
-            return {
-                bgColor: 'bg-red-500/10 border border-transparent border-l border-l-red-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-red-300 font-medium',
-                markClass: 'bg-red-400/30 text-red-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-red-400 shrink-0',
-            };
-        case 'bpmn':
-            return {
-                bgColor: 'bg-teal-500/10 border border-transparent border-l border-l-teal-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-teal-300 font-medium',
-                markClass: 'bg-teal-400/30 text-teal-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-teal-400 shrink-0',
-            };
-        case 'xls':
-        case 'xlsx':
-            return {
-                bgColor: 'bg-green-500/10 border border-transparent border-l border-l-green-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-green-300 font-medium',
-                markClass: 'bg-green-400/30 text-green-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-green-400 shrink-0',
-            };
-        case 'txt':
-        case 'doc':
-        case 'docx':
-            return {
-                bgColor: 'bg-blue-500/10 border border-transparent border-l border-l-blue-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-blue-300 font-medium',
-                markClass: 'bg-blue-400/30 text-blue-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-blue-400 shrink-0',
-            };
-        case 'png':
-        case 'jpg':
-        case 'jpeg':
-            return {
-                bgColor: 'bg-purple-500/10 border border-transparent border-l border-l-purple-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-purple-300 font-medium',
-                markClass: 'bg-purple-400/30 text-purple-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-purple-400 shrink-0',
-            };
-        default:
-            return {
-                bgColor: 'bg-amber-500/10 border border-transparent border-l border-l-amber-400 ml-1 rounded-[2px] pr-2',
-                textColor: 'text-amber-200 font-medium',
-                markClass: 'bg-amber-400/30 text-amber-200 rounded-[2px] px-px not-italic',
-                arrowClass: 'text-amber-400 shrink-0',
-            };
-    }
+    const s = EXT_STYLE_MAP[(ext || '').toLowerCase()] || _defaultExtStyle;
+    return {
+        bgColor:    `bg-white/5 border border-transparent border-l ${s.border} ml-1 rounded-[2px] pr-2`,
+        textColor:  `${s.text} font-medium`,
+        markClass:  `${s.mark} rounded-[2px] px-px not-italic`,
+        arrowClass: `${s.arrow} shrink-0`,
+    };
 };
 
 const highlightText = (text, query, markClass) => {
@@ -253,12 +236,11 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                     });
                 }
             }}
-            className={`flex items-center gap-2 text-xs py-1.5 cursor-pointer whitespace-nowrap transition-all relative z-10 w-[calc(100%-8px)] ${bgColor} ${textColor}`}
-            style={{ paddingLeft: `${paddingLeft + 11}px` }}
+            className={`flex items-center gap-2 text-[12px] py-1 cursor-pointer whitespace-nowrap transition-all relative z-10 w-[calc(100%-8px)] ${bgColor} ${textColor}`}
+            style={{ paddingLeft: `${paddingLeft + 8}px` }}
             title="Açmak için çift tıklayın"
         >
-            <CornerDownRight size={14} className={isSearchMatch ? extStyle.arrowClass : isAktif ? "text-red-500 shrink-0" : "text-slate-600 shrink-0"} />
-            {getFileIcon(node.extension)}
+            <SidebarFileIcon ext={node.extension} />
             <span className="truncate w-full select-none">{highlightText(node.name, searchQuery, extStyle?.markClass)}</span>
         </div>
     );

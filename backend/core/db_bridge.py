@@ -302,13 +302,33 @@ def init_db() -> None:
     pass
 
 # -- System Settings & Audit Logs (Issue 1 & 2) --------------------------------
+import time as _time
+
+_settings_cache: dict | None = None
+_settings_cache_ts: float = 0.0
+_SETTINGS_TTL = 10.0  # saniye
+
+
+def invalidate_settings_cache() -> None:
+    """Ayarlar değiştiğinde çağrılır (POST /settings vb.)."""
+    global _settings_cache, _settings_cache_ts
+    _settings_cache = None
+    _settings_cache_ts = 0.0
+
+
 def get_system_settings() -> dict:
-    """SQL veritabanından sistem ayarlarını sözlük olarak okur."""
+    """SQL veritabanından sistem ayarlarını sözlük olarak okur. 10 sn TTL cache."""
+    global _settings_cache, _settings_cache_ts
+    now = _time.time()
+    if _settings_cache is not None and (now - _settings_cache_ts) < _SETTINGS_TTL:
+        return _settings_cache
     from database.sql.models import SistemAyari
     from sqlalchemy import select
     with get_session() as db:
         rows = list(db.scalars(select(SistemAyari)).all())
-        return {r.anahtar: r.deger for r in rows}
+        _settings_cache = {r.anahtar: r.deger for r in rows}
+    _settings_cache_ts = now
+    return _settings_cache
 
 
 # LG.7 — Her graph rolünün kendi DB ajanı var (sys_node_<role>).
@@ -489,23 +509,69 @@ def get_assigned_agent(role: str) -> Optional[dict]:
 
 def get_all_assigned_agents() -> dict[str, dict]:
     """
-    Tüm graph rollerinin atanmış ajan konfigürasyonlarını tek seferde döner.
-    Her tur node başına ayrı `get_assigned_agent` çağrısı yapmak yerine
-    supervisor başında bir kez yüklenip state üzerinden specialist'lere
-    taşınıyor (request-scoped cache).
-
-    Atama yoksa ya da ajan pasifse o role None düşer; çağıran taraf
-    yine `get_assigned_agent`'e fallback yapabilir.
+    Tüm graph rollerinin ajan konfigürasyonlarını tek SQL sorgusunda döner.
+    9 ayrı DB round-trip yerine 1 IN query kullanır.
     """
+    from database.sql.models import AIAgent
+    from sqlalchemy import select
+
+    # Özel atamalar (genellikle boş; cache'li get_system_settings kullanır)
+    assignments = get_agent_assignments()
+
+    # Her rol için hedef agent_id'yi belirle
+    role_to_id: dict[str, str] = {}
+    for role, default_id in _DEFAULT_ROLE_AGENT_ID.items():
+        role_to_id[role] = assignments.get(role) or default_id
+
+    needed_ids = set(role_to_id.values())
+    try:
+        with get_session() as db:
+            agents_list = list(db.scalars(
+                select(AIAgent)
+                .where(AIAgent.aktif_mi == True)
+                .where(AIAgent.kimlik.in_(needed_ids))
+            ).all())
+        agents_by_id = {a.kimlik: a for a in agents_list}
+    except Exception:
+        agents_by_id = {}
+
+    def _to_dict(agent) -> dict:
+        return {
+            "id": agent.kimlik,
+            "kimlik": agent.kimlik,
+            "agent_kind": agent.agent_kind,
+            "name": agent.ad,
+            "prompt": agent.prompt,
+            "negative_prompt": agent.negative_prompt,
+            "persona": agent.persona,
+            "temperature": agent.temperature,
+            "max_tokens": agent.max_tokens,
+            "model": agent.model,
+            "provider": agent.provider,
+            "allowed_rags": agent.allowed_rags,
+            "allowed_workflows": agent.allowed_workflows or [],
+            "strict_fact_check": agent.strict_fact_check,
+            "chat_history_length": agent.chat_history_length,
+            "can_ask_follow_up": agent.can_ask_follow_up,
+            "error_message": agent.error_message,
+            "node_config": agent.node_config or {},
+            "model_locked": getattr(agent, "model_locked", False) or False,
+            "aktif_mi": agent.aktif_mi,
+        }
+
     out: dict[str, dict] = {}
-    for role in _DEFAULT_ROLE_AGENT_ID:
-        try:
-            a = get_assigned_agent(role)
-            if a:
-                out[role] = a
-        except Exception:
-            # Tek bir rolün hatası diğerlerini engellemesin
-            pass
+    for role, agent_id in role_to_id.items():
+        agent = agents_by_id.get(agent_id)
+        if agent:
+            out[role] = _to_dict(agent)
+        else:
+            # Fallback: sys_node_* bulunamadıysa bireysel sorgu dene
+            try:
+                a = get_assigned_agent(role)
+                if a:
+                    out[role] = a
+            except Exception:
+                pass
     return out
 
 
