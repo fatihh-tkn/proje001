@@ -172,6 +172,7 @@ class PgVectorDB(VectorDBProvider):
         fts_weight: int = 40,
         max_per_doc: int = 3,
         expand_inline_context: bool = False,
+        kategori_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Hybrid Search: Vektör + FTS + RRF + Re-Ranking + Belge Çeşitliliği.
@@ -196,6 +197,7 @@ class PgVectorDB(VectorDBProvider):
                 fts_weight=fts_weight,
                 max_per_doc=max_per_doc,
                 expand_inline_context=expand_inline_context,
+                kategori_filter=kategori_filter,
             )
         except Exception as e:
             logger.error(f"[PgVectorDB] hybrid_query hatası: {e}")

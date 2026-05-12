@@ -114,13 +114,14 @@ def _hybrid_parse_pptx(
     file_basename: str,
     pdf_path: str | None,
     use_vision: bool = False,
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     chunks: list[dict] = []
+    vision_failed_count: int = 0
 
     try:
         from pptx import Presentation
     except ImportError:
-        return [_error_chunk(file_basename, "python-pptx kurulu değil. pip install python-pptx")]
+        return [_error_chunk(file_basename, "python-pptx kurulu değil. pip install python-pptx")], 0
 
     try:
         prs          = Presentation(file_path)
@@ -254,6 +255,7 @@ def _hybrid_parse_pptx(
                     continue
                 vision_text = _ask_gemini_for_ui(cropped, context=title or "")
                 if not vision_text or vision_text.startswith("["):
+                    vision_failed_count += 1
                     continue
                 shape_count += 1
                 chunks.append({
@@ -324,7 +326,7 @@ def _hybrid_parse_pptx(
     if not chunks:
         chunks.append(_error_chunk(file_basename, "Slayt içeriği bulunamadı."))
 
-    return chunks
+    return chunks, vision_failed_count
 
 
 # ── AŞAMA 1: Per-shape çıkarım ───────────────────────────────────────
@@ -514,13 +516,14 @@ def _crop_shape_image(
 def _ask_gemini_for_ui(image_path: str, context: str = "") -> str:
     """Ekran görüntüsündeki form alanlarını Gemini ile çıkarır."""
     try:
-        from core.settings import settings
-        if not settings.GEMINI_API_KEY:
+        from services.processors.vision_utils import get_vision_config
+        _api_key, _model_name = get_vision_config()
+        if not _api_key:
             return ""
         import google.generativeai as genai
         from PIL import Image
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-pro")
+        genai.configure(api_key=_api_key)
+        model = genai.GenerativeModel(_model_name)
 
         img = Image.open(image_path)
         ctx = f"Slayt başlığı: '{context}'. " if context else ""

@@ -26,26 +26,30 @@ def dispatch(
     original_name: str | None = None,
     task_id: str | None = None,
     whisper_model: str = "large-v3",
-    whisper_device: str = "cuda"
-) -> list[dict]:
+    whisper_device: str = "cuda",
+    kategori: str | None = None,
+) -> tuple[list[dict], int]:
     """
-    Dosya uzantısına göre doğru parser'ı seçer ve chunk listesi döner.
-    İçsel parser hataları yakalanır; boş liste yerine hata chunk'ı döner.
+    Dosya uzantısına göre doğru parser'ı seçer ve (chunks, vision_failed_count) döner.
+    vision_failed_count: vision çağrısı denenen ama başarısız olan sayfa/shape sayısı.
+    kategori="teknik_resim" ise tüm formatlar teknik_processor üzerinden vision'a girer.
     """
     ext = ext.lower().lstrip(".")
     basename = original_name or os.path.basename(file_path)
 
-    def _err_chunk(msg: str) -> list[dict]:
-        return [{
-            "id": f"error-{uuid.uuid4()}",
-            "text": msg,
-            "metadata": {"source": basename, "type": "error", "page": 0},
-        }]
+    def _err(msg: str) -> tuple[list[dict], int]:
+        return [{"id": f"error-{uuid.uuid4()}", "text": msg,
+                 "metadata": {"source": basename, "type": "error", "page": 0}}], 0
 
     try:
+        # Teknik resim kategorisi: tüm formatlar vision pipeline'dan geçer
+        if kategori == "teknik_resim":
+            from services.processors.teknik_processor import parse_teknik
+            return parse_teknik(file_path, original_name=original_name), 0
+
         if ext == "bpmn":
             from services.bpmn_processor import parse_bpmn
-            return parse_bpmn(file_path, original_name=original_name)
+            return parse_bpmn(file_path, original_name=original_name), 0
 
         if ext in ("pdf",):
             from services.processor import analyze_pdf_with_vision
@@ -57,7 +61,7 @@ def dispatch(
 
         if ext in ("png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"):
             from services.processors.image_processor import parse_image
-            return parse_image(file_path, original_name=original_name)
+            return parse_image(file_path, original_name=original_name), 0
 
         if ext in ("xlsx", "xls", "csv"):
             return [{
@@ -75,11 +79,11 @@ def dispatch(
                     "page":          0,
                     "chunk_index":   0,
                 }
-            }]
+            }], 0
 
         if ext in ("txt", "md", "docx", "doc"):
             from services.processors.text_processor import parse_text
-            return parse_text(file_path, original_name=original_name)
+            return parse_text(file_path, original_name=original_name), 0
 
         if ext in ("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
                    "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"):
@@ -93,20 +97,17 @@ def dispatch(
             else:
                 chunks_out = []
             if not chunks_out:
-                chunks_out = _err_chunk(f"[{basename}] Ses/video dosyasından içerik çıkarılamadı.")
-            return chunks_out
+                chunks_out = _err(f"[{basename}] Ses/video dosyasından içerik çıkarılamadı.")[0]
+            return chunks_out, 0
 
     except Exception as parser_err:
         import logging as _log
         _log.getLogger("dispatch").error(
             "Parser hatası [%s / .%s]: %s", basename, ext, parser_err, exc_info=True
         )
-        return _err_chunk(f"[{basename}] Dosya işlenirken hata: {parser_err}")
+        return _err(f"[{basename}] Dosya işlenirken hata: {parser_err}")
 
     # Bilinmeyen format
-    basename = original_name or os.path.basename(file_path)
-    return [{
-        "id":   f"unsupported-{uuid.uuid4()}",
-        "text": f"[{basename}] Bu dosya türü ({ext}) henüz desteklenmiyor.",
-        "metadata": {"source": basename, "type": "unsupported", "ext": ext}
-    }]
+    return [{"id": f"unsupported-{uuid.uuid4()}",
+             "text": f"[{basename}] Bu dosya türü ({ext}) henüz desteklenmiyor.",
+             "metadata": {"source": basename, "type": "unsupported", "ext": ext}}], 0

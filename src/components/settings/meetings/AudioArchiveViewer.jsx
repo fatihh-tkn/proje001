@@ -165,7 +165,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate, onTranscribe, on
         let timer;
         timer = setInterval(async () => {
             try {
-                const r = await fetch(`/api/archive/progress/${doc_id_for_poll}`);
+                const r = await fetch(`/api/archive/transcription-progress/${doc_id_for_poll}`);
                 if (r.ok) {
                     const d = await r.json();
                     setTxPercent(d.percent ?? 0);
@@ -697,6 +697,7 @@ export default function AudioArchiveViewer() {
         if (!file) return;
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('kategori', 'toplantılar');
         if (currentFolderId) formData.append('folder_id', currentFolderId);
         if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);

@@ -19,21 +19,24 @@ import { fetchChannels, createChannel } from '../../api/globalChatService';
 
 /* ── Arşiv sekme tanımları (component dışı — sabit) ──────────────── */
 const SIDEBAR_TABS = [
-    { key: 'belgeler',    label: 'Belgeler'    },
-    { key: 'toplantilar', label: 'Toplantılar' },
-    { key: 'kisisel',     label: 'Kişisel'     },
-    { key: 'surecler',    label: 'Süreçler'    },
-    { key: 'sohbetler',   label: 'Sohbetler'   },
+    { key: 'belgeler',      label: 'Belgeler'        },
+    { key: 'toplantilar',   label: 'Toplantılar'     },
+    { key: 'kisisel',       label: 'Kişisel'         },
+    { key: 'surecler',      label: 'Süreçler'        },
+    { key: 'teknik_resim',  label: 'Teknik Resimler' },
+    { key: 'sohbetler',     label: 'Sohbetler'       },
 ];
-const _sbAudio = t => ['mp3','wav','ogg','m4a','flac','aac','opus','wma'].includes(t);
-const _sbVideo = t => ['mp4','avi','mov','mkv','webm','m4v','wmv'].includes(t);
-const _sbWf    = t => ['bpmn','json','py','js','ts','html','xml'].includes(t);
+const _sbAudio  = t => ['mp3','wav','ogg','m4a','flac','aac','opus','wma'].includes(t);
+const _sbVideo  = t => ['mp4','avi','mov','mkv','webm','m4v','wmv'].includes(t);
+const _sbWf     = t => ['bpmn','json','py','js','ts','html','xml'].includes(t);
+const _sbImage  = t => ['png','jpg','jpeg','webp','bmp','gif','tiff'].includes(t);
 const SIDEBAR_TAB_FILTERS = {
-    belgeler:    i => { const t=(i.file_type||'').toLowerCase(); return !_sbAudio(t)&&!_sbVideo(t)&&!_sbWf(t); },
-    toplantilar: i => { const t=(i.file_type||'').toLowerCase(); return _sbAudio(t)||_sbVideo(t); },
-    kisisel:     (i, uid) => i.uploaded_by===uid || i.user_id===uid,
-    surecler:    i => _sbWf((i.file_type||'').toLowerCase()),
-    sohbetler:   i => i.is_vectorized===true,
+    belgeler:     i => { const t=(i.file_type||'').toLowerCase(); return !_sbAudio(t)&&!_sbVideo(t)&&!_sbWf(t)&&!_sbImage(t); },
+    toplantilar:  i => { const t=(i.file_type||'').toLowerCase(); return _sbAudio(t)||_sbVideo(t); },
+    kisisel:      (i, uid) => i.uploaded_by===uid || i.user_id===uid,
+    surecler:     i => _sbWf((i.file_type||'').toLowerCase()),
+    teknik_resim: i => _sbImage((i.file_type||'').toLowerCase()),
+    sohbetler:    i => i.is_vectorized===true,
 };
 
 const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspaces = [], activeWorkspaceId, onSwitchWorkspace, onAddWorkspace, onCloseWorkspace, recentlyClosed = [], onReopenTab, onEnterAdmin }) => {

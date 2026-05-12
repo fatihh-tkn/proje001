@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle, ShieldAlert, HeartPulse } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#DC2626'] },
@@ -102,6 +102,25 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                             >
                                 <Database size={14} className="text-slate-500 shrink-0" />
                                 <span>Veritabanı</span>
+                            </button>
+                        )}
+
+                        {currentUser?.super && (
+                            <button
+                                onClick={() => {
+                                    if (onOpenFile) {
+                                        onOpenFile({
+                                            id: 'vector-health',
+                                            title: 'Vektör Sağlığı',
+                                            type: 'vector-health',
+                                        });
+                                    }
+                                    onClose();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                            >
+                                <HeartPulse size={14} className="text-emerald-500 shrink-0" />
+                                <span>Vektör Sağlığı</span>
                             </button>
                         )}
 

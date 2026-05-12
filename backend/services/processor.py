@@ -118,12 +118,14 @@ def _page_needs_vision(page) -> tuple[bool, str]:
 def ask_gemini_vision(image_path: str, context: str = "") -> str:
     """Gemini 1.5 Pro ile görsel okuma — Markdown formatında çıktı üretir (Faz 3)."""
     try:
-        if not settings.GEMINI_API_KEY:
-            return "[Uyarı: GEMINI_API_KEY yapılandırılmadığı için AI okuması yapılamadı.]"
+        from services.processors.vision_utils import get_vision_config
+        _api_key, _model_name = get_vision_config()
+        if not _api_key:
+            return "[Uyarı: Vision için Gemini API anahtarı yapılandırılmadı.]"
 
         import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        genai.configure(api_key=_api_key)
+        model = genai.GenerativeModel(_model_name)
 
         start_time = time.time()
 
@@ -221,6 +223,7 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
     """
     file_basename = original_name if original_name else os.path.basename(file_path)
     chunks: list[dict] = []
+    vision_failed_count: int = 0
 
     try:
         doc = fitz.open(file_path)
@@ -364,6 +367,10 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
             if use_vision and page_num in vision_ai_results:
                 ai_text = vision_ai_results[page_num]
                 routing_note = vision_routing.get(page_num, "")
+                if ai_text and not ai_text.startswith("["):
+                    pass  # başarılı — aşağıda ekleniyor
+                else:
+                    vision_failed_count += 1
                 if ai_text and not ai_text.startswith("[Uyarı"):
                     chunks.append({
                         "id": str(uuid.uuid4()),
@@ -504,4 +511,4 @@ def analyze_pdf_with_vision(file_path: str, use_vision: bool = False, original_n
         chunk["metadata"]["prev_id"] = slide_chunks[i - 1]["id"] if i > 0 else ""
         chunk["metadata"]["next_id"] = slide_chunks[i + 1]["id"] if i < len(slide_chunks) - 1 else ""
 
-    return chunks
+    return chunks, vision_failed_count

@@ -90,6 +90,9 @@ def _run_schema_migrations(eng) -> None:
         # ApiLogu: ajan bazlı maliyet filtresi için (LG.8)
         "ALTER TABLE api_loglari ADD COLUMN IF NOT EXISTS ajan_kimlik VARCHAR(36)",
         "CREATE INDEX IF NOT EXISTS ix_api_loglari_ajan_kimlik ON api_loglari (ajan_kimlik)",
+        # Belge: arşiv kategorisi (belgeler|surecler|toplantılar|kisisel|teknik_resim)
+        "ALTER TABLE belgeler ADD COLUMN IF NOT EXISTS kategori VARCHAR(32)",
+        "CREATE INDEX IF NOT EXISTS ix_belgeler_kategori ON belgeler (kategori)",
     ]
     # Her statement kendi transaction'ında çalışsın — eski tek-connection
     # döngüsünde bir stmt fail ederse sonraki tüm stmt'ler PostgreSQL'in

@@ -197,6 +197,7 @@ async def rag_search_node(state: AgentState) -> dict:
         rag_max_query_variants: int = 4
         rag_use_rule_expansion: bool = True
         rag_context_max_chars: int | None = None
+        rag_kategori: str | None = None
         rag_agent_config: dict | None = None
         try:
             rag_agent = get_agent_config(state, "rag_search")
@@ -228,6 +229,9 @@ async def rag_search_node(state: AgentState) -> dict:
             mpd = node_cfg.get("max_per_doc")
             if mpd is not None:
                 rag_max_per_doc = int(mpd)
+            _kat = node_cfg.get("kategori")
+            if _kat:
+                rag_kategori = str(_kat)
             rag_allowed = (rag_agent or {}).get("allowed_rags") or []
             if rag_allowed:
                 _ex = [str(r)[1:] for r in rag_allowed if str(r).startswith("!")]
@@ -281,6 +285,7 @@ async def rag_search_node(state: AgentState) -> dict:
                 use_reranker=rag_use_reranker,
                 near_dup_threshold=rag_near_dup_threshold,
                 context_max_chars=rag_context_max_chars,
+                kategori_filter=rag_kategori,
             )
 
         results = await asyncio.gather(*[_search_one(t) for t in targets])

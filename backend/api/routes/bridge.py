@@ -77,7 +77,7 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
 
         # Ağır işlemi (dispatch) thread pool'da çalıştır — event loop bloklanmasın
         from services.processors import dispatch
-        chunks = await run_in_threadpool(
+        chunks, vision_failed = await run_in_threadpool(
             dispatch,
             file_path    = file_path,
             ext          = ext,
@@ -104,6 +104,7 @@ async def upload_and_analyze(file: UploadFile = File(...), use_vision: bool = Fo
             "chunks":              chunks,
             "isleme_suresi_ms":    isleme_suresi_ms,
             "converted_pdf_path": converted_pdf_path,
+            "vision_failed":       vision_failed,
         }
     except HTTPException:
         raise

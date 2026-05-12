@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     FileCog, Database, Bot, Cpu, Users, Inbox, AlertTriangle, ShieldAlert,
     Settings, Zap, User, ArrowLeft, Table, BarChart3, PackageOpen, ChevronDown, ChevronRight,
     Network, Key, Terminal, FileCode, Play, Link, Upload, Monitor,
-    GitBranch, FileText, Mic, Users2, SlidersHorizontal
+    GitBranch, FileText, Mic, Users2, SlidersHorizontal, HeartPulse, Ruler
 } from 'lucide-react';
 import FullLogoImage from '../../assets/logo-acik.png';
 import { useWorkspaceStore } from '../../store/workspaceStore';
@@ -16,11 +16,16 @@ const NAV_GROUPS = [
         label: 'VERİ YÖNETİMİ',
         items: [
             {
-                id: 'database-settings',
+                id: 'dosya-islem-group',
                 label: 'Dosya İşleme',
                 icon: FileCog,
                 permKey: 'ui_file_processing',
-                openArgs: { id: 'database-settings', title: 'Dosya İşleme', type: 'database' },
+                openArgs: null,
+                children: [
+                    { id: 'database-settings', label: 'Dosya Yükleme',  icon: Upload,     openArgs: { id: 'database-settings', title: 'Dosya Yükleme',  type: 'database'      } },
+                    { id: 'file-watcher',      label: 'Dosya İzleme',  icon: Monitor,    openArgs: { id: 'file-watcher',      title: 'Dosya İzleme',   type: 'file-watcher'  } },
+                    { id: 'vector-health',      label: 'Vektör Sağlığı', icon: HeartPulse, superOnly: true, openArgs: { id: 'vector-health', title: 'Vektör Sağlığı', type: 'vector-health' } },
+                ],
             },
             {
                 id: 'databases-viewer',
@@ -29,9 +34,9 @@ const NAV_GROUPS = [
                 permKey: 'ui_database',
                 openArgs: null,
                 children: [
-                    { id: 'db-sql',     label: 'İlişkisel SQL', icon: Table,       openArgs: { id: 'db-sql',     title: 'SQL Veritabanı',    type: 'databases-viewer', meta: { defaultTab: 'sql'     } } },
-                    { id: 'db-vector',  label: 'Vektör',        icon: Database,    openArgs: { id: 'db-vector',  title: 'Vektör Veritabanı', type: 'databases-viewer', meta: { defaultTab: 'vector'  } } },
-                    { id: 'db-graph',   label: 'Graf',          icon: BarChart3,   openArgs: { id: 'db-graph',   title: 'Graf Veritabanı',   type: 'databases-viewer', meta: { defaultTab: 'graph'   } } },
+                    { id: 'db-sql',    label: 'İlişkisel SQL', icon: Table,    openArgs: { id: 'db-sql',    title: 'SQL Veritabanı',    type: 'databases-viewer', meta: { defaultTab: 'sql'    } } },
+                    { id: 'db-vector', label: 'Vektör',        icon: Database, openArgs: { id: 'db-vector', title: 'Vektör Veritabanı', type: 'databases-viewer', meta: { defaultTab: 'vector' } } },
+                    { id: 'db-graph',  label: 'Graf',          icon: BarChart3, openArgs: { id: 'db-graph',  title: 'Graf Veritabanı',   type: 'databases-viewer', meta: { defaultTab: 'graph'  } } },
                     {
                         id: 'db-archive',
                         label: 'Arşiv',
@@ -40,7 +45,8 @@ const NAV_GROUPS = [
                             { id: 'archive-documents', label: 'Döküman',            icon: FileText,  openArgs: { id: 'archive-documents', title: 'Belgeler',            type: 'belgeler-viewer' } },
                             { id: 'archive-workflows', label: 'İş Akışları',        icon: GitBranch, openArgs: { id: 'archive-workflows', title: 'İş Akışları',        type: 'surecler-viewer' } },
                             { id: 'archive-meetings',  label: 'Toplantılar',         icon: Mic,       openArgs: { id: 'archive-meetings',  title: 'Toplantılar',         type: 'toplantilar-viewer' } },
-                            { id: 'archive-user-docs', label: 'Kullanıcı Belgeleri', icon: Users2,    openArgs: { id: 'archive-user-docs', title: 'Kişisel',            type: 'kisisel-viewer'  } },
+                            { id: 'archive-user-docs',    label: 'Kullanıcı Belgeleri', icon: Users2,    openArgs: { id: 'archive-user-docs',    title: 'Kişisel',            type: 'kisisel-viewer'       } },
+                            { id: 'archive-teknik-resim', label: 'Teknik Resimler',    icon: Ruler,     openArgs: { id: 'archive-teknik-resim', title: 'Teknik Resimler',    type: 'teknik-resim-viewer'  } },
                         ],
                     },
                 ],
@@ -160,9 +166,12 @@ const NAV_GROUPS = [
 
 const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
-    const [activeId, setActiveId] = useState(null);
+    const activeTabs = useWorkspaceStore(state =>
+        state.workspaces.find(w => w.id === state.activeWorkspaceId)?.tabs
+    );
+    const openTabIds = useMemo(() => new Set((activeTabs || []).map(t => t.id)), [activeTabs]);
     const [expandedIds, setExpandedIds] = useState({});
-    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [userMenuOpen,  setUserMenuOpen]  = useState(false);
     const [userPanelOpen, setUserPanelOpen] = useState(false);
     const [userPanelInitialTab, setUserPanelInitialTab] = useState('profil');
 
@@ -180,7 +189,6 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
             setExpandedIds(prev => ({ ...prev, [item.id]: !prev[item.id] }));
             return;
         }
-        setActiveId(item.id);
         if (item.isN8n) {
             const base = localStorage.getItem('n8n_base_url') || 'http://localhost:5678';
             localStorage.setItem('n8n_target_url', item.n8nPath ? base + item.n8nPath : base);
@@ -259,7 +267,9 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
                                 <div className="flex flex-col gap-px">
                                     {visibleItems.map((item) => {
                                         const Icon = item.icon;
-                                        const isActive = activeId === item.id;
+                                        const isActive = item.openArgs
+                                            ? openTabIds.has(item.id)
+                                            : !!(item.children?.some(c => openTabIds.has(c.id)));
                                         const isExpanded = !!expandedIds[item.id];
                                         const hasChildren = !!item.children;
                                         return (
@@ -268,16 +278,16 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
                                                     onClick={() => handleClick(item)}
                                                     className={`relative flex items-center gap-2.5 w-full text-left px-2 py-[7px] text-[13px] transition-all duration-100
                                                         ${isActive
-                                                            ? 'text-white bg-[#AA1416]/20'
+                                                            ? 'text-white bg-[#0D9488]/15'
                                                             : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'}
                                                     `}
                                                 >
                                                     {isActive && (
-                                                        <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#AA1416] rounded-r" />
+                                                        <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#0D9488] rounded-r" />
                                                     )}
                                                     <Icon
                                                         size={15}
-                                                        className={`shrink-0 ${isActive ? 'text-[#DC2626]' : 'text-slate-500'}`}
+                                                        className={`shrink-0 ${isActive ? 'text-[#14B8A6]' : 'text-slate-500'}`}
                                                     />
                                                     <span className="flex-1 truncate">{item.label}</span>
                                                     {item.badge && (
@@ -294,9 +304,11 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
 
                                                 {hasChildren && isExpanded && (
                                                     <div className="ml-3 pl-3 border-l border-zinc-700/60 flex flex-col gap-px mt-px mb-1">
-                                                        {item.children.map((child) => {
+                                                        {item.children.filter(canSee).map((child) => {
                                                             const ChildIcon = child.icon;
-                                                            const isChildActive = activeId === child.id;
+                                                            const isChildActive = child.openArgs
+                                                                ? openTabIds.has(child.id)
+                                                                : !!(child.children?.some(gc => openTabIds.has(gc.id)));
                                                             const hasGrandchildren = !!child.children;
                                                             const isChildExpanded = !!expandedIds[child.id];
                                                             return (
@@ -305,16 +317,16 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
                                                                         onClick={() => handleClick(child)}
                                                                         className={`relative flex items-center gap-2 w-full text-left px-2 py-[6px] text-[12px] transition-all duration-100
                                                                             ${isChildActive
-                                                                                ? 'text-white bg-[#AA1416]/20'
+                                                                                ? 'text-white bg-[#0D9488]/15'
                                                                                 : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'}
                                                                         `}
                                                                     >
                                                                         {isChildActive && (
-                                                                            <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#AA1416] rounded-r" />
+                                                                            <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#0D9488] rounded-r" />
                                                                         )}
                                                                         <ChildIcon
                                                                             size={13}
-                                                                            className={`shrink-0 ${isChildActive ? 'text-[#DC2626]' : 'text-slate-600'}`}
+                                                                            className={`shrink-0 ${isChildActive ? 'text-[#14B8A6]' : 'text-slate-600'}`}
                                                                         />
                                                                         <span className="truncate flex-1">{child.label}</span>
                                                                         {child.badge && (
@@ -333,23 +345,23 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
                                                                         <div className="ml-3 pl-3 border-l border-zinc-700/40 flex flex-col gap-px mt-px mb-1">
                                                                             {child.children.map((grandchild) => {
                                                                                 const GrandIcon = grandchild.icon;
-                                                                                const isGrandActive = activeId === grandchild.id;
+                                                                                const isGrandActive = openTabIds.has(grandchild.id);
                                                                                 return (
                                                                                     <button
                                                                                         key={grandchild.id}
                                                                                         onClick={() => handleClick(grandchild)}
                                                                                         className={`relative flex items-center gap-2 w-full text-left px-2 py-[5px] text-[11px] transition-all duration-100
                                                                                             ${isGrandActive
-                                                                                                ? 'text-white bg-[#AA1416]/20'
+                                                                                                ? 'text-white bg-[#0D9488]/15'
                                                                                                 : 'text-slate-600 hover:text-slate-200 hover:bg-white/[0.04]'}
                                                                                         `}
                                                                                     >
                                                                                         {isGrandActive && (
-                                                                                            <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#AA1416] rounded-r" />
+                                                                                            <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#0D9488] rounded-r" />
                                                                                         )}
                                                                                         <GrandIcon
                                                                                             size={12}
-                                                                                            className={`shrink-0 ${isGrandActive ? 'text-[#DC2626]' : 'text-slate-700'}`}
+                                                                                            className={`shrink-0 ${isGrandActive ? 'text-[#14B8A6]' : 'text-slate-700'}`}
                                                                                         />
                                                                                         <span className="truncate flex-1">{grandchild.label}</span>
                                                                                     </button>
@@ -374,8 +386,9 @@ const AdminSidebar = ({ onOpenFile, onExitAdmin }) => {
                 {/* Footer */}
                 <div className="shrink-0 flex items-center justify-between px-3 py-4 border-t border-[#292524]">
                     <button
+                        onClick={onExitAdmin}
                         className="text-slate-600 hover:text-slate-300 transition-colors"
-                        title="Sistem Ayarları"
+                        title="Paneli Kapat"
                     >
                         <Settings size={18} />
                     </button>

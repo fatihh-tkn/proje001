@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Zap, Activity, CheckCircle2, ShieldCheck, X, Network } from 'lucide-react';
+import { Upload, Zap, Activity, CheckCircle2, X, Network, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DatabaseDropzone = ({
@@ -16,14 +16,15 @@ const DatabaseDropzone = ({
     stagedFile,
     handleCancel,
     chunksLength,
-    approvedCount
+    approvedCount,
+    analysisError = '',
 }) => {
     return (
         <div className="w-[42%] shrink-0 border-r border-stone-200 flex flex-col bg-stone-50/30 relative">
             <div className="px-5 py-3 border-b border-stone-100 flex items-center gap-2 shrink-0 bg-white/50 backdrop-blur-md z-10">
                 <Network size={14} className="text-stone-400" />
                 <span className="text-[11px] font-bold text-stone-500 tracking-widest uppercase">Dosya Yükleme</span>
-                {(phase === 'staged' || phase === 'saving') && (
+                {(phase === 'staged' || phase === 'saving' || phase === 'error') && (
                     <button onClick={handleCancel} className="ml-auto text-stone-400 hover:text-[#991B1B] transition-colors p-1 bg-white hover:bg-[#FEF2F2] rounded-md border border-stone-200 hover:border-[#991B1B]/30">
                         <X size={14} />
                     </button>
@@ -158,6 +159,38 @@ const DatabaseDropzone = ({
                                     <span className="text-[11px] font-bold text-stone-700">{Math.round(progress)}%</span>
                                 </div>
                             </div>
+                        </motion.div>
+                    )}
+
+                    {/* ── error ── */}
+                    {phase === 'error' && (
+                        <motion.div
+                            key="error"
+                            initial={{ opacity: 0, scale: 0.97 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.97 }}
+                            className="w-full h-full flex flex-col items-center justify-center gap-5 px-6 text-center"
+                        >
+                            <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                                className="p-4 bg-red-50 border border-red-200 rounded-2xl"
+                            >
+                                <AlertTriangle size={30} className="text-red-500" />
+                            </motion.div>
+                            <div>
+                                <p className="text-[13px] font-bold text-stone-800 mb-1">Analiz Başarısız</p>
+                                {analysisError && (
+                                    <p className="text-[11px] text-stone-500 leading-relaxed max-w-[260px]">{analysisError}</p>
+                                )}
+                            </div>
+                            <button
+                                onClick={handleCancel}
+                                className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 hover:border-[#378ADD] hover:text-[#378ADD] text-stone-600 text-[12px] font-bold rounded-lg transition-all"
+                            >
+                                Tekrar Dene
+                            </button>
                         </motion.div>
                     )}
 

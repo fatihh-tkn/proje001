@@ -187,9 +187,12 @@ def _belge_to_dict(b: Belge, db) -> dict:
                 in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma",
                     "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"} else None
             ),
-            "transcription_language": meta.get("transcription_language"),
+            "transcription_language":    meta.get("transcription_language"),
             "transcription_chunk_count": meta.get("transcription_chunk_count"),
-            "transcription_preview": meta.get("transcription_preview"),
+            "transcription_preview":     meta.get("transcription_preview"),
+            "vision_analysis":           meta.get("vision_analysis"),
+            "cad_turu":                  meta.get("cad_turu"),
+            "bagli_dosyalar":            meta.get("bagli_dosyalar", {}),
         },
     }
 
@@ -277,6 +280,7 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                     "transcription_preview": meta.get("transcription_preview"),
                     "transcription_full_text": meta.get("transcription_full_text"),
                     "transcription_error": meta.get("transcription_error"),
+                    "vision_analysis": meta.get("vision_analysis"),
                 },
             })
 
@@ -313,6 +317,7 @@ def arsiv_detay(doc_id: str):
                 "transcription_preview": meta.get("transcription_preview"),
                 "transcription_full_text": meta.get("transcription_full_text"),
                 "transcription_error": meta.get("transcription_error"),
+                "vision_analysis": meta.get("vision_analysis"),
             },
         }
 
@@ -423,6 +428,12 @@ def yeniden_adlandir(istek: YenidenAdlandirRequest):
         belge.dosya_adi = istek.yeni_ad
         db.commit()
         return {"status": "success"}
+
+
+@router.delete("/documents/{doc_id}")
+def tek_belge_sil(doc_id: str):
+    """Tek belgeyi siler — toplu_sil altyapısını kullanır."""
+    return toplu_sil(TopluSilRequest(ids=[doc_id]))
 
 
 @router.delete("/delete")
@@ -654,6 +665,8 @@ async def dogrudan_yukle(
     file: UploadFile = File(...),
     folder_id: str = Form(None),
     user_id: str = Form(None),
+    kategori: str = Form(None),
+    cad_turu: str = Form(None),
 ):
     """
     Dosyayı doğrudan arşive yükler.
@@ -729,12 +742,30 @@ async def dogrudan_yukle(
 
     is_av = dosya_uzantisi in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
     is_text = dosya_uzantisi in {"pdf", "txt", "docx", "doc", "pptx", "ppt"}
+    is_image = dosya_uzantisi in {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
+
+    # Kategori: form'dan gelen değere öncelik ver; yoksa uzantıdan çıkar
+    _kat = (kategori or "").strip()
+    if _kat and _kat not in ("null", "undefined"):
+        belge_kategori = _kat
+    elif is_av:
+        belge_kategori = "toplantılar"
+    elif is_image:
+        belge_kategori = "teknik_resim"
+    elif dosya_uzantisi == "bpmn":
+        belge_kategori = "surecler"
+    elif havuz_turu == "kullanici":
+        belge_kategori = "kisisel"
+    else:
+        belge_kategori = "belgeler"
 
     # Kullanıcı klasörü varsa onu kullan; admin için form'dan gelen folder_id geçerli
     effective_folder_id = kullanici_klasor_id or (folder_id if folder_id and folder_id != "null" else None)
     meta_dict = {"klasor_kimlik": effective_folder_id} if effective_folder_id else {}
-    if is_av or is_text:
+    if is_av or is_text or is_image:
         meta_dict["transcription_status"] = "pending"
+    if cad_turu and cad_turu in ("cad", "nesting"):
+        meta_dict["cad_turu"] = cad_turu
 
     effective_user_id = user_id if user_id and user_id not in ("null", "undefined", "") else None
 
@@ -749,6 +780,7 @@ async def dogrudan_yukle(
             durum="arsivde",
             meta=meta_dict,
             havuz_turu=havuz_turu,
+            kategori=belge_kategori,
         )
         db.add(yeni_belge)
         db.commit()
@@ -756,7 +788,7 @@ async def dogrudan_yukle(
 
     if is_av:
         background_tasks.add_task(_run_transcription, yeni_belge.kimlik)
-    elif is_text:
+    elif is_text or is_image:
         background_tasks.add_task(_run_vectorization, yeni_belge.kimlik)
 
     return {
@@ -932,11 +964,17 @@ def _run_transcription(doc_id: str):
 def _run_vectorization(doc_id: str):
     import uuid as _uuid
     from services.processors import dispatch
+    from services.processors.process_progress import (
+        set_current_doc, update as pg_update, step as pg_step,
+        done as pg_done, fail as pg_fail,
+    )
     from database.vector.pgvector_db import vector_db
     from database.sql.models import VektorParcasi, BilgiIliskisi
     from sqlalchemy import select
 
     logger.info("Vektörizasyon başlıyor: doc_id=%s", doc_id)
+    set_current_doc(doc_id)
+    pg_update(doc_id, "Dosya işleme alındı…")
 
     try:
         with get_session() as db:
@@ -945,12 +983,15 @@ def _run_vectorization(doc_id: str):
                 logger.error("Belge bulunamadı: %s", doc_id)
                 return
 
-            b_depo = belge.depolama_yolu
-            b_ad = belge.dosya_adi
+            b_depo    = belge.depolama_yolu
+            b_ad      = belge.dosya_adi
+            b_turu    = belge.dosya_turu
+            b_kat     = belge.kategori
 
             if not b_depo or not os.path.exists(b_depo):
                 logger.error("Dosya diskde yok: %s", b_depo)
                 _set_transcription_status(doc_id, "failed", "Dosya diskde bulunamadı.")
+                pg_fail(doc_id, "Dosya diskde bulunamadı")
                 return
 
             meta = dict(belge.meta or {})
@@ -958,25 +999,33 @@ def _run_vectorization(doc_id: str):
             belge.meta = meta
             db.commit()
 
-        # Metin parçalama (Text/PDF/Docx/PPTX)
-        chunks = dispatch(file_path=b_depo, ext=belge.dosya_turu, use_vision=False, original_name=b_ad)
+        is_teknik = b_kat == "teknik_resim"
+        if is_teknik:
+            pg_step("Teknik dosya hazırlanıyor…")
+        else:
+            pg_step("İçerik ayrıştırılıyor…")
+
+        # Metin parçalama — teknik_resim kategorisi vision pipeline'a girer
+        chunks, _ = dispatch(
+            file_path=b_depo,
+            ext=b_turu,
+            use_vision=False,
+            original_name=b_ad,
+            kategori=b_kat,
+        )
 
         # PPTX dosyalarını sistemde PDF olarak koruma
-        if belge.dosya_turu in ("pptx", "ppt"):
+        pptx_pdf_path = None
+        if b_turu in ("pptx", "ppt"):
             basename = os.path.splitext(os.path.basename(b_depo))[0]
             expected_pdf = os.path.join(os.path.dirname(b_depo), f"{basename}.pdf")
             if os.path.exists(expected_pdf):
-                meta["orijinal_format"] = belge.dosya_turu
-                meta["orijinal_yol"] = b_depo
-                
-                belge.dosya_adi = os.path.splitext(b_ad)[0] + ".pdf"
-                belge.dosya_turu = "pdf"
-                belge.depolama_yolu = expected_pdf
-                belge.dosya_boyutu_bayt = os.path.getsize(expected_pdf)
+                pptx_pdf_path = expected_pdf
 
 
         if not chunks:
             _set_transcription_status(doc_id, "failed", "Vektörizasyon boş döndü.")
+            pg_fail(doc_id, "İçerik çıkarılamadı")
             return
 
         # Hata kontrolü
@@ -984,81 +1033,129 @@ def _run_vectorization(doc_id: str):
             err_text = chunks[0]["text"]
             logger.error("Vektörizasyon hatası: %s", err_text)
             _set_transcription_status(doc_id, "failed", err_text[:300])
+            pg_fail(doc_id, f"Hata: {err_text[:60]}")
             return
 
-        # ChromaDB'ye kaydet
-        coll_name  = "yilgenci_collection"
-        texts      = [c["text"] for c in chunks]
-        metadatas  = []
-        ids        = []
-        for c in chunks:
-            cid  = c.get("id") or str(_uuid.uuid4())
-            meta_data = c.get("metadata", {})
-            clean = {"sql_doc_id": doc_id, "sqlite_doc_id": doc_id}
-            for k, v in meta_data.items():
-                clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
-            metadatas.append(clean)
-            ids.append(cid)
+        # Teknik resim: sadece vision_analysis kaydedilir, vektörleştirme yapılmaz
+        saved_vision_data = None
+        if b_kat == "teknik_resim":
+            pg_step("Vision verisi kaydediliyor…")
+            vision_data = chunks[0].get("metadata", {}).get("vision_data") if chunks else None
+            with get_session() as db:
+                belge = db.get(Belge, doc_id)
+                if not belge:
+                    return
+                meta = dict(belge.meta or {})
+                meta["transcription_status"] = "done"
+                meta.pop("transcription_error", None)
+                if vision_data:
+                    meta["vision_analysis"] = vision_data
+                    saved_vision_data = vision_data
+                belge.meta = meta
+                db.commit()
+            logger.info("Teknik resim analizi tamamlandı: doc_id=%s", doc_id)
 
-        vector_db.add_documents(
-            collection_name=coll_name,
-            documents=texts,
-            metadatas=metadatas,
-            ids=ids,
-        )
-        logger.info("ChromaDB'ye %d text chunk yazıldı.", len(ids))
+        else:
+            pg_step(f"Vektörler hesaplanıyor… ({len(chunks)} parça)")
 
-        # SQL'e kaydet
-        with get_session() as db:
-            belge = db.get(Belge, doc_id)
-            if not belge:
-                return
+            # ChromaDB'ye kaydet
+            coll_name  = "yilgenci_collection"
+            texts      = [c["text"] for c in chunks]
+            metadatas  = []
+            ids        = []
+            for c in chunks:
+                cid  = c.get("id") or str(_uuid.uuid4())
+                meta_data = c.get("metadata", {})
+                clean = {"sql_doc_id": doc_id, "sqlite_doc_id": doc_id}
+                for k, v in meta_data.items():
+                    clean[k] = v if isinstance(v, (str, int, float, bool)) else str(v)
+                metadatas.append(clean)
+                ids.append(cid)
 
-            eski = list(db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
-            ).all())
-            if eski:
-                for p in eski:
-                    db.delete(p)
+            vector_db.add_documents(
+                collection_name=coll_name,
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids,
+            )
+            logger.info("ChromaDB'ye %d text chunk yazıldı.", len(ids))
+
+            pg_step("Veritabanına kaydediliyor…")
+
+            with get_session() as db:
+                belge = db.get(Belge, doc_id)
+                if not belge:
+                    return
+
+                eski = list(db.scalars(
+                    select(VektorParcasi).where(VektorParcasi.belge_kimlik == doc_id)
+                ).all())
+                if eski:
+                    for p in eski:
+                        db.delete(p)
+                    db.flush()
+
+                yeni_parcalar = []
+                for i, c in enumerate(chunks):
+                    p = VektorParcasi(
+                        belge_kimlik=doc_id,
+                        chromadb_kimlik=ids[i],
+                        icerik=c["text"][:1000],
+                        konum_imi=f"Sayfa/Parça {c.get('metadata', {}).get('page', i+1)}",
+                    )
+                    yeni_parcalar.append(p)
+
+                db.add_all(yeni_parcalar)
                 db.flush()
 
-            yeni_parcalar = []
-            for i, c in enumerate(chunks):
-                p = VektorParcasi(
-                    belge_kimlik=doc_id,
-                    chromadb_kimlik=ids[i],
-                    icerik=c["text"][:1000],
-                    konum_imi=f"Sayfa/Parça {c.get('metadata', {}).get('page', i+1)}",
-                )
-                yeni_parcalar.append(p)
+                for i in range(len(yeni_parcalar) - 1):
+                    db.add(BilgiIliskisi(
+                        kaynak_parca_kimlik=yeni_parcalar[i].kimlik,
+                        hedef_parca_kimlik=yeni_parcalar[i + 1].kimlik,
+                        iliski_turu="next_chunk",
+                        agirlik=1.0,
+                    ))
 
-            db.add_all(yeni_parcalar)
-            db.flush()
+                # PPTX → PDF dönüşümü varsa güncelle
+                if pptx_pdf_path:
+                    belge.meta = dict(belge.meta or {})
+                    belge.meta["orijinal_format"] = b_turu
+                    belge.meta["orijinal_yol"]    = b_depo
+                    belge.dosya_adi               = os.path.splitext(b_ad)[0] + ".pdf"
+                    belge.dosya_turu              = "pdf"
+                    belge.depolama_yolu           = pptx_pdf_path
+                    belge.dosya_boyutu_bayt       = os.path.getsize(pptx_pdf_path)
 
-            for i in range(len(yeni_parcalar) - 1):
-                db.add(BilgiIliskisi(
-                    kaynak_parca_kimlik=yeni_parcalar[i].kimlik,
-                    hedef_parca_kimlik=yeni_parcalar[i + 1].kimlik,
-                    iliski_turu="next_chunk",
-                    agirlik=1.0,
-                ))
+                meta = dict(belge.meta or {})
+                meta["transcription_status"] = "done"
+                meta["transcription_chunk_count"] = len(chunks)
+                meta.pop("transcription_error", None)
 
-            meta = dict(belge.meta or {})
-            meta["transcription_status"] = "done"
-            meta["transcription_chunk_count"] = len(chunks)
-            meta.pop("transcription_error", None)
+                if chunks:
+                    vision_data = chunks[0].get("metadata", {}).get("vision_data")
+                    if vision_data:
+                        meta["vision_analysis"] = vision_data
+                        saved_vision_data = vision_data
 
-            belge.meta              = meta
-            belge.vektorlestirildi_mi = True
-            belge.vektordb_koleksiyon = coll_name
-            belge.parca_sayisi        = len(chunks)
-            db.commit()
+                belge.meta                = meta
+                belge.vektorlestirildi_mi = True
+                belge.vektordb_koleksiyon = coll_name
+                belge.parca_sayisi        = len(chunks)
+                db.commit()
 
-        logger.info("Vektörizasyon tamamlandı: doc_id=%s, %d chunk", doc_id, len(chunks))
+            logger.info("Vektörizasyon tamamlandı: doc_id=%s, %d chunk", doc_id, len(chunks))
+
+        # Teknik resim kategorisinde malzeme numarasına göre otomatik eşleşme
+        if saved_vision_data and b_kat == "teknik_resim":
+            pg_step("Malzeme numarası eşleştiriliyor…")
+            _try_auto_link_by_number(doc_id, saved_vision_data)
+
+        pg_done(doc_id, "Analiz tamamlandı ✓")
 
     except Exception as e:
         logger.exception("Vektörizasyon işlem hatası: %s", e)
         _set_transcription_status(doc_id, "failed", str(e)[:300])
+        pg_fail(doc_id, f"Hata: {str(e)[:80]}")
 
 
 def _set_transcription_status(doc_id: str, status: str, error_msg: str = ""):
@@ -1166,12 +1263,11 @@ async def vektorizasyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
     return {"status": "started", "message": "Belge vektörizasyonu başlatıldı.", "doc_id": doc_id}
 
 
-@router.get("/progress/{doc_id}")
+@router.get("/transcription-progress/{doc_id}")
 def transkripsiyon_ilerleme(doc_id: str):
     """
-    Transkripsiyon işleminin anlık ilerleme yüzdesini döner.
+    Ses transkripsiyon yüzdesini döner (AudioArchiveViewer polling).
     GLOBAL_PROGRESS[doc_id] = {"status": str, "percent": float}
-    İşlem bitmişse veya başlamamışsa percent=0 döner.
     """
     from services.processors.audio_processor import GLOBAL_PROGRESS
     prog = GLOBAL_PROGRESS.get(doc_id, {})
@@ -1208,3 +1304,304 @@ def transkripsiyon_iptal(doc_id: str):
         belge.meta = meta
         db.commit()
     return {"status": "cancelled", "doc_id": doc_id}
+
+
+class WatcherStatsRequest(BaseModel):
+    paths: List[str] = Field(default_factory=list)
+
+
+@router.get("/watcher-browse")
+def watcher_browse(mode: str = "dir"):
+    """Yerel OS dosya/klasör seçici açar, seçilen yolu döner."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", 1)
+        root.update()
+        if mode == "file":
+            path = filedialog.askopenfilename(title="Dosya Seç", parent=root)
+        else:
+            path = filedialog.askdirectory(title="Klasör Seç", parent=root)
+        root.destroy()
+        return {"path": path or ""}
+    except Exception as exc:
+        logger.warning("Dosya seçici açılamadı: %s", exc)
+        return {"path": "", "error": str(exc)}
+
+
+@router.post("/watcher-stats")
+def watcher_stats(req: WatcherStatsRequest):
+    """Kullanıcının verdiği dizin/dosya yollarının anlık istatistiklerini döner."""
+    import time as _time
+
+    dirs_out = []
+
+    for raw_path in req.paths:
+        raw_path = raw_path.strip()
+        if not raw_path:
+            continue
+
+        path   = os.path.abspath(raw_path)
+        label  = os.path.basename(path) or path
+        exists = os.path.exists(path)
+
+        if not exists:
+            dirs_out.append({
+                "key": raw_path, "label": label, "path": path,
+                "exists": False, "is_file": False,
+                "file_count": 0, "total_size": 0, "last_change": 0.0, "files": [],
+            })
+            continue
+
+        # Tek dosya mı?
+        if os.path.isfile(path):
+            try:
+                st = os.stat(path)
+                dirs_out.append({
+                    "key": raw_path, "label": label, "path": path,
+                    "exists": True, "is_file": True,
+                    "file_count": 1, "total_size": st.st_size,
+                    "last_change": st.st_mtime,
+                    "files": [{
+                        "name":     label,
+                        "ext":      os.path.splitext(label)[1].lower().lstrip("."),
+                        "size":     st.st_size,
+                        "modified": st.st_mtime,
+                    }],
+                })
+            except OSError:
+                pass
+            continue
+
+        # Dizin tarama
+        total_size  = 0
+        file_count  = 0
+        last_change = 0.0
+        all_files   = []
+
+        for root, _, files in os.walk(path):
+            for fname in files:
+                fp = os.path.join(root, fname)
+                try:
+                    st = os.stat(fp)
+                    total_size  += st.st_size
+                    file_count  += 1
+                    if st.st_mtime > last_change:
+                        last_change = st.st_mtime
+                    all_files.append({
+                        "name":     fname,
+                        "ext":      os.path.splitext(fname)[1].lower().lstrip("."),
+                        "size":     st.st_size,
+                        "modified": st.st_mtime,
+                    })
+                except OSError:
+                    pass
+
+        all_files.sort(key=lambda x: -x["modified"])
+
+        dirs_out.append({
+            "key":        raw_path, "label": label, "path": path,
+            "exists":     True,     "is_file": False,
+            "file_count": file_count,
+            "total_size": total_size,
+            "last_change": last_change,
+            "files":      all_files[:200],
+        })
+
+    return {"dirs": dirs_out, "poll_ts": _time.time()}
+
+
+@router.get("/progress/{doc_id}")
+async def dokuman_ilerleme_sse(doc_id: str):
+    """Belge işleme ilerlemesini SSE akışı olarak döner."""
+    import asyncio
+    import json as _json
+    from fastapi.responses import StreamingResponse as _SR
+    from services.processors.process_progress import get as pg_get, clear as pg_clear
+
+    async def generate():
+        last_step = None
+        elapsed   = 0.0
+        limit     = 300.0   # 5 dk timeout
+        interval  = 0.25
+
+        while elapsed < limit:
+            p = pg_get(doc_id)
+            if p and p["step"] != last_step:
+                last_step = p["step"]
+                yield f"data: {_json.dumps(p, ensure_ascii=False)}\n\n"
+                if p.get("done") or p.get("error"):
+                    pg_clear(doc_id)
+                    return
+            await asyncio.sleep(interval)
+            elapsed += interval
+
+        yield 'data: {"step":"Zaman aşımı","done":true}\n\n'
+
+    return _SR(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _try_auto_link_by_number(doc_id: str, vision_data: dict):
+    """
+    Vision analizi tamamlandıktan sonra malzeme/çizim numarasına göre
+    aynı kategorideki eşleşen dosyayı bulur ve otomatik bağlar.
+
+    Eşleşme mantığı:
+      teknik_resim → baslik_bloku.cizim_numarasi
+      nesting      → malzeme_numarasi
+    """
+    img_type = vision_data.get("image_type")
+    if img_type == "teknik_resim":
+        my_number = ((vision_data.get("baslik_bloku") or {}).get("cizim_numarasi") or "").strip()
+    elif img_type == "nesting":
+        my_number = (vision_data.get("malzeme_numarasi") or "").strip()
+    else:
+        return
+
+    if not my_number:
+        return
+
+    def _normalize(s: str) -> str:
+        return s.upper().replace(" ", "").replace("-", "").replace("_", "")
+
+    my_norm = _normalize(my_number)
+
+    try:
+        with get_session() as db:
+            current = db.get(Belge, doc_id)
+            if not current:
+                return
+
+            # Zaten bağlı mı?
+            cur_bagli = (current.meta or {}).get("bagli_dosyalar", {})
+            if cur_bagli.get("nesting") or cur_bagli.get("cizim"):
+                return
+
+            candidates = list(db.scalars(
+                select(Belge).where(
+                    Belge.kategori == "teknik_resim",
+                    Belge.kimlik != doc_id,
+                    Belge.vektorlestirildi_mi == True,
+                )
+            ).all())
+
+            for cand in candidates:
+                c_vision = (cand.meta or {}).get("vision_analysis")
+                if not c_vision:
+                    continue
+
+                c_type = c_vision.get("image_type")
+                if c_type == "teknik_resim":
+                    c_number = ((c_vision.get("baslik_bloku") or {}).get("cizim_numarasi") or "").strip()
+                elif c_type == "nesting":
+                    c_number = (c_vision.get("malzeme_numarasi") or "").strip()
+                else:
+                    continue
+
+                if not c_number or _normalize(c_number) != my_norm:
+                    continue
+
+                # Zaten birbirine bağlı mı?
+                c_bagli = (cand.meta or {}).get("bagli_dosyalar", {})
+                if c_bagli.get("nesting") or c_bagli.get("cizim"):
+                    continue
+
+                # Yön belirle: teknik_resim kaynak, nesting hedef
+                if img_type == "teknik_resim" and c_type == "nesting":
+                    src_id, tgt_id = doc_id, cand.kimlik
+                elif img_type == "nesting" and c_type == "teknik_resim":
+                    src_id, tgt_id = cand.kimlik, doc_id
+                else:
+                    continue  # Aynı türleri bağlama
+
+                src = db.get(Belge, src_id)
+                tgt = db.get(Belge, tgt_id)
+                if not src or not tgt:
+                    continue
+
+                sm = dict(src.meta or {})
+                sm.setdefault("bagli_dosyalar", {})["nesting"] = tgt_id
+                src.meta = sm
+
+                tm = dict(tgt.meta or {})
+                tm.setdefault("bagli_dosyalar", {})["cizim"] = src_id
+                tgt.meta = tm
+
+                db.commit()
+                logger.info(
+                    "Otomatik eşleşme: %s ↔ %s (numara: %s)",
+                    src_id, tgt_id, my_number,
+                )
+                break
+
+    except Exception as e:
+        logger.warning("Otomatik bağlantı hatası: %s", e)
+
+
+# ── DOSYA BAĞLANTISI ──────────────────────────────────────────────────────────
+
+class LinkRequest(BaseModel):
+    source_id: str
+    target_id: str
+    link_type: str   # 'cad' | 'nesting'
+
+_VALID_LINK_TYPES = {"cad", "nesting"}
+_REVERSE_LINK     = "cizim"   # target'tan source'a olan tersine bağlantı
+
+
+@router.post("/link")
+def link_dosyalar(req: LinkRequest):
+    """İki belge arasında çift yönlü bağlantı oluşturur ve meta'ya kaydeder."""
+    if req.link_type not in _VALID_LINK_TYPES:
+        raise HTTPException(status_code=400, detail="Geçersiz link_type")
+    with get_session() as db:
+        source = db.get(Belge, req.source_id)
+        target = db.get(Belge, req.target_id)
+        if not source or not target:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı")
+
+        # source → target
+        sm = dict(source.meta or {})
+        sm.setdefault("bagli_dosyalar", {})[req.link_type] = req.target_id
+        source.meta = sm
+
+        # target → source (tersine bağlantı)
+        tm = dict(target.meta or {})
+        tm.setdefault("bagli_dosyalar", {})[_REVERSE_LINK] = req.source_id
+        target.meta = tm
+
+        db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/link")
+def unlink_dosyalar(source_id: str, link_type: str):
+    """Bağlantıyı her iki taraftan da kaldırır."""
+    if link_type not in _VALID_LINK_TYPES:
+        raise HTTPException(status_code=400, detail="Geçersiz link_type")
+    with get_session() as db:
+        source = db.get(Belge, source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı")
+
+        sm = dict(source.meta or {})
+        bagli = sm.get("bagli_dosyalar", {})
+        target_id = bagli.pop(link_type, None)
+        sm["bagli_dosyalar"] = bagli
+        source.meta = sm
+
+        if target_id:
+            target = db.get(Belge, target_id)
+            if target:
+                tm = dict(target.meta or {})
+                tm.get("bagli_dosyalar", {}).pop(_REVERSE_LINK, None)
+                target.meta = tm
+
+        db.commit()
+    return {"status": "ok"}

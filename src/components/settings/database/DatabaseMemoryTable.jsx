@@ -1,7 +1,7 @@
 import {
     Database, FileText, Search, Trash2, AlertTriangle, Layers,
     ChevronDown, ChevronRight, X, Network, Share2, Box, CheckCircle2,
-    BarChart3, Zap, RefreshCw, ShieldCheck
+    BarChart3, Zap, RefreshCw, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { mutate, notify } from '../../../api/client';
@@ -15,6 +15,15 @@ const getFileStyle = (filename = '') => {
     if (filename.includes('.pptx')) return { color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' };
     if (filename.includes('.xlsx') || filename.includes('.xls')) return { color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' };
     return { color: 'text-[#378ADD]', bg: 'bg-[#E6F1FB]', border: 'border-[#B8D4F0]' };
+};
+
+const getViewerType = (filename = '', fileType = '') => {
+    const ext = (fileType || filename.split('.').pop() || '').toLowerCase().replace('.', '');
+    if (ext === 'pdf') return 'pdf';
+    if (['pptx', 'ppt'].includes(ext)) return 'pptx';
+    if (['docx', 'doc'].includes(ext)) return 'docx';
+    if (['xlsx', 'xls'].includes(ext)) return 'xlsx';
+    return null;
 };
 
 const SkeletonRow = () => (
@@ -31,7 +40,8 @@ const DatabaseMemoryTable = ({
     recordVectors, expandedPages, togglePageExpansion,
     deleteConfirm, setDeleteConfirm,
     handleDeleteRecord, handleDeleteVector,
-    fetchRecords, recordGraphStats = {}, handleApproveDocument = () => { }
+    fetchRecords, recordGraphStats = {}, handleApproveDocument = () => { },
+    totalChunks = 0, totalDocs = 0, onOpenFile,
 }) => {
     return (
         <div className="flex flex-col flex-1 min-h-0">
@@ -41,10 +51,7 @@ const DatabaseMemoryTable = ({
                 <div className="p-1.5 bg-stone-100 border border-stone-200 rounded-md">
                     <Database size={13} className="text-stone-500" />
                 </div>
-                <span className="text-[11px] font-bold text-stone-600 tracking-widest uppercase">Dosya Listesi</span>
-                <span className="text-[11px] font-medium text-stone-400">
-                    <span className="font-bold text-stone-600">{filteredRecords.length}</span> kayıt
-                </span>
+                <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">Dosya Listesi</span>
 
                 <div className="ml-6 relative flex-1 max-w-xs">
                     <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
@@ -65,36 +72,24 @@ const DatabaseMemoryTable = ({
                     )}
                 </div>
 
-                <div className="ml-auto flex items-center gap-2">
-                    <button onClick={fetchRecords} className="p-1.5 flex items-center justify-center bg-white hover:bg-stone-50 border border-stone-200 rounded-lg shadow-sm transition-colors text-stone-500 hover:text-[#378ADD]" title="Yenile">
-                        <RefreshCw size={13} className={dbLoading ? 'animate-spin text-[#378ADD]' : ''} />
-                    </button>
-                    <button
-                        onClick={async () => {
-                            try {
-                                const d = await mutate.process('/api/sql/repair-integrity', null, {
-                                    subject: 'Bütünlük onarımı',
-                                    silentSuccess: true,
-                                    showLoading: true,
-                                });
-                                notify.success(
-                                    `Onarım tamamlandı: ${d.repaired_chunks} chunk · ${d.created_belgeler} belge oluşturuldu.`,
-                                    { copyable: true }
-                                );
-                                fetchRecords();
-                            } catch { /* mutate toast attı */ }
-                        }}
-                        className="p-1.5 flex items-center justify-center bg-white hover:bg-stone-50 border border-stone-200 rounded-lg shadow-sm transition-colors text-stone-500 hover:text-[#378ADD]" title="Ağ Onarımı Yürüt"
-                    >
-                        <ShieldCheck size={13} />
-                    </button>
+                {/* İstatistik badge'leri */}
+                <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-stone-50 border border-stone-200 rounded-lg">
+                        <BarChart3 size={11} className="text-[#378ADD]" />
+                        <span className="text-[11px] font-bold text-stone-600">{totalChunks.toLocaleString('tr-TR')} Parça</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-stone-50 border border-stone-200 rounded-lg">
+                        <Zap size={11} className="text-stone-400" />
+                        <span className="text-[11px] font-bold text-stone-600">{totalDocs} Döküman</span>
+                    </div>
+                    {dbLoading && <RefreshCw size={12} className="animate-spin text-[#378ADD]" />}
                 </div>
             </div>
 
             {/* ══ KOLON BAŞLIKLARI ══ */}
             <div className="grid grid-cols-[3fr_1.5fr_1fr_1.5fr_60px] items-center px-6 py-2 border-b border-stone-200 bg-stone-50 shrink-0">
                 {['Dosya', 'Bağlantı', 'Parça', 'Tarih', ''].map((h, i) => (
-                    <span key={i} className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">{h}</span>
+                    <span key={i} className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">{h}</span>
                 ))}
             </div>
 
@@ -120,6 +115,7 @@ const DatabaseMemoryTable = ({
 
                         const style = getFileStyle(recordFile);
                         const isExpanded = expandedRecord === recordId;
+                        const viewerType = getViewerType(recordFile, rec.file_type);
                         const gs = recordGraphStats[recordId];
                         const totalLinks = (gs?.total_internal_links ?? 0) + (gs?.total_external_links ?? 0);
                         const connFiles = gs?.connected_files || [];
@@ -131,8 +127,9 @@ const DatabaseMemoryTable = ({
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className={`border-b border-stone-100 ${isExpanded ? 'bg-stone-50' : 'bg-white hover:bg-stone-50/60'} transition-colors`}
+                                className={`relative border-b border-stone-100 ${isExpanded ? 'bg-[#378ADD]/8' : 'bg-white hover:bg-stone-50/60'} transition-colors`}
                             >
+                                {isExpanded && <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#378ADD]" />}
                                 {/* ── Ana Satır ── */}
                                 <div
                                     onClick={() => toggleRecordExpansion({ id: recordId, file: recordFile })}
@@ -143,7 +140,7 @@ const DatabaseMemoryTable = ({
                                             <FileText size={13} className={style.color} />
                                         </div>
                                         <div className="flex flex-col min-w-0">
-                                            <span className="text-[12px] text-stone-800 truncate font-semibold">{recordFile}</span>
+                                            <span className={`text-[12px] truncate ${isExpanded ? 'font-bold text-stone-800' : 'font-medium text-stone-700'}`}>{recordFile}</span>
                                             <span className="text-[10px] text-stone-400 font-mono">…{recordId.substring(recordId.length - 8)}</span>
                                         </div>
                                     </div>
@@ -178,6 +175,24 @@ const DatabaseMemoryTable = ({
                                             </button>
                                         )}
 
+                                        {viewerType && onOpenFile && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onOpenFile({
+                                                        id: `view-${recordId}`,
+                                                        title: recordFile,
+                                                        type: viewerType,
+                                                        url: `/api/archive/file/${recordId}`,
+                                                    });
+                                                }}
+                                                className="p-1 rounded hover:bg-[#E6F1FB] hover:text-[#378ADD] text-stone-300 transition-all"
+                                                title="Dosyayı Görüntüle"
+                                            >
+                                                <Eye size={12} />
+                                            </button>
+                                        )}
+
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'record', id: recordId }); }}
                                             className="p-1 rounded hover:bg-[#FEF2F2] hover:text-[#991B1B] text-stone-300 transition-all"
@@ -209,32 +224,27 @@ const DatabaseMemoryTable = ({
                                             className="overflow-hidden border-t border-stone-200 bg-white"
                                         >
                                             {/* ── Özet şerit ── */}
-                                            <div className="flex items-center gap-0 border-b border-stone-100">
-                                                <div className="flex-1 flex items-center gap-2 px-6 py-3 border-r border-stone-100">
-                                                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Parça</span>
-                                                    <span className="text-[14px] font-extrabold text-[#378ADD] ml-auto">{rec.chunks}</span>
-                                                </div>
-                                                <div className="flex-1 flex items-center gap-2 px-6 py-3 border-r border-stone-100">
-                                                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">İç Link</span>
-                                                    <span className="text-[14px] font-extrabold text-stone-700 ml-auto">{gs ? gs.total_internal_links : '…'}</span>
-                                                </div>
-                                                <div className="flex-1 flex items-center gap-2 px-6 py-3 border-r border-stone-100">
-                                                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Dış Link</span>
-                                                    <span className="text-[14px] font-extrabold text-stone-700 ml-auto">{gs ? gs.total_external_links : '…'}</span>
-                                                </div>
-                                                <div className="flex-1 flex items-center gap-2 px-6 py-3">
-                                                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Bağlı Dosya</span>
-                                                    <span className="text-[14px] font-extrabold text-stone-700 ml-auto">{connFiles.length}</span>
-                                                </div>
+                                            <div className="flex items-stretch border-b border-stone-150">
+                                                {[
+                                                    { label: 'Parça',       value: rec.chunks,                      color: 'text-[#378ADD]' },
+                                                    { label: 'İç Link',     value: gs ? gs.total_internal_links : '…', color: 'text-stone-700' },
+                                                    { label: 'Dış Link',    value: gs ? gs.total_external_links : '…', color: 'text-stone-700' },
+                                                    { label: 'Bağlı Dosya', value: connFiles.length,                color: 'text-stone-700' },
+                                                ].map((s, i, arr) => (
+                                                    <div key={s.label} className={`flex-1 flex flex-col items-center justify-center gap-1 py-4 ${i < arr.length - 1 ? 'border-r border-stone-100' : ''}`}>
+                                                        <span className="text-[8px] font-black tracking-[0.18em] text-stone-400 uppercase">{s.label}</span>
+                                                        <span className={`text-[18px] font-extrabold leading-none ${s.color}`}>{s.value}</span>
+                                                    </div>
+                                                ))}
                                             </div>
 
                                             {/* ── Bağlı dosyalar (varsa) ── */}
                                             {connFiles.length > 0 && (
-                                                <div className="flex items-center gap-2 flex-wrap px-6 py-3 border-b border-stone-100 bg-stone-50/50">
+                                                <div className="flex items-center gap-2 flex-wrap px-6 py-3.5 border-b border-stone-100 bg-stone-50/40">
                                                     <Share2 size={11} className="text-stone-400 shrink-0" />
-                                                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold shrink-0">Bağlı:</span>
+                                                    <span className="text-[8px] font-black tracking-[0.18em] text-stone-400 uppercase shrink-0">Bağlı:</span>
                                                     {connFiles.map(cf => (
-                                                        <span key={cf.filename} className="flex items-center gap-1.5 text-[11px] text-stone-600 bg-white border border-stone-200 rounded px-2.5 py-1 font-medium">
+                                                        <span key={cf.filename} className="flex items-center gap-1.5 text-[11px] text-stone-600 bg-white border border-stone-200 rounded-md px-2.5 py-1 font-medium">
                                                             {cf.filename}
                                                             <span className="text-[10px] font-bold text-[#378ADD]">{cf.links}×</span>
                                                         </span>
@@ -243,7 +253,7 @@ const DatabaseMemoryTable = ({
                                             )}
 
                                             {/* ── Düğüm listesi ── */}
-                                            <div className="max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+                                            <div className="overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                                                 {vectors.length === 0 && recordVectors[rec.id] !== undefined && (
                                                     <div className="flex items-center justify-center py-8 text-stone-400 gap-2">
                                                         <Network size={16} strokeWidth={1.5} />
@@ -268,55 +278,60 @@ const DatabaseMemoryTable = ({
                                                     }, {});
 
                                                     return Object.entries(grouped).map(([page, pVecs]) => {
-                                                        const open = expandedPages[page];
+                                                        const open = !!expandedPages[page];
                                                         return (
                                                             <div key={page}>
                                                                 {/* Sayfa satırı */}
                                                                 <div
                                                                     onClick={() => togglePageExpansion(page)}
-                                                                    className="flex items-center gap-2.5 px-6 py-2.5 cursor-pointer border-b border-stone-100 hover:bg-stone-50 transition-colors"
+                                                                    className="flex items-center gap-3 px-6 py-2.5 cursor-pointer border-b border-stone-100 hover:bg-stone-50/60 transition-colors"
                                                                 >
-                                                                    <ChevronRight size={12} className={`text-stone-400 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
-                                                                    <Layers size={12} className={open ? 'text-[#378ADD]' : 'text-stone-400'} />
-                                                                    <span className="text-[12px] font-semibold text-stone-700">Sayfa / Yapı: {page}</span>
-                                                                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded border transition-colors ${open ? 'text-[#378ADD] bg-[#E6F1FB] border-[#B8D4F0]' : 'text-stone-400 bg-stone-100 border-stone-200'}`}>
+                                                                    <ChevronRight size={11} className={`text-stone-400 transition-transform duration-150 shrink-0 ${open ? 'rotate-90' : ''}`} />
+                                                                    <Layers size={12} className={`shrink-0 ${open ? 'text-[#378ADD]' : 'text-stone-400'}`} />
+                                                                    <span className={`text-[12px] ${open ? 'font-bold text-stone-700' : 'font-medium text-stone-500'}`}>Sayfa / Yapı: {page}</span>
+                                                                    <span className={`ml-auto text-[9px] font-black px-2 py-0.5 rounded-md border transition-colors ${open ? 'text-[#378ADD] bg-[#E6F1FB] border-[#B8D4F0]' : 'text-stone-400 bg-stone-100 border-stone-200'}`}>
                                                                         {pVecs.length} düğüm
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Düğümler */}
                                                                 {open && (
-                                                                    <div className="overflow-hidden border-t border-stone-50 transition-all duration-300">
+                                                                    <div className="px-4 py-3 flex flex-col gap-2 bg-stone-50/60">
                                                                         {pVecs.map((vector, vIdx) => (
                                                                             <div
                                                                                 key={vector.id}
-                                                                                className={`relative group/v flex items-start gap-3 pl-12 pr-5 py-2.5 border-b border-stone-50 transition-colors
-                                                                                        ${deleteConfirm?.id === vector.id ? 'bg-[#FEF2F2]/50' : 'hover:bg-stone-50/80'}`}
+                                                                                className={`group/v relative flex items-start gap-3 bg-white rounded-lg border px-4 py-3 transition-all
+                                                                                    ${deleteConfirm?.id === vector.id
+                                                                                        ? 'border-red-200 bg-red-50/40'
+                                                                                        : 'border-stone-200 hover:border-[#378ADD]/30 hover:shadow-sm'}`}
                                                                             >
-                                                                                {/* Numara */}
-                                                                                <div className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border border-stone-200 bg-white text-[9px] font-bold text-stone-400 flex items-center justify-center group-hover/v:border-[#378ADD]/40 group-hover/v:text-[#378ADD] transition-colors">
+                                                                                {/* Numara rozeti */}
+                                                                                <div className={`shrink-0 w-5 h-5 rounded-full text-[9px] font-black flex items-center justify-center mt-0.5 transition-colors
+                                                                                    ${deleteConfirm?.id === vector.id
+                                                                                        ? 'bg-red-100 text-red-400 border border-red-200'
+                                                                                        : 'bg-stone-100 text-stone-400 border border-stone-200 group-hover/v:bg-[#378ADD]/10 group-hover/v:text-[#378ADD] group-hover/v:border-[#378ADD]/30'}`}>
                                                                                     {vIdx + 1}
                                                                                 </div>
 
                                                                                 {/* İçerik */}
                                                                                 <div className="flex-1 min-w-0">
-                                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                                        <span className="text-[9px] text-stone-400 uppercase tracking-widest font-bold">Parça</span>
-                                                                                        <span className="font-mono text-[9px] text-stone-300 bg-stone-100 px-1 py-0.5 rounded">#{vector.id.substring(vector.id.length - 6)}</span>
+                                                                                    <div className="flex items-center gap-2 mb-1.5">
+                                                                                        <span className="text-[8px] font-black tracking-[0.18em] text-stone-400 uppercase">Parça</span>
+                                                                                        <span className="font-mono text-[9px] text-stone-300 bg-stone-100 px-1.5 py-0.5 rounded">#{vector.id.substring(vector.id.length - 6)}</span>
                                                                                     </div>
-                                                                                    <p className="text-[12px] text-stone-700 leading-relaxed line-clamp-2">{vector.text}</p>
+                                                                                    <p className="text-[12px] text-stone-700 leading-relaxed line-clamp-3">{vector.text}</p>
                                                                                 </div>
 
                                                                                 {/* Sil */}
-                                                                                <div className="shrink-0 self-center relative">
+                                                                                <div className="shrink-0 self-start relative mt-0.5">
                                                                                     <button
                                                                                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'vector', id: vector.id, recId: rec.id }); }}
-                                                                                        className={`p-1 rounded transition-all ${deleteConfirm?.id === vector.id ? 'opacity-100 text-red-500' : 'opacity-0 group-hover/v:opacity-100 text-slate-300 hover:text-red-400'}`}
+                                                                                        className={`p-1 rounded transition-all ${deleteConfirm?.id === vector.id ? 'opacity-100 text-red-400' : 'opacity-0 group-hover/v:opacity-100 text-stone-300 hover:text-red-400'}`}
                                                                                     >
-                                                                                        <Trash2 size={12} />
+                                                                                        <Trash2 size={11} />
                                                                                     </button>
                                                                                     {deleteConfirm?.type === 'vector' && deleteConfirm?.id === vector.id && (
-                                                                                        <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 bg-white border border-red-200 shadow-lg rounded-lg p-2 min-w-max" onClick={e => e.stopPropagation()}>
+                                                                                        <div className="absolute right-full mr-2 top-0 z-50 flex items-center gap-2 bg-white border border-red-200 shadow-lg rounded-lg p-2 min-w-max" onClick={e => e.stopPropagation()}>
                                                                                             <span className="text-[11px] text-slate-700 font-medium">Kes?</span>
                                                                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteVector(rec.id, vector.id); }} className="px-2.5 py-1 bg-[#378ADD] text-white rounded text-[10px] font-bold">Evet</button>
                                                                                             <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} className="px-2.5 py-1 bg-stone-100 text-stone-600 rounded text-[10px]">İptal</button>

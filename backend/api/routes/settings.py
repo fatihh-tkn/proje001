@@ -145,6 +145,404 @@ def save_feature_flags(body: dict):
     return {"ok": True}
 
 
+# ── Vision Model (Derin AI Görsel Okuma için kullanılacak model) ──────────────
+
+@router.get("/vision-model")
+def get_vision_model():
+    """Mevcut vision model seçimini ve kullanılabilir modelleri döner."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari, AIModeli
+    from services.crypto_service import decrypt as _decrypt
+    from sqlalchemy import select
+
+    with get_session() as db:
+        row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "vision_model_id"))
+        selected_id = str(row.deger) if row and row.deger else None
+
+        rows = list(db.scalars(
+            select(AIModeli).where(AIModeli.aktif_mi == True).order_by(AIModeli.olusturulma_tarihi)
+        ).all())
+        models = []
+        for m in rows:
+            key = _decrypt(m.api_anahtari) or ""
+            masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+            models.append({
+                "id": m.kimlik,
+                "name": m.ad,
+                "provider": m.tedarikci or "",
+                "masked_key": masked,
+                "model_id": m.model_id or "",
+                "ready": bool(m.model_id and m.model_id.strip()),
+            })
+
+    return {"models": models, "selected_id": selected_id}
+
+
+@router.post("/vision-model")
+def save_vision_model(body: dict):
+    """Vision model seçimini SistemAyari tablosuna yazar. model_id=None → seçimi kaldır."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    import datetime
+
+    model_id = body.get("model_id")
+    now = datetime.datetime.utcnow().isoformat()
+
+    with get_session() as db:
+        row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "vision_model_id"))
+        if row:
+            row.deger = model_id
+            row.guncelleme_tarihi = now
+        else:
+            db.add(SistemAyari(
+                anahtar="vision_model_id",
+                deger=model_id,
+                aciklama="Derin AI Görsel Okuma için kullanılacak AIModeli ID'si",
+                hassas_mi=False,
+                olusturulma_tarihi=now,
+                guncelleme_tarihi=now,
+            ))
+        db.commit()
+    return {"ok": True}
+
+
+# ── Teknik Döküman İşleme Ayarları ───────────────────────────────────────────
+
+DOC_PROCESSING_FLAGS = [
+    {
+        "key": "doc_vision_enabled",
+        "label": "Görsel Analiz (PNG/JPG/WEBP/TIFF)",
+        "desc": "Arşive yüklenen görsel dosyalar Vision AI ile analiz edilir; teknik çizim detayları RAG'a eklenir.",
+        "default": True,
+    },
+    {
+        "key": "doc_pdf_vision_enabled",
+        "label": "PDF Vision Analizi",
+        "desc": "PDF yüklendiğinde sayfalar görüntüye çevrilip Vision AI'a gönderilir. Taranmış veya CAD çıktısı PDF'ler için önerilir.",
+        "default": False,
+    },
+    {
+        "key": "doc_pptx_vision_enabled",
+        "label": "PPTX Slayt Analizi",
+        "desc": "Yüklenen PPTX dosyalarının slaytları görüntüye dönüştürülerek Vision AI ile analiz edilir.",
+        "default": False,
+    },
+    {
+        "key": "doc_auto_vectorize",
+        "label": "Otomatik Vektörizasyon",
+        "desc": "Yükleme sonrasında belgeler arka planda otomatik vektörize edilir ve RAG havuzuna eklenir.",
+        "default": True,
+    },
+]
+
+DOC_OUTPUT_GROUPS = [
+    {
+        "group_key": "parca_tanim",
+        "label": "Parça Tanım Bilgileri",
+        "fields": [
+            {"key": "parca_adi",       "label": "Parça Adı (Benennung)"},
+            {"key": "parca_kodu",      "label": "Parça Kodu"},
+            {"key": "cizim_numarasi",  "label": "Çizim Numarası (Zeichnungsnummer)"},
+            {"key": "kimlik_numarasi", "label": "Kimlik Numarası (Identnummer)"},
+            {"key": "sayfa_bilgisi",   "label": "Sayfa Bilgisi"},
+        ],
+    },
+    {
+        "group_key": "geometrik",
+        "label": "Geometrik / Boyutsal Bilgiler",
+        "fields": [
+            {"key": "acilim_uzunlugu",  "label": "Açılım Uzunluğu (Abwicklung)"},
+            {"key": "boyutlar",         "label": "Boyutlar (en, boy, yükseklik)"},
+            {"key": "bukme_yaricapi",   "label": "Bükme Yarıçapı"},
+            {"key": "kenar_mesafeleri", "label": "Kenar Mesafeleri"},
+            {"key": "kesit",            "label": "Kesit (genişlik × kalınlık)"},
+            {"key": "olcek",            "label": "Ölçek (Maßstab)"},
+        ],
+    },
+    {
+        "group_key": "malzeme_uretim",
+        "label": "Malzeme ve Üretim Bilgileri",
+        "fields": [
+            {"key": "malzeme",         "label": "Malzeme"},
+            {"key": "agirlik",         "label": "Ağırlık (Fertiggewicht)"},
+            {"key": "yuzey_standardi", "label": "Yüzey İşlem Standardı"},
+            {"key": "kesim_standardi", "label": "Kesim Standardı"},
+            {"key": "sayfa_formati",   "label": "Sayfa Formatı"},
+        ],
+    },
+    {
+        "group_key": "toleranslar",
+        "label": "Tolerans Standartları",
+        "fields": [
+            {"key": "talasli_tolerans",  "label": "Talaşlı İmalat (Spanende Bearbeitung)"},
+            {"key": "talassiz_tolerans", "label": "Talaşsız İmalat (Spanlose Bearbeitung)"},
+            {"key": "kaynakli_tolerans", "label": "Kaynaklı Konstrüksiyon"},
+            {"key": "dokum_tolerans",    "label": "Döküm Parçalar (Gussstelle)"},
+        ],
+    },
+    {
+        "group_key": "izlenebilirlik",
+        "label": "İzlenebilirlik / Onay Bilgileri",
+        "fields": [
+            {"key": "cizim_tarihi",   "label": "Çizim Tarihi"},
+            {"key": "cizen",          "label": "Çizen (Gez.)"},
+            {"key": "onaylayan",      "label": "Onaylayan"},
+            {"key": "kalite_kontrol", "label": "Kalite Kontrol"},
+            {"key": "cad_bilgisi",    "label": "CAD Çizim Bilgisi (3D)"},
+        ],
+    },
+]
+
+_PROMPT_INSTRUCTION = """Bu teknik çizimi analiz et ve aşağıdaki JSON formatında yanıt ver.
+SADECE JSON döndür, markdown kod bloğu veya açıklama yazma. Bulunamayan alanları boş string olarak bırak."""
+
+
+def _build_prompt_from_groups(enabled_keys: set) -> str:
+    """Aktif alanlara göre dinamik JSON şeması üretir."""
+    import json as _json
+
+    schema: dict = {"image_type": "teknik_resim"}
+    for group in DOC_OUTPUT_GROUPS:
+        group_schema = {
+            f["key"]: ""
+            for f in group["fields"]
+            if f["key"] in enabled_keys
+        }
+        if group_schema:
+            schema[group["group_key"]] = group_schema
+
+    return _PROMPT_INSTRUCTION + "\n\n" + _json.dumps(schema, indent=2, ensure_ascii=False)
+
+
+def _upsert_setting(db, key: str, value: str, desc: str = "", now: str = ""):
+    from database.sql.models import SistemAyari
+    from sqlalchemy import select
+    row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == key))
+    if row:
+        row.deger = value
+        row.guncelleme_tarihi = now
+    else:
+        db.add(SistemAyari(
+            anahtar=key, deger=value, aciklama=desc,
+            hassas_mi=False, olusturulma_tarihi=now, guncelleme_tarihi=now,
+        ))
+
+
+@router.get("/doc-processing")
+def get_doc_processing():
+    """Teknik döküman işleme ayarlarını döner (model, prompt, output fields, flags)."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari, AIModeli
+    from services.crypto_service import decrypt as _decrypt
+    from sqlalchemy import select
+    import json as _json
+
+    with get_session() as db:
+        rows = {r.anahtar: r.deger for r in db.scalars(select(SistemAyari)).all()}
+
+        ai_rows = list(db.scalars(
+            select(AIModeli).where(AIModeli.aktif_mi == True).order_by(AIModeli.olusturulma_tarihi)
+        ).all())
+        models = []
+        for m in ai_rows:
+            key = _decrypt(m.api_anahtari) or ""
+            masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+            models.append({
+                "id": m.kimlik,
+                "name": m.ad,
+                "provider": m.tedarikci or "",
+                "masked_key": masked,
+                "model_id": m.model_id or "",
+                "ready": bool(m.model_id and m.model_id.strip()),
+            })
+
+    def _bool(raw, default):
+        if raw is None:
+            return bool(default)
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+    # Output field toggle'ları — DB'de yoksa tümü aktif
+    raw_fields = rows.get("doc_output_fields")
+    try:
+        saved_fields = _json.loads(raw_fields) if raw_fields else {}
+    except Exception:
+        saved_fields = {}
+
+    # Tüm field key'leri — enabled setini hesapla
+    all_keys = {f["key"] for g in DOC_OUTPUT_GROUPS for f in g["fields"]}
+    enabled_keys = {k for k in all_keys if saved_fields.get(k, True)}
+
+    # Gruplu output yapısı
+    output_groups = [
+        {
+            "group_key": g["group_key"],
+            "label": g["label"],
+            "fields": [
+                {**f, "enabled": f["key"] in enabled_keys}
+                for f in g["fields"]
+            ],
+        }
+        for g in DOC_OUTPUT_GROUPS
+    ]
+
+    # Efektif prompt: custom varsa onu, yoksa field'lardan otomatik üret
+    custom_prompt = rows.get("doc_processing_prompt") or ""
+    is_custom = bool(custom_prompt.strip())
+    effective_prompt = custom_prompt if is_custom else _build_prompt_from_groups(enabled_keys)
+
+    return {
+        "models": models,
+        "selected_model_id": rows.get("doc_processing_model_id"),
+        "prompt": effective_prompt,
+        "is_custom_prompt": is_custom,
+        "output_groups": output_groups,
+        "flags": [
+            {**f, "value": _bool(rows.get(f["key"]), f["default"])}
+            for f in DOC_PROCESSING_FLAGS
+        ],
+    }
+
+
+@router.post("/doc-processing")
+def save_doc_processing(body: dict):
+    """Teknik döküman işleme ayarlarını yazar. model_id / prompt / output_fields / flags."""
+    from database.sql.session import get_session
+    from sqlalchemy import select
+    import datetime
+    import json as _json
+
+    now = datetime.datetime.utcnow().isoformat()
+
+    with get_session() as db:
+        # Model seçimi
+        if "model_id" in body:
+            val = body["model_id"] or ""
+            _upsert_setting(db, "doc_processing_model_id", val, "Teknik döküman işleme modeli", now)
+
+        # Prompt
+        if "prompt" in body:
+            val = body["prompt"] or ""
+            _upsert_setting(db, "doc_processing_prompt", val, "Teknik döküman Vision AI promptu", now)
+
+        # Output fields
+        if "output_fields" in body:
+            val = _json.dumps(body["output_fields"])
+            _upsert_setting(db, "doc_output_fields", val, "Çıktı alanı toggle'ları", now)
+
+        # Boolean flags
+        if "flags" in body:
+            allowed = {f["key"] for f in DOC_PROCESSING_FLAGS}
+            for key, value in body["flags"].items():
+                if key not in allowed:
+                    continue
+                str_val = "true" if bool(value) else "false"
+                desc = next((f["desc"] for f in DOC_PROCESSING_FLAGS if f["key"] == key), "")
+                _upsert_setting(db, key, str_val, desc, now)
+
+        db.commit()
+    return {"ok": True}
+
+
+# ── Zeka Modeli (Global AI Model + Parametreler) ─────────────────────────────
+
+@router.get("/intelligence-model")
+def get_intelligence_model():
+    """Global zeka modeli ayarlarını döner: mevcut model, parametreler, model listesi."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari, AIModeli, AIAgent
+    from services.crypto_service import decrypt as _decrypt
+    from sqlalchemy import select
+
+    with get_session() as db:
+        # Kilitli olmayan ilk aktif ajandan mevcut global modeli oku
+        agent = db.scalars(
+            select(AIAgent)
+            .where(AIAgent.model_locked == False, AIAgent.aktif_mi == True)
+            .order_by(AIAgent.olusturulma_tarihi)
+        ).first()
+        current_model = agent.model if agent else None
+
+        # SistemAyari'den parametreler
+        rows = {r.anahtar: r.deger for r in db.scalars(select(SistemAyari)).all()}
+
+        # Model listesi
+        ai_rows = list(db.scalars(
+            select(AIModeli).where(AIModeli.aktif_mi == True).order_by(AIModeli.olusturulma_tarihi)
+        ).all())
+        models = []
+        for m in ai_rows:
+            key = _decrypt(m.api_anahtari) or ""
+            masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+            models.append({
+                "id": m.kimlik,
+                "name": m.ad,
+                "provider": m.tedarikci or "",
+                "model_id": m.model_id or "",
+                "masked_key": masked,
+                "ready": bool(m.model_id and m.model_id.strip()),
+            })
+
+    def _float(raw, default):
+        try: return float(raw) if raw is not None else default
+        except: return default
+
+    def _int(raw, default):
+        try: return int(raw) if raw is not None else default
+        except: return default
+
+    return {
+        "current_model": current_model,
+        "models": models,
+        "temperature": _float(rows.get("global_temperature"), 0.7),
+        "max_tokens":  _int(rows.get("global_max_tokens"), 4096),
+        "language":    rows.get("global_language") or "auto",
+    }
+
+
+@router.post("/intelligence-model")
+def save_intelligence_model(body: dict):
+    """Global zeka modeli ayarlarını yazar."""
+    from database.sql.session import get_session
+    from database.sql.models import SistemAyari, AIAgent
+    from sqlalchemy import select
+    import datetime
+
+    now = datetime.datetime.utcnow().isoformat()
+
+    with get_session() as db:
+        # Model değişikliği → kilitli olmayan tüm ajanlara uygula
+        if "model" in body:
+            model_name = (body["model"] or "").strip()
+            if model_name:
+                agents = list(db.scalars(
+                    select(AIAgent).where(AIAgent.model_locked == False)
+                ).all())
+                for a in agents:
+                    a.model = model_name
+
+        # Parametre güncellemeleri
+        param_map = {
+            "temperature": ("global_temperature", "Varsayılan LLM sıcaklığı"),
+            "max_tokens":  ("global_max_tokens",  "Varsayılan maksimum token sayısı"),
+            "language":    ("global_language",    "Varsayılan yanıt dili"),
+        }
+        for field, (key, desc) in param_map.items():
+            if field in body:
+                _upsert_setting(db, key, str(body[field]), desc, now)
+
+        db.commit()
+
+    # Cache'i geçersiz kıl
+    try:
+        from core.db_bridge import invalidate_settings_cache
+        invalidate_settings_cache()
+    except Exception:
+        pass
+
+    return {"ok": True}
+
+
 # ── Agent Assignments (Graph rolü → AIAgent eşleştirmesi) ─────────────────────
 
 # UI'da dropdown sırası ve insan-okur etiketler

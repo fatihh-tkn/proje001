@@ -89,14 +89,15 @@ _VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "do
 
 # Komut → intent (deterministik)
 _COMMAND_INTENT_MAP = {
-    "error_solve":            "hata_cozumu",
-    "clarification_continue": "hata_cozumu_devam",   # tur devamı — sadece error_solver
-    "zli_report_query":       "rapor_arama",
-    "summarize":              "general",
-    "bpmn_analyze":           "general",
-    "extract_tables":         "general",
-    "gen_questions":          "general",
-    "action_items":           "general",
+    "error_solve":              "hata_cozumu",
+    "clarification_continue":   "hata_cozumu_devam",   # tur devamı — sadece error_solver
+    "zli_report_query":         "rapor_arama",
+    "parca_suresi_hesapla":     "general",
+    "summarize":                "general",
+    "bpmn_analyze":             "general",
+    "extract_tables":           "general",
+    "gen_questions":            "general",
+    "action_items":             "general",
 }
 
 # Kısa sohbet kalıpları — fast-path: LLM classifier'a hiç uğramadan 'sohbet'e düşür.
@@ -431,17 +432,24 @@ def _rule_based_intent(user_message: str, has_file: bool) -> tuple[str, str]:
     return "general", "Belirgin sinyal yok → bilgi tabanı aramasını dene."
 
 
-def _make_plan_briefs(intent: str, user_msg: str, plan: list[dict]) -> dict[str, str]:
+def _make_plan_briefs(intent: str, user_msg: str, plan: list[dict], cmd: str | None = None) -> dict[str, str]:
     """Her specialist node için kısa odak talimatı üretir (rule-based, sıfır LLM maliyeti)."""
     msg_snippet = (user_msg or "")[:120].strip()
     briefs: dict[str, str] = {}
     for item in plan:
         node = item.get("node", "")
         if node == "rag_search":
-            briefs[node] = (
-                f"Şu soruyla ilgili bilgi tabanında ara: «{msg_snippet}». "
-                "Doğrudan ilgili paragrafları ve sayfa numaralarını döndür."
-            )
+            if cmd == "parca_suresi_hesapla":
+                briefs[node] = (
+                    f"Parça süresi / operasyon süresi hesaplama isteği: «{msg_snippet}». "
+                    "Operasyon süreleri, setup zamanları, işlem süresi tabloları, "
+                    "iş emri süre verileri ve ilgili SAP üretim kayıtlarını ara."
+                )
+            else:
+                briefs[node] = (
+                    f"Şu soruyla ilgili bilgi tabanında ara: «{msg_snippet}». "
+                    "Doğrudan ilgili paragrafları ve sayfa numaralarını döndür."
+                )
         elif node == "error_solver":
             briefs[node] = (
                 f"Şu hatayı analiz et: «{msg_snippet}». "
@@ -585,7 +593,7 @@ async def supervisor_node(state: AgentState) -> dict:
         needs_polish = False
 
     plan = _plan_for_intent(intent)
-    plan_briefs = _make_plan_briefs(intent, user_msg, plan)
+    plan_briefs = _make_plan_briefs(intent, user_msg, plan, cmd=cmd)
     elapsed_ms = int((time.time() - t0) * 1000)
 
     logger.info(

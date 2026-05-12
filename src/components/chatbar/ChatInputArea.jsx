@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Settings2, Send, X, FileText,
-    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2
+    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2, Timer
 } from 'lucide-react';
 import FilePickerModal from './FilePickerModal';
 import { useErrorStore } from '../../store/errorStore';
@@ -14,8 +14,9 @@ import { useErrorStore } from '../../store/errorStore';
 // bpmn_analyze/extract_tables/gen_questions/action_items' komutları general
 // intent'ine düşüyordu ve ayırt edici davranışları yoktu.
 export const QUICK_ACTIONS = [
-    { id: 'error_solve',      label: 'Hata Çözümü',       icon: AlertTriangle,  color: '#A01B1B' },
-    { id: 'zli_report_query', label: "Z'li Rapor Sorgusu", icon: FileSpreadsheet, color: '#7c3aed' },
+    { id: 'error_solve',            label: 'Hata Çözümü',           icon: AlertTriangle,  color: '#A01B1B' },
+    { id: 'zli_report_query',       label: "Z'li Rapor Sorgusu",    icon: FileSpreadsheet, color: '#7c3aed' },
+    { id: 'parca_suresi_hesapla',   label: 'Parça Süresi Hesapla',  icon: Timer,           color: '#0e7490' },
 ];
 
 // ── Dosya tipi ikonu ─────────────────────────────────────────────────────────

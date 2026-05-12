@@ -1,27 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Brain, Check, Loader2, RefreshCw, Globe, Zap, AlertTriangle,
+    Brain, Check, Loader2, RefreshCw, AlertTriangle,
     ChevronDown, ChevronUp, Cpu, Cloud, Sparkles
 } from 'lucide-react';
 import { mutation, mutate } from '../../../api/client';
 
 const BASE = '/api/embedding';
 
-// Provider ikonları ve renkleri
 const PROVIDER_CONFIG = {
-    'sentence-transformers': {
-        icon: Cpu,
-        color: '#22c55e',
-        label: 'Lokal Model',
-        badge: 'CPU/GPU',
-    },
-    'openai': {
-        icon: Cloud,
-        color: '#a78bfa',
-        label: 'OpenAI API',
-        badge: 'API',
-    },
+    'sentence-transformers': { icon: Cpu,   color: '#22c55e', badge: 'CPU/GPU' },
+    'openai':                { icon: Cloud, color: '#a78bfa', badge: 'API'     },
 };
 
 const EmbeddingModelPanel = () => {
@@ -75,7 +64,6 @@ const EmbeddingModelPanel = () => {
             'Tüm mevcut belgeler aktif embedding modeli ile yeniden vektörleştirilecek.\n\n' +
             'Bu işlem büyük veritabanlarında uzun sürebilir. Devam etmek istiyor musunuz?'
         )) return;
-
         setReVectorizing(true);
         setReVecResult(null);
         setError(null);
@@ -92,140 +80,131 @@ const EmbeddingModelPanel = () => {
 
     if (loading) {
         return (
-            <div style={styles.container}>
-                <div style={styles.loadingBox}>
-                    <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-                    <span style={{ color: '#78716c', fontSize: 12 }}>Embedding modelleri yükleniyor...</span>
-                </div>
+            <div className="flex items-center justify-center gap-3 py-10">
+                <Loader2 size={18} className="text-[#378ADD] animate-spin" />
+                <span className="text-[12px] text-stone-500">Modeller yükleniyor...</span>
             </div>
         );
     }
 
+    const activeModel = models.find(m => m.key === activeKey);
+
     return (
-        <div style={styles.container}>
-            {/* Header */}
-            <div style={styles.header}>
-                <div style={styles.headerLeft}>
-                    <Brain size={18} style={{ color: '#a78bfa' }} />
-                    <span style={styles.headerTitle}>Embedding Model Yönetimi</span>
+        <div className="flex flex-col">
+
+            {/* Başlık */}
+            <div className="flex items-center justify-between py-2.5 border-b border-stone-100 mb-1">
+                <div className="flex items-center gap-2">
+                    <Brain size={13} className="text-violet-400" />
+                    <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">Embedding Model Yönetimi</span>
                 </div>
-                <div style={styles.headerRight}>
-                    <span style={styles.headerBadge}>
-                        {models.length} model
-                    </span>
-                </div>
+                <span className="text-[9px] text-stone-400 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded">
+                    {models.length} model
+                </span>
             </div>
 
-            {/* Active Model Info */}
-            {activeKey && (
-                <div style={styles.activeInfo}>
-                    <Sparkles size={14} style={{ color: '#fbbf24' }} />
-                    <span style={styles.activeLabel}>Aktif:</span>
-                    <span style={styles.activeName}>
-                        {models.find(m => m.key === activeKey)?.display_name || activeKey}
-                    </span>
+            {/* Aktif model şeridi */}
+            {activeModel && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-[#378ADD]/8 border-l-2 border-[#378ADD] rounded-r mb-1">
+                    <Sparkles size={11} className="text-amber-400 shrink-0" />
+                    <span className="text-[10px] text-stone-400 shrink-0">Aktif:</span>
+                    <span className="text-[11px] font-bold text-[#378ADD] truncate">{activeModel.display_name}</span>
                 </div>
             )}
 
-            {/* Error */}
+            {/* Hata */}
             <AnimatePresence>
                 {error && (
                     <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        style={styles.errorBox}
+                        className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-600 text-[11px] mb-1 overflow-hidden"
                     >
-                        <AlertTriangle size={14} />
+                        <AlertTriangle size={13} className="shrink-0" />
                         <span>{error}</span>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Model Cards */}
-            <div style={styles.modelList}>
+            {/* Model listesi */}
+            <div className="flex flex-col">
                 {models.map((m) => {
                     const isActive = m.key === activeKey;
                     const provConf = PROVIDER_CONFIG[m.provider] || PROVIDER_CONFIG['sentence-transformers'];
                     const ProvIcon = provConf.icon;
-
                     return (
-                        <motion.div
+                        <div
                             key={m.key}
-                            layout
-                            whileHover={{ scale: 1.005 }}
                             onClick={() => handleSelect(m.key)}
-                            style={{
-                                ...styles.modelCard,
-                                borderColor: isActive ? provConf.color : '#e7e5e4',
-                                background: isActive
-                                    ? `linear-gradient(135deg, ${provConf.color}15, ${provConf.color}05)`
-                                    : '#fafaf9',
-                                cursor: switching ? 'wait' : 'pointer',
-                            }}
+                            style={{ cursor: switching ? 'wait' : 'pointer' }}
+                            className={`relative flex flex-col gap-1 px-4 py-2.5 transition-all duration-100 border-b border-stone-50
+                                ${isActive ? 'bg-[#378ADD]/8' : 'hover:bg-stone-50'}`}
                         >
-                            {/* Top Row */}
-                            <div style={styles.cardTop}>
-                                <div style={styles.cardLeft}>
-                                    <div style={{
-                                        ...styles.providerIcon,
-                                        background: `${provConf.color}18`,
-                                        color: provConf.color,
-                                    }}>
-                                        <ProvIcon size={14} />
-                                    </div>
-                                    <div>
-                                        <div style={styles.modelName}>{m.display_name}</div>
-                                        <div style={styles.modelKey}>{m.key}</div>
-                                    </div>
+                            {isActive && <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#378ADD]" />}
+
+                            {/* Üst satır */}
+                            <div className="flex items-center gap-2">
+                                <div
+                                    className="w-6 h-6 shrink-0 rounded flex items-center justify-center"
+                                    style={{ background: `${provConf.color}18`, color: provConf.color }}
+                                >
+                                    <ProvIcon size={13} />
                                 </div>
-                                <div style={styles.cardRight}>
-                                    {isActive ? (
-                                        <div style={{ ...styles.statusBadge, background: `${provConf.color}22`, color: provConf.color }}>
-                                            <Check size={10} />
-                                            AKTİF
-                                        </div>
-                                    ) : (
-                                        switching ? (
-                                            <Loader2 size={14} style={{ color: '#a8a29e', animation: 'spin 1s linear infinite' }} />
-                                        ) : null
-                                    )}
+                                <div className="flex-1 min-w-0">
+                                    <span className={`text-[12px] ${isActive ? 'font-bold text-stone-800' : 'font-medium text-stone-600'}`}>
+                                        {m.display_name}
+                                    </span>
+                                    <span className="text-[10px] text-stone-400 font-mono ml-1.5">{m.key}</span>
                                 </div>
+                                {isActive && (
+                                    <div className="flex items-center gap-1 shrink-0" style={{ color: provConf.color }}>
+                                        <Check size={10} />
+                                        <span className="text-[9px] font-black tracking-wide">AKTİF</span>
+                                    </div>
+                                )}
+                                {switching && !isActive && (
+                                    <Loader2 size={12} className="text-stone-300 animate-spin shrink-0" />
+                                )}
                             </div>
 
-                            {/* Description */}
-                            <div style={styles.modelDesc}>{m.description}</div>
+                            {/* Açıklama */}
+                            {m.description && (
+                                <p className="text-[10px] text-stone-400 leading-relaxed pl-8">{m.description}</p>
+                            )}
 
-                            {/* Stats */}
-                            <div style={styles.statRow}>
-                                <div style={styles.statItem}>
-                                    <span style={styles.statLabel}>Boyut</span>
-                                    <span style={styles.statValue}>{m.dimension}</span>
+                            {/* İstatistikler */}
+                            <div className="flex items-center gap-5 pl-8 pt-0.5">
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black tracking-[0.12em] text-stone-400 uppercase">Boyut</span>
+                                    <span className="text-[11px] font-bold text-stone-600 font-mono">{m.dimension}</span>
                                 </div>
-                                <div style={styles.statItem}>
-                                    <span style={styles.statLabel}>Max Token</span>
-                                    <span style={styles.statValue}>{m.max_seq_length?.toLocaleString()}</span>
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black tracking-[0.12em] text-stone-400 uppercase">Max Token</span>
+                                    <span className="text-[11px] font-bold text-stone-600 font-mono">{m.max_seq_length?.toLocaleString()}</span>
                                 </div>
-                                <div style={styles.statItem}>
-                                    <span style={styles.statLabel}>Tür</span>
-                                    <span style={{
-                                        ...styles.provBadge,
-                                        background: `${provConf.color}15`,
-                                        color: provConf.color,
-                                    }}>
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black tracking-[0.12em] text-stone-400 uppercase">Tür</span>
+                                    <span
+                                        className="text-[9px] font-black px-1.5 py-0.5 rounded tracking-wide mt-0.5"
+                                        style={{ color: provConf.color, background: `${provConf.color}15` }}
+                                    >
                                         {provConf.badge}
                                     </span>
                                 </div>
                             </div>
-                        </motion.div>
+                        </div>
                     );
                 })}
             </div>
 
-            {/* Advanced Section */}
-            <div style={styles.advancedToggle} onClick={() => setShowAdvanced(!showAdvanced)}>
-                {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                <span>Gelişmiş İşlemler</span>
+            {/* Gelişmiş bölüm toggle */}
+            <div
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 px-4 py-2.5 cursor-pointer text-stone-400 hover:text-stone-600 hover:bg-stone-50 transition-colors border-t border-stone-100 select-none"
+            >
+                {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                <span className="text-[10px] font-bold">Gelişmiş İşlemler</span>
             </div>
 
             <AnimatePresence>
@@ -234,49 +213,43 @@ const EmbeddingModelPanel = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        style={styles.advancedBox}
+                        className="flex flex-col gap-3 px-4 py-3 bg-stone-50 border-t border-stone-100 overflow-hidden"
                     >
-                        <div style={styles.advancedInfo}>
-                            <AlertTriangle size={14} style={{ color: '#fbbf24', flexShrink: 0 }} />
-                            <span style={{ fontSize: 11, color: '#78716c', lineHeight: 1.5 }}>
+                        <div className="flex gap-2 items-start">
+                            <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                            <span className="text-[10px] text-stone-500 leading-relaxed">
                                 Model değiştirdikten sonra mevcut belgelerin vektörleri eski modelin çıktılarıdır.
-                                Doğru sonuçlar için <strong style={{ color: '#44403c' }}>yeniden vektörleştirme</strong> yapmanız önerilir.
+                                Doğru sonuçlar için <strong className="text-stone-700">yeniden vektörleştirme</strong> yapmanız önerilir.
                             </span>
                         </div>
 
                         <button
                             onClick={handleReVectorize}
                             disabled={reVectorizing}
-                            style={{
-                                ...styles.reVecBtn,
-                                opacity: reVectorizing ? 0.6 : 1,
-                                cursor: reVectorizing ? 'wait' : 'pointer',
-                            }}
+                            className="flex items-center justify-center gap-2 w-full py-2 bg-white hover:bg-[#378ADD] hover:text-white text-[#378ADD] border border-[#378ADD]/30 rounded-md text-[11px] font-bold transition-all disabled:opacity-50"
                         >
-                            {reVectorizing ? (
-                                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                            ) : (
-                                <RefreshCw size={14} />
-                            )}
+                            {reVectorizing
+                                ? <Loader2 size={13} className="animate-spin" />
+                                : <RefreshCw size={13} />
+                            }
                             <span>{reVectorizing ? 'Vektörleştiriliyor...' : 'Tümünü Yeniden Vektörleştir'}</span>
                         </button>
 
-                        {/* Re-vectorize result */}
                         <AnimatePresence>
                             {reVecResult && (
                                 <motion.div
                                     initial={{ opacity: 0, y: -4 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0 }}
-                                    style={styles.reVecResult}
+                                    className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px]"
                                 >
-                                    <Check size={14} style={{ color: '#22c55e' }} />
+                                    <Check size={13} className="text-emerald-500 shrink-0" />
                                     <span>
                                         <strong>{reVecResult.updated}</strong> parça güncellendi
                                         {reVecResult.errors > 0 && (
-                                            <span style={{ color: '#f87171' }}> ({reVecResult.errors} hata)</span>
+                                            <span className="text-red-400"> ({reVecResult.errors} hata)</span>
                                         )}
-                                        <span style={{ color: '#a8a29e' }}> — Model: {reVecResult.model}</span>
+                                        <span className="text-stone-400"> — Model: {reVecResult.model}</span>
                                     </span>
                                 </motion.div>
                             )}
@@ -284,229 +257,8 @@ const EmbeddingModelPanel = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-
-            {/* Spin animation */}
-            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
     );
-};
-
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-const styles = {
-    container: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        padding: '16px 0',
-    },
-    loadingBox: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        justifyContent: 'center',
-        padding: 40,
-    },
-    header: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingBottom: 8,
-        borderBottom: '1px solid #f5f5f4', // border-stone-100
-    },
-    headerLeft: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-    },
-    headerTitle: {
-        fontSize: 14,
-        fontWeight: 600,
-        color: '#44403c', // text-stone-700
-        letterSpacing: '0.02em',
-    },
-    headerRight: {
-        display: 'flex',
-        alignItems: 'center',
-    },
-    headerBadge: {
-        fontSize: 10,
-        color: '#78716c', // text-stone-500
-        background: '#fafaf9', // bg-stone-50
-        border: '1px solid #e7e5e4', // border-stone-200
-        padding: '2px 8px',
-        borderRadius: 6,
-    },
-    activeInfo: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '8px 12px',
-        background: '#fefce8', // bg-yellow-50
-        border: '1px solid #fef08a', // border-yellow-200
-        borderRadius: 8,
-        fontSize: 12,
-    },
-    activeLabel: {
-        color: '#854d0e', // text-yellow-800
-    },
-    activeName: {
-        color: '#a16207', // text-yellow-700
-        fontWeight: 600,
-    },
-    errorBox: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 12px',
-        background: '#fef2f2', // bg-red-50
-        border: '1px solid #fecaca', // border-red-200
-        borderRadius: 8,
-        color: '#dc2626', // text-red-600
-        fontSize: 11,
-    },
-    modelList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-    },
-    modelCard: {
-        padding: '12px 14px',
-        borderRadius: 10,
-        border: '1px solid #e7e5e4', // border-stone-200
-        transition: 'all 0.15s ease',
-        background: '#ffffff',
-    },
-    cardTop: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    cardLeft: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-    },
-    providerIcon: {
-        width: 30,
-        height: 30,
-        borderRadius: 8,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    modelName: {
-        fontSize: 13,
-        fontWeight: 600,
-        color: '#44403c', // text-stone-700
-    },
-    modelKey: {
-        fontSize: 10,
-        color: '#a8a29e', // text-stone-400
-        fontFamily: 'monospace',
-        marginTop: 1,
-    },
-    cardRight: {
-        display: 'flex',
-        alignItems: 'center',
-    },
-    statusBadge: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: '0.06em',
-        padding: '3px 8px',
-        borderRadius: 6,
-    },
-    modelDesc: {
-        fontSize: 11,
-        color: '#78716c', // text-stone-500
-        marginTop: 8,
-        lineHeight: 1.5,
-    },
-    statRow: {
-        display: 'flex',
-        gap: 16,
-        marginTop: 10,
-    },
-    statItem: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-    },
-    statLabel: {
-        fontSize: 9,
-        color: '#a8a29e', // text-stone-400
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-    },
-    statValue: {
-        fontSize: 12,
-        fontWeight: 600,
-        color: '#57534e', // text-stone-600
-        fontFamily: 'monospace',
-    },
-    provBadge: {
-        fontSize: 9,
-        fontWeight: 700,
-        padding: '2px 6px',
-        borderRadius: 4,
-        letterSpacing: '0.04em',
-    },
-    advancedToggle: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 11,
-        color: '#78716c', // text-stone-500
-        cursor: 'pointer',
-        padding: '6px 0',
-        userSelect: 'none',
-    },
-    advancedBox: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        padding: '12px 14px',
-        background: '#fafaf9', // bg-stone-50
-        border: '1px solid #e7e5e4', // border-stone-200
-        borderRadius: 10,
-        overflow: 'hidden',
-    },
-    advancedInfo: {
-        display: 'flex',
-        gap: 8,
-        alignItems: 'flex-start',
-    },
-    reVecBtn: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        width: '100%',
-        padding: '10px 0',
-        background: 'linear-gradient(135deg, #fefce8, #fef08a)', // bg-yellow-50 to yellow-200
-        border: '1px solid #fde047', // border-yellow-300
-        borderRadius: 8,
-        color: '#854d0e', // text-yellow-800
-        fontSize: 12,
-        fontWeight: 600,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-    },
-    reVecResult: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 12px',
-        background: '#f0fdf4', // bg-green-50
-        border: '1px solid #bbf7d0', // border-green-200
-        borderRadius: 8,
-        fontSize: 11,
-        color: '#166534', // text-green-800
-    },
 };
 
 export default EmbeddingModelPanel;

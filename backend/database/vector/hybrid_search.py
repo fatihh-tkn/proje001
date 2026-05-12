@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from sqlalchemy import select, text
 from database.sql.session import get_session
-from database.sql.models import VektorParcasi
+from database.sql.models import VektorParcasi, Belge
 from database.vector.embedding_manager import get_embeddings
 
 def _expand_context_window(results: list[dict]) -> list[dict]:
@@ -76,6 +76,15 @@ logger = logging.getLogger(__name__)
 
 # RRF sabit parametresi
 _RRF_K = 60
+
+
+def _get_doc_ids_by_kategori(kategori: str) -> list[str]:
+    """Belirtilen kategorideki tüm belge kimliklerini döndürür."""
+    with get_session() as db:
+        rows = db.execute(
+            select(Belge.kimlik).where(Belge.kategori == kategori)
+        ).all()
+    return [r.kimlik for r in rows]
 
 
 def _apply_document_diversity(
@@ -291,6 +300,7 @@ def hybrid_search(
     allowed_doc_ids: list[str] | None = None,
     max_per_doc: int = 3,
     expand_inline_context: bool = False,
+    kategori_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Ana Hybrid Search fonksiyonu.
@@ -326,7 +336,15 @@ def hybrid_search(
         Her dict: kimlik, chromadb_kimlik, icerik, belge_kimlik, sayfa_no,
                   konum_imi, meta, rrf_score, in_vector, in_fts
     """
-    logger.info(f"[HybridSearch] Sorgu: '{query[:80]}...' | top_k={n_results} | pool={vector_weight}+{fts_weight}")
+    logger.info(f"[HybridSearch] Sorgu: '{query[:80]}...' | top_k={n_results} | pool={vector_weight}+{fts_weight} | kategori={kategori_filter}")
+
+    # Kategori filtresi: allowed_doc_ids ile kesişim (ya da doğrudan kategori ID listesi)
+    if kategori_filter:
+        kat_ids = _get_doc_ids_by_kategori(kategori_filter)
+        if allowed_doc_ids is not None:
+            allowed_doc_ids = list(set(allowed_doc_ids) & set(kat_ids))
+        else:
+            allowed_doc_ids = kat_ids
 
     # Havuz tamamen boşsa aramaya gerek yok
     if allowed_doc_ids is not None and len(allowed_doc_ids) == 0:

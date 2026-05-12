@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Loader2, Power } from 'lucide-react';
+import { Bot, Loader2, Power, Eye, FileText } from 'lucide-react';
 import { mutate } from '../../../api/client';
 
 // Components
 import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
+import TeknikDokumanConfig from './orchestrator/TeknikDokumanConfig';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
 
@@ -108,10 +109,12 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_node_aggregator');
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
 
+    const SPECIAL_ITEM_IDS = new Set(['vision-processing', 'doc-processing']);
+
     // Eğer ilk yükleme sonrası seçili ajan listede yoksa (ör. legacy gizlendi),
-    // ilk görünür ajana düş.
+    // ilk görünür ajana düş. Özel ayar item'ları seçiliyse müdahale etme.
     useEffect(() => {
-        if (!isLoadingAgents && agents.length && !selectedItem) {
+        if (!isLoadingAgents && agents.length && !selectedItem && !SPECIAL_ITEM_IDS.has(selectedItemId)) {
             const firstVisible = agents.find(a =>
                 a.id !== 'sys_agent_chatbot_001'
                 && a.id !== 'sys_agent_msg_001'
@@ -119,12 +122,17 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
             );
             if (firstVisible) setSelectedItemId(firstVisible.id);
         }
-    }, [isLoadingAgents, agents, selectedItem]);
+    }, [isLoadingAgents, agents, selectedItem, selectedItemId]);
 
     const [dirtyAgentIds, setDirtyAgentIds] = useState(new Set());
     const [isSaving, setIsSaving] = useState(false);
 
     const visibleAgents = useMemo(() => (agents || []).filter(isAgentVisibleInGrid), [agents]);
+
+    const SPECIAL_ITEMS = useMemo(() => [
+        { id: 'vision-processing',  label: 'AI Görsel İşleme',     icon: Eye      },
+        { id: 'doc-processing',     label: 'Teknik Döküman İşleme', icon: FileText },
+    ], []);
 
     // Sol panel — inline rename
     const [editingId, setEditingId]   = useState(null);
@@ -282,13 +290,51 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 </div>
                                             );
                                         })}
+
+                                        {/* ── Ayırıcı + Özel Ayar Bölümleri ────────── */}
+                                        <div className="h-px bg-stone-200 mx-3 my-1 shrink-0" />
+                                        {SPECIAL_ITEMS.map(item => {
+                                            const isSelected = selectedItemId === item.id;
+                                            const Icon = item.icon;
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    onClick={() => setSelectedItemId(item.id)}
+                                                    className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
+                                                        ${isSelected ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'}`}
+                                                >
+                                                    {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                    <Icon size={14} strokeWidth={isSelected ? 2.5 : 2}
+                                                        className={isSelected ? 'text-[#378ADD]' : 'text-stone-400'}
+                                                    />
+                                                    <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>
+                                                        {item.label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                     <div className="h-px bg-stone-200 mx-0 shrink-0" />
                                     <CannedResponsesPanel />
                                 </div>
 
-                                {/* ── SAĞ: Ajan Konfigürasyon Paneli ───────────── */}
-                                {selectedItem ? (
+                                {/* ── SAĞ: Konfigürasyon Paneli ────────────────── */}
+                                {selectedItemId === 'vision-processing' ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-center bg-stone-50 select-none">
+                                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white border border-stone-200 mb-5 shadow-sm">
+                                            <Eye size={26} className="text-stone-300" />
+                                        </div>
+                                        <span className="text-[10px] font-black tracking-[0.22em] text-[#378ADD] uppercase mb-2">YAKINDA</span>
+                                        <h3 className="text-xl font-semibold text-stone-800 mb-1">AI Görsel İşleme</h3>
+                                        <p className="text-sm text-stone-400 max-w-xs leading-relaxed">Teknik çizim ve görsel analizi ayarları yakında bu ekrandan yapılandırılabilecek.</p>
+                                    </div>
+                                ) : selectedItemId === 'doc-processing' ? (
+                                    <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-stone-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                                        <div className="max-w-4xl mx-auto">
+                                            <TeknikDokumanConfig />
+                                        </div>
+                                    </div>
+                                ) : selectedItem ? (
                                     selectedItem.active ? (
                                         <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-stone-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                             <div className="max-w-4xl mx-auto">

@@ -395,6 +395,7 @@ def _build_semantic_context(
     use_reranker: bool = True,
     near_dup_threshold: float = 0.65,
     context_max_chars: int | None = None,
+    kategori_filter: str | None = None,
 ) -> tuple[str, list[dict], dict | None]:
     """
     RAG Pipeline — Hybrid Search + Re-Ranking Mimarisi:
@@ -445,6 +446,7 @@ def _build_semantic_context(
                 fts_weight=_pool_size,
                 max_per_doc=max_per_doc,
                 expand_inline_context=False,  # NetworkX genişletmesi aşağıda yapılır
+                kategori_filter=kategori_filter,
             )
 
         # Multi-query: tüm variant'lardan sonuç al, chroma_id başına en iyi skoru tut.

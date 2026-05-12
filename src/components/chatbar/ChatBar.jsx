@@ -38,8 +38,6 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const messagesEndRef = useRef(null);
     const lastUserMsgRef = useRef(null);
     const pendingScrollToUser = useRef(false);
-    const scrollAnchorTimer = useRef(null);
-    const scrollAnchoredRef = useRef(false);
     const userScrolledUpRef = useRef(false);
     const textareaRef = useRef(null);
     const streamingMsgIdRef = useRef(null);
@@ -191,7 +189,6 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         return () => {
             if (chatScrollTimeout.current) clearTimeout(chatScrollTimeout.current);
             if (textareaScrollTimeout.current) clearTimeout(textareaScrollTimeout.current);
-            if (scrollAnchorTimer.current) clearTimeout(scrollAnchorTimer.current);
         };
     }, []);
 
@@ -207,17 +204,17 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             }
             pendingScrollToUser.current = false;
             userScrolledUpRef.current = false;
-            scrollAnchoredRef.current = true;
-            if (scrollAnchorTimer.current) clearTimeout(scrollAnchorTimer.current);
-            scrollAnchorTimer.current = setTimeout(() => {
-                scrollAnchoredRef.current = false;
-            }, 700);
-        } else if (!scrollAnchoredRef.current && !userScrolledUpRef.current) {
+        } else if (!isTyping && !userScrolledUpRef.current) {
             const endEl = messagesEndRef.current;
             if (endEl) {
                 const container = endEl.closest('[data-chat-scroll]');
                 if (container) {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                    const containerRect = container.getBoundingClientRect();
+                    const endElRect = endEl.getBoundingClientRect();
+                    const overflow = endElRect.bottom - containerRect.bottom;
+                    if (overflow > 0) {
+                        container.scrollBy({ top: overflow + 24, behavior: 'smooth' });
+                    }
                 } else {
                     endEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
                 }
@@ -230,8 +227,16 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             const endEl = messagesEndRef.current;
             if (!endEl) return;
             const container = endEl.closest('[data-chat-scroll]');
-            if (container) container.scrollTop = container.scrollHeight;
-            else endEl.scrollIntoView({ block: 'end' });
+            if (container) {
+                const containerRect = container.getBoundingClientRect();
+                const endElRect = endEl.getBoundingClientRect();
+                const overflow = endElRect.bottom - containerRect.bottom;
+                if (overflow > 0) {
+                    container.scrollTop += overflow + 24;
+                }
+            } else {
+                endEl.scrollIntoView({ block: 'end' });
+            }
         });
     }, [currentSessionId]);
 

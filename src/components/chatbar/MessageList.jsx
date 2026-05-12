@@ -1,8 +1,8 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Plus, FileText, Database, Copy, Pencil, Check, Image, Network, X, CornerDownRight, Sparkles } from 'lucide-react';
+import { Plus, FileText, Database, Copy, Pencil, Check, Image, Network, X, CornerDownRight, Sparkles, BarChart2, Wrench, Mic, Layers } from 'lucide-react';
 import AILogo from '../../assets/logo-white-y.png';
 import { useErrorStore } from '../../store/errorStore';
 import ErrorSolutionCard, { parseErrorSolution } from './ErrorSolutionCard';
@@ -193,6 +193,11 @@ const MessageList = ({
         [messages]
     );
 
+    const firstAiMsgId = React.useMemo(
+        () => messages.find(m => m.sender === 'ai')?.id,
+        [messages]
+    );
+
     React.useEffect(() => {
         if (editingId && editRef.current) {
             const el = editRef.current;
@@ -235,28 +240,56 @@ const MessageList = ({
                 <ChunkPreviewModal source={previewSource} onClose={() => setPreviewSource(null)} />
             )}
             <div className="flex-1 relative overflow-hidden transition-all duration-500">
+                <LayoutGroup>
+                <AnimatePresence>
                 {messages.length === 0 && isSideOpen && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 z-20">
-                        <p className="text-[13px] font-semibold text-stone-400">Size nasıl yardımcı olabilirim?</p>
-                        <div className="flex flex-col gap-1.5 w-full max-w-[360px]">
+                    <motion.div
+                        key="empty-state"
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-5 z-20 select-none"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                    >
+                        {/* Logo + başlık (yan yana) */}
+                        <div className="flex items-center gap-3.5 w-full max-w-[340px]">
+                            <motion.div
+                                layoutId="ai-logo-avatar"
+                                className="w-14 h-14 rounded-2xl bg-[#AA1416] flex items-center justify-center shadow-lg shadow-[#AA1416]/25 ring-4 ring-[#AA1416]/10 shrink-0"
+                                transition={{ type: 'spring', bounce: 0.15, duration: 0.55 }}
+                            >
+                                <img src={AILogo} alt="AI" className="w-9 h-9 object-contain" />
+                            </motion.div>
+                            <div className="space-y-0.5 min-w-0">
+                                <p className="text-[17px] font-semibold text-stone-700 tracking-tight leading-snug">Size nasıl yardımcı olabilirim?</p>
+                                <p className="text-[12px] text-stone-400">Bir konu seçin ya da soru sorun</p>
+                            </div>
+                        </div>
+
+                        {/* 2×2 öneri grid */}
+                        <div className="grid grid-cols-2 gap-2 w-full max-w-[340px]">
                             {[
-                                'Hangi raporlara erişebilirim?',
-                                'Bir hata mesajını çözmeme yardım eder misin?',
-                                'Toplantı özetini oluşturabilir misin?',
-                                'SAP sisteminde nasıl işlem yapabilirim?',
-                            ].map((q, i) => (
+                                { icon: BarChart2, label: 'Raporlar',    text: 'Hangi raporlara erişebilirim?' },
+                                { icon: Wrench,    label: 'Hata Çözümü', text: 'Bir hata mesajını çözmeme yardım eder misin?' },
+                                { icon: Mic,       label: 'Toplantı',    text: 'Toplantı özetini oluşturabilir misin?' },
+                                { icon: Layers,    label: 'SAP',         text: 'SAP sisteminde nasıl işlem yapabilirim?' },
+                            ].map(({ icon: Icon, label, text }, i) => (
                                 <button
                                     key={i}
-                                    onClick={() => onSendFollowup?.(q)}
-                                    className="group/s w-full text-left bg-white border border-stone-200 hover:border-[#DC2626]/40 hover:bg-[#FEF2F2]/40 rounded-xl px-3 py-2 text-[13px] text-stone-700 hover:text-stone-900 transition-all shadow-sm flex items-start gap-2"
+                                    onClick={() => onSendFollowup?.(text)}
+                                    className="group/s text-left bg-white border border-stone-200 hover:border-[#DC2626]/30 hover:bg-[#FEF2F2]/50 rounded-xl p-3 transition-all duration-200 shadow-sm hover:shadow-md flex flex-col gap-2.5"
                                 >
-                                    <CornerDownRight size={13} className="shrink-0 mt-0.5 text-stone-300 group-hover/s:text-[#DC2626] transition-colors" />
-                                    <span className="flex-1 leading-snug">{q}</span>
+                                    <div className="w-7 h-7 rounded-lg bg-stone-100 group-hover/s:bg-[#FEE2E2] flex items-center justify-center transition-colors duration-200 shrink-0">
+                                        <Icon size={13} className="text-stone-400 group-hover/s:text-[#DC2626] transition-colors duration-200" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-semibold text-stone-400 group-hover/s:text-[#DC2626]/70 uppercase tracking-wide leading-none mb-0.5 transition-colors duration-200">{label}</p>
+                                        <p className="text-[11px] text-stone-600 group-hover/s:text-stone-800 leading-snug transition-colors duration-200">{text}</p>
+                                    </div>
                                 </button>
                             ))}
                         </div>
-                    </div>
+                    </motion.div>
                 )}
+                </AnimatePresence>
                 <div
                     onScroll={handleChatScroll}
                     data-scrolling={isChatScrolling}
@@ -282,7 +315,11 @@ const MessageList = ({
                                         {isAI && (
                                             <div className="flex flex-col no-toggle pl-1.5 mb-0.5">
                                                 <div className="flex items-start gap-2">
-                                                    <div className="w-12 h-12 flex items-center justify-center shrink-0 relative">
+                                                    <motion.div
+                                                        layoutId={msg.id === firstAiMsgId ? 'ai-logo-avatar' : undefined}
+                                                        className="w-12 h-12 flex items-center justify-center shrink-0 relative"
+                                                        transition={{ type: 'spring', bounce: 0.15, duration: 0.55 }}
+                                                    >
                                                         <AnimatePresence>
                                                             {msg.isStreaming && (
                                                                 <motion.div
@@ -310,7 +347,7 @@ const MessageList = ({
                                                             alt="AI"
                                                             className="relative z-10 w-9 h-9 object-contain"
                                                         />
-                                                    </div>
+                                                    </motion.div>
 
                                                     {/* Düşünme süreci paneli — logo hizasında ama genişlediğinde logoyu aşağı çekmez */}
                                                     <div className="mt-1">
@@ -543,6 +580,7 @@ const MessageList = ({
                         <Plus size={20} className="group-hover:scale-110 transition-transform duration-300" />
                     </button>
                 </div>
+                </LayoutGroup>
             </div>
         </>
     );

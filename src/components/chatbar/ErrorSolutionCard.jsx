@@ -263,7 +263,6 @@ const ErrorSolutionCard = ({ data, userId, sessionId, onSendFollowup, onClarific
                 oturum_id: sessionId || null,
             }, { subject: 'Hata çözümü', detail: title || id });
             setSaveStatus('saved');
-            setTimeout(() => setSaveStatus('idle'), 2500);
         } catch {
             setSaveStatus('error');
             setTimeout(() => setSaveStatus('idle'), 2500);

@@ -883,8 +883,11 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        const kategori = ext === 'bpmn' ? 'surecler' : 'belgeler';
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('kategori', kategori);
         if (currentFolderId) formData.append('folder_id', currentFolderId);
         if (currentUser?.id) formData.append('user_id', currentUser.id);
         setLoading(true);

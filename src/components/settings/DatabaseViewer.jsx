@@ -3,7 +3,7 @@ import {
     Database, Upload, CheckCircle2, Trash2, Zap, FileText,
     RefreshCw, Loader2, ShieldCheck, Save, CornerDownRight,
     X, AlertTriangle, Activity, Search, CheckCheck, BarChart3,
-    AlignLeft, Layers, ChevronDown, ChevronRight, FileCog
+    AlignLeft, Layers, ChevronDown, ChevronRight
 } from 'lucide-react';
 
 import DatabaseDropzone from './database/DatabaseDropzone';
@@ -66,12 +66,13 @@ const SkeletonRow = () => (
 );
 
 /* ──────────────────────────────────────────────────── */
-const DatabaseViewer = ({ readOnly }) => {
+const DatabaseViewer = ({ readOnly, onOpenFile }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const addToast = useErrorStore((s) => s.addToast);
     const [backendReady, setBackendReady] = useState(null); // null=kontrol ediliyor, true=hazır, false=kapalı
-    const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving
+    const [phase, setPhase] = useState('idle');          // idle | analyzing | staged | saving | error
     const [useVision, setUseVision] = useState(false);
+    const [visionFailedCount, setVisionFailedCount] = useState(0); // backend'den gelen vision hata sayısı
     const [tempFilePath, setTempFilePath] = useState(null);
     const [dragOver, setDragOver] = useState(false);
     const [dragActive, setDragActive] = useState(false); // tüm ekran drag sinyali
@@ -87,6 +88,7 @@ const DatabaseViewer = ({ readOnly }) => {
     const [records, setRecords] = useState([]);
     const [dbLoading, setDbLoading] = useState(false);
     const [saveError, setSaveError] = useState('');
+    const [analysisError, setAnalysisError] = useState('');
     const [search, setSearch] = useState('');
     const [totalVectors, setTotalVectors] = useState(0);
     const [expandedRecord, setExpandedRecord] = useState(null);
@@ -131,6 +133,7 @@ const DatabaseViewer = ({ readOnly }) => {
 
     useEffect(() => { fetchRecords(); }, [fetchRecords]);
     useArchiveChangedListener(fetchRecords);
+
 
     /* ── Tüm-ekran drag dinleyicisi ── */
     useEffect(() => {
@@ -256,37 +259,44 @@ const DatabaseViewer = ({ readOnly }) => {
                             metadata: c.metadata
                         }));
                         setChunks(mapped);
-                        setApprovedChunks(new Set()); // Chunklar Karantina mantigina uygun olarak kullanici tarafindan incelenip secilmeli
-                        if (data.temp_path) {
-                            setTempFilePath(data.temp_path);
-                        }
+                        setApprovedChunks(new Set());
+                        if (data.temp_path) setTempFilePath(data.temp_path);
+                        setAnalysisError('');
+                        setVisionFailedCount(data.vision_failed || 0);
+                        setPhase('staged');
                     } else if (data.chunks && data.chunks.length === 0) {
-                        setChunks([{ id: 'warn-empty', text: 'Dosyadan hiç chunk çıkarılamadı. Dosyanın metin içerdiğinden emin olun.', page: 1, x: 0, y: 0 }]);
+                        setAnalysisError('Dosyadan hiç parça çıkarılamadı. Dosyanın metin içerdiğinden emin olun.');
+                        setChunks([]);
+                        setPhase('error');
                     } else {
-                        setChunks([{ id: 'warn-1', text: data.message || 'Sunucu geçerli chunk döndermedi.', page: 1, x: 0, y: 0 }]);
+                        setAnalysisError(data.message || 'Sunucu geçerli parça döndermedi.');
+                        setChunks([]);
+                        setPhase('error');
                     }
-                    setPhase('staged');
                 } catch (err) {
-                    setChunks([{ id: 'error-1', text: `Sunucu yanıtı okunamadı: ${err.message}`, page: 1, x: 0, y: 0 }]);
-                    setPhase('staged');
+                    setAnalysisError(`Sunucu yanıtı okunamadı: ${err.message}`);
+                    setChunks([]);
+                    setPhase('error');
                 }
             } else {
-                let errMsg = `Hata: Sunucu ${xhr.status} döndü.`;
+                let errMsg = `Sunucu ${xhr.status} hatası döndü.`;
                 try { const errData = JSON.parse(xhr.responseText); errMsg = errData.detail || errMsg; } catch (_) { }
-                setChunks([{ id: 'error-1', text: errMsg, page: 1, x: 0, y: 0 }]);
-                addToast({ type: 'error', message: `Dosya analiz hatası (${xhr.status}): ${errMsg}`, duration: 6000 });
-                setPhase('staged');
+                setAnalysisError(errMsg);
+                setChunks([]);
+                addToast({ type: 'error', message: `Analiz hatası (${xhr.status}): ${errMsg}`, duration: 6000 });
+                setPhase('error');
             }
         };
 
         xhr.onerror = () => {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            setProgress(100);
+            setProgress(0);
             setSkeletonChunks(0);
-            const errMsg = 'Ağ hatası veya bağlantı koptu.';
-            setChunks([{ id: 'error-1', text: errMsg, page: 1, x: 0, y: 0 }]);
+            const errMsg = 'Ağ hatası veya bağlantı koptu. Sunucu çalışıyor mu?';
+            setAnalysisError(errMsg);
+            setChunks([]);
             addToast({ type: 'error', message: errMsg, duration: 6000 });
-            setPhase('staged');
+            setPhase('error');
         };
 
         xhr.send(formData);
@@ -394,7 +404,7 @@ const DatabaseViewer = ({ readOnly }) => {
                 archiveFile.sourceArchiveId = firstId;
                 startAnalysis(archiveFile);
             } else {
-                alert("Arşiv dosyası aktarılamadı.");
+                addToast({ type: 'error', message: 'Arşiv dosyası aktarılamadı.' });
             }
         }
     };
@@ -406,8 +416,13 @@ const DatabaseViewer = ({ readOnly }) => {
 
     /* ── tümünü kaydet ── */
     const handleSave = async () => {
-        if (!stagedFile || chunks.length === 0 || approvedChunks.size === 0) return;
-        const validChunks = chunks.filter(c => approvedChunks.has(c.id));
+        if (phase !== 'staged' || !stagedFile || approvedChunks.size === 0) return;
+        const validChunks = chunks.filter(c =>
+            approvedChunks.has(c.id) &&
+            !c.id.startsWith('error-') &&
+            !c.id.startsWith('warn-')
+        );
+        if (validChunks.length === 0) return;
         setPhase('saving');
         setSaveError('');
 
@@ -559,16 +574,6 @@ const DatabaseViewer = ({ readOnly }) => {
                 if (res.ok) {
                     const data = await res.json();
                     setRecordVectors(prev => ({ ...prev, [rec.id]: data.chunks || [] }));
-
-                    // UX İyileştirmesi: Chunk'lar geldiğinde tüm sayfaları otomatik olarak açık yap
-                    if (data.chunks && data.chunks.length > 0) {
-                        const allPages = {};
-                        data.chunks.forEach(v => {
-                            const p = v.page || 'Genel';
-                            allPages[p] = true;
-                        });
-                        setExpandedPages(allPages);
-                    }
                 } else {
                     setRecordVectors(prev => ({ ...prev, [rec.id]: [] }));
                 }
@@ -576,14 +581,6 @@ const DatabaseViewer = ({ readOnly }) => {
                 console.error("Fetch vector list failed", e);
                 setRecordVectors(prev => ({ ...prev, [rec.id]: [] }));
             }
-        } else {
-            // Zaten yüklüyse yine tüm sayfaları açık (expanded) duruma getir
-            const allPages = {};
-            recordVectors[rec.id].forEach(v => {
-                const p = v.page || 'Genel';
-                allPages[p] = true;
-            });
-            setExpandedPages(allPages);
         }
     };
 
@@ -595,7 +592,16 @@ const DatabaseViewer = ({ readOnly }) => {
         if (xhrRef.current) xhrRef.current.abort();
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         clearInterval(progressRef.current);
-        setPhase('idle'); setStagedFile(null); setChunks([]); setApprovedChunks(new Set()); setProgress(0); setSkeletonChunks(0); setPendingMediaFile(null);
+        setPhase('idle');
+        setStagedFile(null);
+        setChunks([]);
+        setApprovedChunks(new Set());
+        setProgress(0);
+        setSkeletonChunks(0);
+        setPendingMediaFile(null);
+        setAnalysisError('');
+        setSaveError('');
+        setVisionFailedCount(0);
     };
 
     const handleApproveAll = () => {
@@ -641,166 +647,150 @@ const DatabaseViewer = ({ readOnly }) => {
     }
 
     return (
-        <div className="w-full h-full flex flex-col bg-stone-50 text-stone-800 overflow-hidden font-sans select-none animate-in fade-in duration-300">
+        <div className="w-full h-full flex flex-col bg-stone-50 text-stone-800 overflow-hidden select-none">
 
-            {/* ══ BAŞLIK RİBBON ══ */}
-            <div className="shrink-0 w-full flex items-center justify-between border-b border-stone-200 bg-white px-6 py-3 shadow-sm z-10 relative">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#378ADD]/10 border border-[#378ADD]/25 flex items-center justify-center">
-                        <FileCog size={15} className="text-[#378ADD]" />
-                    </div>
-                    <div>
-                        <h2 className="text-[14px] font-semibold text-stone-800 leading-tight">Dosya İşleme</h2>
-                        <p className="text-[11px] text-stone-400 mt-[1px]">Belge yükleme, parçalama ve vektör indeksleme</p>
+            {/* ══ VİSİON BAŞARISIZ DİALOGU ══ */}
+            {visionFailedCount > 0 && phase === 'staged' && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/25 backdrop-blur-[2px]">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 p-6 max-w-sm w-full mx-4 flex flex-col gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl shrink-0">
+                                <AlertTriangle size={20} className="text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-[14px] font-bold text-stone-800 mb-1">
+                                    Vision İşlemi Başarısız
+                                </p>
+                                <p className="text-[12px] text-stone-500 leading-relaxed">
+                                    <strong className="text-stone-700">{visionFailedCount}</strong> görsel bölüm okunamadı.
+                                    Model görsel çıktıyı desteklemiyor olabilir.
+                                    Yine de metin bazlı parçalarla devam edebilirsiniz.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={() => setVisionFailedCount(0)}
+                                className="w-full py-2.5 bg-[#378ADD] hover:bg-[#2d6fb5] text-white rounded-lg text-[12px] font-bold transition-all"
+                            >
+                                Görsel Okuma Olmadan Devam Et
+                            </button>
+                            <button
+                                onClick={() => handleCancel()}
+                                className="w-full py-2 text-stone-400 hover:text-stone-600 rounded-lg text-[12px] font-medium transition-all"
+                            >
+                                İptal Et
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
-                        <BarChart3 size={12} className="text-[#378ADD]" />
-                        <span className="text-[11px] font-bold text-stone-600">
-                            {records.reduce((acc, curr) => acc + (curr.chunks || 0), 0).toLocaleString('tr-TR')} Parça
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg shadow-sm">
-                        <Zap size={12} className="text-stone-400" />
-                        <span className="text-[11px] font-bold text-stone-600">{records.length} Döküman</span>
-                    </div>
-                    <button
-                        onClick={fetchRecords}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-[#378ADD] hover:bg-[#378ADD]/10 border border-stone-200 bg-white transition-all"
-                        title="Yenile"
-                    >
-                        <RefreshCw size={13} />
-                    </button>
-                </div>
-            </div>
+            )}
 
             {/* ══ ÜST İKİLİ PANEL ══ */}
             {
                 !readOnly && (
-                    <div className="relative z-50 flex border-b border-stone-200 transition-[height] duration-500 ease-in-out shadow-[0_4px_20px_-15px_rgba(0,0,0,0.1)]" style={{ height: expandedRecord ? '30%' : '55%', minHeight: 0 }}>
+                    <div className="relative z-50 flex border-b border-stone-200 transition-[height] duration-500 ease-in-out shadow-[0_4px_20px_-15px_rgba(0,0,0,0.1)]" style={{ height: expandedRecord ? '0' : '55%', minHeight: 0, overflow: 'hidden' }}>
 
                         {/* ── PANEL 1: BESLEME ALANI / MODEL SEÇİM ── */}
                         {pendingMediaFile ? (
-                            <div className="flex-1 p-6 flex flex-col justify-center items-center bg-white border-r border-stone-200"
+                            <div className="flex-1 flex flex-col bg-white border-r border-stone-200 overflow-hidden"
                                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                <div className="w-full max-w-[420px] rounded-2xl overflow-hidden border border-stone-200 shadow-sm animate-in fade-in zoom-in-95 duration-200 bg-white flex flex-col">
-                                    <div className="p-5 border-b border-stone-100 flex items-start gap-4 relative bg-stone-50/30">
-                                        <button onClick={() => setPendingMediaFile(null)} className="absolute top-4 right-4 text-stone-300 hover:text-[#991B1B] transition-colors p-1"><X size={16} /></button>
 
-                                        <div className="w-12 h-12 rounded-xl bg-white border border-stone-200 shadow-sm flex items-center justify-center shrink-0">
-                                            {pendingMediaFile.type?.startsWith('video/') ? (
-                                                <div className="w-6 h-6 rounded bg-[#378ADD]/10 text-[#378ADD] flex items-center justify-center">▶</div>
-                                            ) : (
-                                                <div className="w-6 h-6 rounded bg-[#FAEEDA] text-[#854F0B] flex items-center justify-center text-lg leading-none mt-[-2px]">♫</div>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0 pr-6">
-                                            <h3 className="text-[14px] font-bold text-stone-800 truncate">{pendingMediaFile.name}</h3>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <span className="text-[11px] font-bold text-stone-500 border border-stone-200 bg-white px-2 py-0.5 rounded shadow-sm">
-                                                    {(pendingMediaFile.size / (1024 * 1024)).toFixed(2)} MB
-                                                </span>
-                                                <span className="text-[11px] font-bold text-[#378ADD] bg-[#378ADD]/10 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
-                                                    ⏱ {mediaDuration || "Ölçülüyor..."}
-                                                </span>
-                                            </div>
+                                {/* Dosya bilgisi */}
+                                <div className="px-4 py-3 border-b border-stone-100 flex items-center gap-3 bg-stone-50 relative shrink-0">
+                                    <button onClick={() => setPendingMediaFile(null)} className="absolute top-3 right-3 text-stone-300 hover:text-[#991B1B] transition-colors p-0.5"><X size={13} /></button>
+                                    <div className="w-8 h-8 rounded-lg bg-white border border-stone-200 flex items-center justify-center shrink-0">
+                                        {pendingMediaFile.type?.startsWith('video/') ? (
+                                            <div className="w-4 h-4 rounded bg-[#378ADD]/10 text-[#378ADD] flex items-center justify-center text-[10px]">▶</div>
+                                        ) : (
+                                            <div className="text-base leading-none">♫</div>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0 pr-6">
+                                        <p className="text-[12px] font-bold text-stone-800 truncate">{pendingMediaFile.name}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] font-bold text-stone-400">{(pendingMediaFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                                            <span className="text-[10px] font-bold text-[#378ADD]">⏱ {mediaDuration || "Ölçülüyor..."}</span>
                                         </div>
                                     </div>
+                                </div>
 
-                                    <div className="p-5 flex flex-col gap-4 bg-stone-50/50">
+                                {/* Seçenekler */}
+                                <div className="flex-1 overflow-y-auto py-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200">
 
-                                        {/* Transkripsiyon modeli */}
-                                        <div>
-                                            <div className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-0.5">Transkripsiyon Modeli</div>
-                                            <div className="flex flex-col gap-1.5">
-                                                {[
-                                                    { id: 'tiny',     label: 'Whisper Tiny',    tag: 'Hızlı',     desc: 'Kabataslak notlar için',          color: '#6b7280', bg: '#f3f4f6' },
-                                                    { id: 'base',     label: 'Whisper Base',    tag: 'Dengeli',   desc: 'Normal toplantı kayıtları için',  color: '#378ADD', bg: '#EBF4FD' },
-                                                    { id: 'large-v3', label: 'Whisper Large v3',tag: 'Gelişmiş',  desc: 'GPU gerektirir · Kusursuz doğruluk',color: '#7c3aed', bg: '#f5f3ff' },
-                                                ].map(m => (
-                                                    <button
-                                                        key={m.id}
-                                                        onClick={() => setSelectedModel(m.id)}
-                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all text-left ${
-                                                            selectedModel === m.id
-                                                                ? 'bg-white border-[#378ADD] shadow-sm shadow-[#378ADD]/10'
-                                                                : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
-                                                        }`}
-                                                    >
-                                                        <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-black text-white shadow-sm"
-                                                            style={{ background: m.color }}>
-                                                            W
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-[12px] font-bold text-stone-800">{m.label}</span>
-                                                                <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide" style={{ color: m.color, background: m.bg }}>{m.tag}</span>
-                                                            </div>
-                                                            <span className="text-[10px] text-stone-400 font-mono">{m.desc}</span>
-                                                        </div>
-                                                        {selectedModel === m.id && (
-                                                            <div className="w-4 h-4 rounded-full bg-[#378ADD] flex items-center justify-center shrink-0">
-                                                                <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* Hesaplama cihazı */}
-                                        <div>
-                                            <div className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2 ml-0.5">Hesaplama Cihazı</div>
-                                            <div className="flex flex-col gap-1.5">
-                                                {[
-                                                    { id: 'cpu',  label: 'İşlemci (CPU)', tag: 'Evrensel', desc: 'Tüm sistemlerde çalışır',      color: '#0369a1', bg: '#e0f2fe' },
-                                                    { id: 'cuda', label: 'Ekran Kartı (GPU)', tag: 'Hızlı', desc: 'NVIDIA CUDA gerektirir · 4× hız', color: '#059669', bg: '#d1fae5' },
-                                                ].map(d => (
-                                                    <button
-                                                        key={d.id}
-                                                        onClick={() => setComputeDevice(d.id)}
-                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all text-left ${
-                                                            computeDevice === d.id
-                                                                ? 'bg-white border-[#378ADD] shadow-sm shadow-[#378ADD]/10'
-                                                                : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
-                                                        }`}
-                                                    >
-                                                        <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-black text-white shadow-sm"
-                                                            style={{ background: d.color }}>
-                                                            {d.id === 'cpu' ? 'C' : 'G'}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-[12px] font-bold text-stone-800">{d.label}</span>
-                                                                <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide" style={{ color: d.color, background: d.bg }}>{d.tag}</span>
-                                                            </div>
-                                                            <span className="text-[10px] text-stone-400 font-mono">{d.desc}</span>
-                                                        </div>
-                                                        {computeDevice === d.id && (
-                                                            <div className="w-4 h-4 rounded-full bg-[#378ADD] flex items-center justify-center shrink-0">
-                                                                <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
+                                    <div className="px-4 pt-3 pb-1.5">
+                                        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">Transkripsiyon Modeli</span>
                                     </div>
+                                    {[
+                                        { id: 'tiny',     label: 'Whisper Tiny',     tag: 'Hızlı',     desc: 'Kabataslak notlar için',             color: '#6b7280', bg: '#f3f4f6' },
+                                        { id: 'base',     label: 'Whisper Base',     tag: 'Dengeli',   desc: 'Normal toplantı kayıtları için',     color: '#378ADD', bg: '#EBF4FD' },
+                                        { id: 'large-v3', label: 'Whisper Large v3', tag: 'Gelişmiş',  desc: 'GPU gerektirir · Kusursuz doğruluk',  color: '#7c3aed', bg: '#f5f3ff' },
+                                    ].map(m => {
+                                        const isSel = selectedModel === m.id;
+                                        return (
+                                            <div
+                                                key={m.id}
+                                                onClick={() => setSelectedModel(m.id)}
+                                                className={`relative flex items-center gap-2.5 px-4 py-2.5 cursor-pointer transition-all duration-100
+                                                    ${isSel ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'}`}
+                                            >
+                                                {isSel && <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                <div className="w-6 h-6 shrink-0 rounded flex items-center justify-center text-[9px] font-black text-white" style={{ background: m.color }}>W</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`text-[12px] truncate ${isSel ? 'font-bold' : 'font-medium'}`}>{m.label}</span>
+                                                        <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide shrink-0" style={{ color: m.color, background: m.bg }}>{m.tag}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-stone-400 font-mono">{m.desc}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
 
-                                    <div className="p-4 border-t border-stone-100 bg-stone-50/50">
-                                        <button
-                                            onClick={() => {
-                                                executeAnalysis(pendingMediaFile, selectedModel, computeDevice);
-                                                setPendingMediaFile(null);
-                                            }}
-                                            className="w-full py-3 bg-[#378ADD] hover:bg-[#0C447C] text-white text-[13px] font-bold rounded-xl shadow-lg shadow-[#378ADD]/30 transition-all hover:scale-[0.99] active:scale-95 flex items-center justify-center gap-2"
-                                        >
-                                            <svg className="w-4 h-4 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0-12l4 4m-4-4L8 8m-4 8v1a3 3 0 003 3h10a3 3 0 003-3v-1" /></svg>
-                                            Yükle
-                                        </button>
+                                    <div className="px-4 pt-4 pb-1.5">
+                                        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">Hesaplama Cihazı</span>
                                     </div>
+                                    {[
+                                        { id: 'cpu',  label: 'İşlemci (CPU)',     tag: 'Evrensel', desc: 'Tüm sistemlerde çalışır',            color: '#0369a1', bg: '#e0f2fe' },
+                                        { id: 'cuda', label: 'Ekran Kartı (GPU)', tag: 'Hızlı',    desc: 'NVIDIA CUDA gerektirir · 4× hız',    color: '#059669', bg: '#d1fae5' },
+                                    ].map(d => {
+                                        const isSel = computeDevice === d.id;
+                                        return (
+                                            <div
+                                                key={d.id}
+                                                onClick={() => setComputeDevice(d.id)}
+                                                className={`relative flex items-center gap-2.5 px-4 py-2.5 cursor-pointer transition-all duration-100
+                                                    ${isSel ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'}`}
+                                            >
+                                                {isSel && <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                <div className="w-6 h-6 shrink-0 rounded flex items-center justify-center text-[9px] font-black text-white" style={{ background: d.color }}>
+                                                    {d.id === 'cpu' ? 'C' : 'G'}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`text-[12px] truncate ${isSel ? 'font-bold' : 'font-medium'}`}>{d.label}</span>
+                                                        <span className="text-[9px] font-black px-1.5 py-px rounded tracking-wide shrink-0" style={{ color: d.color, background: d.bg }}>{d.tag}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-stone-400 font-mono">{d.desc}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Yükle butonu */}
+                                <div className="px-4 py-3 border-t border-stone-100 bg-white shrink-0">
+                                    <button
+                                        onClick={() => {
+                                            executeAnalysis(pendingMediaFile, selectedModel, computeDevice);
+                                            setPendingMediaFile(null);
+                                        }}
+                                        className="w-full py-2.5 bg-[#378ADD] hover:bg-[#0C447C] text-white text-[12px] font-bold rounded-md transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <svg className="w-4 h-4 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0-12l4 4m-4-4L8 8m-4 8v1a3 3 0 003 3h10a3 3 0 003-3v-1" /></svg>
+                                        Yükle
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -819,6 +809,7 @@ const DatabaseViewer = ({ readOnly }) => {
                                 handleCancel={handleCancel}
                                 chunksLength={chunks.length}
                                 approvedCount={approvedChunks.size}
+                                analysisError={analysisError}
                             />
                         )}
                         <DatabaseQuarantine
@@ -842,6 +833,9 @@ const DatabaseViewer = ({ readOnly }) => {
                 dbLoading={dbLoading}
                 search={search}
                 setSearch={setSearch}
+                totalChunks={records.reduce((acc, r) => acc + (r.chunks || 0), 0)}
+                totalDocs={records.length}
+                onOpenFile={onOpenFile}
                 expandedRecord={expandedRecord}
                 toggleRecordExpansion={toggleRecordExpansion}
                 recordVectors={recordVectors}
@@ -854,6 +848,7 @@ const DatabaseViewer = ({ readOnly }) => {
                 fetchRecords={fetchRecords}
                 recordGraphStats={recordGraphStats}
             />
+
         </div >
     );
 };

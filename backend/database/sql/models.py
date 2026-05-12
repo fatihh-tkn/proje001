@@ -272,6 +272,8 @@ class Belge(Base):
     hata_kodu: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Belgede en son ne zaman arama yapıldığı (kullanılmayan belgeleri tespit için)
     son_sorgulama_tarihi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Arşiv kategorisi: belgeler | surecler | toplantılar | kisisel | teknik_resim
+    kategori: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Esnek metadata: {"klasor_kimlik": "...", "etiketler": ["muhasebe"], "yazar": "Ahmet"}
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     olusturulma_tarihi: Mapped[str] = mapped_column(String(32), nullable=False, default=_simdi)
@@ -290,6 +292,7 @@ class Belge(Base):
         Index("ix_belgeler_vektordb_koleksiyon", "vektordb_koleksiyon"),
         Index("ix_belgeler_yukleyen_kimlik", "yukleyen_kimlik"),
         Index("ix_belgeler_havuz_turu", "havuz_turu"),
+        Index("ix_belgeler_kategori", "kategori"),
     )
 
 
