@@ -6,7 +6,7 @@ Teknik resim kategorisi için unified processor.
 Format → vision zinciri:
   PNG/JPG/...  → doğrudan image_processor.parse_image
   PDF          → ilk sayfa PNG render → image_processor.parse_image
-  DXF/DWG      → (gelecek) ezdxf → render → vision
+  DXF/DWG      → dwg_processor.parse_dwg (ezdxf + regex + LLM fallback)
   diğer        → standart dispatch'e düşer
 """
 
@@ -17,12 +17,18 @@ import shutil
 
 
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
+CAD_EXTS = {"dwg", "dxf"}
 
 
 def parse_teknik(file_path: str, original_name: str | None = None) -> list[dict]:
     """Teknik resim kategorisindeki herhangi bir formattaki dosyayı vision ile işler."""
     basename = original_name or os.path.basename(file_path)
     ext = basename.rsplit(".", 1)[-1].lower() if "." in basename else ""
+
+    # DWG / DXF → ezdxf tabanlı özel processor (sadece bu uzantılarda devreye girer)
+    if ext in CAD_EXTS:
+        from services.processors.dwg_processor import parse_dwg
+        return parse_dwg(file_path, original_name=original_name)
 
     if ext in IMAGE_EXTS:
         from services.processors.image_processor import parse_image

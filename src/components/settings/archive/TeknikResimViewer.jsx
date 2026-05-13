@@ -263,9 +263,9 @@ function UploadModal({ onClose, onUploaded }) {
 
                 <div className="p-6 flex flex-col gap-3">
                     <FileSlot label="Teknik Çizim" color="violet" icon={Cpu}
-                        file={cizimFile} onFile={setCizimFile} inputRef={cizimRef} accept="image/*,.pdf" />
+                        file={cizimFile} onFile={setCizimFile} inputRef={cizimRef} accept="image/*,.pdf,.dwg,.dxf" />
                     <FileSlot label="Nesting Planı" color="orange" icon={Scissors}
-                        file={nestingFile} onFile={setNestingFile} inputRef={nestingRef} accept="image/*,.pdf" />
+                        file={nestingFile} onFile={setNestingFile} inputRef={nestingRef} accept="image/*,.pdf,.dwg,.dxf" />
                     {cizimFile && nestingFile && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-600 font-medium">
                             <Link2 size={12} /> İki dosya otomatik olarak birbirine bağlanacak
@@ -337,7 +337,7 @@ function LinkModal({ sourceItem, linkType, onClose, onLinked }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-[380px] flex flex-col overflow-hidden">
-                <input ref={inputRef} type="file" accept="image/*,.pdf" className="hidden"
+                <input ref={inputRef} type="file" accept="image/*,.pdf,.dwg,.dxf" className="hidden"
                     onChange={e => handleFile(e.target.files?.[0] || null)} />
 
                 {/* Başlık */}

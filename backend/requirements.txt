@@ -24,6 +24,7 @@ dataclasses-json==0.6.7
 dill==0.4.1
 durationpy==0.10
 et_xmlfile==2.0.0
+ezdxf==1.4.2
 fastapi==0.135.1
 filelock==3.25.1
 flake8==7.3.0

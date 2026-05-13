@@ -619,6 +619,18 @@ def dosya_getir(kimlik: str):
                 serve_path = candidate
                 serve_name = os.path.splitext(belge.dosya_adi)[0] + ".pdf"
 
+        # DWG/DXF: tarayıcıda doğrudan açılamaz → SVG önizleme servis et
+        if (belge.dosya_turu or "").lower() in ("dwg", "dxf"):
+            meta = belge.meta or {}
+            svg_candidate = meta.get("dwg_svg_path") or ""
+            if not svg_candidate or not os.path.exists(svg_candidate):
+                derived = os.path.splitext(belge.depolama_yolu)[0] + ".svg"
+                if os.path.exists(derived):
+                    svg_candidate = derived
+            if svg_candidate and os.path.exists(svg_candidate):
+                serve_path = svg_candidate
+                serve_name = os.path.splitext(belge.dosya_adi)[0] + ".svg"
+
         mime_type, _ = mimetypes.guess_type(serve_name)
         if not mime_type:
             mime_type = "application/octet-stream"
@@ -743,6 +755,7 @@ async def dogrudan_yukle(
     is_av = dosya_uzantisi in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
     is_text = dosya_uzantisi in {"pdf", "txt", "docx", "doc", "pptx", "ppt"}
     is_image = dosya_uzantisi in {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
+    is_cad = dosya_uzantisi in {"dwg", "dxf"}
 
     # Kategori: form'dan gelen değere öncelik ver; yoksa uzantıdan çıkar
     _kat = (kategori or "").strip()
@@ -750,7 +763,7 @@ async def dogrudan_yukle(
         belge_kategori = _kat
     elif is_av:
         belge_kategori = "toplantılar"
-    elif is_image:
+    elif is_image or is_cad:
         belge_kategori = "teknik_resim"
     elif dosya_uzantisi == "bpmn":
         belge_kategori = "surecler"
@@ -762,7 +775,7 @@ async def dogrudan_yukle(
     # Kullanıcı klasörü varsa onu kullan; admin için form'dan gelen folder_id geçerli
     effective_folder_id = kullanici_klasor_id or (folder_id if folder_id and folder_id != "null" else None)
     meta_dict = {"klasor_kimlik": effective_folder_id} if effective_folder_id else {}
-    if is_av or is_text or is_image:
+    if is_av or is_text or is_image or is_cad:
         meta_dict["transcription_status"] = "pending"
     if cad_turu and cad_turu in ("cad", "nesting"):
         meta_dict["cad_turu"] = cad_turu
@@ -788,7 +801,7 @@ async def dogrudan_yukle(
 
     if is_av:
         background_tasks.add_task(_run_transcription, yeni_belge.kimlik)
-    elif is_text or is_image:
+    elif is_text or is_image or is_cad:
         background_tasks.add_task(_run_vectorization, yeni_belge.kimlik)
 
     return {
@@ -1605,3 +1618,152 @@ def unlink_dosyalar(source_id: str, link_type: str):
 
         db.commit()
     return {"status": "ok"}
+
+
+# ── DWG TOPLU PARALEL YÜKLEME ─────────────────────────────────────────────
+
+@router.post("/dwg-batch-upload")
+async def dwg_batch_upload(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    folder_id: str = Form(None),
+    user_id: str = Form(None),
+):
+    """
+    Birden fazla DWG/DXF dosyasını aynı anda alır, diske yazar ve
+    arka planda PARALEL olarak işler (ProcessPoolExecutor).
+
+    Bu endpoint SADECE .dwg/.dxf uzantılarını kabul eder; diğer formatlar
+    /direct-upload kullanmaya devam etmelidir.
+    """
+    os.makedirs(ARSIV_KLASORU, exist_ok=True)
+
+    # Sadece DWG/DXF uzantısı kabul et — diğer formatlara dokunma
+    accepted: list[tuple[str, str, int]] = []  # (kimlik, file_path, boyut)
+    rejected: list[dict] = []
+
+    effective_user_id = user_id if user_id and user_id not in ("null", "undefined", "") else None
+    effective_folder_id = folder_id if folder_id and folder_id != "null" else None
+
+    for f in files:
+        ext = (f.filename.split(".")[-1] if "." in f.filename else "").lower()
+        if ext not in ("dwg", "dxf"):
+            rejected.append({"filename": f.filename, "reason": "Sadece DWG/DXF kabul edilir"})
+            continue
+
+        benzersiz_ad = f"{uuid.uuid4().hex[:8]}_{f.filename}"
+        arsiv_yolu = os.path.join(ARSIV_KLASORU, benzersiz_ad)
+        with open(arsiv_yolu, "wb") as tampon:
+            shutil.copyfileobj(f.file, tampon)
+        boyut = os.path.getsize(arsiv_yolu)
+
+        meta_dict = {"transcription_status": "pending"}
+        if effective_folder_id:
+            meta_dict["klasor_kimlik"] = effective_folder_id
+
+        with get_session() as db:
+            yeni_belge = Belge(
+                dosya_adi=f.filename,
+                dosya_turu=ext,
+                dosya_boyutu_bayt=boyut,
+                depolama_yolu=arsiv_yolu,
+                yukleyen_kimlik=effective_user_id,
+                vektorlestirildi_mi=False,
+                durum="arsivde",
+                meta=meta_dict,
+                havuz_turu="sistem" if not effective_user_id else "kullanici",
+                kategori="teknik_resim",
+            )
+            db.add(yeni_belge)
+            db.commit()
+            db.refresh(yeni_belge)
+            accepted.append((yeni_belge.kimlik, arsiv_yolu, boyut))
+
+    if accepted:
+        doc_ids = [doc_id for doc_id, _, _ in accepted]
+        background_tasks.add_task(_run_dwg_batch_parallel, doc_ids)
+
+    return {
+        "status": "queued",
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "rejected": rejected,
+        "ids": [d for d, _, _ in accepted],
+    }
+
+
+def _run_dwg_batch_parallel(doc_ids: list[str]):
+    """
+    Birden fazla DWG belgesini ProcessPool ile paralel işler.
+    Her dosya bitince ayrı vektorizasyon adımı sıraya konur.
+    """
+    from services.processors.dwg_processor import process_dwg_batch
+    from services.processors.process_progress import (
+        set_current_doc, step as pg_step, done as pg_done, fail as pg_fail,
+    )
+
+    # Tüm dosya yollarını topla
+    targets: list[tuple[str, str]] = []  # (doc_id, file_path)
+    with get_session() as db:
+        for doc_id in doc_ids:
+            belge = db.get(Belge, doc_id)
+            if belge and belge.depolama_yolu and os.path.exists(belge.depolama_yolu):
+                targets.append((doc_id, belge.depolama_yolu))
+
+    if not targets:
+        return
+
+    path_to_doc = {fp: did for did, fp in targets}
+    total = len(targets)
+
+    logger.info("DWG batch başlıyor: %d dosya, paralel", total)
+
+    def _on_progress(done_count: int, _total: int, file_path: str):
+        did = path_to_doc.get(file_path)
+        if did:
+            set_current_doc(did)
+            pg_step(f"DWG işleniyor… ({done_count}/{_total})")
+
+    file_paths = [fp for _, fp in targets]
+    for fp, chunks in process_dwg_batch(
+        file_paths,
+        max_workers=None,           # CPU sayısı kadar paralel
+        use_llm_fallback=True,
+        export_svg=True,
+        on_progress=_on_progress,
+    ):
+        did = path_to_doc.get(fp)
+        if not did:
+            continue
+        try:
+            _persist_dwg_result(did, chunks)
+            pg_done(did, "DWG analizi tamamlandı ✓")
+        except Exception as e:
+            logger.exception("DWG persist hatası: doc_id=%s", did)
+            _set_transcription_status(did, "failed", str(e)[:300])
+            pg_fail(did, f"Hata: {str(e)[:80]}")
+
+    logger.info("DWG batch tamamlandı: %d dosya", total)
+
+
+def _persist_dwg_result(doc_id: str, chunks: list[dict]):
+    """DWG processor çıktısını veritabanına yazar (vision_data dahil)."""
+    if not chunks:
+        return
+    chunk = chunks[0]
+    vision_data = chunk.get("metadata", {}).get("vision_data")
+    image_path = chunk.get("metadata", {}).get("image_path")
+
+    with get_session() as db:
+        belge = db.get(Belge, doc_id)
+        if not belge:
+            return
+        meta = dict(belge.meta or {})
+        meta["transcription_status"] = "done"
+        meta.pop("transcription_error", None)
+        if vision_data:
+            meta["vision_analysis"] = vision_data
+        if image_path:
+            meta["dwg_svg_path"] = image_path
+        belge.meta = meta
+        db.commit()

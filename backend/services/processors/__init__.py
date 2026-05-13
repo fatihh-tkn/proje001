@@ -9,6 +9,7 @@ Her format kendi bağımsız dosyasında yaşar:
   image → processors/image_processor.py   — PNG / JPG / JPEG
   excel → processors/excel_processor.py   — XLSX / XLS / CSV
   text  → processors/text_processor.py    — TXT / MD / DOCX
+  cad   → processors/dwg_processor.py     — DWG / DXF (ezdxf + regex + LLM)
 
 Bridge'den dispatch için:
   from services.processors import dispatch
@@ -46,6 +47,12 @@ def dispatch(
         if kategori == "teknik_resim":
             from services.processors.teknik_processor import parse_teknik
             return parse_teknik(file_path, original_name=original_name), 0
+
+        # DWG / DXF → kategori ne olursa olsun ezdxf'e yönlendir.
+        # Diğer formatlara bu kural HİÇ DOKUNMAZ; sadece bu iki uzantıda devreye girer.
+        if ext in ("dwg", "dxf"):
+            from services.processors.dwg_processor import parse_dwg
+            return parse_dwg(file_path, original_name=original_name), 0
 
         if ext == "bpmn":
             from services.bpmn_processor import parse_bpmn

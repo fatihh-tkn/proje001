@@ -81,6 +81,7 @@ const getFileVisual = (fileType) => {
     if (['mp3', 'wav', 'ogg'].includes(t)) return { Icon: Music, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
     if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
     if (t === 'bpmn') return { Icon: FileCode, color: 'text-teal-500', bg: 'bg-teal-50', border: 'border-teal-100' };
+    if (['dwg', 'dxf'].includes(t)) return { Icon: FileCode, color: 'text-indigo-500', bg: 'bg-indigo-50', border: 'border-indigo-100' };
     return { Icon: File, color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100' };
 };
 
