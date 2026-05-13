@@ -10,7 +10,7 @@ import shutil
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from database.sql.session import get_session
@@ -236,20 +236,56 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
+        # Toplu kullanıcı adları eşleştirme (N+1 engelleme)
+        yukleyen_kimlikler = {b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik}
+        kullanici_ad_map = {}
+        if yukleyen_kimlikler:
+            kullanicilar = db.scalars(select(Kullanici).where(Kullanici.kimlik.in_(yukleyen_kimlikler))).all()
+            kullanici_ad_map = {k.kimlik: k.tam_ad for k in kullanicilar}
+
+        # Toplu parça sayıları ve önizleme eşleştirme (N+1 engelleme)
+        belge_kimlikler = [b.kimlik for b in belgeler]
+        parca_sayilari = {}
+        parca_onizlemeleri = {}
+
+        if belge_kimlikler:
+            # Chunk count
+            count_stmt = (
+                select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik.in_(belge_kimlikler))
+                .group_by(VektorParcasi.belge_kimlik)
+            )
+            parca_sayilari = {r[0]: r[1] for r in db.execute(count_stmt).all()}
+
+            # Chunk preview (first 5)
+            subq = (
+                select(
+                    VektorParcasi.belge_kimlik,
+                    VektorParcasi.kimlik,
+                    VektorParcasi.chromadb_kimlik,
+                    func.row_number().over(
+                        partition_by=VektorParcasi.belge_kimlik,
+                        order_by=VektorParcasi.kimlik
+                    ).label('rn')
+                )
+                .where(VektorParcasi.belge_kimlik.in_(belge_kimlikler))
+                .subquery()
+            )
+
+            previews_raw = db.execute(
+                select(subq.c.belge_kimlik, subq.c.kimlik, subq.c.chromadb_kimlik)
+                .where(subq.c.rn <= 5)
+            ).all()
+
+            for r in previews_raw:
+                parca_onizlemeleri.setdefault(r[0], []).append({"id": r[1], "chroma_id": r[2]})
+
         sonuclar = []
         for b in belgeler:
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
-            yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
+            yukleyen_adi = kullanici_ad_map.get(b.yukleyen_kimlik, "Bilinmiyor")
 
             sonuclar.append({
                 "id": b.kimlik,
@@ -262,11 +298,8 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
                 "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
+                "total_chunks": parca_sayilari.get(b.kimlik, 0),
+                "chunks_preview": parca_onizlemeleri.get(b.kimlik, []),
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
                 "havuz_turu": b.havuz_turu,
