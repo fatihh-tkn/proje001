@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     FileText, Search, X, Star, Calendar, Tag, Plus, FolderPlus,
-    Loader2, Grid, List, Download
+    Loader2, Grid, List, Download, Trash2
 } from 'lucide-react';
 
 /* ── Belge filtresi ──────────────────────────────────────────────── */
@@ -72,14 +72,17 @@ function DocPreview({ ext }) {
 }
 
 /* ── Grid kartı ──────────────────────────────────────────────────── */
-function DocCard({ item }) {
+function DocCard({ item, onContextMenu }) {
     const ext   = (item.file_type || '').toLowerCase();
     const title = item.filename.replace(/\.[^.]+$/, '');
     const size  = fmtSize(item.file_size || item.meta?.size);
     const date  = fmtDate(item.created_at);
 
     return (
-        <div className="group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-stone-300 hover:shadow-md transition-all cursor-pointer">
+        <div
+            className="group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-stone-300 hover:shadow-md transition-all cursor-pointer"
+            onContextMenu={e => onContextMenu(e, item)}
+        >
             <div className="h-[110px]">
                 <DocPreview ext={ext} />
             </div>
@@ -119,7 +122,7 @@ function DocListHeader() {
 }
 
 /* ── Liste satırı ────────────────────────────────────────────────── */
-function DocRow({ item }) {
+function DocRow({ item, onContextMenu }) {
     const ext      = (item.file_type || '').toLowerCase();
     const c        = extColors(ext);
     const title    = item.filename.replace(/\.[^.]+$/, '');
@@ -131,7 +134,11 @@ function DocRow({ item }) {
     const erisim   = relTime(item.updated_at || item.accessed_at || item.created_at);
 
     return (
-        <div className={`${DOC_LIST_COLS} px-4 py-2.5 bg-white hover:bg-stone-50 border-b border-stone-100 transition-colors cursor-pointer group`} style={DOC_GRID_COLS}>
+        <div
+            className={`${DOC_LIST_COLS} px-4 py-2.5 bg-white hover:bg-stone-50 border-b border-stone-100 transition-colors cursor-pointer group`}
+            style={DOC_GRID_COLS}
+            onContextMenu={e => onContextMenu(e, item)}
+        >
             {/* AD */}
             <div className="flex items-center gap-2 min-w-0">
                 <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded text-white" style={{ background: c.badge }}>
@@ -181,11 +188,14 @@ const FILTERS = [
 
 /* ── Ana bileşen ─────────────────────────────────────────────────── */
 export default function BelgelerViewer() {
-    const [items,   setItems]   = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [search,  setSearch]  = useState('');
-    const [filter,  setFilter]  = useState('all');
-    const [view,    setView]    = useState('grid');
+    const [items,       setItems]       = useState([]);
+    const [loading,     setLoading]     = useState(true);
+    const [search,      setSearch]      = useState('');
+    const [filter,      setFilter]      = useState('all');
+    const [view,        setView]        = useState('grid');
+    const [ctxMenu,     setCtxMenu]     = useState(null); // {x, y, item}
+    const [deleting,    setDeleting]    = useState(null); // id being deleted
+    const ctxRef = useRef(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -203,6 +213,31 @@ export default function BelgelerViewer() {
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (!ctxMenu) return;
+        const close = () => setCtxMenu(null);
+        const onKey = e => { if (e.key === 'Escape') close(); };
+        document.addEventListener('mousedown', close);
+        document.addEventListener('keydown', onKey);
+        return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', onKey); };
+    }, [ctxMenu]);
+
+    const handleContextMenu = useCallback((e, item) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCtxMenu({ x: e.clientX, y: e.clientY, item });
+    }, []);
+
+    const handleDelete = useCallback(async (item) => {
+        setCtxMenu(null);
+        setDeleting(item.id);
+        try {
+            const res = await fetch(`/api/archive/documents/${item.id}`, { method: 'DELETE' });
+            if (res.ok) await load();
+        } catch {}
+        finally { setDeleting(null); }
+    }, [load]);
 
     const filtered = items.filter(i => {
         const title = i.filename.replace(/\.[^.]+$/, '').toLowerCase();
@@ -289,6 +324,28 @@ export default function BelgelerViewer() {
                 </div>
             </div>
 
+            {/* ── CONTEXT MENU ─────────────────────────────────── */}
+            {ctxMenu && (
+                <div
+                    ref={ctxRef}
+                    onMouseDown={e => e.stopPropagation()}
+                    className="fixed z-[9999] bg-white border border-stone-200 rounded-xl shadow-xl py-1 min-w-[160px]"
+                    style={{ top: ctxMenu.y, left: ctxMenu.x }}
+                >
+                    <button
+                        onClick={() => handleDelete(ctxMenu.item)}
+                        disabled={deleting === ctxMenu.item.id}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-[12px] font-semibold text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                    >
+                        {deleting === ctxMenu.item.id
+                            ? <Loader2 size={13} className="animate-spin" />
+                            : <Trash2 size={13} />
+                        }
+                        Sil
+                    </button>
+                </div>
+            )}
+
             {/* ── İÇERİK ───────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto p-6 minimal-scroll">
                 {loading ? (
@@ -305,12 +362,16 @@ export default function BelgelerViewer() {
                     </div>
                 ) : view === 'grid' ? (
                     <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-                        {filtered.map(item => <DocCard key={item.id} item={item} />)}
+                        {filtered.map(item => (
+                            <DocCard key={item.id} item={item} onContextMenu={handleContextMenu} />
+                        ))}
                     </div>
                 ) : (
                     <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
                         <DocListHeader />
-                        {filtered.map(item => <DocRow key={item.id} item={item} />)}
+                        {filtered.map(item => (
+                            <DocRow key={item.id} item={item} onContextMenu={handleContextMenu} />
+                        ))}
                     </div>
                 )}
             </div>

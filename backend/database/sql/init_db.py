@@ -93,6 +93,8 @@ def _run_schema_migrations(eng) -> None:
         # Belge: arşiv kategorisi (belgeler|surecler|toplantılar|kisisel|teknik_resim)
         "ALTER TABLE belgeler ADD COLUMN IF NOT EXISTS kategori VARCHAR(32)",
         "CREATE INDEX IF NOT EXISTS ix_belgeler_kategori ON belgeler (kategori)",
+        # AIModeli: model_id alanı boş olan kayıtları ad ile doldur (geriye dönük uyumluluk)
+        "UPDATE ai_modelleri SET model_id = ad WHERE model_id IS NULL OR model_id = ''",
     ]
     # Her statement kendi transaction'ında çalışsın — eski tek-connection
     # döngüsünde bir stmt fail ederse sonraki tüm stmt'ler PostgreSQL'in

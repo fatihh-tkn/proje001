@@ -245,6 +245,7 @@ def add_user_model(
             api_anahtari=_encrypt_secret(api_key),
             tedarikci=(provider or None),
             temel_url=(base_url or None),
+            model_id=name,
         )
         db.add(model)
         db.commit()

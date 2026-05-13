@@ -391,6 +391,10 @@ def get_doc_processing():
     is_custom = bool(custom_prompt.strip())
     effective_prompt = custom_prompt if is_custom else _build_prompt_from_groups(enabled_keys)
 
+    # DWG/DXF özel promptu
+    dwg_prompt = rows.get("doc_processing_dwg_prompt") or ""
+    dwg_is_custom = bool(dwg_prompt.strip())
+
     return {
         "models": models,
         "selected_model_id": rows.get("doc_processing_model_id"),
@@ -401,6 +405,8 @@ def get_doc_processing():
             {**f, "value": _bool(rows.get(f["key"]), f["default"])}
             for f in DOC_PROCESSING_FLAGS
         ],
+        "dwg_prompt": dwg_prompt,
+        "dwg_is_custom_prompt": dwg_is_custom,
     }
 
 
@@ -424,6 +430,11 @@ def save_doc_processing(body: dict):
         if "prompt" in body:
             val = body["prompt"] or ""
             _upsert_setting(db, "doc_processing_prompt", val, "Teknik döküman Vision AI promptu", now)
+
+        # DWG/DXF özel promptu
+        if "dwg_prompt" in body:
+            val = body["dwg_prompt"] or ""
+            _upsert_setting(db, "doc_processing_dwg_prompt", val, "DWG/DXF işleme özel promptu", now)
 
         # Output fields
         if "output_fields" in body:

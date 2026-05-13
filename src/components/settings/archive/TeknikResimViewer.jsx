@@ -13,7 +13,7 @@ const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff'])
 const isImage = t => IMAGE_EXTS.has((t || '').toLowerCase());
 
 /* ── Belge işleme ilerlemesini SSE üzerinden toast'a yansıt ─────────── */
-function subscribeToDocProgress(docId, filename) {
+function subscribeToDocProgress(docId, filename, onDone) {
     const { addToast, updateToast, replaceToast } = useErrorStore.getState();
 
     const short = filename.length > 28 ? filename.slice(0, 25) + '…' : filename;
@@ -33,9 +33,11 @@ function subscribeToDocProgress(docId, filename) {
             if (data.done) {
                 es.close();
                 replaceToast(toastId, { type: 'success', message: `${short} — ${data.step}`, duration: 5000 });
+                if (onDone) onDone();
             } else if (data.error) {
                 es.close();
                 replaceToast(toastId, { type: 'error', message: `${short} — ${data.step}`, duration: 7000 });
+                if (onDone) onDone();
             } else {
                 updateToast(toastId, { message: `${short} — ${data.step}` });
             }
@@ -123,6 +125,11 @@ function StatusBadge({ item }) {
             <Clock size={8} /> BEKLİYOR
         </span>
     );
+    if (status === 'failed') return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-50 text-red-500 text-[9px] font-bold rounded border border-red-200">
+            <AlertTriangle size={8} /> HATA
+        </span>
+    );
     return (
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-stone-50 text-stone-300 text-[9px] font-bold rounded border border-stone-100">
             <AlertTriangle size={8} /> ANALİZ YOK
@@ -189,7 +196,7 @@ function FileSlot({ label, color, icon: Icon, file, onFile, inputRef, accept }) 
 }
 
 /* ── Yükleme Modalı ──────────────────────────────────────────────── */
-function UploadModal({ onClose, onUploaded }) {
+function UploadModal({ onClose, onUploaded, onAnalysisDone }) {
     const [cizimFile,   setCizimFile]   = useState(null);
     const [nestingFile, setNestingFile] = useState(null);
     const [uploading,   setUploading]   = useState(false);
@@ -215,7 +222,7 @@ function UploadModal({ onClose, onUploaded }) {
                 const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
                 const data = await res.json();
                 cizimId = data.id;
-                if (cizimId) subscribeToDocProgress(cizimId, cizimFile.name);
+                if (cizimId) subscribeToDocProgress(cizimId, cizimFile.name, onAnalysisDone);
             }
 
             if (nestingFile) {
@@ -227,7 +234,7 @@ function UploadModal({ onClose, onUploaded }) {
                 const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
                 const data = await res.json();
                 nestingId = data.id;
-                if (nestingId) subscribeToDocProgress(nestingId, nestingFile.name);
+                if (nestingId) subscribeToDocProgress(nestingId, nestingFile.name, onAnalysisDone);
             }
 
             if (cizimId && nestingId) {
@@ -263,9 +270,9 @@ function UploadModal({ onClose, onUploaded }) {
 
                 <div className="p-6 flex flex-col gap-3">
                     <FileSlot label="Teknik Çizim" color="violet" icon={Cpu}
-                        file={cizimFile} onFile={setCizimFile} inputRef={cizimRef} accept="image/*,.pdf" />
+                        file={cizimFile} onFile={setCizimFile} inputRef={cizimRef} accept="*" />
                     <FileSlot label="Nesting Planı" color="orange" icon={Scissors}
-                        file={nestingFile} onFile={setNestingFile} inputRef={nestingRef} accept="image/*,.pdf" />
+                        file={nestingFile} onFile={setNestingFile} inputRef={nestingRef} accept="*" />
                     {cizimFile && nestingFile && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-600 font-medium">
                             <Link2 size={12} /> İki dosya otomatik olarak birbirine bağlanacak
@@ -337,7 +344,7 @@ function LinkModal({ sourceItem, linkType, onClose, onLinked }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-[380px] flex flex-col overflow-hidden">
-                <input ref={inputRef} type="file" accept="image/*,.pdf" className="hidden"
+                <input ref={inputRef} type="file" accept="*" className="hidden"
                     onChange={e => handleFile(e.target.files?.[0] || null)} />
 
                 {/* Başlık */}
@@ -370,7 +377,7 @@ function LinkModal({ sourceItem, linkType, onClose, onLinked }) {
                         </div>
                         <div className="text-center">
                             <p className="text-[12px] font-bold text-stone-700">Dosya seçmek için tıklayın</p>
-                            <p className="text-[11px] text-stone-400 mt-0.5">PNG, JPG, JPEG, PDF desteklenir</p>
+                            <p className="text-[11px] text-stone-400 mt-0.5">PNG, JPG, PDF, DWG, DXF, STP/STEP desteklenir</p>
                         </div>
                     </div>
                 )}
@@ -387,136 +394,173 @@ function LinkStatus({ item, onUnlink, onStartLink }) {
 
     return (
         <div className="flex items-center gap-1">
-            {/* CAD badge */}
-            <div className="group/badge relative flex items-center">
-                {cadId ? (
-                    <>
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-violet-100 text-violet-700 border border-violet-300">
-                            <Cpu size={7} /> CAD <CheckCircle2 size={7} className="text-violet-500" />
-                        </span>
-                        <button
-                            onClick={e => { e.stopPropagation(); onUnlink(item.id, 'cad'); }}
-                            title="Bağlantıyı kaldır"
-                            className="absolute -top-1.5 -right-1.5 hidden group-hover/badge:flex w-3.5 h-3.5 items-center justify-center bg-red-500 text-white rounded-full shadow"
-                        >
-                            <X size={6} />
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        onClick={e => { e.stopPropagation(); onStartLink(item, 'cad'); }}
-                        title="CAD dosyası bağla"
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-stone-50 text-stone-300 border border-dashed border-stone-200 hover:border-violet-300 hover:text-violet-400 hover:bg-violet-50 transition-colors"
-                    >
-                        <Cpu size={7} /> CAD
-                    </button>
-                )}
-            </div>
-
-            {/* NES badge */}
-            <div className="group/badge relative flex items-center">
-                {nestingId ? (
-                    <>
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-orange-100 text-orange-600 border border-orange-300">
-                            <Scissors size={7} /> NES <CheckCircle2 size={7} className="text-orange-500" />
-                        </span>
-                        <button
-                            onClick={e => { e.stopPropagation(); onUnlink(item.id, 'nesting'); }}
-                            title="Bağlantıyı kaldır"
-                            className="absolute -top-1.5 -right-1.5 hidden group-hover/badge:flex w-3.5 h-3.5 items-center justify-center bg-red-500 text-white rounded-full shadow"
-                        >
-                            <X size={6} />
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        onClick={e => { e.stopPropagation(); onStartLink(item, 'nesting'); }}
-                        title="Nesting dosyası bağla"
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-stone-50 text-stone-300 border border-dashed border-stone-200 hover:border-orange-300 hover:text-orange-400 hover:bg-orange-50 transition-colors"
-                    >
-                        <Scissors size={7} /> NES
-                    </button>
-                )}
-            </div>
+            <span className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
+                cadId
+                    ? 'bg-violet-100 text-violet-700 border-violet-300'
+                    : 'bg-stone-50 text-stone-300 border-stone-200 border-dashed'
+            }`}>
+                <Cpu size={7} /> CAD
+            </span>
+            <span className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
+                nestingId
+                    ? 'bg-orange-100 text-orange-600 border-orange-300'
+                    : 'bg-stone-50 text-stone-300 border-stone-200 border-dashed'
+            }`}>
+                <Scissors size={7} /> NES
+            </span>
         </div>
     );
 }
 
 /* ── Excel indirme yardımcıları ─────────────────────────────────── */
+
+function _setColWidths(ws, widths) {
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+}
+
 function _buildTeknikSheet(va) {
-    const bb = va?.baslik_bloku || {};
+    const bb   = va?.baslik_bloku || {};
     const rows = [];
+
+    /* ── BAŞLIK BLOĞU ── */
     rows.push(['BAŞLIK BLOĞU', '']);
-    [['Çizim No', bb.cizim_numarasi], ['Başlık', bb.baslik], ['Firma', bb.firma],
-     ['Proje', bb.proje], ['Revizyon', bb.revizyon], ['Ölçek', bb.olcek],
-     ['Tarih', bb.tarih], ['Çizen', bb.cizen], ['Onaylayan', bb.onaylayan],
-    ].forEach(([k, v]) => { if (v) rows.push([k, v]); });
+    [
+        ['Çizim No',      bb.cizim_numarasi],
+        ['Kimlik No',     bb.kimlik_numarasi],
+        ['Başlık',        bb.baslik],
+        ['Firma',         bb.firma],
+        ['Proje',         bb.proje],
+        ['Revizyon',      bb.revizyon],
+        ['Ölçek',         bb.olcek],
+        ['Tarih',         bb.tarih],
+        ['Çizen',         bb.cizen],
+        ['Onaylayan',     bb.onaylayan],
+        ['Kontrol Eden',  bb.kontrol_eden],
+        ['Malzeme',       bb.malzeme],
+        ['Yüzey İşlemi',  bb.yuzey_islem],
+        ['Sertlik',       bb.sertlik],
+        ['Ağırlık',       bb.agirlik],
+        ['Birim',         bb.birim],
+        ['Format',        bb.blatt_format],
+        ['Sayfa',         bb.sayfa],
+    ].forEach(([k, v]) => { if (v) rows.push([k, String(v)]); });
 
+    /* ── PARÇA LİSTESİ ── */
     rows.push([]);
-    rows.push(['PARÇA LİSTESİ', '', '', '']);
-    rows.push(['Poz', 'Adet', 'Malzeme', 'Açıklama']);
-    (va?.parca_listesi || []).forEach(p =>
-        rows.push([p.poz || '', p.adet || '', p.malzeme || '', p.aciklama || ''])
-    );
+    rows.push(['PARÇA LİSTESİ', '', '', '', '', '']);
+    rows.push(['Poz', 'Adet', 'Çizim No', 'Malzeme', 'Yarı Mamul', 'Açıklama']);
+    (va?.parca_listesi || []).forEach(p => rows.push([
+        p.poz || '', p.adet || '', p.cizim_no || '',
+        p.malzeme || '', p.yarim_mamul || '', p.aciklama || '',
+    ]));
 
+    /* ── ÖLÇÜLER ── */
     if (va?.olcular?.length) {
-        rows.push([]); rows.push(['ÖLÇÜLER']);
-        rows.push(va.olcular.map(String));
+        rows.push([]); rows.push(['ÖLÇÜLER', '', '', '', '']);
+        if (typeof va.olcular[0] === 'object') {
+            rows.push(['Etiket', 'Değer', 'Birim', 'Tolerans', 'Açıklama']);
+            va.olcular.forEach(o => rows.push([
+                o.etiket || '', o.deger || '', o.birim || 'mm', o.tolerans || '', o.aciklama || '',
+            ]));
+        } else {
+            rows.push(['Ölçü']); va.olcular.forEach(o => rows.push([String(o)]));
+        }
     }
+
+    /* ── TOLERANSLAR ── */
     if (va?.toleranslar?.length) {
-        rows.push([]); rows.push(['TOLERANSLAR']);
-        rows.push(va.toleranslar.map(String));
+        rows.push([]); rows.push(['TOLERANSLAR', '', '']);
+        if (typeof va.toleranslar[0] === 'object') {
+            rows.push(['Tip', 'Değer', 'Açıklama']);
+            va.toleranslar.forEach(t => rows.push([t.tip || '', t.deger || '', t.aciklama || '']));
+        } else {
+            rows.push(['Tolerans']); va.toleranslar.forEach(t => rows.push([String(t)]));
+        }
     }
+
+    /* ── İŞLEM SIRASI ── */
+    if (va?.islem_sirasi?.length) {
+        rows.push([]); rows.push(['İŞLEM SIRASI', '', '']);
+        if (typeof va.islem_sirasi[0] === 'object') {
+            rows.push(['Sıra', 'İşlem', 'Açıklama']);
+            va.islem_sirasi.forEach(s => rows.push([s.sira || '', s.islem || '', s.aciklama || '']));
+        } else {
+            rows.push(['Sıra', 'İşlem']);
+            va.islem_sirasi.forEach((s, i) => rows.push([i + 1, String(s)]));
+        }
+    }
+
+    /* ── NOTLAR ── */
     if (va?.notlar?.length) {
         rows.push([]); rows.push(['NOTLAR']);
-        va.notlar.forEach(n => rows.push(['', n]));
+        va.notlar.forEach(n => rows.push([String(n)]));
     }
-    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', va.genel_metin]); }
-    return rows;
+
+    /* ── GENEL METİN ── */
+    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', String(va.genel_metin)]); }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    _setColWidths(ws, [22, 40, 18, 18, 22, 40]);
+    return ws;
 }
 
 function _buildNestingSheet(va) {
     const rows = [];
-    rows.push(['GENEL BİLGİLER', '']);
-    [['Program', va?.program_adi], ['Malzeme No', va?.malzeme_numarasi],
-     ['Malzeme', va?.malzeme], ['Kalınlık', va?.kalinlik],
-     ['Levha Boyutu', va?.levha_boyutu], ['Toplam Parça', va?.toplam_parca_adedi],
-     ['Kullanım Oranı', va?.kullanim_orani], ['Fire Oranı', va?.fire_orani],
-    ].forEach(([k, v]) => { if (v) rows.push([k, v]); });
 
+    /* ── GENEL BİLGİLER ── */
+    rows.push(['GENEL BİLGİLER', '']);
+    [
+        ['Program Adı',    va?.program_adi],
+        ['Malzeme No',     va?.malzeme_numarasi],
+        ['Malzeme',        va?.malzeme],
+        ['Kalınlık',       va?.kalinlik],
+        ['Levha Boyutu',   va?.levha_boyutu],
+        ['Toplam Parça',   va?.toplam_parca_adedi],
+        ['Kullanım Oranı', va?.kullanim_orani],
+        ['Fire Oranı',     va?.fire_orani],
+    ].forEach(([k, v]) => { if (v) rows.push([k, String(v)]); });
+
+    /* ── YAPILACAK İŞLEMLER ── */
     if (va?.islemler?.length) {
         rows.push([]); rows.push(['YAPILACAK İŞLEMLER']);
-        rows.push(va.islemler.map(String));
+        va.islemler.forEach(i => rows.push([String(i)]));
     }
 
+    /* ── PARÇA LİSTESİ ── */
     rows.push([]);
-    rows.push(['PARÇA LİSTESİ', '', '']);
-    rows.push(['Parça Adı', 'Adet', 'Malzeme']);
-    (va?.parca_listesi || []).forEach(p =>
-        rows.push([p.parca_adi || '', p.adet || '', p.malzeme || ''])
-    );
+    rows.push(['PARÇA LİSTESİ', '', '', '']);
+    rows.push(['Parça Adı', 'Adet', 'Malzeme', 'Kalınlık']);
+    (va?.parca_listesi || []).forEach(p => rows.push([
+        p.parca_adi || '', p.adet || '', p.malzeme || '', p.kalinlik || '',
+    ]));
 
+    /* ── NOTLAR ── */
     if (va?.notlar?.length) {
         rows.push([]); rows.push(['NOTLAR']);
-        va.notlar.forEach(n => rows.push(['', n]));
+        va.notlar.forEach(n => rows.push([String(n)]));
     }
-    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', va.genel_metin]); }
-    return rows;
+
+    /* ── GENEL METİN ── */
+    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', String(va.genel_metin)]); }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    _setColWidths(ws, [28, 12, 20, 12]);
+    return ws;
 }
 
 function downloadExcel(item, linkedItem) {
     const wb = XLSX.utils.book_new();
-    const va = item.meta?.vision_analysis;
+    const va  = item.meta?.vision_analysis;
     const lva = linkedItem?.meta?.vision_analysis;
 
     if (va?.image_type === 'teknik_resim') {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildTeknikSheet(va)), 'Teknik Resim');
+        XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(va), 'Teknik Resim');
         if (lva?.image_type === 'nesting')
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildNestingSheet(lva)), 'Nesting');
+            XLSX.utils.book_append_sheet(wb, _buildNestingSheet(lva), 'Nesting');
     } else if (va?.image_type === 'nesting') {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildNestingSheet(va)), 'Nesting');
+        XLSX.utils.book_append_sheet(wb, _buildNestingSheet(va), 'Nesting');
         if (lva?.image_type === 'teknik_resim')
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildTeknikSheet(lva)), 'Teknik Resim');
+            XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(lva), 'Teknik Resim');
     } else {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Analiz verisi yok']]), 'Veri');
     }
@@ -538,19 +582,20 @@ function DataTableModal({ item, allItems, onClose }) {
     const initTab = va?.image_type === 'nesting' ? 'nesting' : 'teknik';
     const [tab, setTab] = useState(initTab);
 
-    const hasTeknik  = va?.image_type === 'teknik_resim' || lva?.image_type === 'teknik_resim';
-    const hasNesting = va?.image_type === 'nesting'      || lva?.image_type === 'nesting';
+    const isTeknikType = t => t === 'teknik_resim' || t === 'step_model';
+    const hasTeknik  = isTeknikType(va?.image_type) || isTeknikType(lva?.image_type);
+    const hasNesting = va?.image_type === 'nesting' || lva?.image_type === 'nesting';
 
     const activeVa = tab === 'teknik'
-        ? (va?.image_type === 'teknik_resim' ? va : lva)
-        : (va?.image_type === 'nesting'      ? va : lva);
+        ? (isTeknikType(va?.image_type) ? va : lva)
+        : (va?.image_type === 'nesting' ? va : lva);
 
     const hasAny = hasTeknik || hasNesting;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6">
             <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden"
-                 style={{ width: '820px', maxHeight: '88vh' }}>
+                 style={{ width: '860px', height: '88vh' }}>
 
                 {/* ── Başlık ── */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-100 shrink-0">
@@ -588,11 +633,10 @@ function DataTableModal({ item, allItems, onClose }) {
                 </div>
 
                 {/* ── İçerik ── */}
-                <div className="flex-1 overflow-y-auto minimal-scroll">
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                     {!hasAny ? (
-                        <div className="flex flex-col items-center justify-center h-48 gap-3 text-stone-400">
-                            <Table2 size={32} strokeWidth={1} />
-                            <p className="text-[12px] font-medium">Henüz analiz edilmemiş — önce "Analiz Et" butonuna basın</p>
+                        <div className="flex-1 overflow-y-auto minimal-scroll">
+                            <EmptyAnalysisState status={item.meta?.transcription_status} va={va} visionError={item.meta?.vision_error} />
                         </div>
                     ) : tab === 'teknik' ? (
                         <TeknikTable va={activeVa} />
@@ -619,80 +663,325 @@ function DataTableModal({ item, allItems, onClose }) {
     );
 }
 
+/* ── Analiz boş durum ────────────────────────────────────────────── */
+function EmptyAnalysisState({ status, va, visionError }) {
+    const [cfg, setCfg] = useState(null);
+
+    useEffect(() => {
+        if (status === 'done' && !va) {
+            fetch('/api/archive/check-vision-config')
+                .then(r => r.json())
+                .then(setCfg)
+                .catch(() => {});
+        }
+    }, [status, va]);
+
+    if (status === 'processing') return (
+        <div className="flex flex-col items-center justify-center h-48 gap-3 text-[#378ADD]">
+            <Loader2 size={30} strokeWidth={1.5} className="animate-spin" />
+            <p className="text-[12px] font-semibold">Vision AI analiz ediyor…</p>
+        </div>
+    );
+
+    if (status === 'failed') return (
+        <div className="flex flex-col items-center gap-4 px-8 py-8">
+            <AlertTriangle size={28} strokeWidth={1.5} className="text-red-400 shrink-0" />
+            <div className="text-center">
+                <p className="text-[12px] font-bold text-stone-700">Analiz başarısız</p>
+                <p className="text-[11px] text-stone-400 mt-1">Dosya yapay zeka tarafından işlenemedi.</p>
+            </div>
+            {visionError && (
+                <div className="w-full bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px]">
+                    <p className="font-bold text-red-600 mb-1">Hata Detayı</p>
+                    <p className="text-red-500 break-words">{visionError}</p>
+                </div>
+            )}
+            <p className="text-[10px] text-stone-400 text-center">
+                DWG/DXF dosyalarını PNG veya PDF olarak dışa aktarıp tekrar yükleyin, ardından "Analiz Et" butonuna basın.
+            </p>
+        </div>
+    );
+
+    if (status === 'done' && !va) {
+        const dp = cfg?.doc_processing;
+        const vf = cfg?.vision_fallback;
+        return (
+            <div className="flex flex-col items-center gap-4 px-8 py-8">
+                <AlertTriangle size={28} strokeWidth={1.5} className="text-amber-400 shrink-0" />
+                <div className="text-center">
+                    <p className="text-[12px] font-bold text-stone-700">Vision analizi tamamlanamadı</p>
+                    <p className="text-[11px] text-stone-400 mt-1">Görsel yapay zekaya gönderildi ancak yanıt alınamadı.</p>
+                </div>
+
+                {/* Gerçek hata mesajı varsa önce onu göster */}
+                {visionError && (
+                    <div className="w-full bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px]">
+                        <p className="font-bold text-red-600 mb-1">API Hatası</p>
+                        <p className="text-red-500 break-all font-mono">{visionError}</p>
+                    </div>
+                )}
+
+                {cfg && (
+                    <div className="w-full bg-stone-50 rounded-xl border border-stone-200 overflow-hidden text-[11px]">
+                        <div className="px-4 py-2 border-b border-stone-200 text-[10px] font-black tracking-widest text-stone-400 uppercase">
+                            Model Tanılaması
+                        </div>
+                        {[
+                            { label: 'Teknik Döküman İşleme', info: dp },
+                            { label: 'Vision Fallback', info: vf },
+                        ].map(({ label, info }) => (
+                            <div key={label} className="flex items-start gap-3 px-4 py-2.5 border-b border-stone-100 last:border-0">
+                                <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${info?.found && info?.has_key && info?.model_id ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                                <div className="min-w-0">
+                                    <p className="font-semibold text-stone-600">{label}</p>
+                                    {!info?.stored && <p className="text-stone-400">Ayarlanmamış</p>}
+                                    {info?.stored && !info?.found && <p className="text-red-500">Model bulunamadı (ID geçersiz)</p>}
+                                    {info?.found && !info?.has_key && <p className="text-red-500">API anahtarı eksik veya çözülemiyor</p>}
+                                    {info?.found && info?.has_key && !info?.model_id && <p className="text-amber-500">Model adı boş (model_id alanı dolu değil)</p>}
+                                    {info?.found && info?.has_key && info?.model_id && (
+                                        <p className="text-emerald-600">{info.model_id} · {info.provider || 'gemini'}</p>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <p className="text-[10px] text-stone-400 text-center">
+                    Sorunu giderdikten sonra "Analiz Et" ile tekrar deneyin.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-center justify-center h-48 gap-3 text-stone-400">
+            <Table2 size={32} strokeWidth={1} />
+            <p className="text-[12px] font-medium">Henüz analiz edilmemiş — önce "Analiz Et" butonuna basın</p>
+        </div>
+    );
+}
+
+/* ── Generic KV bölümü (bilinmeyen şemalar için) ─────────────────── */
+function GenericSection({ label, value }) {
+    if (Array.isArray(value) && value.length > 0) {
+        const first = value[0];
+        if (typeof first === 'object' && first !== null) {
+            const cols = Object.keys(first).map(k => ({ key: k, label: k, w: `${Math.floor(100 / Object.keys(first).length)}%` }));
+            return (
+                <SheetBlock title={label} color="blue">
+                    <SheetDataTable cols={cols} rows={value} />
+                </SheetBlock>
+            );
+        }
+        return (
+            <SheetBlock title={label} color="stone">
+                <SheetTagTable items={value} />
+            </SheetBlock>
+        );
+    }
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const rows = Object.entries(value).filter(([, v]) => v).map(([k, v]) => [k, String(v)]);
+        if (rows.length === 0) return null;
+        return (
+            <SheetBlock title={label} color="blue">
+                <SheetKVTable rows={rows} />
+            </SheetBlock>
+        );
+    }
+    if (value && typeof value === 'string') {
+        return (
+            <SheetBlock title={label} color="stone">
+                <p className="text-[12px] text-stone-600 leading-relaxed px-4 py-3">{value}</p>
+            </SheetBlock>
+        );
+    }
+    return null;
+}
+
 /* ── Teknik Resim tablo görünümü ─────────────────────────────────── */
+/* ── Excel benzeri spreadsheet ───────────────────────────────────── */
+function ExcelSheet({ rows, cols }) {
+    /* rows: dizi-of-dizi [[label,val],...] veya dizi-of-obje [{key:val},...] */
+    if (!rows || rows.length === 0) return (
+        <div className="flex items-center justify-center h-24 text-stone-400 text-[12px]">Veri yok</div>
+    );
+
+    const isKV = Array.isArray(rows[0]);
+
+    if (isKV) {
+        return (
+            <table className="w-full border-collapse text-[12px]">
+                <thead>
+                    <tr className="bg-[#217346]/10">
+                        <th className="w-8 border border-stone-200 bg-stone-100 text-stone-400 text-[10px] font-normal px-2 py-1.5 text-center" />
+                        <th className="border border-stone-200 bg-[#217346]/10 text-[#217346] font-bold px-3 py-1.5 text-left text-[11px]">Alan</th>
+                        <th className="border border-stone-200 bg-[#217346]/10 text-[#217346] font-bold px-3 py-1.5 text-left text-[11px]">Değer</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map(([label, val], i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-stone-50/60'}>
+                            <td className="border border-stone-200 bg-stone-100 text-stone-400 text-[10px] px-2 py-1.5 text-center w-8">{i + 1}</td>
+                            <td className="border border-stone-200 px-3 py-1.5 text-stone-500 font-medium">{label}</td>
+                            <td className="border border-stone-200 px-3 py-1.5 text-stone-800">{val}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    }
+
+    /* Obje dizisi → columns */
+    const headers = cols || Object.keys(rows[0]);
+    return (
+        <table className="w-full border-collapse text-[12px]">
+            <thead>
+                <tr>
+                    <th className="w-8 border border-stone-200 bg-stone-100 text-stone-400 text-[10px] font-normal px-2 py-1.5 text-center" />
+                    {headers.map(h => (
+                        <th key={h} className="border border-stone-200 bg-[#217346]/10 text-[#217346] font-bold px-3 py-1.5 text-left text-[11px]">{h}</th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-stone-50/60'}>
+                        <td className="border border-stone-200 bg-stone-100 text-stone-400 text-[10px] px-2 py-1.5 text-center">{i + 1}</td>
+                        {headers.map(h => (
+                            <td key={h} className="border border-stone-200 px-3 py-1.5 text-stone-800">{row[h] ?? ''}</td>
+                        ))}
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
 function TeknikTable({ va }) {
-    if (!va) return (
+    const llmSkipped = va?.llm_skipped === true;
+
+    const SECTION_LABELS = {
+        baslik_bloku:   'Başlık Bloğu',
+        parca_listesi:  'Parça Listesi',
+        olcular:        'Ölçüler',
+        toleranslar:    'Toleranslar',
+        notlar:         'Notlar',
+        yuzey_islemleri:'Yüzey İşlemleri',
+        kesitler:       'Kesitler',
+        islem_sirasi:   'İşlem Sırası',
+        parca_tanim:    'Parça Tanımı',
+        geometrik:      'Geometrik Bilgiler',
+        malzeme_uretim: 'Malzeme & Üretim',
+        izlenebilirlik: 'İzlenebilirlik',
+        genel_metin:    'Genel Metin',
+    };
+
+    const FIELD_LABELS = {
+        cizim_numarasi:'Çizim No', baslik:'Başlık', firma:'Firma', proje:'Proje',
+        revizyon:'Revizyon', olcek:'Ölçek', tarih:'Tarih', cizen:'Çizen',
+        onaylayan:'Onaylayan', kontrol_eden:'Kontrol Eden', malzeme:'Malzeme',
+        yuzey_islem:'Yüzey İşlemi', sertlik:'Sertlik', agirlik:'Ağırlık',
+        birim:'Birim', sayfa:'Sayfa', blatt_format:'Format',
+        parca_adi:'Parça Adı', parca_kodu:'Parça Kodu', kimlik_numarasi:'Kimlik No',
+        sayfa_bilgisi:'Sayfa Bilgisi', cizim_no:'Çizim No', yarim_mamul:'Yarı Mamul',
+        acilim_uzunlugu:'Açılım Uzunluğu', boyutlar:'Boyutlar', bukme_yaricapi:'Bükme Yarıçapı',
+        kenar_mesafeleri:'Kenar Mesafeleri', kesit:'Kesit',
+        yuzey_standardi:'Yüzey Standardı', kesim_standardi:'Kesim Standardı',
+        sayfa_formati:'Sayfa Formatı',
+        talasli_tolerans:'Talaşlı Tolerans', talassiz_tolerans:'Talaşsız Tolerans',
+        kaynakli_tolerans:'Kaynaklı Tolerans', dokum_tolerans:'Döküm Tolerans',
+        cizim_tarihi:'Çizim Tarihi', kalite_kontrol:'Kalite Kontrol', cad_bilgisi:'CAD Bilgisi',
+        poz:'Poz', adet:'Adet', aciklama:'Açıklama',
+        // Ölçüler (yeni şema)
+        etiket:'Etiket', deger:'Değer', tolerans:'Tolerans',
+        // Toleranslar (yeni şema)
+        tip:'Tip',
+        // İşlem sırası (yeni şema)
+        sira:'Sıra', islem:'İşlem',
+    };
+
+    const SKIP = new Set(['image_type', 'kaynak', 'projeksiyon_acisi', 'llm_skipped']);
+
+    /* Bölümleri dinamik olarak çıkar */
+    const sections = [];
+    for (const [key, val] of Object.entries(va || {})) {
+        if (SKIP.has(key) || !val) continue;
+        const title = SECTION_LABELS[key] || key;
+
+        if (key === 'baslik_bloku' && typeof val === 'object' && !Array.isArray(val)) {
+            const rows = Object.entries(val).filter(([,v]) => v)
+                .map(([k,v]) => [FIELD_LABELS[k] || k, String(v)]);
+            if (rows.length) sections.push({ key, title, type: 'kv', rows });
+
+        } else if (Array.isArray(val) && val.length > 0) {
+            if (typeof val[0] === 'object') {
+                /* obje dizisi → kolon başlıklarını Türkçe yap */
+                const rawCols = Object.keys(val[0]);
+                const cols = rawCols.map(c => FIELD_LABELS[c] || c);
+                const rows = val.map(r => {
+                    const out = {};
+                    rawCols.forEach((c, i) => { out[cols[i]] = r[c] ?? ''; });
+                    return out;
+                });
+                sections.push({ key, title, type: 'table', rows, cols });
+            } else {
+                const rows = val.map((v, i) => [String(i + 1), String(v)]);
+                sections.push({ key, title, type: 'kv', rows });
+            }
+
+        } else if (typeof val === 'object' && !Array.isArray(val)) {
+            const rows = Object.entries(val).filter(([,v]) => v)
+                .map(([k,v]) => [FIELD_LABELS[k] || k, String(v)]);
+            if (rows.length) sections.push({ key, title, type: 'kv', rows });
+
+        } else if (typeof val === 'string' && val.trim()) {
+            sections.push({ key, title, type: 'text', text: val });
+        }
+    }
+
+    const [activeKey, setActiveKey] = useState(() => sections[0]?.key || '');
+    const active = sections.find(s => s.key === activeKey) || sections[0];
+
+    if (!sections.length) return (
         <div className="flex items-center justify-center h-32 text-stone-400 text-[12px]">
             Teknik çizim analizi bulunamadı
         </div>
     );
-    const bb = va.baslik_bloku || {};
-    const bbRows = [
-        ['Çizim No',  bb.cizim_numarasi], ['Başlık',    bb.baslik],
-        ['Firma',     bb.firma],           ['Proje',     bb.proje],
-        ['Revizyon',  bb.revizyon],        ['Ölçek',     bb.olcek],
-        ['Tarih',     bb.tarih],           ['Çizen',     bb.cizen],
-        ['Onaylayan', bb.onaylayan],
-    ].filter(([, v]) => v);
 
     return (
-        <div className="p-6 flex flex-col gap-6">
-            {/* Başlık bloğu */}
-            {bbRows.length > 0 && (
-                <SheetBlock title="Başlık Bloğu" color="blue" icon={FileText}>
-                    <SheetKVTable rows={bbRows} />
-                </SheetBlock>
+        <div className="flex flex-col h-full">
+            {/* ── LLM atlandı uyarısı ── */}
+            {llmSkipped && (
+                <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-700">
+                    <span className="font-bold">LLM'den devam edilmedi</span>
+                    <span className="text-amber-500">— Yalnızca DXF metin entity'leri gösteriliyor. Detaylı analiz için LLM'i etkinleştirebilirsiniz.</span>
+                </div>
             )}
+            {/* ── Excel sekme çubuğu ── */}
+            <div className="flex items-end gap-0 bg-[#f0f0f0] border-b border-stone-300 px-3 pt-2 overflow-x-auto shrink-0">
+                {sections.map(s => (
+                    <button
+                        key={s.key}
+                        onClick={() => setActiveKey(s.key)}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold whitespace-nowrap border border-b-0 rounded-t-md mr-0.5 transition-all ${
+                            active?.key === s.key
+                                ? 'bg-white border-stone-300 text-[#217346] shadow-sm -mb-px z-10 relative'
+                                : 'bg-[#dce6d0] border-[#dce6d0] text-stone-500 hover:bg-[#c9d9ba] hover:text-stone-700'
+                        }`}
+                    >
+                        {s.title}
+                    </button>
+                ))}
+            </div>
 
-            {/* Parça listesi */}
-            {va.parca_listesi?.length > 0 && (
-                <SheetBlock title="Parça Listesi" color="violet" icon={Layers}>
-                    <SheetDataTable
-                        cols={[
-                            { key: 'poz',      label: 'Poz',       w: '10%' },
-                            { key: 'adet',     label: 'Adet',      w: '10%' },
-                            { key: 'malzeme',  label: 'Malzeme',   w: '25%' },
-                            { key: 'aciklama', label: 'Açıklama',  w: '55%' },
-                        ]}
-                        rows={va.parca_listesi}
-                    />
-                </SheetBlock>
-            )}
-
-            {/* Ölçüler */}
-            {va.olcular?.length > 0 && (
-                <SheetBlock title="Ölçüler" color="blue">
-                    <SheetTagTable items={va.olcular} />
-                </SheetBlock>
-            )}
-
-            {/* Toleranslar */}
-            {va.toleranslar?.length > 0 && (
-                <SheetBlock title="Toleranslar" color="stone">
-                    <SheetTagTable items={va.toleranslar} />
-                </SheetBlock>
-            )}
-
-            {/* Yüzey işlemleri */}
-            {va.yuzey_islemleri?.length > 0 && (
-                <SheetBlock title="Yüzey İşlemleri" color="stone">
-                    <SheetTagTable items={va.yuzey_islemleri} />
-                </SheetBlock>
-            )}
-
-            {/* Notlar */}
-            {va.notlar?.length > 0 && (
-                <SheetBlock title="Notlar" color="stone">
-                    <SheetNoteTable items={va.notlar} />
-                </SheetBlock>
-            )}
-
-            {/* Genel metin */}
-            {va.genel_metin && (
-                <SheetBlock title="Genel Metin" color="stone">
-                    <p className="text-[12px] text-stone-600 leading-relaxed px-1">{va.genel_metin}</p>
-                </SheetBlock>
-            )}
+            {/* ── Spreadsheet içeriği ── */}
+            <div className="flex-1 overflow-auto bg-white">
+                {active?.type === 'text' ? (
+                    <div className="p-5 text-[12px] text-stone-700 leading-relaxed whitespace-pre-wrap">{active.text}</div>
+                ) : (
+                    <ExcelSheet rows={active?.rows} cols={active?.cols} />
+                )}
+            </div>
         </div>
     );
 }
@@ -734,9 +1023,10 @@ function NestingTable({ va }) {
                 <SheetBlock title="Parça Listesi" color="orange" icon={Layers}>
                     <SheetDataTable
                         cols={[
-                            { key: 'parca_adi', label: 'Parça Adı',  w: '50%' },
-                            { key: 'adet',      label: 'Adet',        w: '15%' },
-                            { key: 'malzeme',   label: 'Malzeme',     w: '35%' },
+                            { key: 'parca_kodu', label: 'Parça Kodu', w: '20%' },
+                            { key: 'parca_adi',  label: 'Parça Adı',  w: '35%' },
+                            { key: 'adet',       label: 'Adet',       w: '10%' },
+                            { key: 'malzeme',    label: 'Malzeme',    w: '35%' },
                         ]}
                         rows={va.parca_listesi}
                     />
@@ -822,13 +1112,22 @@ function SheetDataTable({ cols, rows }) {
 }
 
 function SheetTagTable({ items }) {
+    const toStr = it => {
+        if (!it) return '';
+        if (typeof it === 'string') return it;
+        if (typeof it === 'object') {
+            return it.islem || it.aciklama || it.text || it.ad || it.tanim || it.name ||
+                Object.values(it).filter(v => typeof v === 'string' && v).join(' — ') || '';
+        }
+        return String(it);
+    };
     return (
         <table className="w-full text-[12px]">
             <tbody>
                 {items.map((it, i) => (
                     <tr key={i} className={`border-b border-stone-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'}`}>
                         <td className="px-4 py-2 w-10 text-stone-300 font-mono font-bold text-[10px]">{i + 1}</td>
-                        <td className="px-4 py-2 text-stone-700 font-medium">{String(it)}</td>
+                        <td className="px-4 py-2 text-stone-700 font-medium">{toStr(it)}</td>
                     </tr>
                 ))}
             </tbody>
@@ -837,13 +1136,20 @@ function SheetTagTable({ items }) {
 }
 
 function SheetNoteTable({ items }) {
+    const arr = Array.isArray(items) ? items : (items ? [items] : []);
+    const toStr = it => {
+        if (!it) return '';
+        if (typeof it === 'string') return it;
+        if (typeof it === 'object') return it.not || it.text || it.aciklama || it.note || Object.values(it).filter(v => typeof v === 'string').join(' ') || '';
+        return String(it);
+    };
     return (
         <table className="w-full text-[12px]">
             <tbody>
-                {items.map((it, i) => (
+                {arr.map((it, i) => (
                     <tr key={i} className={`border-b border-stone-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'}`}>
                         <td className="px-4 py-2 w-8 text-stone-300 font-bold">•</td>
-                        <td className="px-4 py-2 text-stone-600 leading-relaxed">{String(it)}</td>
+                        <td className="px-4 py-2 text-stone-600 leading-relaxed">{toStr(it)}</td>
                     </tr>
                 ))}
             </tbody>
@@ -856,9 +1162,10 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
     const [imgErr,   setImgErr]   = useState(false);
     const [ctxMenu,  setCtxMenu]  = useState(null);
     const clickTimer = useRef(null);
+    const isDwg = ['dwg','dxf','stp','step'].includes((item.file_type||'').toLowerCase());
 
     const va        = item.meta?.vision_analysis;
-    const isTR      = va?.image_type === 'teknik_resim';
+    const isTR      = ['teknik_resim', 'step_model', 'nesting'].includes(va?.image_type);
     const bb        = isTR ? (va.baslik_bloku || {}) : {};
     const status    = item.meta?.transcription_status;
     const canAnalyze = status !== 'processing' && !va;
@@ -907,7 +1214,7 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
         >
             {/* Önizleme */}
             <div className="relative h-[140px] bg-stone-50 overflow-hidden">
-                {!imgErr ? (
+                {!imgErr && !isDwg ? (
                     <img
                         src={`/api/archive/file/${item.id}`}
                         alt={item.filename}
@@ -915,8 +1222,9 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                         onError={() => setImgErr(true)}
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-stone-200">
-                        <Ruler size={40} strokeWidth={1} />
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-200">
+                        <Ruler size={36} strokeWidth={1} />
+                        {isDwg && <span className="text-[10px] font-black tracking-widest text-stone-300">{(item.file_type||'').toUpperCase()}</span>}
                     </div>
                 )}
 
@@ -940,14 +1248,6 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                             </button>
                         )}
                     </div>
-                    {nestingId && (
-                        <button
-                            onClick={e => { e.stopPropagation(); onOpenLinked(nestingId); }}
-                            className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white text-[10px] font-bold rounded-lg shadow hover:bg-orange-600 transition-colors"
-                        >
-                            <Scissors size={9} /> Nesting Aç
-                        </button>
-                    )}
                 </div>
 
                 <div className="absolute top-2 left-2">
@@ -967,10 +1267,19 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
 
             {/* Bilgi */}
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-1 min-w-0">
-                {isTR && bb.cizim_numarasi && (
-                    <span className="text-[9px] font-black text-[#378ADD] tracking-widest uppercase">
-                        #{bb.cizim_numarasi}
-                    </span>
+                {isTR && (bb.cizim_numarasi || bb.kimlik_numarasi) && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {bb.cizim_numarasi && (
+                            <span className="text-[9px] font-black text-[#378ADD] tracking-widest uppercase">
+                                #{bb.cizim_numarasi}
+                            </span>
+                        )}
+                        {bb.kimlik_numarasi && (
+                            <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded tracking-wide uppercase">
+                                SAP {bb.kimlik_numarasi}
+                            </span>
+                        )}
+                    </div>
                 )}
                 <h3 className="text-[12px] font-bold text-stone-800 truncate leading-snug">
                     {(isTR && bb.baslik) ? bb.baslik : item.filename.replace(/\.[^.]+$/, '')}
@@ -1013,13 +1322,14 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
 }
 
 /* ── Liste satırı ────────────────────────────────────────────────── */
-const LCOLS = { gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.8fr) minmax(0,0.9fr) 80px 80px 80px 100px 110px 110px 60px' };
+const LCOLS = { gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.9fr) 80px 80px 80px 100px 110px 110px 60px' };
 
 function ListHeader() {
     return (
         <div className="grid gap-3 px-4 py-2 text-[10px] font-black tracking-widest uppercase text-stone-400 border-b border-stone-100 bg-white" style={LCOLS}>
             <span>DOSYA ADI</span>
             <span>ÇİZİM NO</span>
+            <span>SAP NO</span>
             <span>BAŞLIK</span>
             <span>REVİZYON</span>
             <span>ÖLÇEK</span>
@@ -1035,7 +1345,7 @@ function ListHeader() {
 function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete }) {
     const [ctxMenu, setCtxMenu] = useState(null);
     const va = item.meta?.vision_analysis;
-    const isTR = va?.image_type === 'teknik_resim';
+    const isTR = ['teknik_resim', 'step_model', 'nesting'].includes(va?.image_type);
     const bb = isTR ? (va.baslik_bloku || {}) : {};
     const canAnalyze = !va && item.meta?.transcription_status !== 'processing';
 
@@ -1062,6 +1372,7 @@ function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStart
                 <span className="text-[11px] font-semibold text-stone-800 truncate">{item.filename.replace(/\.[^.]+$/, '')}</span>
             </div>
             <span className="text-[11px] text-[#378ADD] font-bold truncate">{bb.cizim_numarasi || '—'}</span>
+            <span className="text-[11px] text-amber-600 font-bold truncate">{bb.kimlik_numarasi || '—'}</span>
             <span className="text-[11px] text-stone-600 truncate">{bb.baslik || '—'}</span>
             <span className="text-[11px] text-stone-500">{bb.revizyon || '—'}</span>
             <span className="text-[11px] text-stone-500">{bb.olcek || '—'}</span>
@@ -1132,7 +1443,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
             const res = await fetch('/api/archive/list');
             if (res.ok) {
                 const data = await res.json();
-                const TEKNIK_EXTS = new Set(['png','jpg','jpeg','webp','bmp','gif','tiff','pdf']);
+                const TEKNIK_EXTS = new Set(['png','jpg','jpeg','webp','bmp','gif','tiff','pdf','dwg','dxf','stp','step']);
                 const imgs = (data.items || [])
                     .filter(i => TEKNIK_EXTS.has((i.file_type || '').toLowerCase()))
                     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -1213,8 +1524,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
         setVectorizing(item.id);
         try {
             const res = await fetch(`/api/archive/vectorize/${item.id}`, { method: 'POST' });
-            if (res.ok) subscribeToDocProgress(item.id, item.filename);
-            setTimeout(load, 1500);
+            if (res.ok) subscribeToDocProgress(item.id, item.filename, load);
         } catch {}
         finally { setVectorizing(null); }
     };
@@ -1231,10 +1541,14 @@ export default function TeknikResimViewer({ onOpenFile }) {
     return (
         <>
         {detailItem && (
-            <DataTableModal item={detailItem} allItems={items} onClose={() => setDetailItem(null)} />
+            <DataTableModal
+                item={items.find(i => i.id === detailItem.id) || detailItem}
+                allItems={items}
+                onClose={() => setDetailItem(null)}
+            />
         )}
         {uploadModal && (
-            <UploadModal onClose={() => setUploadModal(false)} onUploaded={load} />
+            <UploadModal onClose={() => setUploadModal(false)} onUploaded={load} onAnalysisDone={load} />
         )}
         {linkModal && (
             <LinkModal

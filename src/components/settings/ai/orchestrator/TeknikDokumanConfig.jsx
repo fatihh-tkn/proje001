@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { FileText, Loader2, RefreshCw, Check, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, Loader2, RefreshCw, Check, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Cpu, ArrowRight, FileCode2, Zap, Upload } from 'lucide-react';
 
 const API = '/api/settings/doc-processing';
 
@@ -64,6 +64,8 @@ export default function TeknikDokumanConfig() {
     const [saving, setSaving]       = useState(null);
     const [promptVal, setPromptVal] = useState('');
     const [promptDirty, setPromptDirty] = useState(false);
+    const [dwgPromptVal, setDwgPromptVal]     = useState('');
+    const [dwgPromptDirty, setDwgPromptDirty] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -73,6 +75,8 @@ export default function TeknikDokumanConfig() {
             setData(json);
             setPromptVal(json.prompt || '');
             setPromptDirty(false);
+            setDwgPromptVal(json.dwg_prompt || '');
+            setDwgPromptDirty(false);
         } catch { }
         finally { setLoading(false); }
     }, []);
@@ -151,6 +155,28 @@ export default function TeknikDokumanConfig() {
             setData(json);
             setPromptVal(json.prompt || '');
             setPromptDirty(false);
+        } catch { }
+        finally { setSaving(null); }
+    };
+
+    /* ── DWG Prompt ───────────────────────────────── */
+    const saveDwgPrompt = async () => {
+        setSaving('dwg_prompt');
+        try {
+            await post({ dwg_prompt: dwgPromptVal });
+            setData(prev => ({ ...prev, dwg_prompt: dwgPromptVal, dwg_is_custom_prompt: true }));
+            setDwgPromptDirty(false);
+        } catch { }
+        finally { setSaving(null); }
+    };
+
+    const resetDwgPrompt = async () => {
+        setSaving('dwg_prompt_reset');
+        try {
+            await post({ dwg_prompt: '' });
+            setDwgPromptVal('');
+            setData(prev => ({ ...prev, dwg_prompt: '', dwg_is_custom_prompt: false }));
+            setDwgPromptDirty(false);
         } catch { }
         finally { setSaving(null); }
     };
@@ -299,6 +325,108 @@ export default function TeknikDokumanConfig() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* ── 5. DWG / DXF Dosya İşleme ─────────────────────── */}
+            <div className="mt-8 mb-2 border-t-2 border-dashed border-stone-200 pt-6">
+                <div className="flex items-center gap-2 mb-1">
+                    <FileCode2 size={14} className="text-stone-400 shrink-0" />
+                    <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase">DWG / DXF Dosya İşleme</span>
+                </div>
+                <p className="text-[11px] text-stone-400 mb-4 leading-relaxed">
+                    DWG ve DXF dosyaları yukarıda seçilen Vision modeline doğrudan gönderilir — dönüştürme adımı yoktur. Aynı analiz promptu ve çıktı alanları kullanılır.
+                </p>
+
+                {/* Pipeline: DWG */}
+                <div className="mb-3">
+                    <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">DWG (binary)</span>
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
+                            <Upload size={10} className="text-stone-400" />
+                            <span className="text-[10px] text-stone-600 font-medium">Files API yükle</span>
+                        </div>
+                        <ArrowRight size={10} className="text-stone-300 shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
+                            <Cpu size={10} className="text-stone-400" />
+                            <span className="text-[10px] text-stone-600 font-medium">Vision modeli</span>
+                        </div>
+                        <ArrowRight size={10} className="text-stone-300 shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                            <Zap size={10} className="text-emerald-500" />
+                            <span className="text-[10px] text-emerald-700 font-medium">JSON çıktı</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Pipeline: DXF */}
+                <div className="mb-4">
+                    <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">DXF (metin tabanlı)</span>
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
+                            <FileCode2 size={10} className="text-stone-400" />
+                            <span className="text-[10px] text-stone-600 font-medium">İçerik okunur</span>
+                        </div>
+                        <ArrowRight size={10} className="text-stone-300 shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
+                            <Cpu size={10} className="text-stone-400" />
+                            <span className="text-[10px] text-stone-600 font-medium">LLM'e metin olarak gönder</span>
+                        </div>
+                        <ArrowRight size={10} className="text-stone-300 shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                            <Zap size={10} className="text-emerald-500" />
+                            <span className="text-[10px] text-emerald-700 font-medium">JSON çıktı</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Fallback note */}
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5 mb-4">
+                    <AlertTriangle size={11} className="text-amber-400 mt-0.5 shrink-0" />
+                    <p className="text-[10px] text-amber-700 leading-relaxed">
+                        API analizi başarısız olursa ezdxf ile metin entity'leri çıkarılır ve regex ile yapısal veri aranır (fallback).
+                    </p>
+                </div>
+
+                {/* DWG Prompt */}
+                <p className="text-[11px] text-stone-500 font-semibold mb-1">DWG / DXF Analiz Promptu</p>
+                <p className="text-[11px] text-stone-400 mb-2 leading-relaxed">
+                    {data?.dwg_is_custom_prompt
+                        ? <span>Özel DWG promptu aktif — genel Vision promptundan bağımsız çalışır.</span>
+                        : <span>Boş bırakılırsa yukarıdaki genel Analiz Promptu kullanılır.</span>
+                    }
+                </p>
+                <textarea
+                    value={dwgPromptVal}
+                    onChange={e => { setDwgPromptVal(e.target.value); setDwgPromptDirty(true); }}
+                    rows={10}
+                    placeholder="DWG/DXF dosyaları için özel prompt… (boş = genel prompt kullanılır)"
+                    className="w-full text-[11px] font-mono text-stone-700 bg-white border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-[#378ADD]/50 focus:ring-1 focus:ring-[#378ADD]/20 leading-relaxed placeholder:text-stone-300 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200"
+                    spellCheck={false}
+                />
+                <div className="flex items-center justify-between mt-2">
+                    <button
+                        onClick={resetDwgPrompt}
+                        disabled={!!saving || !data?.dwg_is_custom_prompt}
+                        className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {saving === 'dwg_prompt_reset'
+                            ? <Loader2 size={11} className="animate-spin" />
+                            : <RotateCcw size={11} />
+                        }
+                        Genel prompta dön
+                    </button>
+                    <button
+                        onClick={saveDwgPrompt}
+                        disabled={!dwgPromptDirty || saving === 'dwg_prompt'}
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-[#378ADD] text-white text-[11px] font-bold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#2a6fc4] transition-colors"
+                    >
+                        {saving === 'dwg_prompt'
+                            ? <Loader2 size={11} className="animate-spin" />
+                            : <Save size={11} />
+                        }
+                        DWG Promptunu Kaydet
+                    </button>
+                </div>
             </div>
 
             <div className="h-8" />

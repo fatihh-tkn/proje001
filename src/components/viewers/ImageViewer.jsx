@@ -259,28 +259,38 @@ function TagList({ items }) {
 
 function TeknikResimPanel({ data }) {
     if (!data) return null;
-    const bb       = data.baslik_bloku   || {};
-    const parcalar = data.parca_listesi  || [];
-    const olcular  = data.olcular        || [];
-    const tolerans = data.toleranslar    || [];
-    const notlar   = data.notlar         || [];
-    const yuzeyler = data.yuzey_islemleri || [];
-    const kesitler = data.kesitler       || [];
-    const hasBb    = Object.values(bb).some(v => v);
+    const bb          = data.baslik_bloku    || {};
+    const parcalar    = data.parca_listesi   || [];
+    const olcular     = data.olcular         || [];
+    const tolerans    = data.toleranslar     || [];
+    const islemSirasi = data.islem_sirasi    || [];
+    const notlar      = data.notlar          || [];
+    const yuzeyler    = data.yuzey_islemleri || [];
+    const kesitler    = data.kesitler        || [];
+    const hasBb       = Object.values(bb).some(v => v);
 
     return (
         <>
             {hasBb && (
                 <Section icon={FileText} title="Başlık Bloğu">
-                    <Row label="Çizim No"  value={bb.cizim_numarasi} />
-                    <Row label="Başlık"    value={bb.baslik}         />
-                    <Row label="Revizyon"  value={bb.revizyon}       />
-                    <Row label="Ölçek"     value={bb.olcek}          />
-                    <Row label="Tarih"     value={bb.tarih}          />
-                    <Row label="Çizen"     value={bb.cizen}          />
-                    <Row label="Onaylayan" value={bb.onaylayan}      />
-                    <Row label="Firma"     value={bb.firma}          />
-                    <Row label="Proje"     value={bb.proje}          />
+                    <Row label="Çizim No"      value={bb.cizim_numarasi} />
+                    <Row label="Kimlik No"      value={bb.kimlik_numarasi} />
+                    <Row label="Başlık"         value={bb.baslik}         />
+                    <Row label="Revizyon"       value={bb.revizyon}       />
+                    <Row label="Ölçek"          value={bb.olcek}          />
+                    <Row label="Tarih"          value={bb.tarih}          />
+                    <Row label="Çizen"          value={bb.cizen}          />
+                    <Row label="Onaylayan"      value={bb.onaylayan}      />
+                    <Row label="Kontrol"        value={bb.kontrol_eden}   />
+                    <Row label="Firma"          value={bb.firma}          />
+                    <Row label="Proje"          value={bb.proje}          />
+                    <Row label="Malzeme"        value={bb.malzeme}        />
+                    <Row label="Yüzey"          value={bb.yuzey_islem}    />
+                    <Row label="Sertlik"        value={bb.sertlik}        />
+                    <Row label="Ağırlık"        value={bb.agirlik}        />
+                    <Row label="Birim"          value={bb.birim}          />
+                    <Row label="Format"         value={bb.blatt_format}   />
+                    <Row label="Sayfa"          value={bb.sayfa}          />
                 </Section>
             )}
 
@@ -304,15 +314,45 @@ function TeknikResimPanel({ data }) {
                     {olcular.length > 0 && (
                         <div>
                             <div className="text-[9px] text-stone-400 mb-1">Ölçüler</div>
-                            <TagList items={olcular} />
+                            <div className="flex flex-wrap gap-1">
+                                {olcular.map((o, i) => {
+                                    const label = typeof o === 'object'
+                                        ? `${o.etiket ? o.etiket + ': ' : ''}${o.deger || ''}${o.birim ? ' ' + o.birim : ''}${o.tolerans ? ' [' + o.tolerans + ']' : ''}`
+                                        : String(o);
+                                    return <span key={i} className="bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-[10px]">{label}</span>;
+                                })}
+                            </div>
                         </div>
                     )}
                     {tolerans.length > 0 && (
                         <div className="mt-1.5">
                             <div className="text-[9px] text-stone-400 mb-1">Toleranslar</div>
-                            <TagList items={tolerans} />
+                            <div className="flex flex-wrap gap-1">
+                                {tolerans.map((t, i) => {
+                                    const label = typeof t === 'object'
+                                        ? [t.tip, t.deger, t.aciklama].filter(Boolean).join(' — ')
+                                        : String(t);
+                                    return <span key={i} className="bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-[10px]">{label}</span>;
+                                })}
+                            </div>
                         </div>
                     )}
+                </Section>
+            )}
+
+            {islemSirasi.length > 0 && (
+                <Section icon={List} title={`İşlem Sırası (${islemSirasi.length})`}>
+                    {islemSirasi.map((s, i) => {
+                        const text = typeof s === 'object'
+                            ? `${s.sira ? s.sira + '. ' : ''}${s.islem || ''}${s.aciklama ? ' — ' + s.aciklama : ''}`
+                            : String(s);
+                        return (
+                            <div key={i} className="flex gap-1.5 text-stone-600">
+                                <span className="text-[#378ADD] font-bold shrink-0">{i + 1}.</span>
+                                <span>{text}</span>
+                            </div>
+                        );
+                    })}
                 </Section>
             )}
 

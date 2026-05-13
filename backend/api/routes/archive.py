@@ -191,6 +191,7 @@ def _belge_to_dict(b: Belge, db) -> dict:
             "transcription_chunk_count": meta.get("transcription_chunk_count"),
             "transcription_preview":     meta.get("transcription_preview"),
             "vision_analysis":           meta.get("vision_analysis"),
+            "vision_error":              meta.get("vision_error"),
             "cad_turu":                  meta.get("cad_turu"),
             "bagli_dosyalar":            meta.get("bagli_dosyalar", {}),
         },
@@ -281,6 +282,9 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                     "transcription_full_text": meta.get("transcription_full_text"),
                     "transcription_error": meta.get("transcription_error"),
                     "vision_analysis": meta.get("vision_analysis"),
+                    "vision_error": meta.get("vision_error"),
+                    "cad_turu": meta.get("cad_turu"),
+                    "bagli_dosyalar": meta.get("bagli_dosyalar", {}),
                 },
             })
 
@@ -742,7 +746,7 @@ async def dogrudan_yukle(
 
     is_av = dosya_uzantisi in {"mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma", "mp4", "avi", "mov", "mkv", "webm", "m4v", "wmv"}
     is_text = dosya_uzantisi in {"pdf", "txt", "docx", "doc", "pptx", "ppt"}
-    is_image = dosya_uzantisi in {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
+    is_image = dosya_uzantisi in {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff", "dwg", "dxf", "stp", "step", "awg"}
 
     # Kategori: form'dan gelen değere öncelik ver; yoksa uzantıdan çıkar
     _kat = (kategori or "").strip()
@@ -1028,32 +1032,50 @@ def _run_vectorization(doc_id: str):
             pg_fail(doc_id, "İçerik çıkarılamadı")
             return
 
-        # Hata kontrolü
-        if len(chunks) == 1 and "error" in chunks[0].get("metadata", {}):
-            err_text = chunks[0]["text"]
-            logger.error("Vektörizasyon hatası: %s", err_text)
-            _set_transcription_status(doc_id, "failed", err_text[:300])
-            pg_fail(doc_id, f"Hata: {err_text[:60]}")
-            return
+        # Hata kontrolü — "error" key'i veya "dwg_hata"/"error"/"unsupported" type'ı
+        if len(chunks) == 1:
+            c0_meta = chunks[0].get("metadata", {})
+            c0_type = c0_meta.get("type", "")
+            if "error" in c0_meta or c0_type in ("error", "unsupported", "dwg_hata"):
+                err_text = c0_meta.get("error") or c0_meta.get("vision_error") or chunks[0]["text"]
+                logger.error("Vektörizasyon hatası: %s", err_text)
+                _set_transcription_status(doc_id, "failed", str(err_text)[:300])
+                pg_fail(doc_id, f"Hata: {str(err_text)[:60]}")
+                return
 
         # Teknik resim: sadece vision_analysis kaydedilir, vektörleştirme yapılmaz
         saved_vision_data = None
         if b_kat == "teknik_resim":
             pg_step("Vision verisi kaydediliyor…")
-            vision_data = chunks[0].get("metadata", {}).get("vision_data") if chunks else None
+            chunk_meta   = chunks[0].get("metadata", {}) if chunks else {}
+            vision_data  = chunk_meta.get("vision_data")
+            vision_error = chunk_meta.get("vision_error", "")
             with get_session() as db:
                 belge = db.get(Belge, doc_id)
                 if not belge:
                     return
                 meta = dict(belge.meta or {})
-                meta["transcription_status"] = "done"
-                meta.pop("transcription_error", None)
                 if vision_data:
+                    meta["transcription_status"] = "done"
+                    meta.pop("transcription_error", None)
                     meta["vision_analysis"] = vision_data
+                    meta.pop("vision_error", None)
                     saved_vision_data = vision_data
+                else:
+                    # Vision verisi yok → başarısız say
+                    meta["transcription_status"] = "failed"
+                    meta["transcription_error"] = vision_error or "Vision analizi sonuç üretemedi"
+                    if vision_error:
+                        meta["vision_error"] = vision_error
+                    logger.error("Vision AI hatası: doc_id=%s hata=%s", doc_id, vision_error)
                 belge.meta = meta
+                belge.vektorlestirildi_mi = bool(vision_data)
                 db.commit()
-            logger.info("Teknik resim analizi tamamlandı: doc_id=%s", doc_id)
+            if vision_data:
+                logger.info("Teknik resim analizi tamamlandı: doc_id=%s", doc_id)
+            else:
+                pg_fail(doc_id, f"Vision hatası: {(vision_error or '')[:60]}")
+                return
 
         else:
             pg_step(f"Vektörler hesaplanıyor… ({len(chunks)} parça)")
@@ -1251,13 +1273,24 @@ async def vektorizasyon_baslat(doc_id: str, background_tasks: BackgroundTasks):
             
         mevcut_durum = (belge.meta or {}).get("transcription_status")
         if mevcut_durum == "processing":
-            return {"status": "already_running"}
-
-        # Durumu "pending" yap
-        meta = dict(belge.meta or {})
-        meta["transcription_status"] = "pending"
-        belge.meta = meta
-        db.commit()
+            # Gerçekten aktif mi, yoksa takılı mı kaldı?
+            from services.processors.process_progress import get as pg_get
+            pg_state = pg_get(doc_id)
+            if pg_state and not pg_state.get("done") and not pg_state.get("error"):
+                return {"status": "already_running"}
+            # Progress store'da aktif kayıt yok → önceki işlem çökmüş olabilir
+            # Durumu sıfırlayıp yeniden başlat
+            meta = dict(belge.meta or {})
+            meta["transcription_status"] = "pending"
+            meta.pop("transcription_error", None)
+            belge.meta = meta
+            db.commit()
+        else:
+            # Durumu "pending" yap
+            meta = dict(belge.meta or {})
+            meta["transcription_status"] = "pending"
+            belge.meta = meta
+            db.commit()
 
     background_tasks.add_task(_run_vectorization, doc_id)
     return {"status": "started", "message": "Belge vektörizasyonu başlatıldı.", "doc_id": doc_id}
@@ -1413,6 +1446,46 @@ def watcher_stats(req: WatcherStatsRequest):
     return {"dirs": dirs_out, "poll_ts": _time.time()}
 
 
+@router.get("/check-vision-config")
+def check_vision_config():
+    """Vision AI model ayarının okunabilirliğini test eder (debug)."""
+    from database.sql.models import SistemAyari, AIModeli
+    from sqlalchemy import select
+    try:
+        with get_session() as db:
+            rows = {r.anahtar: r.deger for r in db.scalars(select(SistemAyari)).all()}
+            doc_model_id  = rows.get("doc_processing_model_id")
+            vision_model_id = rows.get("vision_model_id")
+
+            def _probe(mid, label):
+                if not mid:
+                    return {"key": label, "stored": None, "found": False, "has_key": False, "model_id": None, "provider": None}
+                entry_id = str(mid).strip('"').strip("'")
+                m = db.get(AIModeli, entry_id)
+                if not m:
+                    return {"key": label, "stored": entry_id, "found": False, "has_key": False, "model_id": None, "provider": None}
+                from services.crypto_service import decrypt as _d
+                api_key = _d(m.api_anahtari) if m.api_anahtari else ""
+                effective_model = (m.model_id or m.ad or "").strip()
+                return {
+                    "key":      label,
+                    "stored":   entry_id,
+                    "found":    True,
+                    "has_key":  bool(api_key),
+                    "model_id": effective_model,
+                    "provider": m.tedarikci,
+                    "base_url": m.temel_url,
+                }
+
+            return {
+                "doc_processing": _probe(doc_model_id, "doc_processing_model_id"),
+                "vision_fallback": _probe(vision_model_id, "vision_model_id"),
+                "doc_prompt_set": bool((rows.get("doc_processing_prompt") or "").strip()),
+            }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.get("/progress/{doc_id}")
 async def dokuman_ilerleme_sse(doc_id: str):
     """Belge işleme ilerlemesini SSE akışı olarak döner."""
@@ -1449,28 +1522,57 @@ async def dokuman_ilerleme_sse(doc_id: str):
 
 def _try_auto_link_by_number(doc_id: str, vision_data: dict):
     """
-    Vision analizi tamamlandıktan sonra malzeme/çizim numarasına göre
-    aynı kategorideki eşleşen dosyayı bulur ve otomatik bağlar.
+    Vision analizi tamamlandıktan sonra otomatik bağlantı kurar.
 
-    Eşleşme mantığı:
-      teknik_resim → baslik_bloku.cizim_numarasi
-      nesting      → malzeme_numarasi
+    Eşleşme sırası:
+      1. SAP/malzeme numarası  (kimlik_numarasi, cizim_numarasi, malzeme_numarasi)
+      2. Dosya adı             (uzantısız, normalize edilmiş — fallback)
     """
-    img_type = vision_data.get("image_type")
-    if img_type == "teknik_resim":
-        my_number = ((vision_data.get("baslik_bloku") or {}).get("cizim_numarasi") or "").strip()
-    elif img_type == "nesting":
-        my_number = (vision_data.get("malzeme_numarasi") or "").strip()
-    else:
+    import re as _re
+
+    _TEKNIK  = {"teknik_resim", "step_model"}
+    _NESTING = {"nesting"}
+
+    def _norm(s: str) -> str:
+        return _re.sub(r"[^A-Z0-9]", "", s.upper())
+
+    def _number_keys(vd: dict) -> set[str]:
+        bb    = vd.get("baslik_bloku") or {}
+        vtype = vd.get("image_type", "")
+        keys: set[str] = set()
+        for val in [
+            bb.get("kimlik_numarasi"),
+            bb.get("cizim_numarasi") if vtype in _TEKNIK  else None,
+            vd.get("malzeme_numarasi") if vtype in _NESTING else None,
+        ]:
+            if val:
+                n = _norm(str(val).strip())
+                if n:
+                    keys.add(n)
+        return keys
+
+    def _name_key(filename: str) -> str:
+        stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        return _norm(stem)
+
+    def _do_link(db, src_id: str, tgt_id: str, reason: str):
+        src = db.get(Belge, src_id)
+        tgt = db.get(Belge, tgt_id)
+        if not src or not tgt:
+            return False
+        sm = dict(src.meta or {})
+        sm.setdefault("bagli_dosyalar", {})["nesting"] = tgt_id
+        src.meta = sm
+        tm = dict(tgt.meta or {})
+        tm.setdefault("bagli_dosyalar", {})["cizim"] = src_id
+        tgt.meta = tm
+        db.commit()
+        logger.info("Otomatik eşleşme: %s ↔ %s (%s)", src_id, tgt_id, reason)
+        return True
+
+    img_type = vision_data.get("image_type", "")
+    if img_type not in _TEKNIK and img_type not in _NESTING:
         return
-
-    if not my_number:
-        return
-
-    def _normalize(s: str) -> str:
-        return s.upper().replace(" ", "").replace("-", "").replace("_", "")
-
-    my_norm = _normalize(my_number)
 
     try:
         with get_session() as db:
@@ -1478,67 +1580,58 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
             if not current:
                 return
 
-            # Zaten bağlı mı?
             cur_bagli = (current.meta or {}).get("bagli_dosyalar", {})
-            if cur_bagli.get("nesting") or cur_bagli.get("cizim"):
+            if cur_bagli.get("nesting") or cur_bagli.get("cizim") or cur_bagli.get("cad"):
                 return
 
             candidates = list(db.scalars(
                 select(Belge).where(
                     Belge.kategori == "teknik_resim",
                     Belge.kimlik != doc_id,
-                    Belge.vektorlestirildi_mi == True,
                 )
             ).all())
 
-            for cand in candidates:
-                c_vision = (cand.meta or {}).get("vision_analysis")
-                if not c_vision:
-                    continue
+            # Geçerli adayları filtrele: karşı tip + henüz bağlanmamış
+            def _valid_cands(cands):
+                for c in cands:
+                    c_vision = (c.meta or {}).get("vision_analysis")
+                    if not c_vision:
+                        continue
+                    c_type = c_vision.get("image_type", "")
+                    if img_type in _TEKNIK  and c_type not in _NESTING:
+                        continue
+                    if img_type in _NESTING and c_type not in _TEKNIK:
+                        continue
+                    c_bagli = (c.meta or {}).get("bagli_dosyalar", {})
+                    if c_bagli.get("nesting") or c_bagli.get("cizim") or c_bagli.get("cad"):
+                        continue
+                    yield c, c_vision
 
-                c_type = c_vision.get("image_type")
-                if c_type == "teknik_resim":
-                    c_number = ((c_vision.get("baslik_bloku") or {}).get("cizim_numarasi") or "").strip()
-                elif c_type == "nesting":
-                    c_number = (c_vision.get("malzeme_numarasi") or "").strip()
-                else:
-                    continue
+            def _src_tgt(cand_id: str) -> tuple[str, str]:
+                if img_type in _TEKNIK:
+                    return doc_id, cand_id
+                return cand_id, doc_id
 
-                if not c_number or _normalize(c_number) != my_norm:
-                    continue
+            my_num_keys = _number_keys(vision_data)
 
-                # Zaten birbirine bağlı mı?
-                c_bagli = (cand.meta or {}).get("bagli_dosyalar", {})
-                if c_bagli.get("nesting") or c_bagli.get("cizim"):
-                    continue
+            # ── 1. SAP / numara eşleşmesi ───────────────────────────
+            for cand, c_vision in _valid_cands(candidates):
+                matched = my_num_keys & _number_keys(c_vision)
+                if matched:
+                    src_id, tgt_id = _src_tgt(cand.kimlik)
+                    if _do_link(db, src_id, tgt_id, f"numara:{next(iter(matched))}"):
+                        return
 
-                # Yön belirle: teknik_resim kaynak, nesting hedef
-                if img_type == "teknik_resim" and c_type == "nesting":
-                    src_id, tgt_id = doc_id, cand.kimlik
-                elif img_type == "nesting" and c_type == "teknik_resim":
-                    src_id, tgt_id = cand.kimlik, doc_id
-                else:
-                    continue  # Aynı türleri bağlama
+            # ── 2. Dosya adı fallback ───────────────────────────────
+            my_name = _name_key(current.dosya_adi or "")
+            if not my_name:
+                return
 
-                src = db.get(Belge, src_id)
-                tgt = db.get(Belge, tgt_id)
-                if not src or not tgt:
-                    continue
-
-                sm = dict(src.meta or {})
-                sm.setdefault("bagli_dosyalar", {})["nesting"] = tgt_id
-                src.meta = sm
-
-                tm = dict(tgt.meta or {})
-                tm.setdefault("bagli_dosyalar", {})["cizim"] = src_id
-                tgt.meta = tm
-
-                db.commit()
-                logger.info(
-                    "Otomatik eşleşme: %s ↔ %s (numara: %s)",
-                    src_id, tgt_id, my_number,
-                )
-                break
+            for cand, _ in _valid_cands(candidates):
+                if _name_key(cand.dosya_adi or "") == my_name:
+                    src_id, tgt_id = _src_tgt(cand.kimlik)
+                    if _do_link(db, src_id, tgt_id, f"dosya_adi:{my_name}"):
+                        return
 
     except Exception as e:
         logger.warning("Otomatik bağlantı hatası: %s", e)
@@ -1605,3 +1698,73 @@ def unlink_dosyalar(source_id: str, link_type: str):
 
         db.commit()
     return {"status": "ok"}
+
+
+@router.get("/dwg-texts/{doc_id}")
+def dwg_text_preview(doc_id: str):
+    """DWG/DXF dosyasından ham text entity'lerini döner (test amaçlı)."""
+    import threading
+
+    with get_session() as db:
+        belge = db.get(Belge, doc_id)
+        if not belge:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı")
+        file_path = belge.depolama_yolu
+        filename  = belge.dosya_adi
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Dosya diskte bulunamadı")
+
+    texts_holder: list = [None]
+    error_holder:  list = [""]
+
+    def _extract():
+        try:
+            import ezdxf
+            from ezdxf import recover
+            try:
+                doc = recover.readfile(file_path)[0]
+            except Exception:
+                doc = ezdxf.readfile(file_path)
+
+            texts = []
+            seen: set[str] = set()
+            for layout in doc.layouts:
+                for entity in layout:
+                    t_str = ""
+                    try:
+                        dtype = entity.dxftype()
+                        if dtype == "TEXT":
+                            t_str = (entity.dxf.get("text") or "").strip()
+                        elif dtype == "MTEXT":
+                            t_str = entity.plain_mtext().strip()
+                        elif dtype in ("ATTDEF", "ATTRIB"):
+                            t_str = (entity.dxf.get("text") or "").strip()
+                    except Exception:
+                        pass
+                    if t_str and t_str not in seen:
+                        seen.add(t_str)
+                        texts.append(t_str)
+            texts_holder[0] = texts
+        except Exception as e:
+            error_holder[0] = f"{type(e).__name__}: {e}"
+
+    t = threading.Thread(target=_extract, daemon=True)
+    t.start()
+    t.join(timeout=15)
+
+    if t.is_alive() or texts_holder[0] is None:
+        return {
+            "filename": filename,
+            "status": "error",
+            "error": error_holder[0] or "15s zaman aşımı",
+            "texts": [],
+            "count": 0,
+        }
+
+    return {
+        "filename": filename,
+        "status": "ok",
+        "count": len(texts_holder[0]),
+        "texts": texts_holder[0],
+    }
