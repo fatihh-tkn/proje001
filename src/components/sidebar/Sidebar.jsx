@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Folder, Settings, User,
     ChevronsRight, ChevronsLeft, Files, LayoutGrid, MessageSquare, Hash, Search, X,
-    ChevronDown, Plus
+    ChevronDown, Plus, AlertTriangle
 } from 'lucide-react';
 
 import FullLogoImage from '../../assets/logo-acik.png';
@@ -53,6 +53,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     const [userPanelOpen, setUserPanelOpen] = useState(false);
     const [userPanelInitialTab, setUserPanelInitialTab] = useState('profil');
     const [searchQuery, setSearchQuery] = useState('');
+    const [missingFilter, setMissingFilter] = useState(false);
     const [matchedFileIds, setMatchedFileIds] = useState(new Set());
     const [matchedFolderIds, setMatchedFolderIds] = useState(new Set());
     const searchInputRef = useRef(null);
@@ -247,6 +248,13 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
     };
 
 
+    const countMissing = (nodes) => {
+        let n = 0;
+        const walk = (arr) => { for (const nd of arr) { if (nd.type === 'folder') { if (!nd.children || nd.children.length === 0) n++; else walk(nd.children); } } };
+        walk(nodes);
+        return n;
+    };
+
     const toggleFolder = (folderId) => {
         if (isCollapsed) return;
         setOpenFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
@@ -394,7 +402,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                         {SIDEBAR_TABS.map(tab => (
                                             <button
                                                 key={tab.key}
-                                                onClick={e => { e.stopPropagation(); setActiveTab(tab.key); setSearchQuery(''); }}
+                                                onClick={e => { e.stopPropagation(); setActiveTab(tab.key); setSearchQuery(''); setMissingFilter(false); }}
                                                 className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-all interactive
                                                     ${activeTab === tab.key
                                                         ? 'bg-[#1D9E75] text-white'
@@ -433,6 +441,26 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                     </button>
                                 )}
                             </div>
+                            {activeTab === 'teknik_resim' && (() => {
+                                const tree = getArchiveTree();
+                                const mc = countMissing(tree);
+                                return (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); setMissingFilter(v => !v); }}
+                                        className={`interactive flex items-center gap-1.5 px-2 py-1 text-[10.5px] rounded-[2px] transition-all w-full
+                                            ${missingFilter
+                                                ? 'bg-amber-500/10 border border-amber-500/40 text-amber-300'
+                                                : 'bg-zinc-800/50 border border-slate-700/50 text-slate-500 hover:text-slate-300'}`}
+                                    >
+                                        <AlertTriangle size={11} className={missingFilter ? 'text-amber-400' : 'text-slate-600'} />
+                                        <span>Eksik teknik resimleri göster</span>
+                                        <span className={`ml-auto font-mono text-[9.5px] px-1.5 py-px rounded-full
+                                            ${missingFilter ? 'bg-amber-500 text-zinc-900' : 'bg-amber-500/20 text-amber-400'}`}>
+                                            {mc}
+                                        </span>
+                                    </button>
+                                );
+                            })()}
                         </div>
                     );
                 })()}
@@ -541,9 +569,12 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                         setOpenFolders={setOpenFolders}
                                         onOpenFile={onOpenFile}
                                         tabs={tabs}
+                                        activeTab={activeTab}
                                         searchQuery={searchQuery}
                                         matchedFileIds={matchedFileIds}
                                         matchedFolderIds={matchedFolderIds}
+                                        bomMode={activeTab === 'teknik_resim'}
+                                        missingFilter={missingFilter}
                                     />
                                 ))}
                             </div>

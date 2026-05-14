@@ -79,29 +79,69 @@ def _dwg_to_dxf(dwg_path: str, timeout: int = 30) -> tuple[str | None, str]:
 # ── DXF text extraction ───────────────────────────────────────────
 
 def _extract_dxf_texts(dxf_path: str) -> list[str]:
-    """ezdxf ile DXF dosyasından TEXT/MTEXT entity'lerini çıkarır."""
+    """
+    ezdxf ile DXF dosyasından TEXT/MTEXT/ATTRIB entity'lerini çıkarır.
+    INSERT bloklarındaki ATTRIB'ler (başlık bloğu alanları) 'TAG: değer' olarak eklenir.
+    Y koordinatına göre sıralar (başlık bloğu genelde altta = küçük Y).
+    """
     try:
-        import ezdxf
-        doc = ezdxf.readfile(dxf_path)
-        texts: list[str] = []
-        seen:  set[str]  = set()
+        try:
+            import ezdxf
+            doc = ezdxf.readfile(dxf_path)
+        except Exception:
+            import ezdxf.recover as _rec
+            doc, _ = _rec.readfile(dxf_path)
+
+        items: list[tuple[float, float, str]] = []  # (x, y, text)
+        seen: set[str] = set()
+
+        def _add(text: str, x: float, y: float) -> None:
+            if text and text not in seen:
+                seen.add(text)
+                items.append((x, y, text))
+
         for layout in doc.layouts:
             for entity in layout:
-                t = ""
                 try:
                     dt = entity.dxftype()
+                    ins = entity.dxf.get("insert")
+                    ex = ins.x if ins else 0.0
+                    ey = ins.y if ins else 0.0
+
                     if dt == "TEXT":
                         t = (entity.dxf.get("text") or "").strip()
+                        if t:
+                            _add(t, ex, ey)
+
                     elif dt == "MTEXT":
                         t = entity.plain_mtext().strip()
+                        if t:
+                            _add(t, ex, ey)
+
                     elif dt in ("ATTDEF", "ATTRIB"):
                         t = (entity.dxf.get("text") or "").strip()
+                        if t:
+                            _add(t, ex, ey)
+
+                    elif dt == "INSERT":
+                        # Başlık bloğu alanları INSERT içindeki ATTRIB olarak saklanır
+                        for attrib in entity.attribs:
+                            val = (attrib.dxf.get("text") or "").strip()
+                            tag = (attrib.dxf.get("tag") or "").strip()
+                            ai  = attrib.dxf.get("insert")
+                            ax  = ai.x if ai else ex
+                            ay  = ai.y if ai else ey
+                            if tag and val:
+                                _add(f"{tag}: {val}", ax, ay)
+                            elif val:
+                                _add(val, ax, ay)
+
                 except Exception:
                     pass
-                if t and t not in seen:
-                    seen.add(t)
-                    texts.append(t)
-        return texts
+
+        items.sort(key=lambda t: t[1])
+        return [t for _, _, t in items]
+
     except Exception as e:
         print(f"[dwg_processor] ezdxf hatası: {e}")
         return []
@@ -128,13 +168,151 @@ def _get_dwg_prompt() -> str:
 # ── SAP no fallback ───────────────────────────────────────────────
 
 def _fill_sap_from_filename(vision_data: dict, basename: str) -> None:
-    """baslik_bloku.kimlik_numarasi boşsa dosya adındaki 7-10 haneli sayıyı SAP no olarak doldurur."""
+    """
+    baslik_bloku.kimlik_numarasi boşsa dosya adındaki sayıyı SAP no olarak doldurur.
+    Hem düz (92530740) hem noktalı Almanca format (92.530.740) desteklenir.
+    """
     bb = vision_data.setdefault("baslik_bloku", {})
     if bb.get("kimlik_numarasi"):
         return
+    # Önce uzun SAP (7-10 hane, düz)
     m = re.search(r'\b(\d{7,10})\b', basename)
     if m:
         bb["kimlik_numarasi"] = m.group(1)
+        return
+    # Almanca noktalı format: "2.840.123" → "2840123" (7+ hane)
+    m = re.search(r'\b(\d{1,3}(?:\.\d{3}){2,})\b', basename)
+    if m:
+        normalized = m.group(1).replace(".", "")
+        if len(normalized) >= 7:
+            bb["kimlik_numarasi"] = normalized
+
+
+# ── DWG metin ön-işleme ───────────────────────────────────────────
+
+# "92530740 - 6 MM - S355J2+AR" veya "92530740 - 6MM - S355J2+AR"
+# Hem düz hem Almanca noktalı format (92.530.740) desteklenir
+_PART_LINE = re.compile(
+    r'\b(\d{1,3}(?:\.\d{3})+|\d{7,10})\s*[-–]\s*(\d+(?:[.,]\d+)?)\s*(?:mm|MM)\s*[-–]\s*([A-Z0-9+/\-\.]+)',
+    re.IGNORECASE,
+)
+
+# "Ident nummer", "Identnr", "Sachnummer", "Part No", "Malzeme No" gibi etiket kalıpları
+_IDENT_LABEL = re.compile(
+    r'(?:ident\s*(?:nummer|[-.]?\s*nr\.?|[-.]?\s*no\.?)?'
+    r'|zeichn(?:ungs)?\s*[-.]?\s*(?:nummer|nr\.?|no\.?)?'
+    r'|part\s*[-.]?\s*(?:number|no\.?|nr\.?)'
+    r'|malzeme\s*[-.]?\s*no(?:\.?|su)?'
+    r'|sap\s*[-.]?\s*no\.?'
+    r'|kimlik\s*[-.]?\s*no\.?'
+    r'|bauteil\s*[-.]?\s*nr\.?'
+    r'|sach\s*(?:nummer|nr\.?))',
+    re.IGNORECASE,
+)
+
+# Avrupa (Almanca) noktalı sayı formatı: 92.530.740 veya düz 7-10 haneli rakam
+_EU_NUMBER = re.compile(r'\b(\d{1,3}(?:\.\d{3})+|\d{7,10})\b')
+
+
+def _norm_number(s: str) -> str:
+    """Avrupa noktalı sayıdaki ayırıcı noktaları kaldırır: '92.530.740' → '92530740'."""
+    return s.replace(".", "")
+
+
+# Bilinen imalat operasyonları (Türkçe)
+_OP_KEYWORDS = re.compile(
+    r'lazer|laser|kesim|bükm|büküm|kaynak|delm|tel kesim|pres|boya|kumlam'
+    r'|fosfat|galvan|nikel|krom|kaplam|montaj|markalama|çapak|vibrasy',
+    re.IGNORECASE,
+)
+
+
+def _extract_dwg_meta(texts: list[str]) -> dict:
+    """
+    DWG metin entity'lerinden AI öncesi ön-bilgi çıkarır.
+    Döner: kimlik_numarasi, malzeme, kalinlik, islem_sirasi (varsa).
+    """
+    result: dict = {}
+
+    # Strateji 1: "92530740 - 6 MM - S355J2+AR" tek satır formatı
+    for t in texts:
+        m = _PART_LINE.search(t.strip())
+        if m:
+            raw_id = m.group(1)
+            result["kimlik_numarasi"] = _norm_number(raw_id)
+            result["kalinlik"]        = m.group(2).replace(",", ".")
+            result["malzeme"]         = m.group(3).strip().rstrip("-").strip()
+            break
+
+    # Strateji 2: "TAG: değer" formatı — "IDENT: 92530740" veya "Ident nummer: 92530740"
+    if not result.get("kimlik_numarasi"):
+        for t in texts:
+            if ":" not in t:
+                continue
+            label, _, value = t.partition(":")
+            label = label.strip()
+            value = value.strip()
+            if _IDENT_LABEL.fullmatch(label) or _IDENT_LABEL.search(label):
+                m = _EU_NUMBER.search(value)
+                if m:
+                    result["kimlik_numarasi"] = _norm_number(m.group(1))
+                    break
+
+    # Strateji 3: Ardışık entity'ler — etiket satırı + değer satırı
+    if not result.get("kimlik_numarasi"):
+        for i, t in enumerate(texts[:-1]):
+            if _IDENT_LABEL.fullmatch(t.strip()):
+                nxt = texts[i + 1].strip()
+                m = _EU_NUMBER.search(nxt)
+                if m:
+                    result["kimlik_numarasi"] = _norm_number(m.group(1))
+                    break
+
+    # Operasyon listesi: "Operasyon" başlığı + sıra no + operasyon adı heuristic
+    ops: list[dict] = []
+    pending_sira: str | None = None
+    in_op_section = False
+
+    for t in texts:
+        t_clean = t.strip()
+        if not t_clean:
+            continue
+
+        if re.match(r'^operasyon[lar]*$', t_clean, re.IGNORECASE):
+            in_op_section = True
+            continue
+
+        if in_op_section:
+            if re.match(r'^\d{1,3}$', t_clean):
+                pending_sira = t_clean
+            elif _OP_KEYWORDS.search(t_clean):
+                ops.append({
+                    "sira":     pending_sira or str(len(ops) + 1),
+                    "islem":    t_clean,
+                    "aciklama": "",
+                })
+                pending_sira = None
+            elif re.match(r'^s[ı|i]ra$', t_clean, re.IGNORECASE):
+                pass  # başlık satırı
+            elif len(t_clean) > 40:
+                in_op_section = False  # uzun metin → operasyon bölümü bitti
+
+    if ops:
+        result["islem_sirasi"] = ops
+
+    return result
+
+
+def _merge_dwg_meta(vision_data: dict, dwg_meta: dict) -> None:
+    """AI sonucuna ön-işleme verilerini ekler (boş alanları doldurur)."""
+    if not dwg_meta:
+        return
+    bb = vision_data.setdefault("baslik_bloku", {})
+    for key in ("kimlik_numarasi", "malzeme", "kalinlik"):
+        if not bb.get(key) and dwg_meta.get(key):
+            bb[key] = dwg_meta[key]
+    if not vision_data.get("islem_sirasi") and dwg_meta.get("islem_sirasi"):
+        vision_data["islem_sirasi"] = dwg_meta["islem_sirasi"]
 
 
 # ── JSON parse ────────────────────────────────────────────────────
@@ -246,10 +424,27 @@ def parse_dwg(file_path: str, original_name: str | None = None) -> list[dict]:
         if not texts:
             return _error_chunk(basename, "DXF dosyasında okunabilir metin bulunamadı")
 
+        # 2b. Ön-işleme: regex ile SAP / malzeme / kalınlık / operasyon çıkar
+        dwg_meta = _extract_dwg_meta(texts)
+
+        # AI'ya bağlam olarak ön-bilgi de ekle
+        if dwg_meta:
+            sap = dwg_meta.get("kimlik_numarasi", "?")
+            mat = dwg_meta.get("malzeme", "?")
+            kal = dwg_meta.get("kalinlik", "?")
+            _step(f"SAP={sap} | {kal}mm | {mat} — AI'ya gönderiliyor…")
+            context_header = (
+                f"[ÖN-BİLGİ: SAP/Parça No={sap}, Malzeme={mat}, Kalınlık={kal}mm]\n\n"
+            )
+            ai_texts = [context_header] + texts
+        else:
+            ai_texts = texts
+
         # 3. Metinleri AI'ya gönder
-        vision_data, ai_err = _analyze_texts(texts)
+        vision_data, ai_err = _analyze_texts(ai_texts)
 
         if vision_data:
+            _merge_dwg_meta(vision_data, dwg_meta)   # boşları doldur
             _fill_sap_from_filename(vision_data, basename)
             from services.processors.image_processor import _build_rag_text
             ext      = basename.rsplit(".", 1)[-1].lower() if "." in basename else "dwg"

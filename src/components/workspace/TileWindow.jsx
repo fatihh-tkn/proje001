@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Activity, Minus, X, LayoutTemplate, Database, Bot, Settings as SettingsIcon, HeartPulse } from 'lucide-react';
+import { FileText, Activity, Minus, X, LayoutTemplate, Database, Bot, Settings as SettingsIcon, HeartPulse, Timer } from 'lucide-react';
 
 const getHeaderBgClass = () => 'bg-white border-b border-slate-200/60 text-slate-600';
 
@@ -13,6 +13,7 @@ const getTabIcon = (type, isActive) => {
         case 'database':
         case 'databases-viewer': return <Database size={14} strokeWidth={2} className={`shrink-0 ${colorClass}`} />;
         case 'vector-health': return <HeartPulse size={14} strokeWidth={2} className={`shrink-0 text-emerald-500`} />;
+        case 'parts-time': return <Timer size={14} strokeWidth={2} className={`shrink-0 text-teal-400`} />;
         case 'settings': return <SettingsIcon size={14} strokeWidth={2} className={`shrink-0 ${colorClass}`} />;
         case 'pdf': return <FileText size={14} strokeWidth={2} className={`shrink-0 ${colorClass}`} />;
         case 'n8n': return <Activity size={14} strokeWidth={2} className={`shrink-0 ${colorClass}`} />;

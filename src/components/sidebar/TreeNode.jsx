@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Folder, ChevronRight, ChevronDown
+    Folder, ChevronRight, ChevronDown,
+    Package, CornerDownRight, AlertTriangle, FileText, File, Activity
 } from 'lucide-react';
 import { FileCard } from '../ui/file-card-collections';
 
@@ -18,6 +19,22 @@ const SidebarFileIcon = ({ ext = 'file' }) => (
         </div>
     </div>
 );
+
+const BomFileIcon = ({ ext }) => {
+    const e = (ext || '').toLowerCase();
+    if (e === 'pdf')                  return <FileText size={13} className="shrink-0 text-red-400" />;
+    if (e === 'xlsx' || e === 'xls') return <FileText size={13} className="shrink-0 text-green-400" />;
+    if (e === 'docx' || e === 'doc') return <FileText size={13} className="shrink-0 text-blue-400" />;
+    if (e === 'bpmn')                return <Activity size={13} className="shrink-0 text-teal-400" />;
+    return <File size={13} className="shrink-0 text-slate-400" />;
+};
+
+const isMissingLeaf = (node) => node.type === 'folder' && (!node.children || node.children.length === 0);
+
+const hasMissingDesc = (node) => {
+    if (isMissingLeaf(node)) return true;
+    return (node.children || []).some(c => c.type === 'folder' && hasMissingDesc(c));
+};
 
 const listVariants = {
     hidden: { height: 0, opacity: 0 },
@@ -82,16 +99,22 @@ const highlightText = (text, query, markClass) => {
     );
 };
 
-const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed, setIsCollapsed, setOpenFolders, onOpenFile, tabs, searchQuery = '', matchedFileIds = new Set(), matchedFolderIds = new Set() }) => {
+const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiveFile, isCollapsed, setIsCollapsed, setOpenFolders, onOpenFile, tabs, activeTab, searchQuery = '', matchedFileIds = new Set(), matchedFolderIds = new Set(), bomMode = false, missingFilter = false }) => {
     const isOpen = !!openFolders[node.id];
     const isAktif = activeFile === node.id;
     const isOpenedInTab = tabs?.some(t => t.id === node.id);
     const paddingLeft = level * 16;
     const isSearchActive = !!searchQuery.trim();
 
+    // BOM missing filter: hide branches with no missing descendants
+    if (bomMode && missingFilter && node.type === 'folder' && !hasMissingDesc(node)) return null;
+    if (bomMode && missingFilter && node.type !== 'folder') return null;
+
     // 1. EĞER BU BİR KLASÖR İSE:
     if (node.type === 'folder') {
         if (isCollapsed) return null;
+        const missingDescendent = bomMode && hasMissingDesc(node);
+        const isLeafMissing = bomMode && isMissingLeaf(node);
         // Arama aktifken bu klasör eşleşen dosya içermiyorsa gizle
         return (
             <div className="flex flex-col w-full">
@@ -108,17 +131,36 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                     className={`flex items-center gap-1.5 text-[13px] cursor-pointer text-slate-300 hover:text-white rounded-[2px] transition-colors py-1.5 hover:bg-slate-800/60 ${isCollapsed ? 'justify-center mb-4' : 'w-[calc(100%-8px)] ml-1 pr-1'}`}
                     style={{ paddingLeft: !isCollapsed ? `${paddingLeft + 4}px` : '0px' }}
                 >
-                    {!isCollapsed && (
-                        isOpen ? <ChevronDown size={14} className="text-red-500 shrink-0" /> : <ChevronRight size={14} className="text-slate-500 shrink-0" />
-                    )}
-                    <Folder size={isCollapsed ? 24 : 16} className={isCollapsed ? "text-red-500 shrink-0" : "text-slate-400 shrink-0"} />
-                    {!isCollapsed && <span className="whitespace-nowrap font-medium truncate select-none" title={node.name}>{node.name}</span>}
+                    {isOpen
+                        ? <ChevronDown size={14} className="text-red-500 shrink-0" />
+                        : <ChevronRight size={14} className="text-slate-500 shrink-0" />
+                    }
+                    {bomMode
+                        ? <Package size={14} className="shrink-0" style={{ color: '#A01B1B' }} />
+                        : <Folder size={16} className="text-slate-400 shrink-0" />
+                    }
+                    <span className="whitespace-nowrap font-medium truncate select-none flex-1" title={node.name}>{node.name}</span>
+                    {missingDescendent && <AlertTriangle size={11} className="shrink-0 text-amber-400" />}
                 </div>
 
                 <AnimatePresence initial={false}>
                     {!isCollapsed && isOpen && node.children && (
                         <motion.div key={`content-${node.id}`} variants={listVariants} initial="hidden" animate="show" exit="exit" className="flex flex-col w-full space-y-0.5 mt-0.5 relative overflow-hidden">
                             <div className="absolute top-0 bottom-0 w-px bg-slate-700/40" style={{ left: `${paddingLeft + 15}px` }}></div>
+                            {bomMode && isLeafMissing && (
+                                <div
+                                    className="flex items-center gap-2 text-[11px] py-1 mx-1 rounded-[2px] my-0.5"
+                                    style={{
+                                        paddingLeft: `${paddingLeft + 27}px`,
+                                        paddingRight: 6,
+                                        background: 'rgba(245,158,11,0.06)',
+                                        border: '1px solid rgba(245,158,11,0.18)',
+                                    }}
+                                >
+                                    <AlertTriangle size={11} className="shrink-0 text-amber-400" />
+                                    <span className="italic text-amber-300">Teknik resim bekleniyor</span>
+                                </div>
+                            )}
                             {node.children.map(child => (
                                 <motion.div key={child.id} variants={itemVariants}>
                                     <TreeNode
@@ -133,9 +175,12 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
                                         setOpenFolders={setOpenFolders}
                                         onOpenFile={onOpenFile}
                                         tabs={tabs}
+                                        activeTab={activeTab}
                                         searchQuery={searchQuery}
                                         matchedFileIds={matchedFileIds}
                                         matchedFolderIds={matchedFolderIds}
+                                        bomMode={bomMode}
+                                        missingFilter={missingFilter}
                                     />
                                 </motion.div>
                             ))}
@@ -228,10 +273,13 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
             onDoubleClick={(e) => {
                 e.stopPropagation();
                 if (onOpenFile) {
+                    const type = activeTab === 'teknik_resim'
+                        ? 'teknik-resim-viewer'
+                        : (node.extension || 'file');
                     onOpenFile({
                         id: node.id,
                         title: node.name,
-                        type: node.extension || 'file',
+                        type,
                         url: node.url
                     });
                 }
@@ -240,7 +288,13 @@ const TreeNode = ({ node, level, openFolders, toggleFolder, activeFile, setActiv
             style={{ paddingLeft: `${paddingLeft + 8}px` }}
             title="Açmak için çift tıklayın"
         >
-            <SidebarFileIcon ext={node.extension} />
+            {bomMode
+                ? <>
+                    <CornerDownRight size={13} className={`shrink-0 ${isAktif ? 'text-red-400' : 'text-slate-500'}`} />
+                    <BomFileIcon ext={node.extension} />
+                  </>
+                : <SidebarFileIcon ext={node.extension} />
+            }
             <span className="truncate w-full select-none">{highlightText(node.name, searchQuery, extStyle?.markClass)}</span>
         </div>
     );

@@ -33,6 +33,7 @@ const RestrictionsViewer = lazy(() => import('../settings/restrictions/Restricti
 const PcSessionsViewer = lazy(() => import('../settings/ai/tabs/PcSessionsViewer').then(m => ({ default: m.PcSessionsViewer })));
 const VectorHealthPanel = lazy(() => import('../settings/databases/VectorHealthPanel'));
 const FileWatcherPanel  = lazy(() => import('../settings/database/FileWatcherPanel'));
+const PartsTimeViewer   = lazy(() => import('../settings/parts-time/PartsTimeViewer'));
 
 export const DynamicViewer = ({ tab, onOpenFile }) => {
     return (
@@ -91,6 +92,7 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
             {tab.type === 'pc-sessions' && <PcSessionsViewer />}
             {tab.type === 'vector-health' && <VectorHealthPanel />}
             {tab.type === 'file-watcher'  && <FileWatcherPanel  />}
+            {tab.type === 'parts-time'    && <PartsTimeViewer  />}
             {tab.type === 'coming-soon' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-center select-none">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-stone-100 border border-stone-200 mb-5">
@@ -102,7 +104,7 @@ export const DynamicViewer = ({ tab, onOpenFile }) => {
                 </div>
             )}
 
-            {tab.type !== 'auth-egitim' && tab.type !== 'auth-users' && tab.type !== 'api-users' && tab.type !== 'api-monitoring' && tab.type !== 'api-logs' && tab.type !== 'api-keys' && tab.type !== 'restrictions' && tab.type !== 'pc-sessions' && tab.type !== 'vector-health' && tab.type !== 'file-watcher' && tab.type !== 'meetings' && tab.type !== 'toplantilar-viewer' && tab.type !== 'surecler-viewer' && tab.type !== 'belgeler-viewer' && tab.type !== 'kisisel-viewer' && tab.type !== 'teknik-resim-viewer' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'error-management' && tab.type !== 'my-errors' && tab.type !== 'my-requests' && tab.type !== 'coming-soon' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
+            {tab.type !== 'parts-time' && tab.type !== 'auth-egitim' && tab.type !== 'auth-users' && tab.type !== 'api-users' && tab.type !== 'api-monitoring' && tab.type !== 'api-logs' && tab.type !== 'api-keys' && tab.type !== 'restrictions' && tab.type !== 'pc-sessions' && tab.type !== 'vector-health' && tab.type !== 'file-watcher' && tab.type !== 'meetings' && tab.type !== 'toplantilar-viewer' && tab.type !== 'surecler-viewer' && tab.type !== 'belgeler-viewer' && tab.type !== 'kisisel-viewer' && tab.type !== 'teknik-resim-viewer' && tab.type !== 'ai-orchestrator' && tab.type !== 'n8n' && tab.type !== 'image-viewer' && tab.type !== 'auth' && tab.type !== 'talep-yonetim' && tab.type !== 'archive-docs' && tab.type !== 'api-usage' && tab.type !== 'database' && tab.type !== 'databases-viewer' && tab.type !== 'error-management' && tab.type !== 'my-errors' && tab.type !== 'my-requests' && tab.type !== 'coming-soon' && tab.type !== 'bpmn' && tab.type !== 'pdf' && tab.type !== 'pptx' && tab.type !== 'ppt' && tab.type !== 'docx' && tab.type !== 'doc' && tab.type !== 'xls' && tab.type !== 'xlsx' && (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-500 text-center">
                     <div className="inline-block p-4 rounded-full bg-slate-50 border border-slate-200 mb-4">
                         <Activity size={32} className="text-slate-400" />

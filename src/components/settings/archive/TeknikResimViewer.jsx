@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import {
     Ruler, Search, X, Loader2, Grid, List, Upload, RefreshCw,
     Download, Eye, AlertTriangle, CheckCircle2, Clock, ScanLine,
     Layers, FileText, Table2, Cpu, Scissors, Link2, Link2Off,
-    FolderOpen, ExternalLink, Trash2
+    FolderOpen, ExternalLink, Trash2, ChevronRight, Plus, Home
 } from 'lucide-react';
 
 import { useErrorStore } from '../../../store/errorStore';
@@ -60,6 +61,7 @@ function fmtDate(s) {
 /* ── Sağ tık menüsü ─────────────────────────────────────────────── */
 function ContextMenu({ x, y, item, onDelete, onClose }) {
     const ref = useRef(null);
+    const [pos, setPos] = useState({ top: y, left: x, opacity: 0 });
 
     useEffect(() => {
         const handler = (e) => {
@@ -73,11 +75,24 @@ function ContextMenu({ x, y, item, onDelete, onClose }) {
         };
     }, [onClose]);
 
-    return (
+    // İmleç köşede kalacak şekilde flip
+    useEffect(() => {
+        if (!ref.current) return;
+        const { offsetWidth: w, offsetHeight: h } = ref.current;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        setPos({
+            top:     y + h > vh ? y - h : y,
+            left:    x + w > vw ? x - w : x,
+            opacity: 1,
+        });
+    }, [x, y]);
+
+    return createPortal(
         <div
             ref={ref}
-            className="fixed z-[100] bg-white border border-stone-200 rounded-xl shadow-2xl overflow-hidden py-1 min-w-[160px]"
-            style={{ top: y, left: x }}
+            className="fixed z-[9999] bg-white border border-stone-200 rounded-xl shadow-2xl overflow-hidden py-1 min-w-[160px]"
+            style={{ top: pos.top, left: pos.left, opacity: pos.opacity }}
         >
             <button
                 onClick={() => { onDelete(item); onClose(); }}
@@ -85,7 +100,8 @@ function ContextMenu({ x, y, item, onDelete, onClose }) {
             >
                 <Trash2 size={13} /> Sil
             </button>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -303,6 +319,178 @@ function UploadModal({ onClose, onUploaded, onAnalysisDone }) {
     );
 }
 
+/* ── Klasör Yükleme Modalı ───────────────────────────────────────── */
+function FolderUploadModal({ onClose, onUploaded, onAnalysisDone }) {
+    const [files,         setFiles]         = useState([]);
+    const [uploading,     setUploading]     = useState(false);
+    const [progress,      setProgress]      = useState('');
+    const [uploadedCount, setUploadedCount] = useState(0);
+    const inputRef = useRef(null);
+
+    const handleFilesChange = (e) => setFiles(Array.from(e.target.files));
+
+    const getKategori = (name) => {
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        return ['png','jpg','jpeg','webp','bmp','gif','tiff','dwg','dxf','stp','step'].includes(ext)
+            ? 'teknik_resim' : 'belgeler';
+    };
+
+    const handleUpload = async () => {
+        if (!files.length || uploading) return;
+        setUploading(true);
+        setUploadedCount(0);
+        try {
+            const folderMap = {};
+
+            // Tüm benzersiz dizin yollarını bul, derinliğe göre sırala
+            const folderPaths = new Set();
+            files.forEach(f => {
+                const parts = f.webkitRelativePath.split('/');
+                for (let i = 1; i < parts.length; i++) folderPaths.add(parts.slice(0, i).join('/'));
+            });
+            const sortedPaths = Array.from(folderPaths).sort((a, b) => a.split('/').length - b.split('/').length);
+
+            // Klasörleri oluştur
+            for (const path of sortedPaths) {
+                const parts     = path.split('/');
+                const name      = parts[parts.length - 1];
+                const parentPth = parts.slice(0, -1).join('/');
+                const parent_id = parentPth ? folderMap[parentPth] : null;
+                setProgress(`Klasör: ${name}`);
+                const res  = await fetch('/api/archive/create-folder', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, parent_id })
+                });
+                const data = await res.json();
+                folderMap[path] = data.id;
+            }
+
+            // Dosyaları yükle
+            let count = 0;
+            for (const file of files) {
+                const parts     = file.webkitRelativePath.split('/');
+                const folderPth = parts.slice(0, -1).join('/');
+                const folder_id = folderMap[folderPth] || null;
+                setProgress(`${file.name} (${count + 1}/${files.length})`);
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('kategori', getKategori(file.name));
+                if (folder_id) fd.append('folder_id', folder_id);
+                const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.id) subscribeToDocProgress(data.id, file.name, onAnalysisDone);
+                count++;
+                setUploadedCount(count);
+            }
+
+            onUploaded();
+            onClose();
+        } catch {}
+        finally { setUploading(false); setProgress(''); }
+    };
+
+    const folderGroups = {};
+    files.forEach(f => {
+        const parts = f.webkitRelativePath.split('/');
+        const key   = parts.slice(0, -1).join('/') || parts[0];
+        if (!folderGroups[key]) folderGroups[key] = [];
+        folderGroups[key].push(f);
+    });
+    const groupKeys    = Object.keys(folderGroups);
+    const rootName     = files[0]?.webkitRelativePath.split('/')[0] || '';
+    const progressPct  = files.length ? (uploadedCount / files.length) * 100 : 0;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-[540px] max-h-[75vh] flex flex-col overflow-hidden">
+                {/* Başlık */}
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-100">
+                    <div className="p-2 rounded-xl bg-[#378ADD]/10">
+                        <FolderOpen size={16} className="text-[#378ADD]" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-[14px] font-bold text-stone-800">Klasör Yükle</p>
+                        <p className="text-[11px] text-stone-400">Alt klasörler dahil tüm dosyalar yüklenir</p>
+                    </div>
+                    <button onClick={onClose} disabled={uploading} className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 disabled:opacity-40">
+                        <X size={14} />
+                    </button>
+                </div>
+
+                {/* İçerik */}
+                <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+                    {/* Seçici */}
+                    <div
+                        onClick={() => !uploading && inputRef.current?.click()}
+                        className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl p-8 transition-all
+                            ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[#378ADD]/40 hover:bg-stone-50'}
+                            ${files.length ? 'border-[#378ADD]/40 bg-[#378ADD]/5' : 'border-stone-200'}`}
+                    >
+                        <input ref={inputRef} type="file" webkitdirectory="" multiple className="hidden" onChange={handleFilesChange} />
+                        <FolderOpen size={28} className={files.length ? 'text-[#378ADD]' : 'text-stone-300'} />
+                        {files.length > 0 ? (
+                            <div className="text-center">
+                                <p className="text-[13px] font-bold text-stone-800">{rootName}</p>
+                                <p className="text-[11px] text-stone-500 mt-0.5">{files.length} dosya · {groupKeys.length} klasör</p>
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <p className="text-[13px] font-semibold text-stone-600">Klasör seçmek için tıklayın</p>
+                                <p className="text-[11px] text-stone-400 mt-0.5">Tüm alt klasörler ve dosyalar yüklenecek</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Dosya önizlemesi */}
+                    {files.length > 0 && !uploading && (
+                        <div className="flex flex-col gap-1">
+                            {groupKeys.slice(0, 8).map(key => (
+                                <div key={key} className="flex items-center gap-2 px-3 py-2 bg-stone-50 rounded-lg border border-stone-100">
+                                    <FolderOpen size={11} className="text-[#378ADD] shrink-0" />
+                                    <span className="text-[11px] font-medium text-stone-600 flex-1 truncate">{key}</span>
+                                    <span className="text-[10px] text-stone-400 shrink-0 tabular-nums">{folderGroups[key].length} dosya</span>
+                                </div>
+                            ))}
+                            {groupKeys.length > 8 && (
+                                <p className="text-[10px] text-stone-400 text-center py-1">+{groupKeys.length - 8} klasör daha…</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* İlerleme */}
+                    {uploading && (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2 px-3 py-2.5 bg-[#378ADD]/5 border border-[#378ADD]/20 rounded-lg text-[11px] text-[#378ADD] font-medium">
+                                <Loader2 size={12} className="animate-spin shrink-0" />
+                                <span className="flex-1 truncate">{progress}</span>
+                                <span className="shrink-0 font-bold tabular-nums">{uploadedCount}/{files.length}</span>
+                            </div>
+                            <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-[#378ADD] rounded-full transition-all duration-300" style={{ width: `${progressPct}%` }} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Alt */}
+                <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-stone-100">
+                    <button onClick={onClose} disabled={uploading} className="px-4 py-2 text-[12px] font-semibold text-stone-500 hover:text-stone-700 disabled:opacity-40">
+                        İptal
+                    </button>
+                    <button
+                        onClick={handleUpload}
+                        disabled={!files.length || uploading}
+                        className="flex items-center gap-1.5 px-5 py-2 bg-[#378ADD] text-white text-[12px] font-bold rounded-xl hover:bg-[#2a6ab8] transition-colors disabled:opacity-50"
+                    >
+                        {uploading ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
+                        {uploading ? 'Yükleniyor…' : 'Yükle'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /* ── Dosya Bağlantı Modalı ───────────────────────────────────────── */
 function LinkModal({ sourceItem, linkType, onClose, onLinked }) {
     const [uploading, setUploading] = useState(false);
@@ -386,31 +574,6 @@ function LinkModal({ sourceItem, linkType, onClose, onLinked }) {
     );
 }
 
-/* ── Bağlı dosya durum göstergesi ───────────────────────────────── */
-function LinkStatus({ item, onUnlink, onStartLink }) {
-    const bagli     = item.meta?.bagli_dosyalar || {};
-    const cadId     = bagli.cad;
-    const nestingId = bagli.nesting;
-
-    return (
-        <div className="flex items-center gap-1">
-            <span className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
-                cadId
-                    ? 'bg-violet-100 text-violet-700 border-violet-300'
-                    : 'bg-stone-50 text-stone-300 border-stone-200 border-dashed'
-            }`}>
-                <Cpu size={7} /> CAD
-            </span>
-            <span className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
-                nestingId
-                    ? 'bg-orange-100 text-orange-600 border-orange-300'
-                    : 'bg-stone-50 text-stone-300 border-stone-200 border-dashed'
-            }`}>
-                <Scissors size={7} /> NES
-            </span>
-        </div>
-    );
-}
 
 /* ── Excel indirme yardımcıları ─────────────────────────────────── */
 
@@ -570,27 +733,25 @@ function downloadExcel(item, linkedItem) {
 
 /* ── Veri tablo modali ───────────────────────────────────────────── */
 function DataTableModal({ item, allItems, onClose }) {
-    const va       = item.meta?.vision_analysis;
-    const bagli    = item.meta?.bagli_dosyalar || {};
+    const va    = item.meta?.vision_analysis;
+    const bagli = item.meta?.bagli_dosyalar || {};
 
-    // Bağlı dosyayı bul (nesting veya cizim)
-    const linkedId = bagli.nesting || bagli.cad || bagli.cizim;
+    const linkedId   = getNestingIds(bagli)[0] || bagli.cad || bagli.cizim;
     const linkedItem = linkedId ? (allItems || []).find(i => i.id === linkedId) : null;
-    const lva = linkedItem?.meta?.vision_analysis;
-
-    // Hangi sekme başta açılsın
-    const initTab = va?.image_type === 'nesting' ? 'nesting' : 'teknik';
-    const [tab, setTab] = useState(initTab);
+    const lva        = linkedItem?.meta?.vision_analysis;
 
     const isTeknikType = t => t === 'teknik_resim' || t === 'step_model';
-    const hasTeknik  = isTeknikType(va?.image_type) || isTeknikType(lva?.image_type);
-    const hasNesting = va?.image_type === 'nesting' || lva?.image_type === 'nesting';
 
-    const activeVa = tab === 'teknik'
-        ? (isTeknikType(va?.image_type) ? va : lva)
-        : (va?.image_type === 'nesting' ? va : lva);
+    const teknikVa       = isTeknikType(va?.image_type) ? va  : (isTeknikType(lva?.image_type) ? lva  : null);
+    const nestingVa      = va?.image_type === 'nesting'  ? va  : (lva?.image_type === 'nesting'  ? lva  : null);
+    const nestingFilename = va?.image_type === 'nesting' ? item.filename : (linkedItem?.filename || '');
 
-    const hasAny = hasTeknik || hasNesting;
+    const hasTeknik  = !!teknikVa;
+    const hasNesting = !!nestingVa;
+    const hasAny     = hasTeknik || hasNesting;
+
+    const initTab = va?.image_type === 'nesting' ? 'nesting' : 'teknik';
+    const [tab, setTab] = useState(initTab);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6">
@@ -607,8 +768,8 @@ function DataTableModal({ item, allItems, onClose }) {
                         <p className="text-[10px] text-stone-400">Yapısal analiz verisi</p>
                     </div>
 
-                    {/* Sekme geçiş */}
-                    {(hasTeknik && hasNesting) && (
+                    {/* Tab geçiş — sadece ikisi birden varsa göster */}
+                    {hasTeknik && hasNesting && (
                         <div className="flex items-center bg-stone-100 rounded-xl p-0.5 gap-0.5">
                             <button
                                 onClick={() => setTab('teknik')}
@@ -638,10 +799,12 @@ function DataTableModal({ item, allItems, onClose }) {
                         <div className="flex-1 overflow-y-auto minimal-scroll">
                             <EmptyAnalysisState status={item.meta?.transcription_status} va={va} visionError={item.meta?.vision_error} />
                         </div>
-                    ) : tab === 'teknik' ? (
-                        <TeknikTable va={activeVa} />
+                    ) : (tab === 'nesting' || (!hasTeknik && hasNesting)) ? (
+                        <div className="flex-1 overflow-y-auto minimal-scroll">
+                            <NestingTable va={nestingVa} filename={nestingFilename} />
+                        </div>
                     ) : (
-                        <NestingTable va={activeVa} />
+                        <TeknikTable va={teknikVa} />
                     )}
                 </div>
 
@@ -949,7 +1112,7 @@ function TeknikTable({ va }) {
     );
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full min-h-0">
             {/* ── LLM atlandı uyarısı ── */}
             {llmSkipped && (
                 <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-700">
@@ -975,7 +1138,7 @@ function TeknikTable({ va }) {
             </div>
 
             {/* ── Spreadsheet içeriği ── */}
-            <div className="flex-1 overflow-auto bg-white">
+            <div className="flex-1 overflow-auto min-h-0 bg-white">
                 {active?.type === 'text' ? (
                     <div className="p-5 text-[12px] text-stone-700 leading-relaxed whitespace-pre-wrap">{active.text}</div>
                 ) : (
@@ -987,16 +1150,18 @@ function TeknikTable({ va }) {
 }
 
 /* ── Nesting tablo görünümü ──────────────────────────────────────── */
-function NestingTable({ va }) {
+function NestingTable({ va, filename }) {
     if (!va) return (
         <div className="flex items-center justify-center h-32 text-stone-400 text-[12px]">
             Nesting analizi bulunamadı
         </div>
     );
 
+    const kimlikNo = getKimlikNo(va, filename || '');
+
     const genelRows = [
+        ['Kimlik No',       kimlikNo],
         ['Program',         va.program_adi],
-        ['Malzeme No',      va.malzeme_numarasi],
         ['Malzeme',         va.malzeme],
         ['Kalınlık',        va.kalinlik],
         ['Levha Boyutu',    va.levha_boyutu],
@@ -1009,7 +1174,7 @@ function NestingTable({ va }) {
         <div className="p-6 flex flex-col gap-6">
             {genelRows.length > 0 && (
                 <SheetBlock title="Genel Bilgiler" color="orange" icon={Cpu}>
-                    <SheetKVTable rows={genelRows} highlightKeys={['Kullanım Oranı', 'Fire Oranı']} />
+                    <SheetKVTable rows={genelRows} highlightKeys={['Kimlik No', 'Kullanım Oranı', 'Fire Oranı']} />
                 </SheetBlock>
             )}
 
@@ -1157,8 +1322,59 @@ function SheetNoteTable({ items }) {
     );
 }
 
+/* ── Nesting ID listesi (string veya array uyumlu) ──────────────── */
+function getNestingIds(bagli) {
+    const n = (bagli || {}).nesting;
+    if (!n) return [];
+    return Array.isArray(n) ? n : [n];
+}
+
+/* ── Kimlik no çıkarıcı ──────────────────────────────────────────── */
+const _SAP_RE = /\b(\d{7,10})\b/;
+
+function extractNumFromFilename(filename) {
+    if (!filename) return '';
+    const stem = filename.replace(/\.[^.]+$/, '');
+    // Ayırıcılar arasındaki parçalara böl: - . , space _ /
+    const parts = stem.split(/[-.,\s_/]+/);
+    for (const p of parts) {
+        const clean = p.replace(/\./g, ''); // Avrupa noktalı: 92.530.740
+        if (/^\d{7,10}$/.test(clean)) return clean;
+    }
+    return '';
+}
+
+function getKimlikNo(va, filename) {
+    if (va) {
+        const bb = va.baslik_bloku || {};
+        // 1. Klasik alan adları
+        if (bb.kimlik_numarasi) return bb.kimlik_numarasi;
+        if (bb.cizim_numarasi)  return bb.cizim_numarasi;
+        // 2. Nesting üst seviye
+        if (va.malzeme_numarasi) return va.malzeme_numarasi;
+        // 3. baslik_bloku'daki tüm değerlerde SAP şekilli sayı ara
+        for (const v of Object.values(bb)) {
+            if (!v) continue;
+            const m = _SAP_RE.exec(String(v));
+            if (m) return m[1];
+        }
+        // 4. parca_listesi parca_kodu
+        for (const p of va.parca_listesi || []) {
+            if (!p || typeof p !== 'object') continue;
+            for (const fld of ['parca_kodu', 'kimlik_numarasi', 'malzeme_no']) {
+                if (p[fld]) {
+                    const m = _SAP_RE.exec(String(p[fld]));
+                    if (m) return m[1];
+                }
+            }
+        }
+    }
+    // 5. Dosya adından çıkar
+    return extractNumFromFilename(filename);
+}
+
 /* ── Grid kartı ──────────────────────────────────────────────────── */
-function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete }) {
+function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete, draggingId }) {
     const [imgErr,   setImgErr]   = useState(false);
     const [ctxMenu,  setCtxMenu]  = useState(null);
     const clickTimer = useRef(null);
@@ -1169,13 +1385,16 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
     const bb        = isTR ? (va.baslik_bloku || {}) : {};
     const status    = item.meta?.transcription_status;
     const canAnalyze = status !== 'processing' && !va;
-    const bagli     = item.meta?.bagli_dosyalar || {};
-    const nestingId = bagli.nesting;
-    const cadId     = bagli.cad;
+    const bagli      = item.meta?.bagli_dosyalar || {};
+    const cadId      = bagli.cad;
 
-    const nestingItem    = nestingId ? (allItems || []).find(i => i.id === nestingId) : null;
+    const nestingIds  = getNestingIds(bagli);
+    const nestingId   = nestingIds[0] ?? null;
+    const nestingItems   = nestingIds.map(id => (allItems || []).find(i => i.id === id)).filter(Boolean);
+    const nestingItem    = nestingItems[0] ?? null;
     const nestingVision  = nestingItem?.meta?.vision_analysis;
-    const nestingMatNum  = nestingVision?.malzeme_numarasi || '';
+    const nestingMatNum  = getKimlikNo(nestingVision, nestingItem?.filename || '');
+    const kimlikNo       = getKimlikNo(va, item.filename);
 
     // Tek tık → çizimi aç   |   Çift tık → nesting aç
     const handleClick = () => {
@@ -1208,9 +1427,12 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
             />
         )}
         <div
+            draggable
+            onDragStart={e => setDragData(e, item.id)}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
-            className="group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-[#378ADD]/40 hover:shadow-lg transition-all cursor-pointer flex flex-col"
+            className={`group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-[#378ADD]/40 hover:shadow-lg transition-all cursor-grab active:cursor-grabbing flex flex-col
+                ${draggingId === item.id ? 'opacity-40' : ''}`}
         >
             {/* Önizleme */}
             <div className="relative h-[140px] bg-stone-50 overflow-hidden">
@@ -1254,7 +1476,6 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                     <StatusBadge item={item} />
                 </div>
                 <div className="absolute top-2 right-2 flex items-center gap-1">
-                    <CadBadge item={item} />
                     <button
                         onClick={e => { e.stopPropagation(); onDetail(item); }}
                         title="Detayları göster"
@@ -1267,16 +1488,16 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
 
             {/* Bilgi */}
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-1 min-w-0">
-                {isTR && (bb.cizim_numarasi || bb.kimlik_numarasi) && (
+                {isTR && (bb.cizim_numarasi || kimlikNo) && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                         {bb.cizim_numarasi && (
                             <span className="text-[9px] font-black text-[#378ADD] tracking-widest uppercase">
                                 #{bb.cizim_numarasi}
                             </span>
                         )}
-                        {bb.kimlik_numarasi && (
+                        {kimlikNo && (
                             <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded tracking-wide uppercase">
-                                SAP {bb.kimlik_numarasi}
+                                SAP {kimlikNo}
                             </span>
                         )}
                     </div>
@@ -1292,17 +1513,71 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                     </div>
                 )}
 
-                {/* Otomatik eşleşme bandı */}
-                {nestingId && nestingMatNum && (
-                    <div className="flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-100 rounded-lg mt-1">
-                        <Link2 size={9} className="text-orange-400 shrink-0" />
-                        <span className="text-[9px] text-orange-500 font-bold truncate">{nestingMatNum}</span>
-                    </div>
-                )}
+                {/* Bağlı nesting şeritleri (birden fazla olabilir) */}
+                {nestingItems.map((nItem, ni) => {
+                    const nVa  = nItem.meta?.vision_analysis;
+                    const nNum = getKimlikNo(nVa, nItem.filename || '');
+                    return nVa ? (
+                        <div key={nItem.id} className="flex flex-col gap-0.5 px-2.5 py-1.5 bg-orange-50 border border-orange-100 rounded-lg mt-1">
+                            <div className="flex items-center gap-1">
+                                <Scissors size={8} className="text-orange-400 shrink-0" />
+                                <span className="text-[9px] text-orange-600 font-black uppercase tracking-wide">
+                                    Nesting{nestingIds.length > 1 ? ` ${ni + 1}` : ''}
+                                </span>
+                                {nNum && <span className="ml-auto text-[9px] text-amber-600 font-bold">{nNum}</span>}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0">
+                                {nVa.malzeme && <span className="text-[9px] text-stone-500 font-medium">{nVa.malzeme}</span>}
+                                {nVa.kalinlik && <span className="text-[9px] text-stone-500">{nVa.kalinlik}mm</span>}
+                                {nVa.kullanim_orani && (
+                                    <span className="text-[9px] text-emerald-600 font-bold">
+                                        {String(nVa.kullanim_orani).replace('%', '')}%
+                                    </span>
+                                )}
+                                {nVa.levha_boyutu && <span className="text-[9px] text-stone-400">{nVa.levha_boyutu}</span>}
+                            </div>
+                            {Array.isArray(nVa.islemler) && nVa.islemler.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                    {nVa.islemler.slice(0, 3).map((op, i) => {
+                                        const label = typeof op === 'string' ? op : (op?.islem || '');
+                                        return label ? (
+                                            <span key={i} className="text-[8px] bg-orange-100 text-orange-500 px-1 py-0.5 rounded font-semibold">{label}</span>
+                                        ) : null;
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div key={nItem.id} className="flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-100 rounded-lg mt-1">
+                            <Scissors size={8} className="text-orange-400 shrink-0" />
+                            <span className="text-[9px] text-orange-500 font-semibold">Nesting bağlı</span>
+                            <Link2 size={8} className="text-orange-300 ml-auto" />
+                        </div>
+                    );
+                })}
 
-                {/* Bağlantı durumu + alt bilgi */}
-                <div className="mt-auto pt-2 border-t border-stone-50 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
-                    <LinkStatus item={item} onUnlink={onUnlink} onStartLink={onStartLink} />
+                {/* Nesting kartı: bağlı teknik çizimi göster */}
+                {va?.image_type === 'nesting' && bagli.cizim && (() => {
+                    const cizimItem = (allItems || []).find(i => i.id === bagli.cizim);
+                    const cizimVa   = cizimItem?.meta?.vision_analysis;
+                    const cizimBb   = cizimVa?.baslik_bloku || {};
+                    return (
+                        <div
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 border border-violet-100 rounded-lg mt-1 cursor-pointer hover:bg-violet-100 transition-colors"
+                            onClick={e => { e.stopPropagation(); onOpenLinked?.(bagli.cizim); }}
+                        >
+                            <Cpu size={8} className="text-violet-400 shrink-0" />
+                            <span className="text-[9px] text-violet-600 font-black uppercase tracking-wide">Teknik Çizim</span>
+                            {cizimBb.baslik && (
+                                <span className="text-[9px] text-violet-500 font-medium truncate ml-1 max-w-[120px]">{cizimBb.baslik}</span>
+                            )}
+                            <Link2 size={8} className="text-violet-300 ml-auto shrink-0" />
+                        </div>
+                    );
+                })()}
+
+                {/* Alt bilgi */}
+                <div className="mt-auto pt-2 border-t border-stone-50 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 text-[10px] text-stone-300">
                         <span className="uppercase font-black">{item.file_type}</span>
                         {fmtSize(item.file_size) && <span>· {fmtSize(item.file_size)}</span>}
@@ -1322,7 +1597,7 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
 }
 
 /* ── Liste satırı ────────────────────────────────────────────────── */
-const LCOLS = { gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.9fr) 80px 80px 80px 100px 110px 110px 60px' };
+const LCOLS = { gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.9fr) 80px 80px 100px 110px 110px 60px' };
 
 function ListHeader() {
     return (
@@ -1333,7 +1608,6 @@ function ListHeader() {
             <span>BAŞLIK</span>
             <span>REVİZYON</span>
             <span>ÖLÇEK</span>
-            <span>TİP</span>
             <span>DURUM</span>
             <span>BOYUT</span>
             <span>TARİH</span>
@@ -1342,12 +1616,17 @@ function ListHeader() {
     );
 }
 
-function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete }) {
+function ListRow({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete, draggingId }) {
     const [ctxMenu, setCtxMenu] = useState(null);
     const va = item.meta?.vision_analysis;
     const isTR = ['teknik_resim', 'step_model', 'nesting'].includes(va?.image_type);
     const bb = isTR ? (va.baslik_bloku || {}) : {};
     const canAnalyze = !va && item.meta?.transcription_status !== 'processing';
+
+    const bagli        = item.meta?.bagli_dosyalar || {};
+    const nestingIds   = getNestingIds(bagli);
+    const nestingItems = nestingIds.map(id => (allItems || []).find(i => i.id === id)).filter(Boolean);
+    const kimlikNo     = getKimlikNo(va, item.filename);
 
     return (
         <>
@@ -1360,9 +1639,12 @@ function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStart
             />
         )}
         <div
+            draggable
+            onDragStart={e => setDragData(e, item.id)}
             onClick={() => onOpen(item)}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-            className="group grid gap-3 px-4 py-2.5 items-center bg-white hover:bg-stone-50 border-b border-stone-100 cursor-pointer transition-colors"
+            className={`group grid gap-3 px-4 py-2.5 items-center bg-white hover:bg-stone-50 border-b border-stone-100 cursor-grab active:cursor-grabbing transition-colors
+                ${draggingId === item.id ? 'opacity-40' : ''}`}
             style={LCOLS}
         >
             <div className="flex items-center gap-2 min-w-0">
@@ -1372,13 +1654,10 @@ function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStart
                 <span className="text-[11px] font-semibold text-stone-800 truncate">{item.filename.replace(/\.[^.]+$/, '')}</span>
             </div>
             <span className="text-[11px] text-[#378ADD] font-bold truncate">{bb.cizim_numarasi || '—'}</span>
-            <span className="text-[11px] text-amber-600 font-bold truncate">{bb.kimlik_numarasi || '—'}</span>
+            <span className="text-[11px] text-amber-600 font-bold truncate">{kimlikNo || '—'}</span>
             <span className="text-[11px] text-stone-600 truncate">{bb.baslik || '—'}</span>
             <span className="text-[11px] text-stone-500">{bb.revizyon || '—'}</span>
             <span className="text-[11px] text-stone-500">{bb.olcek || '—'}</span>
-            <div onClick={e => e.stopPropagation()}>
-                <LinkStatus item={item} onUnlink={onUnlink} onStartLink={onStartLink} />
-            </div>
             <StatusBadge item={item} />
             <span className="text-[11px] text-stone-500">{fmtSize(item.file_size) || '—'}</span>
             <span className="text-[11px] text-[#378ADD] font-semibold">{fmtDate(item.created_at)}</span>
@@ -1412,6 +1691,72 @@ function ListRow({ item, onOpen, onVectorize, vectorizing, onOpenLinked, onStart
                 </a>
             </div>
         </div>
+
+        {/* Bağlı nesting alt satırı */}
+        {va?.image_type === 'nesting' && bagli.cizim && (() => {
+            const cizimItem = (allItems || []).find(i => i.id === bagli.cizim);
+            const cizimVa   = cizimItem?.meta?.vision_analysis;
+            const cizimBb   = cizimVa?.baslik_bloku || {};
+            return (
+                <div
+                    className="grid gap-3 px-4 py-1.5 items-center border-b border-violet-100 bg-violet-50/40 hover:bg-violet-50 cursor-pointer transition-colors"
+                    style={LCOLS}
+                    onClick={e => { e.stopPropagation(); onOpenLinked?.(bagli.cizim); }}
+                >
+                    <div className="flex items-center gap-1.5 pl-4 min-w-0">
+                        <div className="w-px h-3 bg-violet-200 shrink-0" />
+                        <Cpu size={9} className="text-violet-400 shrink-0" />
+                        <span className="text-[10px] text-violet-600 font-semibold truncate">
+                            {cizimItem ? cizimItem.filename.replace(/\.[^.]+$/, '') : '—'}
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 truncate">{cizimBb.cizim_numarasi || '—'}</span>
+                    <span className="text-[10px] text-amber-500 font-bold truncate">{getKimlikNo(cizimVa, cizimItem?.filename || '') || '—'}</span>
+                    <span className="text-[10px] text-stone-600 truncate">{cizimBb.baslik || '—'}</span>
+                    <span /><span /><span /><span /><span /><span />
+                </div>
+            );
+        })()}
+        {nestingItems.map((nItem, ni) => {
+            const nVision = nItem.meta?.vision_analysis;
+            const nKimlik = getKimlikNo(nVision, nItem.filename || '');
+            return (
+                <div
+                    key={nItem.id}
+                    className="grid gap-3 px-4 py-1.5 items-center border-b border-orange-100 bg-orange-50/50 hover:bg-orange-50 cursor-pointer transition-colors"
+                    style={LCOLS}
+                    onClick={e => { e.stopPropagation(); onOpenLinked?.(nItem.id); }}
+                >
+                    <div className="flex items-center gap-1.5 pl-4 min-w-0">
+                        <div className="w-px h-3 bg-orange-200 shrink-0" />
+                        <Scissors size={9} className="text-orange-400 shrink-0" />
+                        <span className="text-[10px] text-orange-500 font-semibold truncate">
+                            {nItem.filename.replace(/\.[^.]+$/, '')}
+                            {nestingIds.length > 1 && <span className="ml-1 text-orange-300">#{ni + 1}</span>}
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 truncate">
+                        {nVision?.program_adi || '—'}
+                    </span>
+                    <span className="text-[10px] text-amber-500 font-bold truncate">
+                        {nKimlik || '—'}
+                    </span>
+                    <span className="text-[10px] text-stone-500 truncate">
+                        {[nVision?.malzeme, nVision?.kalinlik ? `${nVision.kalinlik}mm` : '']
+                            .filter(Boolean).join(' · ') || '—'}
+                    </span>
+                    <span className="text-[10px] text-emerald-600 font-bold">
+                        {nVision?.kullanim_orani
+                            ? `${String(nVision.kullanim_orani).replace('%', '')}%`
+                            : '—'}
+                    </span>
+                    <span className="text-[10px] text-stone-400 truncate">
+                        {nVision?.levha_boyutu || '—'}
+                    </span>
+                    <span /><span /><span /><span />
+                </div>
+            );
+        })}
         </>
     );
 }
@@ -1425,17 +1770,106 @@ const FILTERS = [
     { key: 'pending',  label: 'Bekleyenler',   icon: Clock },
 ];
 
+const DRAG_KEY = 'teknik/item';
+let _dragId = null; // dragstart sırasında getData çalışmadığı için module-level ref
+const getDragId = (e) => { try { return JSON.parse(e.dataTransfer.getData(DRAG_KEY))?.id; } catch { return null; } };
+const setDragData = (e, id) => { _dragId = id; e.dataTransfer.setData(DRAG_KEY, JSON.stringify({ id })); e.dataTransfer.effectAllowed = 'move'; };
+
+/* ── Klasör kartı ────────────────────────────────────────────────── */
+function FolderCard({ folder, depth, onClick, onDelete, draggingId, onDrop }) {
+    const [ctxMenu, setCtxMenu] = useState(null);
+    const [isOver,  setIsOver]  = useState(false);
+    const label  = depth === 0 ? 'Mamul' : depth === 1 ? 'Alt Bileşen' : 'Klasör';
+    const accent = depth === 0 ? '#f59e0b' : depth === 1 ? '#3b82f6' : '#8b5cf6';
+    const isDraggingSelf = draggingId === folder.id;
+
+    return (
+        <>
+        {ctxMenu && (
+            <ContextMenu x={ctxMenu.x} y={ctxMenu.y} item={folder}
+                onDelete={onDelete} onClose={() => setCtxMenu(null)} />
+        )}
+        <div
+            draggable
+            onClick={!isDraggingSelf ? onClick : undefined}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+            onDragStart={e => { e.stopPropagation(); setDragData(e, folder.id); }}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!isDraggingSelf) setIsOver(true); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsOver(false); }}
+            onDrop={e => { e.preventDefault(); e.stopPropagation(); setIsOver(false); const id = getDragId(e); if (id && id !== folder.id) onDrop?.(id, folder.id); }}
+            className={`bg-white border rounded-xl p-4 cursor-pointer transition-all flex items-center gap-3 group
+                ${isOver ? 'border-[#378ADD] shadow-[0_0_0_3px_rgba(55,138,221,0.15)] scale-[1.01]' : 'border-stone-200 hover:shadow-md'}
+                ${isDraggingSelf ? 'opacity-40' : ''}`}
+            style={{ borderLeftWidth: 3, borderLeftColor: isOver ? '#378ADD' : accent }}
+        >
+            <div className="p-2.5 rounded-xl shrink-0" style={{ background: isOver ? '#378ADD18' : `${accent}18` }}>
+                <FolderOpen size={18} style={{ color: isOver ? '#378ADD' : accent }} />
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-stone-800 truncate">{folder.filename}</p>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${accent}18`, color: accent }}>{label}</span>
+            </div>
+            <ChevronRight size={14} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
+        </div>
+        </>
+    );
+}
+
+function FolderListRow({ folder, depth, onClick, onDelete, draggingId, onDrop }) {
+    const [ctxMenu, setCtxMenu] = useState(null);
+    const [isOver,  setIsOver]  = useState(false);
+    const label  = depth === 0 ? 'Mamul' : depth === 1 ? 'Alt Bileşen' : 'Klasör';
+    const accent = depth === 0 ? '#f59e0b' : depth === 1 ? '#3b82f6' : '#8b5cf6';
+    const isDraggingSelf = draggingId === folder.id;
+
+    return (
+        <>
+        {ctxMenu && (
+            <ContextMenu x={ctxMenu.x} y={ctxMenu.y} item={folder}
+                onDelete={onDelete} onClose={() => setCtxMenu(null)} />
+        )}
+        <div
+            draggable
+            onClick={!isDraggingSelf ? onClick : undefined}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+            onDragStart={e => { e.stopPropagation(); setDragData(e, folder.id); }}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!isDraggingSelf) setIsOver(true); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsOver(false); }}
+            onDrop={e => { e.preventDefault(); e.stopPropagation(); setIsOver(false); const id = getDragId(e); if (id && id !== folder.id) onDrop?.(id, folder.id); }}
+            className={`flex items-center gap-3 px-4 py-3 border-b border-stone-100 cursor-pointer transition-all group
+                ${isOver ? 'bg-[#378ADD]/5 border-l-[#378ADD]' : 'bg-white hover:bg-stone-50'}
+                ${isDraggingSelf ? 'opacity-40' : ''}`}
+            style={{ borderLeftWidth: 3, borderLeftColor: isOver ? '#378ADD' : accent }}
+        >
+            <FolderOpen size={14} style={{ color: isOver ? '#378ADD' : accent }} />
+            <span className="text-[12px] font-bold text-stone-800 flex-1 truncate">{folder.filename}</span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: `${accent}18`, color: accent }}>{label}</span>
+            <ChevronRight size={13} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
+        </div>
+        </>
+    );
+}
+
 /* ── Ana bileşen ─────────────────────────────────────────────────── */
 export default function TeknikResimViewer({ onOpenFile }) {
     const [items,      setItems]      = useState([]);
+    const [allFolders, setAllFolders] = useState([]);
     const [loading,    setLoading]    = useState(true);
     const [search,     setSearch]     = useState('');
     const [filter,     setFilter]     = useState('all');
     const [view,       setView]       = useState('grid');
+    const [currentFolderId,   setCurrentFolderId]   = useState(null);
+    const [newFolderName,     setNewFolderName]     = useState('');
+    const [isCreatingFolder,  setIsCreatingFolder]  = useState(false);
+    const [draggingId,   setDraggingId]   = useState(null);
     const [vectorizing,  setVectorizing]  = useState(null);
-    const [uploadModal,  setUploadModal]  = useState(false);
+    const [uploadModal,       setUploadModal]       = useState(false);
+    const [folderUploadModal, setFolderUploadModal] = useState(false);
+    const [relinking,    setRelinking]    = useState(false);
     const [linkModal,    setLinkModal]    = useState(null);
     const [detailItem,   setDetailItem]   = useState(null);
+
+    const TEKNIK_EXTS = new Set(['png','jpg','jpeg','webp','bmp','gif','tiff','pdf','dwg','dxf','stp','step']);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -1443,8 +1877,9 @@ export default function TeknikResimViewer({ onOpenFile }) {
             const res = await fetch('/api/archive/list');
             if (res.ok) {
                 const data = await res.json();
-                const TEKNIK_EXTS = new Set(['png','jpg','jpeg','webp','bmp','gif','tiff','pdf','dwg','dxf','stp','step']);
-                const imgs = (data.items || [])
+                const all = data.items || [];
+                setAllFolders(all.filter(i => i.file_type === 'folder'));
+                const imgs = all
                     .filter(i => TEKNIK_EXTS.has((i.file_type || '').toLowerCase()))
                     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                 setItems(imgs);
@@ -1464,6 +1899,11 @@ export default function TeknikResimViewer({ onOpenFile }) {
     }, [items, load]);
 
     const filtered = items.filter(i => {
+        // Arama yoksa mevcut klasör filtresi uygula
+        if (!search.trim()) {
+            const inFolder = currentFolderId === null ? !i.folder_id : i.folder_id === currentFolderId;
+            if (!inFolder) return false;
+        }
         // Bağlı nesting çocukları ana karttan erişilebilir, ayrıca gösterme
         if (i.meta?.bagli_dosyalar?.cizim) return false;
         if (search.trim() && !i.filename.toLowerCase().includes(search.toLowerCase())) return false;
@@ -1536,6 +1976,57 @@ export default function TeknikResimViewer({ onOpenFile }) {
         } catch {}
     }, [load]);
 
+    // Öğeyi klasöre taşı (null = root)
+    const handleMove = useCallback(async (itemId, targetFolderId) => {
+        if (!itemId || itemId === targetFolderId) return;
+        setDraggingId(null);
+        try {
+            await fetch('/api/archive/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ belge_kimlik: itemId, hedef_klasor_kimlik: targetFolderId }),
+            });
+            load();
+        } catch {}
+    }, [load]);
+
+    // Klasör oluştur (currentFolderId'e göre parent belirlenir)
+    const handleCreateFolder = async () => {
+        if (!newFolderName.trim()) return;
+        try {
+            await fetch('/api/archive/create-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newFolderName.trim(), parent_id: currentFolderId })
+            });
+            load();
+        } catch {}
+        setIsCreatingFolder(false);
+        setNewFolderName('');
+    };
+
+    // Mevcut klasördeki klasörler
+    const currentFolders = allFolders.filter(f =>
+        currentFolderId === null ? !f.folder_id : f.folder_id === currentFolderId
+    );
+
+    // Breadcrumb: root'tan currentFolderId'e kadar zincir
+    const breadcrumb = (() => {
+        if (!currentFolderId) return [];
+        const crumbs = [];
+        let cur = currentFolderId;
+        while (cur) {
+            const f = allFolders.find(x => x.id === cur);
+            if (!f) break;
+            crumbs.unshift({ id: f.id, name: f.filename });
+            cur = f.folder_id || null;
+        }
+        return crumbs;
+    })();
+
+    // Mevcut klasörün derinliği (yeni klasör için etiket)
+    const currentDepth = breadcrumb.length;
+
     const processingCount = items.filter(i => i.meta?.transcription_status === 'processing').length;
 
     return (
@@ -1549,6 +2040,9 @@ export default function TeknikResimViewer({ onOpenFile }) {
         )}
         {uploadModal && (
             <UploadModal onClose={() => setUploadModal(false)} onUploaded={load} onAnalysisDone={load} />
+        )}
+        {folderUploadModal && (
+            <FolderUploadModal onClose={() => setFolderUploadModal(false)} onUploaded={load} onAnalysisDone={load} />
         )}
         {linkModal && (
             <LinkModal
@@ -1600,12 +2094,100 @@ export default function TeknikResimViewer({ onOpenFile }) {
                         </button>
 
                         <button
+                            onClick={async () => {
+                                setRelinking(true);
+                                try {
+                                    const res = await fetch('/api/archive/relink-all', { method: 'POST' });
+                                    const d = await res.json();
+                                    if (d.linked > 0) {
+                                        load();
+                                        useErrorStore.getState().addToast({ type: 'success', message: `${d.linked} dosya eşleştirildi`, duration: 4000 });
+                                    } else {
+                                        useErrorStore.getState().addToast({ type: 'info', message: 'Yeni eşleşme bulunamadı', duration: 3000 });
+                                    }
+                                } catch {
+                                    useErrorStore.getState().addToast({ type: 'error', message: 'Eşleştirme hatası', duration: 4000 });
+                                } finally {
+                                    setRelinking(false);
+                                }
+                            }}
+                            disabled={relinking}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-stone-100 text-stone-600 text-[12px] font-semibold rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-colors disabled:opacity-50"
+                            title="Bağlanmamış dosyaları otomatik eşleştir"
+                        >
+                            {relinking ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                            Eşleştir
+                        </button>
+
+                        <button
+                            onClick={() => setFolderUploadModal(true)}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-stone-100 text-stone-700 text-[12px] font-bold rounded-xl hover:bg-[#378ADD]/10 hover:text-[#378ADD] transition-colors"
+                            title="Klasör olarak yükle"
+                        >
+                            <FolderOpen size={14} /> Klasör
+                        </button>
+
+                        <button
                             onClick={() => setUploadModal(true)}
                             className="flex items-center gap-1.5 px-4 py-2 bg-[#378ADD] text-white text-[12px] font-bold rounded-xl hover:bg-[#2a6ab8] transition-colors"
                         >
                             <Upload size={14} /> Yükle
                         </button>
                     </div>
+                </div>
+
+                {/* Breadcrumb + Yeni Klasör */}
+                <div className="flex items-center gap-2 px-7 pb-3">
+                    <button
+                        onClick={() => setCurrentFolderId(null)}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('!text-[#378ADD]', 'underline'); }}
+                        onDragLeave={e => { e.currentTarget.classList.remove('!text-[#378ADD]', 'underline'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('!text-[#378ADD]', 'underline'); const id = getDragId(e); if (id) handleMove(id, null); }}
+                        className={`flex items-center gap-1 text-[11px] font-semibold transition-colors rounded px-1 ${currentFolderId ? 'text-[#378ADD] hover:text-[#2a6ab8]' : 'text-stone-400 cursor-default'}`}
+                    >
+                        <Home size={11} /> Teknik Resimler
+                    </button>
+                    {breadcrumb.map((crumb, i) => (
+                        <React.Fragment key={crumb.id}>
+                            <ChevronRight size={11} className="text-stone-300 shrink-0" />
+                            <button
+                                onClick={() => setCurrentFolderId(crumb.id)}
+                                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('!text-[#378ADD]', 'underline'); }}
+                                onDragLeave={e => { e.currentTarget.classList.remove('!text-[#378ADD]', 'underline'); }}
+                                onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('!text-[#378ADD]', 'underline'); const id = getDragId(e); if (id) handleMove(id, crumb.id); }}
+                                className={`text-[11px] font-semibold transition-colors rounded px-1 ${i === breadcrumb.length - 1 ? 'text-stone-700 cursor-default' : 'text-[#378ADD] hover:text-[#2a6ab8]'}`}
+                            >
+                                {crumb.name}
+                            </button>
+                        </React.Fragment>
+                    ))}
+                    <div className="flex-1" />
+                    {isCreatingFolder ? (
+                        <div className="flex items-center gap-1.5">
+                            <input
+                                autoFocus
+                                value={newFolderName}
+                                onChange={e => setNewFolderName(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setIsCreatingFolder(false); setNewFolderName(''); }}}
+                                placeholder={currentDepth === 0 ? 'Mamul adı…' : 'Alt bileşen adı…'}
+                                className="w-44 px-2.5 py-1 text-[11px] border border-[#378ADD]/40 rounded-lg outline-none focus:ring-1 focus:ring-[#378ADD]/30 bg-white"
+                            />
+                            <button onClick={handleCreateFolder} className="px-2.5 py-1 bg-[#378ADD] text-white text-[11px] font-bold rounded-lg hover:bg-[#2a6ab8] transition-colors">
+                                Ekle
+                            </button>
+                            <button onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }} className="px-2 py-1 text-[11px] text-stone-400 hover:text-stone-600">
+                                İptal
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setIsCreatingFolder(true)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-stone-500 hover:text-[#378ADD] hover:bg-[#378ADD]/5 rounded-lg transition-colors border border-dashed border-stone-300 hover:border-[#378ADD]/40"
+                        >
+                            <Plus size={11} />
+                            {currentDepth === 0 ? 'Yeni Mamul' : 'Alt Bileşen Ekle'}
+                        </button>
+                    )}
                 </div>
 
                 {/* Filtreler + Arama */}
@@ -1648,49 +2230,104 @@ export default function TeknikResimViewer({ onOpenFile }) {
             </div>
 
             {/* ── İÇERİK ───────────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto p-6 minimal-scroll">
+            <div
+                className="flex-1 overflow-y-auto p-6 minimal-scroll"
+                onDragStart={() => { if (_dragId) setDraggingId(_dragId); }}
+                onDragEnd={() => { setDraggingId(null); _dragId = null; }}
+            >
                 {loading ? (
                     <div className="flex items-center justify-center h-48 gap-2 text-stone-400">
                         <Loader2 size={20} className="animate-spin text-[#378ADD]" />
                         <span className="text-[12px] font-medium">Yükleniyor...</span>
                     </div>
-                ) : filtered.length === 0 ? (
+                ) : (currentFolders.length === 0 && filtered.length === 0) ? (
                     <EmptyState search={search} filter={filter} onUpload={() => setUploadModal(true)} />
                 ) : view === 'grid' ? (
-                    <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-                        {filtered.map(item => (
-                            <TeknikKart
-                                key={item.id}
-                                item={item}
-                                allItems={items}
-                                onOpen={handleOpen}
-                                onVectorize={handleVectorize}
-                                vectorizing={vectorizing}
-                                onOpenLinked={handleOpenLinked}
-                                onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
-                                onUnlink={handleUnlink}
-                                onDetail={setDetailItem}
-                                onDelete={handleDelete}
-                            />
-                        ))}
+                    <div className="flex flex-col gap-6">
+                        {/* Klasörler */}
+                        {!search && currentFolders.length > 0 && (
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">
+                                    {currentDepth === 0 ? 'Mamuller' : 'Alt Bileşenler'}
+                                </p>
+                                <div className="grid grid-cols-2 gap-3 xl:grid-cols-3 2xl:grid-cols-4">
+                                    {currentFolders.map(f => (
+                                        <FolderCard
+                                            key={f.id}
+                                            folder={f}
+                                            depth={currentDepth}
+                                            onClick={() => setCurrentFolderId(f.id)}
+                                            onDelete={handleDelete}
+                                            draggingId={draggingId}
+                                            onDrop={handleMove}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {/* Dosyalar */}
+                        {filtered.length > 0 && (
+                            <div>
+                                {!search && currentFolders.length > 0 && (
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Dosyalar</p>
+                                )}
+                                <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
+                                    {filtered.map(item => (
+                                        <TeknikKart
+                                            key={item.id}
+                                            item={item}
+                                            allItems={items}
+                                            onOpen={handleOpen}
+                                            onVectorize={handleVectorize}
+                                            vectorizing={vectorizing}
+                                            onOpenLinked={handleOpenLinked}
+                                            onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
+                                            onUnlink={handleUnlink}
+                                            onDetail={setDetailItem}
+                                            onDelete={handleDelete}
+                                            draggingId={draggingId}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-                        <ListHeader />
-                        {filtered.map(item => (
-                            <ListRow
-                                key={item.id}
-                                item={item}
-                                onOpen={handleOpen}
-                                onVectorize={handleVectorize}
-                                vectorizing={vectorizing}
-                                onOpenLinked={handleOpenLinked}
-                                onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
-                                onUnlink={handleUnlink}
-                                onDetail={setDetailItem}
+                        {/* Klasör satırları */}
+                        {!search && currentFolders.map(f => (
+                            <FolderListRow
+                                key={f.id}
+                                folder={f}
+                                depth={currentDepth}
+                                onClick={() => setCurrentFolderId(f.id)}
                                 onDelete={handleDelete}
+                                draggingId={draggingId}
+                                onDrop={handleMove}
                             />
                         ))}
+                        {/* Dosya satırları */}
+                        {filtered.length > 0 && (
+                            <>
+                                <ListHeader />
+                                {filtered.map(item => (
+                                    <ListRow
+                                        key={item.id}
+                                        item={item}
+                                        allItems={items}
+                                        onOpen={handleOpen}
+                                        onVectorize={handleVectorize}
+                                        vectorizing={vectorizing}
+                                        onOpenLinked={handleOpenLinked}
+                                        onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
+                                        onUnlink={handleUnlink}
+                                        onDetail={setDetailItem}
+                                        onDelete={handleDelete}
+                                        draggingId={draggingId}
+                                    />
+                                ))}
+                            </>
+                        )}
                     </div>
                 )}
             </div>

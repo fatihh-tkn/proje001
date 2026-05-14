@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, createContext } from 'react';
 import { ShieldCheck, CheckCircle2, Loader2, ChevronDown, ChevronUp, FileText, RefreshCw, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
+import { ALL_SUGGESTIONS, getDisabledIds, setDisabledIds } from '../../../chatbar/suggestionCards';
 
 /* ── NodeConfigPanel primitifleri — MODÜL DÜZEYINDE (render'da yeniden tanımlanmaz) ── */
 const _NCCtx = createContext({ cfg: {}, setKey: () => {} });
@@ -73,6 +74,101 @@ const SNumInput = ({ k, min }) => {
         />
     );
 };
+
+/* ── Öneri Kartları Yönetimi ──────────────────────────────────────── */
+function SuggestionCardsConfig() {
+    const [disabled, setDisabled] = useState(() => new Set(getDisabledIds()));
+
+    const toggle = (id) => {
+        setDisabled(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            setDisabledIds([...next]);
+            return next;
+        });
+    };
+
+    const activeCount = ALL_SUGGESTIONS.length - disabled.size;
+
+    return (
+        <div className="pt-1">
+            <div className="text-[10px] text-stone-400 mb-2">
+                Her yeni sohbette {activeCount} etkin karttan rastgele 4 tanesi gösterilir.
+            </div>
+            <div className="flex flex-col gap-1">
+                {ALL_SUGGESTIONS.map(({ id, icon: Icon, label, text }) => {
+                    const isOn = !disabled.has(id);
+                    return (
+                        <div
+                            key={id}
+                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg border transition-all ${isOn ? 'bg-white border-stone-200' : 'bg-stone-50 border-stone-100 opacity-40'}`}
+                        >
+                            <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors ${isOn ? 'bg-red-50' : 'bg-stone-100'}`}>
+                                <Icon size={12} className={isOn ? 'text-[#DC2626]' : 'text-stone-400'} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <span className="text-[9.5px] font-bold text-stone-400 uppercase tracking-wide mr-1.5">{label}</span>
+                                <span className="text-[11px] text-stone-600 leading-snug">{text}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => toggle(id)}
+                                className={`relative w-[34px] h-[18px] rounded-full transition-colors shrink-0 focus:outline-none ${isOn ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}
+                            >
+                                <span className={`absolute top-[2px] w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-all duration-150 ${isOn ? 'left-[18px]' : 'left-[2px]'}`} />
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+/* ── Takip Soruları Ayarları ──────────────────────────────────────── */
+const FU_LS_KEY = 'chat_followup_settings';
+const loadFuCfg = () => { try { return JSON.parse(localStorage.getItem(FU_LS_KEY) || '{}'); } catch { return {}; } };
+const saveFuCfg = (obj) => { try { localStorage.setItem(FU_LS_KEY, JSON.stringify(obj)); } catch {} };
+
+function FollowupSection() {
+    const [cfg, setCfg] = useState(loadFuCfg);
+    const enabled = cfg.enabled !== false;
+    const maxCount = cfg.max_count ?? 2;
+    const set = (k, v) => setCfg(prev => { const next = { ...prev, [k]: v }; saveFuCfg(next); return next; });
+
+    return (
+        <div>
+            <Row label="Takip Soruları" desc="Yanıt sonrası önerilen sorular gösterilir">
+                <div className="flex justify-end">
+                    <button
+                        type="button"
+                        onClick={() => set('enabled', !enabled)}
+                        className={`relative w-[38px] h-[20px] rounded-full transition-colors focus:outline-none ${enabled ? 'bg-[#D44B4B]' : 'bg-stone-200'}`}
+                    >
+                        <span className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-150 ${enabled ? 'left-[20px]' : 'left-[2px]'}`} />
+                    </button>
+                </div>
+            </Row>
+            <Row label="Soru Sayısı" desc="Her yanıt sonrası kaç takip sorusu önerilsin" noBorder>
+                <div className={`flex items-center gap-3 transition-opacity ${enabled ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                    <span className="text-[13px] font-black text-[#378ADD] font-mono tabular-nums" style={{ minWidth: 42, textAlign: 'right' }}>{maxCount}</span>
+                    <div className="flex-1">
+                        <input
+                            type="range" min={1} max={5} step={1}
+                            value={maxCount}
+                            onChange={e => set('max_count', parseInt(e.target.value))}
+                            className="w-full h-[3px] bg-stone-200 rounded-full appearance-none cursor-pointer accent-[#D44B4B]"
+                        />
+                        <div className="flex justify-between mt-0.5">
+                            <span className="text-[9px] text-stone-300 font-mono">1</span>
+                            <span className="text-[9px] text-stone-300 font-mono">5</span>
+                        </div>
+                    </div>
+                </div>
+            </Row>
+        </div>
+    );
+}
 
 /* ── LG.7: Graph Node Ajanları için node_config Editörü ──────────────── */
 function NodeConfigPanel({ selectedItem, updateAgent }) {
@@ -161,6 +257,10 @@ function NodeConfigPanel({ selectedItem, updateAgent }) {
                 <Row label="Düşük Skorlu RAG'ları Filtrele" desc="rag_search score_threshold'una uymayanları at" noBorder>
                     <Pill k="trim_low_score_rag" />
                 </Row>
+                <Section title="Öneri Kartları" />
+                <SuggestionCardsConfig />
+                <Section title="Takip Soruları" />
+                <FollowupSection />
             </div>
         );
     } else if (id === 'sys_node_supervisor') {
@@ -543,8 +643,7 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
             {/* ── BİLGİ KAYNAĞI ── */}
             {(selectedItem.agentKind === 'chatbot' ||
-              selectedItem.id === 'sys_node_rag_search' ||
-              selectedItem.id === 'sys_node_aggregator') && (
+              selectedItem.id === 'sys_node_rag_search') && (
                 <>
                     <ASection title="Bilgi Kaynağı (Vektör Havuzları)" />
                     {rags.map((rag, ri) => {
@@ -637,9 +736,11 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
                     <ARow label="Sıkı Doğruluk" desc="RAG dışına çıkılmasını yasaklar">
                         <APill field="strictFactCheck" />
                     </ARow>
-                    <ARow label="Takip Sorusu Önerisi" desc="Cevap bitince akıllı öneriler çıkar">
+                    <ARow label="Takip Sorusu Önerisi" desc="Cevap bitince akıllı öneriler çıkar" noBorder>
                         <APill field="canAskFollowUp" />
                     </ARow>
+                    <ASection title="Takip Soruları" />
+                    <FollowupSection />
                     <div className="pt-3">
                         <div className="text-[9px] font-black tracking-[0.15em] text-stone-400 uppercase mb-2">Hata Durumu Yanıtı</div>
                         <textarea value={selectedItem.errorMessage} onChange={e => updateAgent('errorMessage', e.target.value)}

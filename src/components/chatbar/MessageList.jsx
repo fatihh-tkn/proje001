@@ -2,7 +2,8 @@ import React from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Plus, FileText, Database, Copy, Pencil, Check, Image, Network, X, CornerDownRight, Sparkles, BarChart2, Wrench, Mic, Layers } from 'lucide-react';
+import { Plus, Timer, FileText, Database, Copy, Pencil, Check, Image, Network, X, CornerDownRight, Sparkles } from 'lucide-react';
+import { pickSuggestions } from './suggestionCards';
 import AILogo from '../../assets/logo-white-y.png';
 import { useErrorStore } from '../../store/errorStore';
 import ErrorSolutionCard, { parseErrorSolution } from './ErrorSolutionCard';
@@ -177,9 +178,10 @@ if (typeof document !== 'undefined' && !document.getElementById('blink-style')) 
     document.head.appendChild(s);
 }
 
+
 const MessageList = ({
     messages, isSideOpen, handleChatScroll, isChatScrolling, messagesEndRef, lastUserMsgRef, handleNewChat,
-    onEditAndResend, onSendFollowup, onClarificationContinue, currentUser, currentSessionId,
+    onEditAndResend, onSendFollowup, onClarificationContinue, currentUser, currentSessionId, onOpenFile, onPartsTime,
 }) => {
     const [copiedId, setCopiedId] = React.useState(null);
     const [editingId, setEditingId] = React.useState(null);
@@ -196,6 +198,11 @@ const MessageList = ({
     const firstAiMsgId = React.useMemo(
         () => messages.find(m => m.sender === 'ai')?.id,
         [messages]
+    );
+
+    const visibleSuggestions = React.useMemo(
+        () => pickSuggestions(currentSessionId),
+        [currentSessionId]
     );
 
     React.useEffect(() => {
@@ -266,12 +273,7 @@ const MessageList = ({
 
                         {/* 2×2 öneri grid */}
                         <div className="grid grid-cols-2 gap-2 w-full max-w-[340px]">
-                            {[
-                                { icon: BarChart2, label: 'Raporlar',    text: 'Hangi raporlara erişebilirim?' },
-                                { icon: Wrench,    label: 'Hata Çözümü', text: 'Bir hata mesajını çözmeme yardım eder misin?' },
-                                { icon: Mic,       label: 'Toplantı',    text: 'Toplantı özetini oluşturabilir misin?' },
-                                { icon: Layers,    label: 'SAP',         text: 'SAP sisteminde nasıl işlem yapabilirim?' },
-                            ].map(({ icon: Icon, label, text }, i) => (
+                            {visibleSuggestions.map(({ icon: Icon, label, text }, i) => (
                                 <button
                                     key={i}
                                     onClick={() => onSendFollowup?.(text)}
@@ -570,14 +572,21 @@ const MessageList = ({
                     </div>
                 </div>
 
-                {/* KAPALIYKEN ÇIKAN + BUTONU */}
-                <div className={`absolute inset-0 flex items-center justify-center transition-all duration-500 w-full ${!isSideOpen ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 scale-90 z-0 pointer-events-none'}`}>
+                {/* KAPALIYKEN ÇIKAN + BUTONU + SÜRE HESAPLAMA */}
+                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-2 transition-all duration-500 w-full ${!isSideOpen ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 scale-90 z-0 pointer-events-none'}`}>
                     <button
                         onClick={handleNewChat}
                         className="w-10 h-10 rounded-xl bg-white border border-stone-200 hover:border-[#DC2626]/50 flex items-center justify-center text-stone-400 hover:text-[#DC2626] transition-all shadow-sm focus:outline-none group mx-auto"
                         title="Yeni Sohbet Başlat"
                     >
                         <Plus size={20} className="group-hover:scale-110 transition-transform duration-300" />
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onPartsTime?.(); }}
+                        className="w-10 h-10 rounded-xl bg-white border border-stone-200 hover:border-teal-400/60 flex items-center justify-center text-stone-400 hover:text-teal-500 transition-all shadow-sm focus:outline-none group mx-auto"
+                        title="Süre Hesaplama"
+                    >
+                        <Timer size={18} className="group-hover:scale-110 transition-transform duration-300" />
                     </button>
                 </div>
                 </LayoutGroup>

@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(./venv/Scripts/python.exe -c ' *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(ls \"C:/Users/fatih.tekin/Desktop/süre hesaplama/src/\" 2>/dev/null | head -30 *)",
+      "Read(//c/Users/fatih.tekin/Desktop/süre hesaplama/src/**)",
+      "Read(//c/Users/fatih.tekin/Desktop/süre hesaplama/**)",
+      "Bash(sed -i \"s/bg-\\\\[#A01B1B\\\\]\\\\/\\\\[0\\\\.04\\\\]/bg-[#378ADD]\\\\/[0.05]/g\" MatrixView.jsx GanttView.jsx)",
+      "Bash(sed -i \"s/border-\\\\[#A01B1B\\\\] ring-1 ring-\\\\[#A01B1B\\\\]\\\\/20/border-[#378ADD] ring-1 ring-[#378ADD]\\\\/20/g\" CardsView.jsx)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -7,6 +7,7 @@ import logging
 import os
 import uuid
 import shutil
+import threading
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
@@ -21,6 +22,12 @@ from core.logger import get_logger
 logger = get_logger("routes.archive")
 
 router = APIRouter()
+
+# ── Eş zamanlı yükleme race condition çözümü ─────────────────────
+# İşlendi ama eşleşme bulunamayan dosyalar buraya eklenir.
+# Yeni bir dosya işlenince _try_batch_relink tüm bekleyenleri yeniden dener.
+_PENDING_RELINK: dict = {}       # doc_id → vision_data
+_RELINK_LOCK    = threading.Lock()
 
 ARSIV_KLASORU = "./archive_uploads"
 os.makedirs(ARSIV_KLASORU, exist_ok=True)
@@ -1061,6 +1068,12 @@ def _run_vectorization(doc_id: str):
                     meta["vision_analysis"] = vision_data
                     meta.pop("vision_error", None)
                     saved_vision_data = vision_data
+                    # AI'ın belirlediği tipe göre cad_turu güncelle
+                    img_type = vision_data.get("image_type", "")
+                    if img_type == "nesting":
+                        meta["cad_turu"] = "nesting"
+                    elif img_type in ("teknik_resim", "step_model"):
+                        meta["cad_turu"] = "cad"
                 else:
                     # Vision verisi yok → başarısız say
                     meta["transcription_status"] = "failed"
@@ -1170,7 +1183,13 @@ def _run_vectorization(doc_id: str):
         # Teknik resim kategorisinde malzeme numarasına göre otomatik eşleşme
         if saved_vision_data and b_kat == "teknik_resim":
             pg_step("Malzeme numarası eşleştiriliyor…")
-            _try_auto_link_by_number(doc_id, saved_vision_data)
+            linked = _try_auto_link_by_number(doc_id, saved_vision_data)
+            if not linked:
+                # Eşleşecek dosya henüz işlenmemiş olabilir — pending'e ekle
+                with _RELINK_LOCK:
+                    _PENDING_RELINK[doc_id] = saved_vision_data
+            # Her durumda: daha önce eşleşemeyen bekleyenleri yeniden dene
+            _try_batch_relink(doc_id)
 
         pg_done(doc_id, "Analiz tamamlandı ✓")
 
@@ -1520,13 +1539,15 @@ async def dokuman_ilerleme_sse(doc_id: str):
     )
 
 
-def _try_auto_link_by_number(doc_id: str, vision_data: dict):
+def _try_auto_link_by_number(doc_id: str, vision_data: dict) -> bool:
     """
     Vision analizi tamamlandıktan sonra otomatik bağlantı kurar.
 
     Eşleşme sırası:
       1. SAP/malzeme numarası  (kimlik_numarasi, cizim_numarasi, malzeme_numarasi)
       2. Dosya adı             (uzantısız, normalize edilmiş — fallback)
+
+    Bağlantı kurulursa True, kurulmazsa False döner.
     """
     import re as _re
 
@@ -1536,33 +1557,76 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
     def _norm(s: str) -> str:
         return _re.sub(r"[^A-Z0-9]", "", s.upper())
 
-    def _number_keys(vd: dict) -> set[str]:
-        bb    = vd.get("baslik_bloku") or {}
-        vtype = vd.get("image_type", "")
+    _SAP_RE = _re.compile(r'\b(\d{7,10})\b')
+
+    def _number_keys(vd: dict, filename: str = "") -> set[str]:
+        """
+        AI çıktısındaki tüm alanlardan + dosya adından SAP/malzeme numarası
+        şeklinde (7-10 hane) görünen sayıları toplar. Alan adından bağımsız çalışır.
+        Dosya adı fallback sayesinde eski/eksik vision_data'larda da eşleşme bulur.
+        """
+        bb   = vd.get("baslik_bloku") or {}
         keys: set[str] = set()
-        for val in [
-            bb.get("kimlik_numarasi"),
-            bb.get("cizim_numarasi") if vtype in _TEKNIK  else None,
-            vd.get("malzeme_numarasi") if vtype in _NESTING else None,
-        ]:
+
+        # baslik_bloku'daki tüm değerleri tara
+        for val in bb.values():
+            if not val:
+                continue
+            for m in _SAP_RE.finditer(str(val)):
+                keys.add(m.group(1))
+
+        # Nesting: malzeme_numarasi (üst seviye) + parca_listesi kodları
+        for top_key in ("malzeme_numarasi", "program_adi"):
+            val = vd.get(top_key)
             if val:
-                n = _norm(str(val).strip())
-                if n:
-                    keys.add(n)
+                for m in _SAP_RE.finditer(str(val)):
+                    keys.add(m.group(1))
+
+        for parca in vd.get("parca_listesi") or []:
+            if not isinstance(parca, dict):
+                continue
+            for fld in ("parca_kodu", "kimlik_numarasi", "malzeme_no"):
+                val = parca.get(fld)
+                if val:
+                    for m in _SAP_RE.finditer(str(val)):
+                        keys.add(m.group(1))
+
+        # Dosya adı fallback: ayırıcılar arasındaki 7-10 haneli segmentler
+        # "01-92530740-NES_TEST_001.dwg" → "92530740"
+        if filename:
+            stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+            for part in _re.split(r'[-.,\s_/]+', stem):
+                clean = part.replace(".", "")  # Avrupa noktalı: 92.530.740
+                if _re.fullmatch(r'\d{7,10}', clean):
+                    keys.add(clean)
+
         return keys
 
     def _name_key(filename: str) -> str:
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         return _norm(stem)
 
+    def _nesting_ids(bagli: dict) -> list:
+        """bagli_dosyalar.nesting string veya liste olabilir, her zaman liste döner."""
+        n = bagli.get("nesting")
+        if not n:
+            return []
+        return n if isinstance(n, list) else [n]
+
     def _do_link(db, src_id: str, tgt_id: str, reason: str):
         src = db.get(Belge, src_id)
         tgt = db.get(Belge, tgt_id)
         if not src or not tgt:
             return False
+        # Teknik çizim: nesting listesine ekle (birden fazla nesting desteklenir)
         sm = dict(src.meta or {})
-        sm.setdefault("bagli_dosyalar", {})["nesting"] = tgt_id
+        sb = sm.setdefault("bagli_dosyalar", {})
+        existing = _nesting_ids(sb)
+        if tgt_id in existing:
+            return False  # zaten bağlı
+        sb["nesting"] = existing + [tgt_id]
         src.meta = sm
+        # Nesting: tek bir teknik çizime bağlanır
         tm = dict(tgt.meta or {})
         tm.setdefault("bagli_dosyalar", {})["cizim"] = src_id
         tgt.meta = tm
@@ -1572,17 +1636,21 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
 
     img_type = vision_data.get("image_type", "")
     if img_type not in _TEKNIK and img_type not in _NESTING:
-        return
+        return False
 
     try:
         with get_session() as db:
             current = db.get(Belge, doc_id)
             if not current:
-                return
+                return False
 
             cur_bagli = (current.meta or {}).get("bagli_dosyalar", {})
-            if cur_bagli.get("nesting") or cur_bagli.get("cizim") or cur_bagli.get("cad"):
-                return
+            # Nesting zaten bir teknik çizime bağlıysa atla
+            if img_type in _NESTING and cur_bagli.get("cizim"):
+                return False
+            # Teknik çizim zaten cad'a bağlıysa atla (nesting için atlamıyoruz — çoklu izin)
+            if img_type in _TEKNIK and cur_bagli.get("cad"):
+                return False
 
             candidates = list(db.scalars(
                 select(Belge).where(
@@ -1591,7 +1659,7 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
                 )
             ).all())
 
-            # Geçerli adayları filtrele: karşı tip + henüz bağlanmamış
+            # Geçerli adayları filtrele
             def _valid_cands(cands):
                 for c in cands:
                     c_vision = (c.meta or {}).get("vision_analysis")
@@ -1603,8 +1671,17 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
                     if img_type in _NESTING and c_type not in _TEKNIK:
                         continue
                     c_bagli = (c.meta or {}).get("bagli_dosyalar", {})
-                    if c_bagli.get("nesting") or c_bagli.get("cizim") or c_bagli.get("cad"):
-                        continue
+                    if img_type in _TEKNIK:
+                        # Nesting aday: zaten bir teknik çizime bağlıysa atla
+                        if c_bagli.get("cizim") or c_bagli.get("cad"):
+                            continue
+                    else:
+                        # Teknik çizim aday: cad bağlıysa atla, ama birden fazla nesting olabilir
+                        if c_bagli.get("cad"):
+                            continue
+                        # Bu nesting zaten bu teknik çizime bağlıysa atla
+                        if doc_id in _nesting_ids(c_bagli):
+                            continue
                     yield c, c_vision
 
             def _src_tgt(cand_id: str) -> tuple[str, str]:
@@ -1612,29 +1689,73 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict):
                     return doc_id, cand_id
                 return cand_id, doc_id
 
-            my_num_keys = _number_keys(vision_data)
+            my_num_keys = _number_keys(vision_data, current.dosya_adi or "")
 
             # ── 1. SAP / numara eşleşmesi ───────────────────────────
             for cand, c_vision in _valid_cands(candidates):
-                matched = my_num_keys & _number_keys(c_vision)
+                matched = my_num_keys & _number_keys(c_vision, cand.dosya_adi or "")
                 if matched:
                     src_id, tgt_id = _src_tgt(cand.kimlik)
                     if _do_link(db, src_id, tgt_id, f"numara:{next(iter(matched))}"):
-                        return
+                        return True
 
             # ── 2. Dosya adı fallback ───────────────────────────────
             my_name = _name_key(current.dosya_adi or "")
             if not my_name:
-                return
+                return False
 
             for cand, _ in _valid_cands(candidates):
                 if _name_key(cand.dosya_adi or "") == my_name:
                     src_id, tgt_id = _src_tgt(cand.kimlik)
                     if _do_link(db, src_id, tgt_id, f"dosya_adi:{my_name}"):
-                        return
+                        return True
+
+            return False
 
     except Exception as e:
         logger.warning("Otomatik bağlantı hatası: %s", e)
+    return False
+
+
+def _try_batch_relink(trigger_doc_id: str) -> None:
+    """
+    Yeni bir dosya işlenince, daha önce eşleşme bulamayan belgeler için
+    yeniden bağlantı denemesi yapar.
+
+    Senaryo:
+      A (teknik) biter → B henüz işlenmemiş → A pending'e girer
+      B (nesting) biter → B auto-link çalışır → A'yı bulur → link kurulur
+      Ayrıca: bu fonksiyon B'nin trigger'ıyla pending listesini de tarar
+              → A henüz B'yi bulmadıysa bu noktada bulur.
+    """
+    with _RELINK_LOCK:
+        if not _PENDING_RELINK:
+            return
+        pending = list(_PENDING_RELINK.items())
+
+    for doc_id, v_data in pending:
+        if doc_id == trigger_doc_id:
+            continue
+        try:
+            with get_session() as db:
+                belge = db.get(Belge, doc_id)
+                if not belge:
+                    with _RELINK_LOCK:
+                        _PENDING_RELINK.pop(doc_id, None)
+                    continue
+                bagli = (belge.meta or {}).get("bagli_dosyalar", {})
+                if bagli.get("nesting") or bagli.get("cizim") or bagli.get("cad"):
+                    with _RELINK_LOCK:
+                        _PENDING_RELINK.pop(doc_id, None)
+                    continue
+
+            linked = _try_auto_link_by_number(doc_id, v_data)
+            if linked:
+                with _RELINK_LOCK:
+                    _PENDING_RELINK.pop(doc_id, None)
+                logger.info("Geç eşleşme başarılı: %s (tetikleyen: %s)", doc_id, trigger_doc_id)
+        except Exception as e:
+            logger.warning("Batch relink hatası doc_id=%s: %s", doc_id, e)
 
 
 # ── DOSYA BAĞLANTISI ──────────────────────────────────────────────────────────
@@ -1646,6 +1767,39 @@ class LinkRequest(BaseModel):
 
 _VALID_LINK_TYPES = {"cad", "nesting"}
 _REVERSE_LINK     = "cizim"   # target'tan source'a olan tersine bağlantı
+
+
+@router.post("/relink-all")
+def relink_all():
+    """
+    Kategori=teknik_resim olan, henüz bağlanmamış tüm belgeler için
+    dosya adı + vision_data tabanlı otomatik eşleştirmeyi yeniden çalıştırır.
+    Yeni kod deploy edildiğinde veya elle tetiklemek gerektiğinde kullanılır.
+    """
+    from sqlalchemy import select as _sel
+    linked_count = 0
+    skipped = 0
+    try:
+        with get_session() as db:
+            belgeler = list(db.scalars(
+                _sel(Belge).where(Belge.kategori == "teknik_resim")
+            ).all())
+
+        for b in belgeler:
+            bagli = (b.meta or {}).get("bagli_dosyalar", {})
+            if bagli.get("nesting") or bagli.get("cizim") or bagli.get("cad"):
+                skipped += 1
+                continue
+            vd = (b.meta or {}).get("vision_analysis")
+            if not vd:
+                continue
+            result = _try_auto_link_by_number(b.kimlik, vd)
+            if result:
+                linked_count += 1
+
+        return {"linked": linked_count, "skipped_already_linked": skipped}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/link")
@@ -1661,7 +1815,15 @@ def link_dosyalar(req: LinkRequest):
 
         # source → target
         sm = dict(source.meta or {})
-        sm.setdefault("bagli_dosyalar", {})[req.link_type] = req.target_id
+        sb = sm.setdefault("bagli_dosyalar", {})
+        if req.link_type == "nesting":
+            # Nesting listesine ekle (çoklu desteklenir)
+            existing = sb.get("nesting")
+            existing_list = existing if isinstance(existing, list) else ([existing] if existing else [])
+            if req.target_id not in existing_list:
+                sb["nesting"] = existing_list + [req.target_id]
+        else:
+            sb[req.link_type] = req.target_id
         source.meta = sm
 
         # target → source (tersine bağlantı)

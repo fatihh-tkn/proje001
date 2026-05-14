@@ -82,9 +82,16 @@ async def _upload(path: Path, session: aiohttp.ClientSession, worker_id: int) ->
     mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
 
     try:
+        # CAD/teknik dosya uzantıları için kategori belirt
+        _CAD_EXTS = {".dwg", ".dxf", ".stp", ".step", ".awg",
+                     ".png", ".jpg", ".jpeg", ".pdf"}
+        kategori = "teknik_resim" if path.suffix.lower() in _CAD_EXTS else None
+
         with path.open("rb") as fh:
             data = aiohttp.FormData()
             data.add_field("file", fh, filename=path.name, content_type=mime)
+            if kategori:
+                data.add_field("kategori", kategori)
 
             async with session.post(
                 f"{API_BASE}/api/archive/direct-upload",

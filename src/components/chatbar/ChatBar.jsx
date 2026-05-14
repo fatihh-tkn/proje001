@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { sendMessageStream } from '../../api/chatService';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useErrorStore } from '../../store/errorStore';
 
 import RecentChats from './RecentChats';
+const PartsTimeViewer = lazy(() => import('../settings/parts-time/PartsTimeViewer'));
 import MessageList from './MessageList';
 import ChatInputArea from './ChatInputArea';
 
@@ -18,7 +19,10 @@ const CHAT_WIDTH_MAX_RATIO = 0.7;  // ekran genişliğinin %70'inden büyük ola
 const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const setChatBarWidth = useWorkspaceStore(state => state.setChatBarWidth);
+    const isLeftCollapsed = useWorkspaceStore(state => state.isLeftCollapsed);
     const addToast = useErrorStore(state => state.addToast);
+    const [sideMode, setSideMode] = useState('chat'); // 'chat' | 'parts-time'
+    const [noTransition, setNoTransition] = useState(false);
     const [isChatsOpen, setIsChatsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [messages, setMessages] = useState([]);
@@ -130,6 +134,7 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     // ──────────────────────────────────────────────────────────────────────
 
     const handleNewChat = () => {
+        if (sideMode !== 'parts-time') setSideMode('chat');
         setMessages([]);
         setInputValue('');
         setIsExpanded(false);
@@ -158,6 +163,15 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     };
 
     const handleEmptyClick = (e) => {
+        if (sideMode === 'parts-time') {
+            if (!isSideOpen) {
+                setIsSideOpen(true);
+            } else {
+                const isNoToggle = e.target.closest('.no-toggle, button, input, textarea, a, summary');
+                if (!isNoToggle) setIsSideOpen(false);
+            }
+            return;
+        }
         if (!isSideOpen) {
             setIsSideOpen(true);
         } else {
@@ -444,13 +458,16 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                                 });
                             });
                             if (!finalAi || finalAi.length < 20) return;
+                            const fuCfg = (() => { try { return JSON.parse(localStorage.getItem('chat_followup_settings') || '{}'); } catch { return {}; } })();
+                            if (fuCfg.enabled === false) return;
+                            const fuMaxCount = fuCfg.max_count ?? 2;
                             const res = await fetch('/api/chat/followups', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     user_message: textPayload,
                                     bot_reply: finalAi,
-                                    max_count: 2,
+                                    max_count: fuMaxCount,
                                 }),
                             });
                             if (!res.ok) return;
@@ -711,10 +728,12 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            style={isSideOpen ? { width: `${chatWidth}px` } : undefined}
+            style={sideMode === 'parts-time'
+                ? { width: `calc(100vw - ${isLeftCollapsed ? 68 : 288}px)` }
+                : isSideOpen ? { width: `${chatWidth}px` } : undefined}
             className={`h-screen flex shrink-0 z-20 overflow-hidden font-sans
-                ${isResizing ? '' : 'transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]'}
-                ${isSideOpen ? 'cursor-default' : 'w-[68px] cursor-pointer hover:bg-stone-100'}
+                ${isResizing || noTransition ? '' : 'transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]'}
+                ${isSideOpen || sideMode === 'parts-time' ? 'cursor-default' : 'w-[68px] cursor-pointer hover:bg-stone-100'}
                 relative bg-gradient-to-b from-stone-50 to-stone-100/30 border-l shadow-[-10px_0_40px_rgba(0,0,0,0.03)]
                 ${isDragOver ? 'border-[#DC2626]/40 bg-[#FEF2F2]/30' : 'border-stone-200'}
             `}
@@ -750,58 +769,131 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
             )}
 
             <div className="flex-1 flex flex-col min-w-0 h-full relative w-full bg-gradient-to-b from-stone-50 to-stone-100/30">
-                <RecentChats
-                    isSideOpen={isSideOpen}
-                    isChatsOpen={isChatsOpen}
-                    setIsChatsOpen={setIsChatsOpen}
-                    handleNewChat={handleNewChat}
-                    handleLoadSession={handleLoadSession}
-                    currentSessionId={currentSessionId}
-                />
-
-                <div
-                    className="flex-1 flex flex-col min-w-0 overflow-hidden"
-                    onClickCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
-                    onFocusCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
-                >
-                    <MessageList
-                        messages={messages}
-                        isTyping={isTyping}
+                {sideMode === 'parts-time' ? (
+                    /* ── Süre Hesaplama: sol panel + sağ kapalı şerit ── */
+                    <div className="flex flex-row h-full w-full overflow-hidden">
+                        {/* Sol: PartsTimeViewer — tıklamalar aside'a kabarcıklanmasın */}
+                        <div className="flex-1 flex flex-col overflow-hidden border-r border-stone-200" onClick={(e) => e.stopPropagation()}>
+                            <Suspense fallback={
+                                <div className="flex items-center justify-center h-full text-stone-400 text-[12px]">
+                                    Yükleniyor…
+                                </div>
+                            }>
+                                <PartsTimeViewer />
+                            </Suspense>
+                        </div>
+                        {/* Sağ: chat açıksa tam panel, kapalıysa 68px şerit */}
+                        <div
+                            className="shrink-0 flex flex-col h-full transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+                            style={isSideOpen ? { width: `${chatWidth}px` } : { width: '68px' }}
+                        >
+                            <MessageList
+                                messages={messages}
+                                isTyping={isSideOpen ? isTyping : false}
+                                isSideOpen={isSideOpen}
+                                handleChatScroll={isSideOpen ? handleChatScroll : () => {}}
+                                isChatScrolling={isSideOpen ? isChatScrolling : false}
+                                messagesEndRef={messagesEndRef}
+                                lastUserMsgRef={lastUserMsgRef}
+                                handleNewChat={handleNewChat}
+                                onEditAndResend={isSideOpen ? handleEditAndResend : () => {}}
+                                onSendFollowup={isSideOpen ? (q) => handleSendMessage(q) : () => {}}
+                                onClarificationContinue={isSideOpen ? handleClarificationContinue : () => {}}
+                                currentUser={currentUser}
+                                currentSessionId={currentSessionId}
+                                onOpenFile={onOpenFile}
+                                onPartsTime={() => {
+                                    if (!isSideOpen) {
+                                        setNoTransition(true);
+                                        requestAnimationFrame(() => requestAnimationFrame(() => setNoTransition(false)));
+                                    }
+                                    setSideMode('chat');
+                                }}
+                            />
+                            {isSideOpen && (
+                                <ChatInputArea
+                                    isSideOpen={true}
+                                    inputValue={inputValue}
+                                    setInputValue={setInputValue}
+                                    isExpanded={isExpanded}
+                                    setIsExpanded={setIsExpanded}
+                                    handleSendMessage={handleSendMessage}
+                                    handleKeyDown={handleKeyDown}
+                                    handleTextareaScroll={handleTextareaScroll}
+                                    isTextareaScrolling={isTextareaScrolling}
+                                    textareaRef={textareaRef}
+                                    attachedFiles={attachedFiles}
+                                    onAddFiles={addAttachedFiles}
+                                    onRemoveFile={removeAttachedFile}
+                                    maxAttach={MAX_ATTACH}
+                                    maxBytes={MAX_BYTES}
+                                    isTyping={isTyping}
+                                    onStop={handleStop}
+                                    activeCommand={activeCommand}
+                                    setActiveCommand={setActiveCommand}
+                                />
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    /* ── Normal sohbet paneli ── */
+                    <>
+                    {isSideOpen && <RecentChats
                         isSideOpen={isSideOpen}
-                        handleChatScroll={handleChatScroll}
-                        isChatScrolling={isChatScrolling}
-                        messagesEndRef={messagesEndRef}
-                        lastUserMsgRef={lastUserMsgRef}
+                        isChatsOpen={isChatsOpen}
+                        setIsChatsOpen={setIsChatsOpen}
                         handleNewChat={handleNewChat}
-                        onEditAndResend={handleEditAndResend}
-                        onSendFollowup={(q) => handleSendMessage(q)}
-                        onClarificationContinue={handleClarificationContinue}
-                        currentUser={currentUser}
+                        handleLoadSession={handleLoadSession}
                         currentSessionId={currentSessionId}
-                    />
+                    />}
 
-                    <ChatInputArea
-                        isSideOpen={isSideOpen}
-                        inputValue={inputValue}
-                        setInputValue={setInputValue}
-                        isExpanded={isExpanded}
-                        setIsExpanded={setIsExpanded}
-                        handleSendMessage={handleSendMessage}
-                        handleKeyDown={handleKeyDown}
-                        handleTextareaScroll={handleTextareaScroll}
-                        isTextareaScrolling={isTextareaScrolling}
-                        textareaRef={textareaRef}
-                        attachedFiles={attachedFiles}
-                        onAddFiles={addAttachedFiles}
-                        onRemoveFile={removeAttachedFile}
-                        maxAttach={MAX_ATTACH}
-                        maxBytes={MAX_BYTES}
-                        isTyping={isTyping}
-                        onStop={handleStop}
-                        activeCommand={activeCommand}
-                        setActiveCommand={setActiveCommand}
-                    />
-                </div>
+                    <div
+                        className="flex-1 flex flex-col min-w-0 overflow-hidden"
+                        onClickCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
+                        onFocusCapture={() => { if (isChatsOpen) setIsChatsOpen(false); }}
+                    >
+                        <MessageList
+                            messages={messages}
+                            isTyping={isTyping}
+                            isSideOpen={isSideOpen}
+                            handleChatScroll={handleChatScroll}
+                            isChatScrolling={isChatScrolling}
+                            messagesEndRef={messagesEndRef}
+                            lastUserMsgRef={lastUserMsgRef}
+                            handleNewChat={handleNewChat}
+                            onEditAndResend={handleEditAndResend}
+                            onSendFollowup={(q) => handleSendMessage(q)}
+                            onClarificationContinue={handleClarificationContinue}
+                            currentUser={currentUser}
+                            currentSessionId={currentSessionId}
+                            onOpenFile={onOpenFile}
+                            onPartsTime={() => { setSideMode('parts-time'); setIsSideOpen(false); }}
+                        />
+
+                        <ChatInputArea
+                            isSideOpen={isSideOpen}
+                            inputValue={inputValue}
+                            setInputValue={setInputValue}
+                            isExpanded={isExpanded}
+                            setIsExpanded={setIsExpanded}
+                            handleSendMessage={handleSendMessage}
+                            handleKeyDown={handleKeyDown}
+                            handleTextareaScroll={handleTextareaScroll}
+                            isTextareaScrolling={isTextareaScrolling}
+                            textareaRef={textareaRef}
+                            attachedFiles={attachedFiles}
+                            onAddFiles={addAttachedFiles}
+                            onRemoveFile={removeAttachedFile}
+                            maxAttach={MAX_ATTACH}
+                            maxBytes={MAX_BYTES}
+                            isTyping={isTyping}
+                            onStop={handleStop}
+                            activeCommand={activeCommand}
+                            setActiveCommand={setActiveCommand}
+                        />
+                    </div>
+                    </>
+                )}
             </div>
         </aside>
     );

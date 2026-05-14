@@ -78,7 +78,15 @@ def _get_stp_prompt() -> str:
 
 def _build_text_prompt(content: str) -> str:
     """STEP/DWG metin içeriği için görsel analiz promptu yerine text-specific prompt üretir."""
-    return f"""Sen bir CAD/CAM dosyası analiz uzmanısın. Aşağıda bir STEP veya DWG dosyasından çıkarılan METİN içeriği verilmiştir. Bu bir görsel değil, ham dosya metnidir.
+    return f"""Sen bir CAD/CAM ve üretim dosyası analiz uzmanısın. Aşağıda bir STEP veya DWG dosyasından çıkarılan METİN içeriği verilmiştir. Bu bir görsel değil, ham dosya metnidir.
+
+ÖNEMLİ FORMAT BİLGİSİ:
+- DWG dosyalarında parça bilgisi genellikle şu formattadır: "92530740 - 6 MM - S355J2+AR"
+  → SAP/Parça No: ilk 7-10 haneli rakam
+  → Kalınlık: ortadaki sayı (MM)
+  → Malzeme: son kısım (çelik sınıfı: S355J2+AR, S235JR, DX51D vb.)
+- "Operasyon" başlığının altındaki metinler sıralı imalat işlemleridir
+- "[ÖN-BİLGİ: ...]" satırı varsa regex ile doğrulanmış veridir — öncelikli kullan
 
 İçeriği analiz et ve şu iki formattan uygun olanı seç:
 
@@ -101,19 +109,23 @@ Eğer içerik bir NESTING PLANI ise (sac levha kesim planı, birden fazla parça
   "genel_metin": "özet"
 }}
 
-Eğer içerik bir TEKNİK ÇİZİM ise (tek parça, ölçüler, toleranslar):
+Eğer içerik bir TEKNİK ÇİZİM ise (tek bir parça veya profil, ölçüler, toleranslar, operasyon listesi):
 {{
   "image_type": "teknik_resim",
   "baslik_bloku": {{
     "cizim_numarasi": "çizim no",
-    "kimlik_numarasi": "SAP/ERP malzeme no",
+    "kimlik_numarasi": "SAP/ERP malzeme no (7-10 haneli rakam)",
     "baslik": "parça adı",
-    "malzeme": "malzeme",
-    "firma": "firma",
+    "malzeme": "malzeme kodu (örn: S355J2+AR, S235JR, DX51D)",
+    "kalinlik": "kalınlık mm, sadece sayı (örn: 6)",
+    "firma": "firma adı",
     "tarih": "tarih",
     "revizyon": "revizyon"
   }},
-  "islem_sirasi": [{{"sira": "1", "islem": "Lazer Kesim", "aciklama": ""}}],
+  "islem_sirasi": [
+    {{"sira": "1", "islem": "Lazer Kesim", "aciklama": ""}},
+    {{"sira": "2", "islem": "Bükme", "aciklama": ""}}
+  ],
   "parca_listesi": [{{"parca_kodu": "", "parca_adi": "", "adet": "", "malzeme": ""}}],
   "notlar": [],
   "genel_metin": "özet"
@@ -126,13 +138,22 @@ DOSYA İÇERİĞİ:
 
 
 def _fill_sap_from_filename(vision_data: dict, basename: str) -> None:
-    """baslik_bloku.kimlik_numarasi boşsa dosya adındaki 7-10 haneli sayıyı SAP no olarak doldurur."""
+    """
+    baslik_bloku.kimlik_numarasi boşsa dosya adındaki sayıyı SAP no olarak doldurur.
+    Hem düz (92530740) hem noktalı Almanca format (92.530.740) desteklenir.
+    """
     bb = vision_data.setdefault("baslik_bloku", {})
     if bb.get("kimlik_numarasi"):
         return
     m = re.search(r'(?<![/\\])\b(\d{7,10})\b', basename)
     if m:
         bb["kimlik_numarasi"] = m.group(1)
+        return
+    m = re.search(r'\b(\d{1,3}(?:\.\d{3}){2,})\b', basename)
+    if m:
+        normalized = m.group(1).replace(".", "")
+        if len(normalized) >= 7:
+            bb["kimlik_numarasi"] = normalized
 
 
 def _parse_json(raw: str) -> dict | None:

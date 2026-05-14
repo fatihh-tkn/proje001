@@ -18,7 +18,7 @@ import shutil
 
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
 DWG_EXTS   = {"dwg", "dxf"}
-STP_EXTS   = {"stp", "step"}
+STP_EXTS   = {"stp", "step", "awg"}  # AWG = AutoNest → STEP/ISO-10303 formatı
 
 
 def _is_step_file(file_path: str) -> bool:

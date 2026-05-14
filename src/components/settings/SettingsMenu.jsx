@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle, ShieldAlert, HeartPulse } from 'lucide-react';
+import { Palette, X, Check, Database, Activity, Archive, Users, FileCog, HardDrive, Cpu, Bot, Mic, Zap, Layers, Webhook, MessageSquareText, ChevronDown, ChevronRight, Terminal, Inbox, AlertTriangle, ShieldAlert, HeartPulse, Timer } from 'lucide-react';
 
 const THEMES = [
     { id: 'dark', name: 'Koyu', colors: ['#1c1c1e', '#2d2d2d', '#DC2626'] },
@@ -64,7 +64,7 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                     </div>
 
                     {/* Menü Listesi */}
-                    <div className="py-1">
+                    <div className="py-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 120px)' }}>
 
                         {canSeeTab('ui_file_processing') && (
                             <button
@@ -219,6 +219,23 @@ const SettingsMenu = ({ isOpen, onClose, onThemeChange, onSetBasePath, onAddFile
                                 <span>Hata Yönetimi</span>
                             </button>
                         )}
+
+                        <button
+                            onClick={() => {
+                                if (onOpenFile) {
+                                    onOpenFile({
+                                        id: 'parts-time',
+                                        title: 'Süre Hesaplama',
+                                        type: 'parts-time',
+                                    });
+                                }
+                                onClose();
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-[12px] transition-colors cursor-pointer text-white/60 hover:bg-white/[0.03] hover:text-white/80"
+                        >
+                            <Timer size={14} className="text-teal-400 shrink-0" />
+                            <span>Süre Hesaplama</span>
+                        </button>
 
                         {canSeeTab('ui_restrictions') && (
                             <button

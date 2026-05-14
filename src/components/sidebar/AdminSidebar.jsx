@@ -3,7 +3,7 @@ import {
     FileCog, Database, Bot, Cpu, Users, Inbox, AlertTriangle, ShieldAlert,
     Settings, Zap, User, ArrowLeft, Table, BarChart3, PackageOpen, ChevronDown, ChevronRight,
     Network, Key, Terminal, FileCode, Play, Link, Upload, Monitor,
-    GitBranch, FileText, Mic, Users2, SlidersHorizontal, HeartPulse, Ruler
+    GitBranch, FileText, Mic, Users2, SlidersHorizontal, HeartPulse, Ruler, Timer
 } from 'lucide-react';
 import FullLogoImage from '../../assets/logo-acik.png';
 import { useWorkspaceStore } from '../../store/workspaceStore';
@@ -139,6 +139,17 @@ const NAV_GROUPS = [
                 icon: Upload,
                 permKey: 'ui_auth',
                 openArgs: { id: 'meetings', title: 'Eğitim Ekle', type: 'meetings' },
+            },
+        ],
+    },
+    {
+        label: 'ÜRETİM',
+        items: [
+            {
+                id: 'parts-time',
+                label: 'Süre Hesaplama',
+                icon: Timer,
+                openArgs: { id: 'parts-time', title: 'Süre Hesaplama', type: 'parts-time' },
             },
         ],
     },

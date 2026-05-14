@@ -1,0 +1,75 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((
+  'NESTING PLANI - LAZER KESIM VE BUKUM',
+  'Malzeme: S235 JR DX51D',
+  'Kalinlik: 2.00 mm',
+  'Sac Boyutu: 3000 x 1500 mm',
+  'Kullanim Orani: %87.3',
+  'Fire Orani: %12.7',
+  'Toplam Agirlik: 18.50 kg',
+  'Islemler: Lazer Kesim, Bukme',
+  'Bukme Sayisi: 4 hat',
+  'Lazer Hizi: 4000 mm/dk',
+  'Makine: TRUMPF TruLaser 3030'
+),'2;1');
+FILE_NAME(
+  '01-92530740-NES_TEST_001.awg',
+  '2024-03-15T08:30:00+03:00',
+  ('Mehmet Demir'),
+  ('Yilgenci Metal Sanayi A.S.'),
+  'AutoNest Professional v5.2',
+  '',
+  ''
+);
+FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));
+ENDSEC;
+DATA;
+
+/* ============================================================
+   NESTING BILGI BLOGU
+   SAP Malzeme No : 92530740
+   Cizim No       : NES-2024-0315-001
+   Proje          : YLG-2024-KONSOL
+   Revizyon       : A
+   Tarih          : 15.03.2024
+   Hazirlayan     : Mehmet Demir
+   Onaylayan      : Ali Kaya
+   ============================================================ */
+
+/* MALZEME BILGISI */
+/* Malzeme Sinifi : S235 JR DX51D */
+/* Kalinlik       : 2.00 mm */
+/* Sac Boyu       : 3000 mm */
+/* Sac Eni        : 1500 mm */
+
+/* PARCA LISTESI */
+/* ------------------------------------------------------------------
+   Sira | Parca Kodu | Parca Adi              | Adet | Malzeme
+   ------------------------------------------------------------------
+   1    | 92530740   | Konsol Braketi Ust     |  10  | S235 JR 2mm
+   2    | 92530741   | Konsol Braketi Alt     |  10  | S235 JR 2mm
+   3    | 92530742   | Yan Plaka              |  20  | S235 JR 2mm
+   4    | 92530743   | Takviye Nervuru        |  20  | S235 JR 2mm
+   5    | 92530744   | Montaj Kulagi          |  40  | S235 JR 2mm
+   ------------------------------------------------------------------ */
+
+/* ISLEM SIRASI */
+/* 1. Lazer Kesim - TRUMPF TruLaser 3030 */
+/* 2. Bukme - TRUMPF TruBend 5130 */
+/* 3. Capak Alma */
+/* 4. Kalite Kontrol */
+
+/* BUKME BILGILERI */
+/* Toplam Bukme Hatti : 4 adet */
+/* Bukme Acisi        : 90 derece */
+/* Bukme Yarıcapı     : R2.0 mm */
+
+#1=PRODUCT('92530740','Konsol Braketi Ust','Parca Kodu: 92530740 | S235 JR 2.00mm | Lazer Kesim + Bukme | Adet: 10',$);
+#2=PRODUCT('92530741','Konsol Braketi Alt','Parca Kodu: 92530741 | S235 JR 2.00mm | Lazer Kesim + Bukme | Adet: 10',$);
+#3=PRODUCT('92530742','Yan Plaka','Parca Kodu: 92530742 | S235 JR 2.00mm | Lazer Kesim | Adet: 20',$);
+#4=PRODUCT('92530743','Takviye Nervuru','Parca Kodu: 92530743 | S235 JR 2.00mm | Lazer Kesim + Bukme | Adet: 20',$);
+#5=PRODUCT('92530744','Montaj Kulagi','Parca Kodu: 92530744 | S235 JR 2.00mm | Lazer Kesim | Adet: 40',$);
+
+ENDSEC;
+END-ISO-10303-21;
