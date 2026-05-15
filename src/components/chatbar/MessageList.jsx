@@ -303,6 +303,24 @@ const MessageList = ({
                 >
                     <div className="flex flex-col gap-4">
                         {messages.map((msg, idx) => {
+                            // ── Compact özet ayracı ──────────────────────
+                            if (msg.sender === 'compact_summary') {
+                                return (
+                                    <div key={msg.id} className="flex items-center gap-3 py-2">
+                                        <div className="flex-1 h-px bg-stone-200" />
+                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 border border-stone-200">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A8A69E" strokeWidth="2.5" strokeLinecap="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                                            </svg>
+                                            <span className="text-[10px] font-semibold text-stone-400 whitespace-nowrap">
+                                                Konuşma özetlendi{msg.turnsCount ? ` (${msg.turnsCount} tur)` : ''}
+                                            </span>
+                                        </div>
+                                        <div className="flex-1 h-px bg-stone-200" />
+                                    </div>
+                                );
+                            }
+
                             const isAI = msg.sender === 'ai';
                             const isLastInList = idx === messages.length - 1;
                             return (

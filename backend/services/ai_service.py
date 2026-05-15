@@ -102,15 +102,19 @@ def _get_history(session_id: str, max_turns: int | None = None) -> list[dict]:
     """
     Sohbet geçmişini son `max_turns` tur ile döner.
     `max_turns=None` ise sistem ayarı `MAX_HISTORY_TURNS` kullanılır.
-    Bir tur = 1 user + 1 assistant mesajı (yani limit = max_turns * 2).
+    Bir tur = 1 user + 1 assistant mesajı.
+    Oturumda 'ozet' mesajı varsa ilk eleman {"role": "compact_summary", ...} döner;
+    _build_initial_state bunu state["compact_summary"]'a aktarır.
     """
     from database.sql.session import get_session
     from database.sql.repositories.chat_repo import ChatRepository
     turns = max_turns if (max_turns and max_turns > 0) else SETTINGS.MAX_HISTORY_TURNS
     with get_session() as db:
         repo = ChatRepository(db)
-        messages = repo.get_messages(session_id, limit=turns * 2)
+        ozet_text, messages = repo.get_messages_for_context(session_id, turns)
         out = []
+        if ozet_text:
+            out.append({"role": "compact_summary", "text": ozet_text})
         for msg in messages:
             out.append({"role": msg.rol, "text": msg.icerik})
         return out

@@ -263,6 +263,50 @@ GRAPH_AGENTS = [
         },
     },
     {
+        "kimlik": "sys_node_compact",
+        "agent_kind": "graph_node",
+        "ad": "Özetleyici (Compact)",
+        "persona": "Konuşma özetleme asistanı",
+        "prompt": (
+            "Sen bir konuşma özetleme asistanısın. Sana verilen diyaloğu "
+            "kısa, bilgi yoğun ve kronolojik bir şekilde Türkçe özetle. "
+            "Önemli kararları, sorulan soruları ve verilen cevapları koru. "
+            "Gereksiz selamlama ve tekrarları çıkar. Sadece özeti yaz, açıklama ekleme."
+        ),
+        "negative_prompt": "Özet dışında yorum veya açıklama yazma.",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.3,
+        "max_tokens": 1024,
+        "strict_fact_check": False,
+        "chat_history_length": 0,
+        "can_ask_follow_up": False,
+        "node_config": {},
+    },
+    {
+        "kimlik": "sys_node_teknik_dokuman",
+        "agent_kind": "graph_node",
+        "ad": "Teknik Döküman Ajanı",
+        "persona": "Mühendislik dökümanı analisti",
+        "prompt": (
+            "Sen arşivdeki teknik resimleri analiz eden, özetleyen ve sorgulayan "
+            "bir yapay zeka asistanısın. Türkçe teknik dil kullan. Verilen analiz "
+            "verilerinden doğru, kısa ve profesyonel yanıtlar üret."
+        ),
+        "negative_prompt": "Analiz verisinde olmayan bilgileri uydurmayın.",
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.3,
+        "max_tokens": 1200,
+        "strict_fact_check": True,
+        "chat_history_length": 0,
+        "can_ask_follow_up": False,
+        "node_config": {
+            "vision_capable": True,
+            "supported_actions": ["summarize", "query", "enrich", "analyze"],
+        },
+    },
+    {
         "kimlik": "sys_node_msg_polish",
         "agent_kind": "graph_node",
         "ad": "Mesaj Revize (Post-process)",
@@ -300,7 +344,7 @@ LEGACY_AGENT_IDS = [
 def seed_graph_agents() -> None:
     """
     Idempotent seed:
-      - Yeni 7 graph node ajanı yoksa oluşturur (mevcut kayıt varsa dokunmaz)
+      - Yeni graph node ajanlarını yoksa oluşturur (mevcut kayıt varsa dokunmaz)
       - Eski 3 legacy ajanı `aktif_mi=false` yapar (ilk seed çalışmasında bir kez)
 
     Yeni kayıt oluştururken mümkünse legacy ajanın promptunu kopyalar:

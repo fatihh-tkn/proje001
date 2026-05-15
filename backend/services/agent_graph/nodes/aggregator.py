@@ -132,6 +132,15 @@ def _build_chat_system(state: AgentState, agent_config: dict | None) -> str:
 
     parts: list[str] = []
 
+    # Önceki turların kaskad özeti — compact yapıldıysa bağlam olarak ekle
+    compact_summary = (state.get("compact_summary") or "").strip()
+    if compact_summary:
+        parts.append(
+            f"[ÖNCEKİ KONUŞMA ÖZETİ]\n"
+            f"Aşağıdaki özet bu sohbetin önceki bölümünü kapsar. "
+            f"Kullanıcı bu bağlamda konuşmaya devam ediyor:\n{compact_summary}"
+        )
+
     # Persona varsa sistem prompt'unun başına ekle
     persona = ((agent_config or {}).get("persona") or "").strip()
     if persona:

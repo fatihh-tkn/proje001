@@ -6,7 +6,6 @@ import { mutate } from '../../../api/client';
 // Components
 import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
-import TeknikDokumanConfig from './orchestrator/TeknikDokumanConfig';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
 
@@ -109,7 +108,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     const [selectedItemId, setSelectedItemId] = useState(defaultAgentId || 'sys_node_aggregator');
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
 
-    const SPECIAL_ITEM_IDS = new Set(['vision-processing', 'doc-processing']);
+    const SPECIAL_ITEM_IDS = new Set(['vision-processing']);
 
     // Eğer ilk yükleme sonrası seçili ajan listede yoksa (ör. legacy gizlendi),
     // ilk görünür ajana düş. Özel ayar item'ları seçiliyse müdahale etme.
@@ -131,7 +130,6 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     const SPECIAL_ITEMS = useMemo(() => [
         { id: 'vision-processing',  label: 'AI Görsel İşleme',     icon: Eye      },
-        { id: 'doc-processing',     label: 'Teknik Döküman İşleme', icon: FileText },
     ], []);
 
     // Sol panel — inline rename
@@ -327,12 +325,6 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                         <span className="text-[10px] font-black tracking-[0.22em] text-[#378ADD] uppercase mb-2">YAKINDA</span>
                                         <h3 className="text-xl font-semibold text-stone-800 mb-1">AI Görsel İşleme</h3>
                                         <p className="text-sm text-stone-400 max-w-xs leading-relaxed">Teknik çizim ve görsel analizi ayarları yakında bu ekrandan yapılandırılabilecek.</p>
-                                    </div>
-                                ) : selectedItemId === 'doc-processing' ? (
-                                    <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-stone-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                                        <div className="max-w-4xl mx-auto">
-                                            <TeknikDokumanConfig />
-                                        </div>
                                     </div>
                                 ) : selectedItem ? (
                                     selectedItem.active ? (

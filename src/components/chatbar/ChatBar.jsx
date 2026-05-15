@@ -34,6 +34,8 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [activeCommand, setActiveCommand] = useState(null);
     const [activeModelName, setActiveModelName] = useState(null);
+    const [compactMaxTurns, setCompactMaxTurns] = useState(0); // 0 = kapalı
+    const [isCompacting, setIsCompacting] = useState(false);
 
     const [isChatScrolling, setIsChatScrolling] = useState(false);
     const [isTextareaScrolling, setIsTextareaScrolling] = useState(false);
@@ -132,6 +134,44 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const removeAttachedFile = (id) => setAttachedFiles(prev => prev.filter(f => f.id !== id));
     const clearAttachedFiles = () => setAttachedFiles([]);
     // ──────────────────────────────────────────────────────────────────────
+
+    // ── Compact işlemi ────────────────────────────────────────────────────
+    const turnsSinceCompact = (() => {
+        let lastCompactIdx = -1;
+        messages.forEach((m, i) => { if (m.role === 'compact_summary') lastCompactIdx = i; });
+        return messages.slice(lastCompactIdx + 1).filter(m => m.sender === 'ai' && !m.isStreaming).length;
+    })();
+
+    const handleCompact = async () => {
+        if (isCompacting || !currentSessionId) return;
+        setIsCompacting(true);
+        try {
+            const res = await fetch('/api/chat/compact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: currentSessionId }),
+            });
+            const data = await res.json();
+            console.log('[compact] response:', data);
+            if (data.success) {
+                setMessages(prev => [...prev, {
+                    id: `compact_${Date.now()}`,
+                    role: 'compact_summary',
+                    sender: 'compact_summary',
+                    text: data.summary,
+                    turnsCount: data.turns_summarized,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                }]);
+            } else {
+                addToast({ type: 'error', message: 'Özet oluşturulamadı: ' + (data.error || 'Bilinmeyen hata') });
+            }
+        } catch (err) {
+            console.error('[compact] hata:', err);
+            addToast({ type: 'error', message: 'Bağlantı hatası, özet alınamadı.' });
+        } finally {
+            setIsCompacting(false);
+        }
+    };
 
     const handleNewChat = () => {
         if (sideMode !== 'parts-time') setSideMode('chat');
@@ -257,6 +297,34 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     useEffect(() => {
         if (!isSideOpen) setIsChatsOpen(false);
     }, [isSideOpen]);
+
+    // ── Compact ayarını aggregator node_config'inden çek ─────────────────
+    useEffect(() => {
+        // Önce localStorage'dan anlık değeri oku
+        try {
+            const cached = localStorage.getItem('agg:compact_every_n_turns');
+            if (cached !== null) setCompactMaxTurns(parseInt(cached) || 0);
+        } catch {}
+
+        fetch('/api/orchestrator/agents')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                const agents = Array.isArray(data) ? data : (data?.agents ?? []);
+                const agg = agents.find(a => a.id === 'sys_node_aggregator' || a.role === 'aggregator');
+                const turns = agg?.nodeConfig?.compact_every_n_turns
+                    ?? agg?.node_config?.compact_every_n_turns
+                    ?? 0;
+                const val = parseInt(turns) || 0;
+                setCompactMaxTurns(val);
+                try { localStorage.setItem('agg:compact_every_n_turns', String(val)); } catch {}
+            })
+            .catch(() => {});
+
+        // Ayarlar panelinden anlık değişiklikleri yakala
+        const onSettingChange = (e) => setCompactMaxTurns(parseInt(e.detail) || 0);
+        window.addEventListener('compact-setting-changed', onSettingChange);
+        return () => window.removeEventListener('compact-setting-changed', onSettingChange);
+    }, []);
 
     useEffect(() => {
         if (!textareaRef.current || !isSideOpen) return;
@@ -445,6 +513,19 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
 
                     setIsTyping(false); isTypingRef.current = false;
                     streamingMsgIdRef.current = null;
+
+                    // Auto-compact: tur limiti dolmuşsa otomatik özetle
+                    if (compactMaxTurns > 0) {
+                        setMessages(prev => {
+                            let lastCompactIdx = -1;
+                            prev.forEach((m, i) => { if (m.sender === 'compact_summary') lastCompactIdx = i; });
+                            const turnsNow = prev.slice(lastCompactIdx + 1).filter(m => m.sender === 'ai' && !m.isStreaming).length;
+                            if (turnsNow >= compactMaxTurns) {
+                                setTimeout(() => handleCompact(), 300);
+                            }
+                            return prev;
+                        });
+                    }
 
                     // Dinamik takip sorusu önerileri (Grok-stili). Mesaj balonunun altında
                     // chip olarak gösterilir; AI'ın metin gövdesine eklenmez.
@@ -890,6 +971,10 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
                             onStop={handleStop}
                             activeCommand={activeCommand}
                             setActiveCommand={setActiveCommand}
+                            compactMaxTurns={compactMaxTurns}
+                            compactCurrentTurns={turnsSinceCompact}
+                            onCompact={handleCompact}
+                            isCompacting={isCompacting}
                         />
                     </div>
                     </>

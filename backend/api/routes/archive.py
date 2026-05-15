@@ -1561,38 +1561,24 @@ def _try_auto_link_by_number(doc_id: str, vision_data: dict) -> bool:
 
     def _number_keys(vd: dict, filename: str = "") -> set[str]:
         """
-        AI çıktısındaki tüm alanlardan + dosya adından SAP/malzeme numarası
-        şeklinde (7-10 hane) görünen sayıları toplar. Alan adından bağımsız çalışır.
-        Dosya adı fallback sayesinde eski/eksik vision_data'larda da eşleşme bulur.
+        AI çıktısındaki tüm bölümlerden + dosya adından SAP/malzeme numarası
+        şeklinde (7-10 hane) görünen sayıları toplar. Yeni şema: parca_tanim, geometrik vb.
+        Dosya adı fallback sayesinde eksik vision_data'larda da eşleşme bulur.
         """
-        bb   = vd.get("baslik_bloku") or {}
         keys: set[str] = set()
 
-        # baslik_bloku'daki tüm değerleri tara
-        for val in bb.values():
-            if not val:
+        # Tüm bölümlerin string değerlerini tara (yeni şema: parca_tanim, geometrik …)
+        for section_key in ("parca_tanim", "geometrik", "malzeme_uretim", "toleranslar", "izlenebilirlik"):
+            section = vd.get(section_key) or {}
+            if not isinstance(section, dict):
                 continue
-            for m in _SAP_RE.finditer(str(val)):
-                keys.add(m.group(1))
-
-        # Nesting: malzeme_numarasi (üst seviye) + parca_listesi kodları
-        for top_key in ("malzeme_numarasi", "program_adi"):
-            val = vd.get(top_key)
-            if val:
+            for val in section.values():
+                if not val:
+                    continue
                 for m in _SAP_RE.finditer(str(val)):
                     keys.add(m.group(1))
 
-        for parca in vd.get("parca_listesi") or []:
-            if not isinstance(parca, dict):
-                continue
-            for fld in ("parca_kodu", "kimlik_numarasi", "malzeme_no"):
-                val = parca.get(fld)
-                if val:
-                    for m in _SAP_RE.finditer(str(val)):
-                        keys.add(m.group(1))
-
-        # Dosya adı fallback: ayırıcılar arasındaki 7-10 haneli segmentler
-        # "01-92530740-NES_TEST_001.dwg" → "92530740"
+        # Dosya adı fallback: "01-92530740-NES_TEST_001.dwg" → "92530740"
         if filename:
             stem = filename.rsplit(".", 1)[0] if "." in filename else filename
             for part in _re.split(r'[-.,\s_/]+', stem):
@@ -1930,3 +1916,36 @@ def dwg_text_preview(doc_id: str):
         "count": len(texts_holder[0]),
         "texts": texts_holder[0],
     }
+
+
+# ── Teknik Döküman Ajanı ──────────────────────────────────────────────────────
+
+class TeknikAjanRequest(BaseModel):
+    doc_id: str = Field(..., max_length=128)
+    action: str = Field(..., pattern="^(summarize|query|enrich|analyze)$")
+    query: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.post("/teknik-agent")
+async def teknik_agent_calistir(body: TeknikAjanRequest):
+    """
+    Teknik Döküman Ajanı'nı çalıştırır.
+    SSE (Server-Sent Events) akışıyla sonuçları iletir.
+    """
+    from fastapi.responses import StreamingResponse
+    from services.teknik_dokuman_agent import run_action
+
+    return StreamingResponse(
+        run_action(
+            doc_id=body.doc_id,
+            action=body.action,
+            query=body.query,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+

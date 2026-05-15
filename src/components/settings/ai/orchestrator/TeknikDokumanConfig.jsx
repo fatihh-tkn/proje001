@@ -10,7 +10,7 @@ const SectionHeader = ({ title }) => (
     </div>
 );
 
-function FieldGroup({ group, saving, onToggle, defaultOpen = true }) {
+function FieldGroup({ group, saving, onToggle, defaultOpen = false }) {
     const [open, setOpen] = useState(defaultOpen);
     const enabledCount = group.fields.filter(f => f.enabled).length;
 
@@ -58,7 +58,7 @@ function FieldGroup({ group, saving, onToggle, defaultOpen = true }) {
     );
 }
 
-export default function TeknikDokumanConfig() {
+export default function TeknikDokumanConfig({ embedded = false }) {
     const [data, setData]           = useState(null);
     const [loading, setLoading]     = useState(true);
     const [saving, setSaving]       = useState(null);
@@ -201,6 +201,7 @@ export default function TeknikDokumanConfig() {
     return (
         <div>
             {/* Başlık */}
+            {!embedded && (
             <div className="flex items-start justify-between gap-4 mb-1">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0">
@@ -215,8 +216,10 @@ export default function TeknikDokumanConfig() {
                     <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
                 </button>
             </div>
+            )}
 
             {/* ── 1. Vision Modeli ───────────────────────────────── */}
+            {!embedded && (<>
             <SectionHeader title="Vision Modeli" />
             <p className="text-[11px] text-stone-400 mb-2 leading-relaxed">
                 Görsel ve döküman analizinde kullanılacak modeli seçin.
@@ -244,6 +247,7 @@ export default function TeknikDokumanConfig() {
                     <AlertTriangle size={10} /> API Anahtarları sekmesinden model ekleyin.
                 </p>
             )}
+            </>)}
 
             {/* ── 2. Çıktı Alanları ──────────────────────────────── */}
             <SectionHeader title="Çıktı Alanları" />
@@ -300,6 +304,7 @@ export default function TeknikDokumanConfig() {
             </div>
 
             {/* ── 4. İşleme Davranışları ─────────────────────────── */}
+            {!embedded && (<>
             <SectionHeader title="İşleme Davranışları" />
             <div className="bg-white border border-stone-100 rounded-xl divide-y divide-stone-100">
                 {(data?.flags || []).map(flag => (
@@ -428,6 +433,7 @@ export default function TeknikDokumanConfig() {
                     </button>
                 </div>
             </div>
+            </>)}
 
             <div className="h-8" />
         </div>

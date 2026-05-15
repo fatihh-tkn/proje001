@@ -11,6 +11,8 @@ import SymbolImage from '../../assets/logo-kapali.png';
 import TreeNode from './TreeNode';
 import UserPanel from './UserPanel';
 import UserMenu from './UserMenu';
+import ToplantilarSidebar from './ToplantilarSidebar';
+import IsAkislariSidebar from './IsAkislariSidebar';
 import GlobalChatRoom from '../workspace/GlobalChatRoom';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { resetBackendMonitoring } from '../../hooks/useBackendStatus';
@@ -549,11 +551,30 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                     </p>
                                 </div>
                             )}
-                            {(archiveData.length > 0 && getArchiveTree().length === 0) && !isCollapsed && (
+                            {(archiveData.length > 0 && activeTab !== 'toplantilar' && activeTab !== 'surecler' && getArchiveTree().length === 0) && !isCollapsed && (
                                 <p className="text-[10px] text-slate-600 text-center py-8 px-3">
                                     {SIDEBAR_TABS.find(t => t.key === activeTab)?.label || 'Bu kategoride'} dosya bulunamadı.
                                 </p>
                             )}
+
+                            {/* Toplantılar — özel ağaç görünümü */}
+                            {activeTab === 'toplantilar' && !isCollapsed && (
+                                <ToplantilarSidebar
+                                    archiveData={archiveData}
+                                    onOpenFile={onOpenFile}
+                                />
+                            )}
+
+                            {/* Süreçler / İş Akışları — özel ağaç görünümü */}
+                            {activeTab === 'surecler' && !isCollapsed && (
+                                <IsAkislariSidebar
+                                    archiveData={archiveData}
+                                    onOpenFile={onOpenFile}
+                                />
+                            )}
+
+                            {/* Diğer sekmeler — standart TreeNode */}
+                            {activeTab !== 'toplantilar' && activeTab !== 'surecler' && (
                             <div className="flex flex-col space-y-0.5 w-full">
                                 {getArchiveTree().map((node) => (
                                     <TreeNode
@@ -578,6 +599,7 @@ const Sidebar = ({ onOpenFile, tabs = [], isCollapsed, setIsCollapsed, workspace
                                     />
                                 ))}
                             </div>
+                            )}
                         </>
                     )}
                 </div>

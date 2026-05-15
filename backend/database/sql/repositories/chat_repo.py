@@ -128,3 +128,51 @@ class ChatRepository:
             .limit(limit)
         )
         return list(self.db.scalars(stmt).all())
+
+    def get_messages_for_context(
+        self, session_id: str, max_turns: int
+    ) -> tuple[str | None, list[SohbetMesaji]]:
+        """
+        LLM context için mesajları döner.
+        Son 'ozet' mesajını bulur; varsa özet içeriği + sonrasındaki turları,
+        yoksa salt son turları döner. Kaskad özet mantığı: yeni özet her zaman
+        önceki özeti de kapsar, bu yüzden sadece en son özet yeterli.
+        """
+        all_msgs = self.get_messages(session_id, limit=5000)
+
+        last_ozet_idx = None
+        for i, msg in enumerate(all_msgs):
+            if msg.rol == "ozet":
+                last_ozet_idx = i
+
+        if last_ozet_idx is not None:
+            ozet_icerik = all_msgs[last_ozet_idx].icerik
+            after = [m for m in all_msgs[last_ozet_idx + 1:] if m.rol in ("user", "assistant")]
+            return ozet_icerik, after[-(max_turns * 2):]
+        else:
+            recent = [m for m in all_msgs if m.rol in ("user", "assistant")]
+            return None, recent[-(max_turns * 2):]
+
+    def get_compactable_messages(self, session_id: str) -> tuple[str | None, list[SohbetMesaji]]:
+        """
+        Compact endpoint için: son özetin içeriği + sonrasındaki tüm mesajlar.
+        Bunların tamamı yeni özete dahil edilecek.
+        """
+        all_msgs = self.get_messages(session_id, limit=5000)
+
+        last_ozet_idx = None
+        for i, msg in enumerate(all_msgs):
+            if msg.rol == "ozet":
+                last_ozet_idx = i
+
+        if last_ozet_idx is not None:
+            ozet_icerik = all_msgs[last_ozet_idx].icerik
+            after = [m for m in all_msgs[last_ozet_idx + 1:] if m.rol in ("user", "assistant")]
+            return ozet_icerik, after
+        else:
+            msgs = [m for m in all_msgs if m.rol in ("user", "assistant")]
+            return None, msgs
+
+    def add_compact_summary(self, session_id: str, summary: str) -> SohbetMesaji:
+        """Konuşma özetini 'ozet' rolüyle kaydeder."""
+        return self.add_message(session_id, role="ozet", content=summary)

@@ -336,15 +336,17 @@ def get_system_settings() -> dict:
 # Önceki "her rol chatbot ajanına düşer" yapısı yerine: rol → ajan ID 1:1 eşleşme.
 # `agent_assignments` SistemAyari override mekanizması korunuyor.
 _DEFAULT_ROLE_AGENT_ID = {
-    "supervisor":    "sys_node_supervisor",
-    "rag_search":    "sys_node_rag_search",
-    "aggregator":    "sys_node_aggregator",
-    "error_solver":  "sys_node_error_solver",
-    "zli_finder":    "sys_node_zli_finder",
-    "msg_polish":    "sys_node_msg_polish",
-    "n8n_trigger":   "sys_node_n8n_trigger",
-    "critic":        "sys_node_critic",
-    "skill_reader":  "sys_node_skill_reader",
+    "supervisor":       "sys_node_supervisor",
+    "rag_search":       "sys_node_rag_search",
+    "aggregator":       "sys_node_aggregator",
+    "error_solver":     "sys_node_error_solver",
+    "zli_finder":       "sys_node_zli_finder",
+    "msg_polish":       "sys_node_msg_polish",
+    "n8n_trigger":      "sys_node_n8n_trigger",
+    "critic":           "sys_node_critic",
+    "skill_reader":     "sys_node_skill_reader",
+    "compact":          "sys_node_compact",
+    "teknik_dokuman":   "sys_node_teknik_dokuman",
 }
 
 # Yeni node ajanı silinmiş veya seed çalışmamışsa son çare olarak hangi

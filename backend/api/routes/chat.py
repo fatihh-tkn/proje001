@@ -101,6 +101,7 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
     # Sohbet hafızası — chatbot ajanının chat_history_length değerine göre
     # son N turu yükle. Ajan değeri yoksa system setting MAX_HISTORY_TURNS.
     history: list[dict] = []
+    compact_summary: str | None = None
     try:
         from services.ai_service import _get_history
         from core.db_bridge import get_assigned_agent
@@ -115,9 +116,12 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
             pass
         raw = _get_history(payload.session_id, max_turns=max_turns) or []
         # _get_history → [{role, text}] formatı; AgentState [{role, content}] bekler
+        # compact_summary varsa ilk eleman role="compact_summary" olur — state'e ayrı al
         for m in raw:
             role = m.get("role")
-            if role in ("user", "assistant"):
+            if role == "compact_summary":
+                compact_summary = m.get("text", "")
+            elif role in ("user", "assistant"):
                 history.append({"role": role, "content": m.get("text") or m.get("content", "")})
     except Exception as e:
         logger.warning("[graph-stream] history yüklenemedi: %s", e)
@@ -141,6 +145,7 @@ def _build_initial_state(payload: ChatMessage, client_ip: str) -> dict:
         "ip":                payload.ip or client_ip,
         "mac":               payload.pc_id or payload.mac or "00:00:00:00",
         "history":           history,
+        "compact_summary":   compact_summary,
         "qa_history":        payload.qa_history or None,
         "screenshot_base64": payload.screenshot_base64 or None,
         "round_number":      payload.round_number,
@@ -250,6 +255,122 @@ async def revise_message_endpoint(payload: RevisePromptRequest):
     except Exception as e:
         logger.error("Mesaj revize hatası: %s", e, exc_info=True)
         return {"success": False, "error": "Mesaj revize edilirken sunucu hatası oluştu."}
+
+class CompactRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/compact")
+async def compact_endpoint(payload: CompactRequest):
+    """
+    Mevcut oturumun konuşma geçmişini AI ile özetler ve 'ozet' olarak DB'ye kaydeder.
+    Kaskad mantığı: önceki özet varsa o da dahil edilir → her zaman tek master özet.
+    Eski mesajlar silinmez; bir sonraki istekte sadece özet + yeni turlar gönderilir.
+    """
+    try:
+        from database.sql.session import get_session
+        from database.sql.repositories.chat_repo import ChatRepository
+        from services.ai_service import _get_history, AIService
+        from core.db_bridge import get_user_models, get_assigned_agent
+        import httpx
+
+        with get_session() as db:
+            repo = ChatRepository(db)
+            prev_ozet, messages = repo.get_compactable_messages(payload.session_id)
+
+        if not messages and not prev_ozet:
+            return {"success": False, "error": "Özetlenecek mesaj yok."}
+
+        # Özetlenecek içeriği oluştur
+        context_parts = []
+        if prev_ozet:
+            context_parts.append(f"[Önceki Özet]\n{prev_ozet}")
+        for m in messages:
+            role_label = "Kullanıcı" if m.rol == "user" else "Asistan"
+            context_parts.append(f"{role_label}: {m.icerik}")
+
+        context_text = "\n\n".join(context_parts)
+        turns_count = len([m for m in messages if m.rol == "user"])
+
+        # Modeli al
+        models = await run_in_threadpool(get_user_models, include_secret=True)
+        if not models:
+            return {"success": False, "error": "Aktif model bulunamadı."}
+
+        compact_agent = await run_in_threadpool(get_assigned_agent, "compact") or {}
+        agg_agent = await run_in_threadpool(get_assigned_agent, "aggregator") or {}
+        # Öncelik: aggregator node_config.compact_model → compact agent model → ilk model
+        agg_compact_model = (agg_agent.get("node_config") or {}).get("compact_model")
+        compact_model_name = agg_compact_model or compact_agent.get("model")
+        active_model = models[0]
+        if compact_model_name:
+            active_model = next((m for m in models if m["name"] == compact_model_name), models[0])
+
+        system_prompt = compact_agent.get("prompt") or (
+            "Sen bir konuşma özetleme asistanısın. Sana verilen diyaloğu "
+            "kısa, bilgi yoğun ve kronolojik bir şekilde Türkçe özetle. "
+            "Önemli kararları, sorulan soruları ve verilen cevapları koru. "
+            "Gereksiz selamlama ve tekrarları çıkar. Sadece özeti yaz, açıklama ekleme."
+        )
+        temperature = float(compact_agent.get("temperature") or 0.3)
+        max_tokens = int(compact_agent.get("max_tokens") or 1024)
+
+        is_gemini = active_model.get("protocol") == "google_gemini"
+        base_url = active_model.get("base_url") or ""
+        api_key = active_model["api_key"]
+        model_name = active_model["name"]
+        extra_headers = active_model.get("extra_headers") or {}
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if is_gemini:
+                actual = "gemini-2.0-flash" if "2.0" in model_name else "gemini-1.5-flash"
+                url = f"{base_url}/models/{actual}:generateContent?key={api_key}"
+                resp = await client.post(url, json={
+                    "systemInstruction": {"parts": [{"text": system_prompt}]},
+                    "contents": [{"role": "user", "parts": [{"text": context_text}]}],
+                    "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+                })
+                data = resp.json()
+                if resp.status_code != 200:
+                    err_msg = data.get("error", {}).get("message", f"HTTP {resp.status_code}")
+                    logger.error("[compact] Gemini API hatası [session=%s]: %s | body=%s", payload.session_id, err_msg, data)
+                    return {"success": False, "error": f"AI modeli hata döndürdü: {err_msg}"}
+                summary = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            else:
+                from services import provider_registry
+                resp = await client.post(
+                    provider_registry.openai_chat_url(base_url),
+                    headers=provider_registry.openai_headers(api_key, extra_headers),
+                    json={
+                        "model": model_name,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": context_text},
+                        ],
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                    },
+                )
+                data = resp.json()
+                if resp.status_code != 200:
+                    err_msg = data.get("error", {}).get("message", f"HTTP {resp.status_code}")
+                    logger.error("[compact] OpenAI API hatası [session=%s]: %s | body=%s", payload.session_id, err_msg, data)
+                    return {"success": False, "error": f"AI modeli hata döndürdü: {err_msg}"}
+                summary = data["choices"][0]["message"]["content"].strip()
+
+        # Özeti DB'ye kaydet
+        with get_session() as db:
+            repo = ChatRepository(db)
+            repo.add_compact_summary(payload.session_id, summary)
+            db.commit()
+
+        logger.info("[compact] session=%s özet kaydedildi, %d tur kapsandı", payload.session_id, turns_count)
+        return {"success": True, "summary": summary, "turns_summarized": turns_count}
+
+    except Exception as e:
+        logger.error("Compact hatası [session=%s]: %s", payload.session_id, e, exc_info=True)
+        return {"success": False, "error": f"Özet hatası: {e}"}
+
 
 @router.post("/followups")
 async def followups_endpoint(payload: FollowupRequest):

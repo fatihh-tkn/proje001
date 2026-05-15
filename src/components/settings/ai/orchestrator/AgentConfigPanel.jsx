@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, createContext } fr
 import { ShieldCheck, CheckCircle2, Loader2, ChevronDown, ChevronUp, FileText, RefreshCw, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { API_BASE, fetchWithTimeout } from '../utils';
 import { ALL_SUGGESTIONS, getDisabledIds, setDisabledIds } from '../../../chatbar/suggestionCards';
+import TeknikDokumanConfig from './TeknikDokumanConfig';
 
 /* ── NodeConfigPanel primitifleri — MODÜL DÜZEYINDE (render'da yeniden tanımlanmaz) ── */
 const _NCCtx = createContext({ cfg: {}, setKey: () => {} });
@@ -171,7 +172,7 @@ function FollowupSection() {
 }
 
 /* ── LG.7: Graph Node Ajanları için node_config Editörü ──────────────── */
-function NodeConfigPanel({ selectedItem, updateAgent }) {
+function NodeConfigPanel({ selectedItem, updateAgent, fetchedModels = [], aliases = {} }) {
     const cfg = selectedItem.nodeConfig || {};
     const setKey = useCallback(
         (k, v) => updateAgent('nodeConfig', { ...(selectedItem.nodeConfig || {}), [k]: v }),
@@ -244,6 +245,7 @@ function NodeConfigPanel({ selectedItem, updateAgent }) {
             </div>
         );
     } else if (id === 'sys_node_aggregator') {
+        const historyOn = cfg.include_history !== false;
         body = (
             <div className="">
                 <Section title="Hafıza" />
@@ -253,7 +255,45 @@ function NodeConfigPanel({ selectedItem, updateAgent }) {
                 <Row label="Tur Geçmişi" desc="Aynı oturumdaki son turlar prompt'a eklenir">
                     <Pill k="include_history" defaultVal={true} />
                 </Row>
-                <Section title="Kalite" />
+                <Row label="Özetleme Modeli" desc="Özet için kullanılacak yapay zeka">
+                    <select
+                        value={cfg.compact_model || ''}
+                        onChange={e => setKey('compact_model', e.target.value || null)}
+                        className="w-full bg-white border border-stone-200 text-stone-700 text-[12px] font-semibold rounded-lg px-3 py-2 outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 cursor-pointer transition-all"
+                    >
+                        <option value="">— Varsayılan model —</option>
+                        {fetchedModels.map(m => (
+                            <option key={m.id} value={m.name}>
+                                {aliases[m.id] ? `${aliases[m.id]} (${m.name})` : m.name}
+                            </option>
+                        ))}
+                    </select>
+                </Row>
+                <Row label="Otomatik Özetleme" desc="Kaç turda bir konuşma özetlensin (0 = kapalı)">
+                    <div className="flex items-center gap-3">
+                        <span className="text-[13px] font-black text-[#378ADD] font-mono tabular-nums" style={{ minWidth: 42, textAlign: 'right' }}>
+                            {(cfg.compact_every_n_turns ?? 0) === 0 ? 'kapalı' : (cfg.compact_every_n_turns ?? 0)}
+                        </span>
+                        <div className="flex-1">
+                            <input
+                                type="range" min={0} max={20} step={1}
+                                value={cfg.compact_every_n_turns ?? 0}
+                                onChange={e => {
+                                    const val = parseInt(e.target.value);
+                                    setKey('compact_every_n_turns', val);
+                                    try { localStorage.setItem('agg:compact_every_n_turns', String(val)); } catch {}
+                                    window.dispatchEvent(new CustomEvent('compact-setting-changed', { detail: val }));
+                                }}
+                                className="w-full h-[3px] bg-stone-200 rounded-full appearance-none cursor-pointer accent-[#D44B4B]"
+                            />
+                            <div className="flex justify-between mt-0.5">
+                                <span className="text-[9px] text-stone-300 font-mono">kapalı</span>
+                                <span className="text-[9px] text-stone-300 font-mono">20</span>
+                            </div>
+                        </div>
+                    </div>
+                </Row>
+<Section title="Kalite" />
                 <Row label="Düşük Skorlu RAG'ları Filtrele" desc="rag_search score_threshold'una uymayanları at" noBorder>
                     <Pill k="trim_low_score_rag" />
                 </Row>
@@ -296,6 +336,15 @@ function NodeConfigPanel({ selectedItem, updateAgent }) {
                 </Row>
             </div>
         );
+    } else if (id === 'sys_node_compact') {
+        body = (
+            <div className="">
+                <Section title="Özetleme" />
+                <Row label="Sistem Promptu" desc="Özet talimatları (prompt alanından düzenle)" noBorder>
+                    <span className="text-[10px] text-stone-400">Model ve prompt yukarıdan ayarlanır</span>
+                </Row>
+            </div>
+        );
     } else if (id === 'sys_node_msg_polish') {
         body = (
             <div className="">
@@ -315,6 +364,12 @@ function NodeConfigPanel({ selectedItem, updateAgent }) {
                 <Row label="JSON Kartları Otomatik Onayla" desc="error_solver / zli_finder JSON kartlarını denetimsiz geçir" noBorder>
                     <Pill k="auto_approve_json" defaultVal={true} />
                 </Row>
+            </div>
+        );
+    } else if (id === 'sys_node_teknik_dokuman') {
+        body = (
+            <div className="-mx-5">
+                <TeknikDokumanConfig embedded />
             </div>
         );
     } else {
@@ -726,7 +781,12 @@ const AgentConfigPanel = ({ selectedItem, rags, updateAgent, toggleRagAccess }) 
 
             {/* ── NODE YAPILANDIRMASI ── */}
             {selectedItem.agentKind === 'graph_node' && (
-                <NodeConfigPanel selectedItem={selectedItem} updateAgent={updateAgent} />
+                <NodeConfigPanel
+                    selectedItem={selectedItem}
+                    updateAgent={updateAgent}
+                    fetchedModels={fetchedModels}
+                    aliases={aliases}
+                />
             )}
 
             {/* ── AKILLI DENETİM (chatbot) ── */}

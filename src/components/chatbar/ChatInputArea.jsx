@@ -6,6 +6,7 @@ import {
     Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2, Timer
 } from 'lucide-react';
 import FilePickerModal from './FilePickerModal';
+import ContextGauge from './ContextGauge';
 import { useErrorStore } from '../../store/errorStore';
 
 // ── Hızlı Aksiyonlar ────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ const ChatInputArea = ({
     attachedFiles = [], onAddFiles, onRemoveFile, maxAttach = 5, maxBytes = 20 * 1024 * 1024,
     isTyping, onStop, activeCommand, setActiveCommand,
     onModelChange,
+    compactMaxTurns = 0, compactCurrentTurns = 0, onCompact, isCompacting = false,
 }) => {
     const addToast = useErrorStore(s => s.addToast);
     const fileInputRef = useRef(null);
@@ -353,6 +355,16 @@ const ChatInputArea = ({
                                     >
                                         <Sparkles size={16} />
                                     </button>
+
+                                    {/* Context Gauge */}
+                                    {compactMaxTurns > 0 && (
+                                        <ContextGauge
+                                            currentTurns={compactCurrentTurns}
+                                            maxTurns={compactMaxTurns}
+                                            onCompact={onCompact}
+                                            isCompacting={isCompacting}
+                                        />
+                                    )}
 
                                     {/* Seçili komut chip'i */}
                                     <AnimatePresence>

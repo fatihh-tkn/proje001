@@ -82,6 +82,7 @@ class AgentState(TypedDict, total=False):
     """
 
     # ── INPUT ────────────────────────────────────────────────────────────
+    compact_summary: str | None                # önceki turların kaskad özeti (varsa)
     user_message: str                          # mevcut tur (revize edilmiş olabilir)
     original_message: str                      # supervisor revize etse de orijinal
     user_id: str | None

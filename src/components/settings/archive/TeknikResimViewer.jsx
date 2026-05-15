@@ -112,43 +112,43 @@ function StatusBadge({ item }) {
     const imgType = va?.image_type;
 
     if (status === 'processing') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded border border-amber-200">
-            <Loader2 size={8} className="animate-spin" /> İŞLEMDE
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-bold rounded border border-amber-200">
+            <Loader2 size={9} className="animate-spin" /> İŞLEMDE
         </span>
     );
     if (imgType === 'teknik_resim') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded border border-emerald-200">
-            <CheckCircle2 size={8} /> TEKNİK RESİM
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded border border-emerald-200">
+            <CheckCircle2 size={9} /> TEKNİK RESİM
         </span>
     );
     if (imgType === 'nesting') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[9px] font-bold rounded border border-orange-200">
-            <Scissors size={8} /> NESTİNG
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-bold rounded border border-orange-200">
+            <Scissors size={9} /> NESTİNG
         </span>
     );
     if (va) return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#378ADD]/10 text-[#378ADD] text-[9px] font-bold rounded border border-[#378ADD]/20">
-            <ScanLine size={8} /> ANALİZ EDİLDİ
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#378ADD]/10 text-[#378ADD] text-[10px] font-bold rounded border border-[#378ADD]/20">
+            <ScanLine size={9} /> ANALİZ EDİLDİ
         </span>
     );
     if (status === 'done') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-bold rounded border border-stone-200">
-            <FileText size={8} /> VEKTÖRİZE
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-stone-100 text-stone-500 text-[10px] font-bold rounded border border-stone-200">
+            <FileText size={9} /> VEKTÖRİZE
         </span>
     );
     if (status === 'pending') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-stone-50 text-stone-400 text-[9px] font-bold rounded border border-stone-200">
-            <Clock size={8} /> BEKLİYOR
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-stone-50 text-stone-400 text-[10px] font-bold rounded border border-stone-200">
+            <Clock size={9} /> BEKLİYOR
         </span>
     );
     if (status === 'failed') return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-50 text-red-500 text-[9px] font-bold rounded border border-red-200">
-            <AlertTriangle size={8} /> HATA
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-bold rounded border border-red-200">
+            <AlertTriangle size={9} /> HATA
         </span>
     );
     return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-stone-50 text-stone-300 text-[9px] font-bold rounded border border-stone-100">
-            <AlertTriangle size={8} /> ANALİZ YOK
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-stone-50 text-stone-400 text-[10px] font-bold rounded border border-stone-200">
+            <AlertTriangle size={9} /> ANALİZ YOK
         </span>
     );
 }
@@ -174,8 +174,9 @@ function FileSlot({ label, color, icon: Icon, file, onFile, inputRef, accept }) 
     const filled = {
         violet: 'bg-violet-50 border-violet-300',
         orange: 'bg-orange-50 border-orange-300',
+        blue:   'bg-[#378ADD]/8 border-[#378ADD]/40',
     };
-    const iconColor = { violet: 'text-violet-600', orange: 'text-orange-500' };
+    const iconColor = { violet: 'text-violet-600', orange: 'text-orange-500', blue: 'text-[#378ADD]' };
 
     return (
         <div>
@@ -213,71 +214,72 @@ function FileSlot({ label, color, icon: Icon, file, onFile, inputRef, accept }) 
 
 /* ── Yükleme Modalı ──────────────────────────────────────────────── */
 function UploadModal({ onClose, onUploaded, onAnalysisDone }) {
-    const [cizimFile,   setCizimFile]   = useState(null);
-    const [nestingFile, setNestingFile] = useState(null);
-    const [uploading,   setUploading]   = useState(false);
-    const [progress,    setProgress]    = useState('');
-    const cizimRef  = useRef(null);
-    const nestingRef = useRef(null);
+    const [file,      setFile]      = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [progress,  setProgress]  = useState('');
+    const [dragOver,  setDragOver]  = useState(false);
+    const fileRef = useRef(null);
 
-    const canUpload = (!!cizimFile || !!nestingFile) && !uploading;
+    const canUpload = !!file && !uploading;
+
+    // Ctrl+V ile dosya yapıştırma
+    useEffect(() => {
+        const handlePaste = (e) => {
+            if (uploading) return;
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.kind === 'file') {
+                    const f = item.getAsFile();
+                    if (f) { setFile(f); break; }
+                }
+            }
+        };
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+    }, [uploading]);
 
     const handleUpload = async () => {
         if (!canUpload) return;
         setUploading(true);
         try {
-            let cizimId   = null;
-            let nestingId = null;
-
-            if (cizimFile) {
-                setProgress('Teknik çizim yükleniyor…');
-                const fd = new FormData();
-                fd.append('file', cizimFile);
-                fd.append('kategori', 'teknik_resim');
-                fd.append('cad_turu', 'cad');
-                const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
-                const data = await res.json();
-                cizimId = data.id;
-                if (cizimId) subscribeToDocProgress(cizimId, cizimFile.name, onAnalysisDone);
-            }
-
-            if (nestingFile) {
-                setProgress('Nesting yükleniyor…');
-                const fd = new FormData();
-                fd.append('file', nestingFile);
-                fd.append('kategori', 'teknik_resim');
-                fd.append('cad_turu', 'nesting');
-                const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
-                const data = await res.json();
-                nestingId = data.id;
-                if (nestingId) subscribeToDocProgress(nestingId, nestingFile.name, onAnalysisDone);
-            }
-
-            if (cizimId && nestingId) {
-                setProgress('Dosyalar bağlanıyor…');
-                await fetch('/api/archive/link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source_id: cizimId, target_id: nestingId, link_type: 'nesting' }),
-                });
-            }
-
+            setProgress('Dosya yükleniyor…');
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('kategori', 'teknik_resim');
+            const res  = await fetch('/api/archive/direct-upload', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.id) subscribeToDocProgress(data.id, file.name, onAnalysisDone);
             onUploaded();
             onClose();
         } catch {}
         finally { setUploading(false); setProgress(''); }
     };
 
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        if (uploading) return;
+        const f = e.dataTransfer.files?.[0];
+        if (f) setFile(f);
+    };
+
+    const ext = file?.name?.split('.').pop()?.toLowerCase() || '';
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-[520px] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+             onDragLeave={() => setDragOver(false)}
+             onDrop={handleDrop}>
+            <div className={`bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden w-[480px] transition-all
+                ${dragOver ? 'border-[#378ADD] shadow-[0_0_0_4px_rgba(55,138,221,0.15)]' : 'border-stone-200'}`}>
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-100">
                     <div className="p-2 rounded-xl bg-[#378ADD]/10">
                         <Upload size={16} className="text-[#378ADD]" />
                     </div>
                     <div className="flex-1">
                         <p className="text-[14px] font-bold text-stone-800">Teknik Dosya Yükle</p>
-                        <p className="text-[11px] text-stone-400">Teknik çizim ve/veya nesting planını birlikte yükleyin</p>
+                        <p className="text-[11px] text-stone-400">PNG, JPEG veya PDF — yapay zeka ile otomatik analiz edilir</p>
                     </div>
                     <button onClick={onClose} disabled={uploading} className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 disabled:opacity-40">
                         <X size={14} />
@@ -285,15 +287,18 @@ function UploadModal({ onClose, onUploaded, onAnalysisDone }) {
                 </div>
 
                 <div className="p-6 flex flex-col gap-3">
-                    <FileSlot label="Teknik Çizim" color="violet" icon={Cpu}
-                        file={cizimFile} onFile={setCizimFile} inputRef={cizimRef} accept="*" />
-                    <FileSlot label="Nesting Planı" color="orange" icon={Scissors}
-                        file={nestingFile} onFile={setNestingFile} inputRef={nestingRef} accept="*" />
-                    {cizimFile && nestingFile && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-600 font-medium">
-                            <Link2 size={12} /> İki dosya otomatik olarak birbirine bağlanacak
+                    {dragOver ? (
+                        <div className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed border-[#378ADD] bg-[#378ADD]/5 text-[#378ADD]">
+                            <Upload size={24} strokeWidth={1.5} />
+                            <p className="text-[12px] font-bold">Dosyayı bırakın</p>
                         </div>
+                    ) : (
+                        <FileSlot label="Teknik Çizim veya Nesting Planı" color="blue" icon={Upload}
+                            file={file} onFile={setFile} inputRef={fileRef} accept="*" />
                     )}
+                    <p className="text-[10px] text-stone-400 text-center">
+                        Dosya seçin · sürükleyip bırakın · veya <kbd className="px-1 py-0.5 bg-stone-100 rounded text-[9px] font-mono">Ctrl+V</kbd> ile yapıştırın
+                    </p>
                     {uploading && progress && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-[#378ADD]/5 border border-[#378ADD]/20 rounded-lg text-[11px] text-[#378ADD] font-medium">
                             <Loader2 size={12} className="animate-spin" /> {progress}
@@ -582,151 +587,61 @@ function _setColWidths(ws, widths) {
 }
 
 function _buildTeknikSheet(va) {
-    const bb   = va?.baslik_bloku || {};
+    if (!va) return XLSX.utils.aoa_to_sheet([['Analiz verisi yok']]);
     const rows = [];
+    const _hv = v => v != null && String(v).trim() !== '' && String(v).trim() !== '-' && String(v).trim() !== '—' && String(v).trim() !== 'null';
 
-    /* ── BAŞLIK BLOĞU ── */
-    rows.push(['BAŞLIK BLOĞU', '']);
-    [
-        ['Çizim No',      bb.cizim_numarasi],
-        ['Kimlik No',     bb.kimlik_numarasi],
-        ['Başlık',        bb.baslik],
-        ['Firma',         bb.firma],
-        ['Proje',         bb.proje],
-        ['Revizyon',      bb.revizyon],
-        ['Ölçek',         bb.olcek],
-        ['Tarih',         bb.tarih],
-        ['Çizen',         bb.cizen],
-        ['Onaylayan',     bb.onaylayan],
-        ['Kontrol Eden',  bb.kontrol_eden],
-        ['Malzeme',       bb.malzeme],
-        ['Yüzey İşlemi',  bb.yuzey_islem],
-        ['Sertlik',       bb.sertlik],
-        ['Ağırlık',       bb.agirlik],
-        ['Birim',         bb.birim],
-        ['Format',        bb.blatt_format],
-        ['Sayfa',         bb.sayfa],
-    ].forEach(([k, v]) => { if (v) rows.push([k, String(v)]); });
+    Object.entries(va).forEach(([key, val]) => {
+        if (_VA_SKIP.has(key)) return;
 
-    /* ── PARÇA LİSTESİ ── */
-    rows.push([]);
-    rows.push(['PARÇA LİSTESİ', '', '', '', '', '']);
-    rows.push(['Poz', 'Adet', 'Çizim No', 'Malzeme', 'Yarı Mamul', 'Açıklama']);
-    (va?.parca_listesi || []).forEach(p => rows.push([
-        p.poz || '', p.adet || '', p.cizim_no || '',
-        p.malzeme || '', p.yarim_mamul || '', p.aciklama || '',
-    ]));
-
-    /* ── ÖLÇÜLER ── */
-    if (va?.olcular?.length) {
-        rows.push([]); rows.push(['ÖLÇÜLER', '', '', '', '']);
-        if (typeof va.olcular[0] === 'object') {
-            rows.push(['Etiket', 'Değer', 'Birim', 'Tolerans', 'Açıklama']);
-            va.olcular.forEach(o => rows.push([
-                o.etiket || '', o.deger || '', o.birim || 'mm', o.tolerans || '', o.aciklama || '',
-            ]));
-        } else {
-            rows.push(['Ölçü']); va.olcular.forEach(o => rows.push([String(o)]));
+        if (Array.isArray(val)) {
+            const filtered = val.filter(i => i && (typeof i !== 'object' || Object.values(i).some(Boolean)));
+            if (!filtered.length) return;
+            rows.push([_humanizeKey(key).toUpperCase(), '']);
+            filtered.forEach((item, idx) => {
+                if (typeof item === 'object') {
+                    const islem = item.islem || item.ad || item.name || '';
+                    const sira  = item.sira || String(idx + 1);
+                    const acik  = item.aciklama || item.description || '';
+                    if (islem) rows.push([`${sira}. ${islem}`, acik]);
+                    else {
+                        Object.entries(item).forEach(([k, v]) => { if (_hv(v)) rows.push([_humanizeKey(k), String(v)]); });
+                    }
+                } else if (_hv(item)) {
+                    rows.push([`${idx + 1}.`, String(item)]);
+                }
+            });
+            rows.push([]);
+            return;
         }
-    }
 
-    /* ── TOLERANSLAR ── */
-    if (va?.toleranslar?.length) {
-        rows.push([]); rows.push(['TOLERANSLAR', '', '']);
-        if (typeof va.toleranslar[0] === 'object') {
-            rows.push(['Tip', 'Değer', 'Açıklama']);
-            va.toleranslar.forEach(t => rows.push([t.tip || '', t.deger || '', t.aciklama || '']));
-        } else {
-            rows.push(['Tolerans']); va.toleranslar.forEach(t => rows.push([String(t)]));
+        if (val && typeof val === 'object') {
+            const pairs = Object.entries(val).filter(([, v]) => _hv(v));
+            if (!pairs.length) return;
+            rows.push([_humanizeKey(key).toUpperCase(), '']);
+            pairs.forEach(([k, v]) => rows.push([_humanizeKey(k), String(v)]));
+            rows.push([]);
+            return;
         }
-    }
 
-    /* ── İŞLEM SIRASI ── */
-    if (va?.islem_sirasi?.length) {
-        rows.push([]); rows.push(['İŞLEM SIRASI', '', '']);
-        if (typeof va.islem_sirasi[0] === 'object') {
-            rows.push(['Sıra', 'İşlem', 'Açıklama']);
-            va.islem_sirasi.forEach(s => rows.push([s.sira || '', s.islem || '', s.aciklama || '']));
-        } else {
-            rows.push(['Sıra', 'İşlem']);
-            va.islem_sirasi.forEach((s, i) => rows.push([i + 1, String(s)]));
-        }
-    }
+        if (_hv(val)) rows.push([_humanizeKey(key), String(val)]);
+    });
 
-    /* ── NOTLAR ── */
-    if (va?.notlar?.length) {
-        rows.push([]); rows.push(['NOTLAR']);
-        va.notlar.forEach(n => rows.push([String(n)]));
-    }
-
-    /* ── GENEL METİN ── */
-    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', String(va.genel_metin)]); }
-
+    if (!rows.length) rows.push(['Analiz verisi yok']);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    _setColWidths(ws, [22, 40, 18, 18, 22, 40]);
-    return ws;
-}
-
-function _buildNestingSheet(va) {
-    const rows = [];
-
-    /* ── GENEL BİLGİLER ── */
-    rows.push(['GENEL BİLGİLER', '']);
-    [
-        ['Program Adı',    va?.program_adi],
-        ['Malzeme No',     va?.malzeme_numarasi],
-        ['Malzeme',        va?.malzeme],
-        ['Kalınlık',       va?.kalinlik],
-        ['Levha Boyutu',   va?.levha_boyutu],
-        ['Toplam Parça',   va?.toplam_parca_adedi],
-        ['Kullanım Oranı', va?.kullanim_orani],
-        ['Fire Oranı',     va?.fire_orani],
-    ].forEach(([k, v]) => { if (v) rows.push([k, String(v)]); });
-
-    /* ── YAPILACAK İŞLEMLER ── */
-    if (va?.islemler?.length) {
-        rows.push([]); rows.push(['YAPILACAK İŞLEMLER']);
-        va.islemler.forEach(i => rows.push([String(i)]));
-    }
-
-    /* ── PARÇA LİSTESİ ── */
-    rows.push([]);
-    rows.push(['PARÇA LİSTESİ', '', '', '']);
-    rows.push(['Parça Adı', 'Adet', 'Malzeme', 'Kalınlık']);
-    (va?.parca_listesi || []).forEach(p => rows.push([
-        p.parca_adi || '', p.adet || '', p.malzeme || '', p.kalinlik || '',
-    ]));
-
-    /* ── NOTLAR ── */
-    if (va?.notlar?.length) {
-        rows.push([]); rows.push(['NOTLAR']);
-        va.notlar.forEach(n => rows.push([String(n)]));
-    }
-
-    /* ── GENEL METİN ── */
-    if (va?.genel_metin) { rows.push([]); rows.push(['GENEL METİN', String(va.genel_metin)]); }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    _setColWidths(ws, [28, 12, 20, 12]);
+    _setColWidths(ws, [26, 50]);
     return ws;
 }
 
 function downloadExcel(item, linkedItem) {
-    const wb = XLSX.utils.book_new();
+    const wb  = XLSX.utils.book_new();
     const va  = item.meta?.vision_analysis;
     const lva = linkedItem?.meta?.vision_analysis;
 
-    if (va?.image_type === 'teknik_resim') {
-        XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(va), 'Teknik Resim');
-        if (lva?.image_type === 'nesting')
-            XLSX.utils.book_append_sheet(wb, _buildNestingSheet(lva), 'Nesting');
-    } else if (va?.image_type === 'nesting') {
-        XLSX.utils.book_append_sheet(wb, _buildNestingSheet(va), 'Nesting');
-        if (lva?.image_type === 'teknik_resim')
-            XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(lva), 'Teknik Resim');
-    } else {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Analiz verisi yok']]), 'Veri');
-    }
+    if (va)  XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(va),  'Analiz');
+    if (lva) XLSX.utils.book_append_sheet(wb, _buildTeknikSheet(lva), 'Bağlı Dosya');
+    if (!va && !lva) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Analiz verisi yok']]), 'Veri');
+
     const name = item.filename.replace(/\.[^.]+$/, '') + '_analiz.xlsx';
     XLSX.writeFile(wb, name);
 }
@@ -740,18 +655,11 @@ function DataTableModal({ item, allItems, onClose }) {
     const linkedItem = linkedId ? (allItems || []).find(i => i.id === linkedId) : null;
     const lva        = linkedItem?.meta?.vision_analysis;
 
-    const isTeknikType = t => t === 'teknik_resim' || t === 'step_model';
+    const hasAny = !!va || !!lva;
 
-    const teknikVa       = isTeknikType(va?.image_type) ? va  : (isTeknikType(lva?.image_type) ? lva  : null);
-    const nestingVa      = va?.image_type === 'nesting'  ? va  : (lva?.image_type === 'nesting'  ? lva  : null);
-    const nestingFilename = va?.image_type === 'nesting' ? item.filename : (linkedItem?.filename || '');
+    const [tab, setTab] = useState('self');
 
-    const hasTeknik  = !!teknikVa;
-    const hasNesting = !!nestingVa;
-    const hasAny     = hasTeknik || hasNesting;
-
-    const initTab = va?.image_type === 'nesting' ? 'nesting' : 'teknik';
-    const [tab, setTab] = useState(initTab);
+    const activeVa = tab === 'self' ? va : lva;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6">
@@ -768,22 +676,22 @@ function DataTableModal({ item, allItems, onClose }) {
                         <p className="text-[10px] text-stone-400">Yapısal analiz verisi</p>
                     </div>
 
-                    {/* Tab geçiş — sadece ikisi birden varsa göster */}
-                    {hasTeknik && hasNesting && (
+                    {/* Bağlı dosya varsa sekme */}
+                    {linkedItem && (
                         <div className="flex items-center bg-stone-100 rounded-xl p-0.5 gap-0.5">
                             <button
-                                onClick={() => setTab('teknik')}
+                                onClick={() => setTab('self')}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all
-                                    ${tab === 'teknik' ? 'bg-white shadow text-violet-600' : 'text-stone-400 hover:text-stone-600'}`}
+                                    ${tab === 'self' ? 'bg-white shadow text-[#378ADD]' : 'text-stone-400 hover:text-stone-600'}`}
                             >
-                                <Cpu size={11} /> Teknik Çizim
+                                <Ruler size={11} /> Bu Dosya
                             </button>
                             <button
-                                onClick={() => setTab('nesting')}
+                                onClick={() => setTab('linked')}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all
-                                    ${tab === 'nesting' ? 'bg-white shadow text-orange-500' : 'text-stone-400 hover:text-stone-600'}`}
+                                    ${tab === 'linked' ? 'bg-white shadow text-[#378ADD]' : 'text-stone-400 hover:text-stone-600'}`}
                             >
-                                <Scissors size={11} /> Nesting
+                                <Link2 size={11} /> Bağlı Dosya
                             </button>
                         </div>
                     )}
@@ -799,12 +707,8 @@ function DataTableModal({ item, allItems, onClose }) {
                         <div className="flex-1 overflow-y-auto minimal-scroll">
                             <EmptyAnalysisState status={item.meta?.transcription_status} va={va} visionError={item.meta?.vision_error} />
                         </div>
-                    ) : (tab === 'nesting' || (!hasTeknik && hasNesting)) ? (
-                        <div className="flex-1 overflow-y-auto minimal-scroll">
-                            <NestingTable va={nestingVa} filename={nestingFilename} />
-                        </div>
                     ) : (
-                        <TeknikTable va={teknikVa} />
+                        <TeknikTable va={activeVa} />
                     )}
                 </div>
 
@@ -817,6 +721,187 @@ function DataTableModal({ item, allItems, onClose }) {
                     >
                         <Download size={13} /> Excel İndir
                     </button>
+                    <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold text-stone-500 hover:text-stone-700">
+                        Kapat
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    );
+}
+
+/* ── Teknik Döküman Ajanı Modalı ─────────────────────────────────── */
+function AjanModal({ item, onClose, onRefresh }) {
+    const [progress,    setProgress]    = useState('');
+    const [result,      setResult]      = useState('');
+    const [loading,     setLoading]     = useState(false);
+    const [activeAction,setActiveAction]= useState(null);
+    const [queryInput,  setQueryInput]  = useState('');
+    const abortRef = useRef(null);
+
+    const run = async (action, q) => {
+        if (loading) return;
+        if (abortRef.current) abortRef.current.abort();
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+
+        setActiveAction(action);
+        setResult('');
+        setProgress('Başlatılıyor…');
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/archive/teknik-agent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ doc_id: item.id, action, query: q || undefined }),
+                signal: ctrl.signal,
+            });
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let streamed = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop() ?? '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.type === 'progress') {
+                            setProgress(data.text);
+                        } else if (data.type === 'token') {
+                            streamed += data.text;
+                            setResult(streamed);
+                        } else if (data.type === 'done') {
+                            setLoading(false);
+                            setProgress('');
+                            if (!streamed) {
+                                setResult(JSON.stringify(data.result, null, 2));
+                            }
+                            if (data.action === 'enrich' || data.action === 'analyze') {
+                                if (onRefresh) onRefresh();
+                            }
+                        } else if (data.type === 'error') {
+                            setLoading(false);
+                            setProgress('');
+                            setResult(`HATA: ${data.text}`);
+                        }
+                    } catch {}
+                }
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                setResult(`Bağlantı hatası: ${err.message}`);
+            }
+            setLoading(false);
+            setProgress('');
+        }
+    };
+
+    const handleQuery = () => {
+        const q = queryInput.trim();
+        if (q) run('query', q);
+    };
+
+    const ACTIONS = [
+        { key: 'summarize', label: 'Özet Üret',        title: 'Vision analiz verisinden Türkçe özet raporu oluştur' },
+        { key: 'enrich',    label: 'Meta Zenginleştir', title: 'Açıklama, etiketler ve tip bilgisini otomatik doldur' },
+        { key: 'analyze',   label: 'Yeniden Analiz',   title: 'Görseli vision AI ile yeniden analiz et ve DB\'ye kaydet' },
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-6">
+            <div
+                className="bg-white rounded-2xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden"
+                style={{ width: '700px', height: '82vh' }}
+            >
+                {/* Başlık */}
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-100 shrink-0">
+                    <div className="p-2 rounded-xl bg-violet-100">
+                        <Cpu size={15} className="text-violet-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-stone-800 truncate">{item.filename}</p>
+                        <p className="text-[10px] text-stone-400">Teknik Döküman Ajanı</p>
+                    </div>
+                    <button onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:bg-stone-100 transition-colors">
+                        <X size={15} />
+                    </button>
+                </div>
+
+                {/* Aksiyon butonları */}
+                <div className="flex items-center gap-2 px-6 py-3 border-b border-stone-100 shrink-0">
+                    {ACTIONS.map(({ key, label, title }) => (
+                        <button
+                            key={key}
+                            onClick={() => run(key)}
+                            disabled={loading}
+                            title={title}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50
+                                ${activeAction === key && loading
+                                    ? 'bg-violet-600 text-white'
+                                    : 'bg-stone-100 text-stone-700 hover:bg-violet-100 hover:text-violet-700'}`}
+                        >
+                            {activeAction === key && loading && <Loader2 size={11} className="animate-spin" />}
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Soru girişi */}
+                <div className="flex items-center gap-2 px-6 py-2.5 border-b border-stone-100 shrink-0">
+                    <input
+                        value={queryInput}
+                        onChange={e => setQueryInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleQuery(); } }}
+                        placeholder="Belge hakkında soru sor… (ör: malzeme kalınlığı nedir?)"
+                        disabled={loading}
+                        className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] text-stone-700 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-violet-300 focus:ring-1 focus:ring-violet-200 transition-all disabled:opacity-60"
+                    />
+                    <button
+                        onClick={handleQuery}
+                        disabled={!queryInput.trim() || loading}
+                        className="flex items-center gap-1 px-3 py-2 bg-violet-600 text-white text-[11px] font-bold rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-40"
+                    >
+                        {activeAction === 'query' && loading
+                            ? <Loader2 size={11} className="animate-spin" />
+                            : <Search size={11} />}
+                        Sor
+                    </button>
+                </div>
+
+                {/* Sonuç alanı */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 minimal-scroll">
+                    {progress && !result && (
+                        <div className="flex items-center gap-2 text-[12px] text-violet-500">
+                            <Loader2 size={13} className="animate-spin" />
+                            <span>{progress}</span>
+                        </div>
+                    )}
+                    {result ? (
+                        <pre className="text-[12px] text-stone-700 leading-relaxed whitespace-pre-wrap bg-stone-50 rounded-xl p-4 border border-stone-200 font-[inherit]">
+                            {result}
+                        </pre>
+                    ) : !progress && (
+                        <div className="flex flex-col items-center justify-center h-48 gap-3 text-stone-400">
+                            <Cpu size={32} strokeWidth={1} />
+                            <p className="text-[12px] font-medium text-center">Bir aksiyon seçin veya soru yazın</p>
+                            <p className="text-[11px] text-stone-300 text-center max-w-[280px] leading-relaxed">
+                                Özet üretmek, meta veri doldurmak veya belgeyi sorgulamak için yukarıdaki seçenekleri kullanın
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Alt bar */}
+                <div className="flex items-center justify-end px-6 py-3 border-t border-stone-100 shrink-0">
                     <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold text-stone-500 hover:text-stone-700">
                         Kapat
                     </button>
@@ -1020,94 +1105,87 @@ function ExcelSheet({ rows, cols }) {
     );
 }
 
+const _VA_SKIP = new Set(['image_type', 'genel_metin', 'icerik']);
+
+function _humanizeKey(key) {
+    const known = {
+        parca_tanim:'Parça Tanımı', geometrik:'Geometrik', malzeme_uretim:'Malzeme & Üretim',
+        toleranslar:'Toleranslar', izlenebilirlik:'İzlenebilirlik', islemler:'İşlemler',
+        notlar:'Notlar', parca_listesi:'Parça Listesi', olcular:'Ölçüler',
+        kimlik_numarasi:'Kimlik No', parca_adi:'Parça Adı', parca_kodu:'Parça Kodu',
+        cizim_numarasi:'Çizim No', sayfa_bilgisi:'Sayfa', acilim_uzunlugu:'Açılım Uzunluğu',
+        boyutlar:'Boyutlar', bukme_yaricapi:'Bükme Yarıçapı', kenar_mesafeleri:'Kenar Mesafeleri',
+        kesit:'Kesit', olcek:'Ölçek', malzeme:'Malzeme', agirlik:'Ağırlık',
+        yuzey_standardi:'Yüzey Standardı', kesim_standardi:'Kesim Standardı',
+        sayfa_formati:'Sayfa Formatı', talasli_tolerans:'Talaşlı Tolerans',
+        talassiz_tolerans:'Talaşsız Tolerans', kaynakli_tolerans:'Kaynaklı Tolerans',
+        dokum_tolerans:'Döküm Tolerans', cizim_tarihi:'Çizim Tarihi', cizen:'Çizen',
+        onaylayan:'Onaylayan', kalite_kontrol:'Kalite Kontrol', cad_bilgisi:'CAD Bilgisi',
+        baslik_bloku:'Başlık Bloğu', malzeme_no:'Malzeme No', malzeme_adi:'Malzeme Adı',
+        sac_boyutu:'Sac Boyutu', kalinlik:'Kalınlık',
+    };
+    return known[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function TeknikTable({ va }) {
     const llmSkipped = va?.llm_skipped === true;
 
-    const SECTION_LABELS = {
-        baslik_bloku:   'Başlık Bloğu',
-        parca_listesi:  'Parça Listesi',
-        olcular:        'Ölçüler',
-        toleranslar:    'Toleranslar',
-        notlar:         'Notlar',
-        yuzey_islemleri:'Yüzey İşlemleri',
-        kesitler:       'Kesitler',
-        islem_sirasi:   'İşlem Sırası',
-        parca_tanim:    'Parça Tanımı',
-        geometrik:      'Geometrik Bilgiler',
-        malzeme_uretim: 'Malzeme & Üretim',
-        izlenebilirlik: 'İzlenebilirlik',
-        genel_metin:    'Genel Metin',
-    };
+    const _hv = v => v != null && String(v).trim() !== '' && String(v).trim() !== '-' && String(v).trim() !== '—' && String(v).trim() !== 'null';
 
-    const FIELD_LABELS = {
-        cizim_numarasi:'Çizim No', baslik:'Başlık', firma:'Firma', proje:'Proje',
-        revizyon:'Revizyon', olcek:'Ölçek', tarih:'Tarih', cizen:'Çizen',
-        onaylayan:'Onaylayan', kontrol_eden:'Kontrol Eden', malzeme:'Malzeme',
-        yuzey_islem:'Yüzey İşlemi', sertlik:'Sertlik', agirlik:'Ağırlık',
-        birim:'Birim', sayfa:'Sayfa', blatt_format:'Format',
-        parca_adi:'Parça Adı', parca_kodu:'Parça Kodu', kimlik_numarasi:'Kimlik No',
-        sayfa_bilgisi:'Sayfa Bilgisi', cizim_no:'Çizim No', yarim_mamul:'Yarı Mamul',
-        acilim_uzunlugu:'Açılım Uzunluğu', boyutlar:'Boyutlar', bukme_yaricapi:'Bükme Yarıçapı',
-        kenar_mesafeleri:'Kenar Mesafeleri', kesit:'Kesit',
-        yuzey_standardi:'Yüzey Standardı', kesim_standardi:'Kesim Standardı',
-        sayfa_formati:'Sayfa Formatı',
-        talasli_tolerans:'Talaşlı Tolerans', talassiz_tolerans:'Talaşsız Tolerans',
-        kaynakli_tolerans:'Kaynaklı Tolerans', dokum_tolerans:'Döküm Tolerans',
-        cizim_tarihi:'Çizim Tarihi', kalite_kontrol:'Kalite Kontrol', cad_bilgisi:'CAD Bilgisi',
-        poz:'Poz', adet:'Adet', aciklama:'Açıklama',
-        // Ölçüler (yeni şema)
-        etiket:'Etiket', deger:'Değer', tolerans:'Tolerans',
-        // Toleranslar (yeni şema)
-        tip:'Tip',
-        // İşlem sırası (yeni şema)
-        sira:'Sıra', islem:'İşlem',
-    };
-
-    const SKIP = new Set(['image_type', 'kaynak', 'projeksiyon_acisi', 'llm_skipped']);
-
-    /* Bölümleri dinamik olarak çıkar */
+    /* Tüm JSON anahtarlarını dinamik olarak sekmelere dönüştür */
     const sections = [];
-    for (const [key, val] of Object.entries(va || {})) {
-        if (SKIP.has(key) || !val) continue;
-        const title = SECTION_LABELS[key] || key;
+    if (va) {
+        Object.entries(va).forEach(([key, val]) => {
+            if (_VA_SKIP.has(key)) return;
 
-        if (key === 'baslik_bloku' && typeof val === 'object' && !Array.isArray(val)) {
-            const rows = Object.entries(val).filter(([,v]) => v)
-                .map(([k,v]) => [FIELD_LABELS[k] || k, String(v)]);
-            if (rows.length) sections.push({ key, title, type: 'kv', rows });
-
-        } else if (Array.isArray(val) && val.length > 0) {
-            if (typeof val[0] === 'object') {
-                /* obje dizisi → kolon başlıklarını Türkçe yap */
-                const rawCols = Object.keys(val[0]);
-                const cols = rawCols.map(c => FIELD_LABELS[c] || c);
-                const rows = val.map(r => {
-                    const out = {};
-                    rawCols.forEach((c, i) => { out[cols[i]] = r[c] ?? ''; });
-                    return out;
-                });
-                sections.push({ key, title, type: 'table', rows, cols });
-            } else {
-                const rows = val.map((v, i) => [String(i + 1), String(v)]);
-                sections.push({ key, title, type: 'kv', rows });
+            // Array → işlemler, parça listesi, ölçüler, vb.
+            if (Array.isArray(val)) {
+                const rows = val
+                    .filter(i => i && (typeof i !== 'object' || Object.values(i).some(v => _hv(v))))
+                    .map(i => {
+                        if (typeof i === 'object') {
+                            const islem = i.islem || i.ad || i.name || '';
+                            const sira  = i.sira || i.order || '';
+                            const acik  = i.aciklama || i.description || '';
+                            if (islem) return [`${sira ? sira + '. ' : ''}${islem}`, acik];
+                            // Genel object → tüm key-value'larını birleştir
+                            return [
+                                Object.keys(i).filter(k => _hv(i[k])).map(k => _humanizeKey(k)).join(' / ') || '—',
+                                Object.values(i).filter(_hv).join(' — ') || '',
+                            ];
+                        }
+                        return [String(i), ''];
+                    });
+                if (rows.length) sections.push({ key, title: _humanizeKey(key), type: 'kv', rows });
+                return;
             }
 
-        } else if (typeof val === 'object' && !Array.isArray(val)) {
-            const rows = Object.entries(val).filter(([,v]) => v)
-                .map(([k,v]) => [FIELD_LABELS[k] || k, String(v)]);
-            if (rows.length) sections.push({ key, title, type: 'kv', rows });
+            // Object → key-value tablosu
+            if (val && typeof val === 'object') {
+                const rows = Object.entries(val)
+                    .filter(([, v]) => _hv(v))
+                    .map(([k, v]) => [_humanizeKey(k), String(v)]);
+                if (rows.length) sections.push({ key, title: _humanizeKey(key), type: 'kv', rows });
+                return;
+            }
 
-        } else if (typeof val === 'string' && val.trim()) {
-            sections.push({ key, title, type: 'text', text: val });
-        }
+            // Düz string — "Genel" bölümüne ekle
+            if (_hv(val)) {
+                const existing = sections.find(s => s.key === '_genel');
+                if (existing) existing.rows.push([_humanizeKey(key), String(val)]);
+                else sections.push({ key: '_genel', title: 'Genel', type: 'kv', rows: [[_humanizeKey(key), String(val)]] });
+            }
+        });
     }
 
     const [activeKey, setActiveKey] = useState(() => sections[0]?.key || '');
     const active = sections.find(s => s.key === activeKey) || sections[0];
 
     if (!sections.length) return (
-        <div className="flex items-center justify-center h-32 text-stone-400 text-[12px]">
-            Teknik çizim analizi bulunamadı
+        <div className="flex flex-col items-center justify-center h-32 gap-2 text-stone-400">
+            <AlertTriangle size={20} strokeWidth={1.5} className="text-amber-300" />
+            <p className="text-[12px]">AI çizimden veri çıkaramadı</p>
+            <p className="text-[10px] text-stone-300">Çizimi göster butonuyla görüntüleyebilirsiniz</p>
         </div>
     );
 
@@ -1145,70 +1223,6 @@ function TeknikTable({ va }) {
                     <ExcelSheet rows={active?.rows} cols={active?.cols} />
                 )}
             </div>
-        </div>
-    );
-}
-
-/* ── Nesting tablo görünümü ──────────────────────────────────────── */
-function NestingTable({ va, filename }) {
-    if (!va) return (
-        <div className="flex items-center justify-center h-32 text-stone-400 text-[12px]">
-            Nesting analizi bulunamadı
-        </div>
-    );
-
-    const kimlikNo = getKimlikNo(va, filename || '');
-
-    const genelRows = [
-        ['Kimlik No',       kimlikNo],
-        ['Program',         va.program_adi],
-        ['Malzeme',         va.malzeme],
-        ['Kalınlık',        va.kalinlik],
-        ['Levha Boyutu',    va.levha_boyutu],
-        ['Toplam Parça',    va.toplam_parca_adedi],
-        ['Kullanım Oranı',  va.kullanim_orani],
-        ['Fire Oranı',      va.fire_orani],
-    ].filter(([, v]) => v);
-
-    return (
-        <div className="p-6 flex flex-col gap-6">
-            {genelRows.length > 0 && (
-                <SheetBlock title="Genel Bilgiler" color="orange" icon={Cpu}>
-                    <SheetKVTable rows={genelRows} highlightKeys={['Kimlik No', 'Kullanım Oranı', 'Fire Oranı']} />
-                </SheetBlock>
-            )}
-
-            {va.islemler?.length > 0 && (
-                <SheetBlock title="Yapılacak İşlemler" color="violet">
-                    <SheetTagTable items={va.islemler} />
-                </SheetBlock>
-            )}
-
-            {va.parca_listesi?.length > 0 && (
-                <SheetBlock title="Parça Listesi" color="orange" icon={Layers}>
-                    <SheetDataTable
-                        cols={[
-                            { key: 'parca_kodu', label: 'Parça Kodu', w: '20%' },
-                            { key: 'parca_adi',  label: 'Parça Adı',  w: '35%' },
-                            { key: 'adet',       label: 'Adet',       w: '10%' },
-                            { key: 'malzeme',    label: 'Malzeme',    w: '35%' },
-                        ]}
-                        rows={va.parca_listesi}
-                    />
-                </SheetBlock>
-            )}
-
-            {va.notlar?.length > 0 && (
-                <SheetBlock title="Notlar" color="stone">
-                    <SheetNoteTable items={va.notlar} />
-                </SheetBlock>
-            )}
-
-            {va.genel_metin && (
-                <SheetBlock title="Genel Metin" color="stone">
-                    <p className="text-[12px] text-stone-600 leading-relaxed px-1">{va.genel_metin}</p>
-                </SheetBlock>
-            )}
         </div>
     );
 }
@@ -1374,7 +1388,7 @@ function getKimlikNo(va, filename) {
 }
 
 /* ── Grid kartı ──────────────────────────────────────────────────── */
-function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete, draggingId }) {
+function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onAjan, onDelete, draggingId }) {
     const [imgErr,   setImgErr]   = useState(false);
     const [ctxMenu,  setCtxMenu]  = useState(null);
     const clickTimer = useRef(null);
@@ -1396,7 +1410,7 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
     const nestingMatNum  = getKimlikNo(nestingVision, nestingItem?.filename || '');
     const kimlikNo       = getKimlikNo(va, item.filename);
 
-    // Tek tık → çizimi aç   |   Çift tık → nesting aç
+    // Tek tık → görüntüle   |   Çift tık → nesting aç
     const handleClick = () => {
         if (clickTimer.current) {
             clearTimeout(clickTimer.current);
@@ -1431,11 +1445,11 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
             onDragStart={e => setDragData(e, item.id)}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
-            className={`group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-[#378ADD]/40 hover:shadow-lg transition-all cursor-grab active:cursor-grabbing flex flex-col
+            className={`group bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-[#378ADD]/30 hover:shadow-md transition-all duration-200 cursor-grab active:cursor-grabbing flex flex-col
                 ${draggingId === item.id ? 'opacity-40' : ''}`}
         >
             {/* Önizleme */}
-            <div className="relative h-[140px] bg-stone-50 overflow-hidden">
+            <div className="relative h-[172px] bg-stone-50 overflow-hidden">
                 {!imgErr && !isDwg ? (
                     <img
                         src={`/api/archive/file/${item.id}`}
@@ -1451,11 +1465,11 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                 )}
 
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
-                    <div className="flex items-center gap-2">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-end justify-end gap-2 p-3">
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={e => { e.stopPropagation(); onOpen(item); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-stone-800 text-[11px] font-bold rounded-lg shadow hover:bg-stone-50"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/95 text-stone-800 text-[11px] font-bold rounded-lg shadow-md hover:bg-white transition-colors"
                         >
                             <Eye size={12} /> Görüntüle
                         </button>
@@ -1463,7 +1477,7 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                             <button
                                 onClick={e => { e.stopPropagation(); onVectorize(item); }}
                                 disabled={vectorizing === item.id}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] text-white text-[11px] font-bold rounded-lg shadow hover:bg-[#2a6ab8] disabled:opacity-60"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-[#2a6ab8] transition-colors disabled:opacity-60"
                             >
                                 {vectorizing === item.id ? <Loader2 size={11} className="animate-spin" /> : <ScanLine size={11} />}
                                 Analiz Et
@@ -1477,6 +1491,13 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                 </div>
                 <div className="absolute top-2 right-2 flex items-center gap-1">
                     <button
+                        onClick={e => { e.stopPropagation(); onAjan?.(item); }}
+                        title="Teknik Döküman Ajanı"
+                        className="flex items-center justify-center w-5 h-5 rounded bg-white/80 text-stone-500 hover:bg-white hover:text-violet-600 shadow-sm transition-colors"
+                    >
+                        <Cpu size={11} strokeWidth={2.5} />
+                    </button>
+                    <button
                         onClick={e => { e.stopPropagation(); onDetail(item); }}
                         title="Detayları göster"
                         className="flex items-center justify-center w-5 h-5 rounded bg-white/80 text-stone-500 hover:bg-white hover:text-[#378ADD] shadow-sm transition-colors"
@@ -1487,29 +1508,29 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
             </div>
 
             {/* Bilgi */}
-            <div className="px-3.5 py-3 flex-1 flex flex-col gap-1 min-w-0">
+            <div className="px-3.5 pt-3 pb-2.5 flex-1 flex flex-col gap-1.5 min-w-0">
                 {isTR && (bb.cizim_numarasi || kimlikNo) && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                         {bb.cizim_numarasi && (
-                            <span className="text-[9px] font-black text-[#378ADD] tracking-widest uppercase">
+                            <span className="text-[10px] font-black text-[#378ADD] font-mono tracking-wide">
                                 #{bb.cizim_numarasi}
                             </span>
                         )}
                         {kimlikNo && (
-                            <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded tracking-wide uppercase">
+                            <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-mono">
                                 SAP {kimlikNo}
                             </span>
                         )}
                     </div>
                 )}
-                <h3 className="text-[12px] font-bold text-stone-800 truncate leading-snug">
+                <h3 className="text-[13px] font-bold text-stone-800 truncate leading-snug">
                     {(isTR && bb.baslik) ? bb.baslik : item.filename.replace(/\.[^.]+$/, '')}
                 </h3>
                 {isTR && (
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                        {bb.revizyon && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-medium">Rev {bb.revizyon}</span>}
-                        {bb.olcek    && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-medium">{bb.olcek}</span>}
-                        {bb.malzeme  && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-medium">{bb.malzeme}</span>}
+                    <div className="flex flex-wrap gap-1">
+                        {bb.revizyon && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-semibold font-mono">Rev {bb.revizyon}</span>}
+                        {bb.olcek    && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-semibold font-mono">{bb.olcek}</span>}
+                        {bb.malzeme  && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-semibold">{bb.malzeme}</span>}
                     </div>
                 )}
 
@@ -1577,18 +1598,19 @@ function TeknikKart({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLi
                 })()}
 
                 {/* Alt bilgi */}
-                <div className="mt-auto pt-2 border-t border-stone-50 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1 text-[10px] text-stone-300">
-                        <span className="uppercase font-black">{item.file_type}</span>
-                        {fmtSize(item.file_size) && <span>· {fmtSize(item.file_size)}</span>}
-                        <a
-                            href={`/api/archive/download/${item.id}`}
-                            onClick={e => e.stopPropagation()}
-                            className="ml-1 text-stone-300 hover:text-[#378ADD] transition-colors"
-                        >
-                            <Download size={11} />
-                        </a>
+                <div className="mt-auto pt-2 border-t border-stone-100 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5 text-[10px] text-stone-400">
+                        <span className="uppercase font-black tracking-wider bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-mono">{item.file_type}</span>
+                        {fmtSize(item.file_size) && <span className="text-stone-400 font-mono tabular-nums">{fmtSize(item.file_size)}</span>}
                     </div>
+                    <a
+                        href={`/api/archive/download/${item.id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="p-1 rounded-md text-stone-400 hover:text-[#378ADD] hover:bg-[#378ADD]/10 transition-colors"
+                        title="İndir"
+                    >
+                        <Download size={12} />
+                    </a>
                 </div>
             </div>
         </div>
@@ -1601,7 +1623,7 @@ const LCOLS = { gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.7fr) minmax(0,0
 
 function ListHeader() {
     return (
-        <div className="grid gap-3 px-4 py-2 text-[10px] font-black tracking-widest uppercase text-stone-400 border-b border-stone-100 bg-white" style={LCOLS}>
+        <div className="grid gap-3 px-4 py-2.5 text-[10px] font-black tracking-widest uppercase text-stone-400 border-b border-stone-200 bg-stone-50/80 sticky top-0 z-10" style={LCOLS}>
             <span>DOSYA ADI</span>
             <span>ÇİZİM NO</span>
             <span>SAP NO</span>
@@ -1616,7 +1638,7 @@ function ListHeader() {
     );
 }
 
-function ListRow({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onDelete, draggingId }) {
+function ListRow({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinked, onStartLink, onUnlink, onDetail, onAjan, onDelete, draggingId }) {
     const [ctxMenu, setCtxMenu] = useState(null);
     const va = item.meta?.vision_analysis;
     const isTR = ['teknik_resim', 'step_model', 'nesting'].includes(va?.image_type);
@@ -1643,24 +1665,24 @@ function ListRow({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinke
             onDragStart={e => setDragData(e, item.id)}
             onClick={() => onOpen(item)}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-            className={`group grid gap-3 px-4 py-2.5 items-center bg-white hover:bg-stone-50 border-b border-stone-100 cursor-grab active:cursor-grabbing transition-colors
+            className={`group grid gap-3 px-4 py-3 items-center bg-white hover:bg-[#378ADD]/3 border-b border-stone-100 cursor-grab active:cursor-grabbing transition-colors duration-150
                 ${draggingId === item.id ? 'opacity-40' : ''}`}
             style={LCOLS}
         >
             <div className="flex items-center gap-2 min-w-0">
-                <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded text-white uppercase" style={{ background: '#8b5cf6' }}>
+                <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded text-white uppercase font-mono" style={{ background: '#8b5cf6' }}>
                     {(item.file_type || 'IMG').slice(0, 4).toUpperCase()}
                 </span>
                 <span className="text-[11px] font-semibold text-stone-800 truncate">{item.filename.replace(/\.[^.]+$/, '')}</span>
             </div>
-            <span className="text-[11px] text-[#378ADD] font-bold truncate">{bb.cizim_numarasi || '—'}</span>
-            <span className="text-[11px] text-amber-600 font-bold truncate">{kimlikNo || '—'}</span>
+            <span className="text-[11px] text-[#378ADD] font-black font-mono truncate">{bb.cizim_numarasi || '—'}</span>
+            <span className="text-[11px] text-amber-600 font-black font-mono truncate">{kimlikNo || '—'}</span>
             <span className="text-[11px] text-stone-600 truncate">{bb.baslik || '—'}</span>
-            <span className="text-[11px] text-stone-500">{bb.revizyon || '—'}</span>
-            <span className="text-[11px] text-stone-500">{bb.olcek || '—'}</span>
+            <span className="text-[11px] text-stone-500 font-mono tabular-nums">{bb.revizyon || '—'}</span>
+            <span className="text-[11px] text-stone-500 font-mono tabular-nums">{bb.olcek || '—'}</span>
             <StatusBadge item={item} />
-            <span className="text-[11px] text-stone-500">{fmtSize(item.file_size) || '—'}</span>
-            <span className="text-[11px] text-[#378ADD] font-semibold">{fmtDate(item.created_at)}</span>
+            <span className="text-[11px] text-stone-500 font-mono tabular-nums">{fmtSize(item.file_size) || '—'}</span>
+            <span className="text-[11px] text-stone-500 font-mono tabular-nums">{fmtDate(item.created_at)}</span>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {canAnalyze && (
                     <button
@@ -1675,6 +1697,13 @@ function ListRow({ item, allItems, onOpen, onVectorize, vectorizing, onOpenLinke
                         }
                     </button>
                 )}
+                <button
+                    onClick={e => { e.stopPropagation(); onAjan?.(item); }}
+                    title="Teknik Döküman Ajanı"
+                    className="p-1 rounded text-stone-400 hover:text-violet-600 hover:bg-violet-50 transition-all"
+                >
+                    <Cpu size={12} />
+                </button>
                 <button
                     onClick={e => { e.stopPropagation(); onDetail(item); }}
                     title="Detayları göster"
@@ -1797,19 +1826,19 @@ function FolderCard({ folder, depth, onClick, onDelete, draggingId, onDrop }) {
             onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!isDraggingSelf) setIsOver(true); }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setIsOver(false); const id = getDragId(e); if (id && id !== folder.id) onDrop?.(id, folder.id); }}
-            className={`bg-white border rounded-xl p-4 cursor-pointer transition-all flex items-center gap-3 group
-                ${isOver ? 'border-[#378ADD] shadow-[0_0_0_3px_rgba(55,138,221,0.15)] scale-[1.01]' : 'border-stone-200 hover:shadow-md'}
+            className={`bg-white border rounded-xl p-4 cursor-pointer transition-all duration-200 flex items-center gap-3.5 group
+                ${isOver ? 'border-[#378ADD] shadow-[0_0_0_3px_rgba(55,138,221,0.10)] scale-[1.01]' : 'border-stone-200 hover:shadow-md hover:border-stone-300'}
                 ${isDraggingSelf ? 'opacity-40' : ''}`}
-            style={{ borderLeftWidth: 3, borderLeftColor: isOver ? '#378ADD' : accent }}
+            style={{ borderLeftWidth: 4, borderLeftColor: isOver ? '#378ADD' : accent }}
         >
-            <div className="p-2.5 rounded-xl shrink-0" style={{ background: isOver ? '#378ADD18' : `${accent}18` }}>
-                <FolderOpen size={18} style={{ color: isOver ? '#378ADD' : accent }} />
+            <div className="p-3 rounded-xl shrink-0" style={{ background: isOver ? '#378ADD18' : `${accent}15` }}>
+                <FolderOpen size={22} style={{ color: isOver ? '#378ADD' : accent }} />
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-stone-800 truncate">{folder.filename}</p>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${accent}18`, color: accent }}>{label}</span>
+                <p className="text-[14px] font-bold text-stone-800 truncate">{folder.filename}</p>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md mt-0.5 inline-block" style={{ background: `${accent}18`, color: accent }}>{label}</span>
             </div>
-            <ChevronRight size={14} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
+            <ChevronRight size={15} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
         </div>
         </>
     );
@@ -1836,15 +1865,15 @@ function FolderListRow({ folder, depth, onClick, onDelete, draggingId, onDrop })
             onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!isDraggingSelf) setIsOver(true); }}
             onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsOver(false); }}
             onDrop={e => { e.preventDefault(); e.stopPropagation(); setIsOver(false); const id = getDragId(e); if (id && id !== folder.id) onDrop?.(id, folder.id); }}
-            className={`flex items-center gap-3 px-4 py-3 border-b border-stone-100 cursor-pointer transition-all group
-                ${isOver ? 'bg-[#378ADD]/5 border-l-[#378ADD]' : 'bg-white hover:bg-stone-50'}
+            className={`flex items-center gap-3 px-4 py-3.5 border-b border-stone-100 cursor-pointer transition-all duration-200 group
+                ${isOver ? 'bg-[#378ADD]/5' : 'bg-white hover:bg-stone-50/80'}
                 ${isDraggingSelf ? 'opacity-40' : ''}`}
-            style={{ borderLeftWidth: 3, borderLeftColor: isOver ? '#378ADD' : accent }}
+            style={{ borderLeftWidth: 4, borderLeftColor: isOver ? '#378ADD' : accent }}
         >
-            <FolderOpen size={14} style={{ color: isOver ? '#378ADD' : accent }} />
-            <span className="text-[12px] font-bold text-stone-800 flex-1 truncate">{folder.filename}</span>
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: `${accent}18`, color: accent }}>{label}</span>
-            <ChevronRight size={13} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
+            <FolderOpen size={16} style={{ color: isOver ? '#378ADD' : accent }} />
+            <span className="text-[13px] font-bold text-stone-800 flex-1 truncate">{folder.filename}</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md shrink-0" style={{ background: `${accent}18`, color: accent }}>{label}</span>
+            <ChevronRight size={14} className="text-stone-300 group-hover:text-stone-500 transition-colors shrink-0" />
         </div>
         </>
     );
@@ -1868,6 +1897,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
     const [relinking,    setRelinking]    = useState(false);
     const [linkModal,    setLinkModal]    = useState(null);
     const [detailItem,   setDetailItem]   = useState(null);
+    const [ajanModal,    setAjanModal]    = useState(null);
 
     const TEKNIK_EXTS = new Set(['png','jpg','jpeg','webp','bmp','gif','tiff','pdf','dwg','dxf','stp','step']);
 
@@ -2038,6 +2068,13 @@ export default function TeknikResimViewer({ onOpenFile }) {
                 onClose={() => setDetailItem(null)}
             />
         )}
+        {ajanModal && (
+            <AjanModal
+                item={items.find(i => i.id === ajanModal.id) || ajanModal}
+                onClose={() => setAjanModal(null)}
+                onRefresh={load}
+            />
+        )}
         {uploadModal && (
             <UploadModal onClose={() => setUploadModal(false)} onUploaded={load} onAnalysisDone={load} />
         )}
@@ -2056,10 +2093,10 @@ export default function TeknikResimViewer({ onOpenFile }) {
 
             {/* ── BAŞLIK ──────────────────────────────────────── */}
             <div className="flex-none bg-white border-b border-stone-200">
-                <div className="flex items-center justify-between gap-4 px-7 pt-6 pb-4">
+                <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-3.5">
                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-[#378ADD]/10 rounded-2xl shrink-0 relative">
-                            <Ruler size={22} className="text-[#378ADD]" strokeWidth={2} />
+                        <div className="p-2.5 bg-[#378ADD]/10 rounded-xl shrink-0 relative">
+                            <Ruler size={20} className="text-[#378ADD]" strokeWidth={2} />
                             {processingCount > 0 && (
                                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-white text-[8px] font-black rounded-full flex items-center justify-center">
                                     {processingCount}
@@ -2069,7 +2106,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-[20px] font-black text-stone-900 tracking-tight">Teknik Resimler</h1>
-                                <span className="text-[11px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full tabular-nums">
+                                <span className="text-[11px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded tabular-nums font-mono">
                                     {items.length}
                                 </span>
                                 {counts.teknik > 0 && (
@@ -2137,7 +2174,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
                 </div>
 
                 {/* Breadcrumb + Yeni Klasör */}
-                <div className="flex items-center gap-2 px-7 pb-3">
+                <div className="flex items-center gap-2 px-6 pb-2.5">
                     <button
                         onClick={() => setCurrentFolderId(null)}
                         onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('!text-[#378ADD]', 'underline'); }}
@@ -2191,8 +2228,8 @@ export default function TeknikResimViewer({ onOpenFile }) {
                 </div>
 
                 {/* Filtreler + Arama */}
-                <div className="flex items-center gap-3 px-7 pb-4">
-                    <div className="relative w-[320px] shrink-0">
+                <div className="flex items-center gap-3 px-6 pb-3.5">
+                    <div className="relative w-[300px] shrink-0">
                         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                         <input
                             value={search}
@@ -2207,31 +2244,36 @@ export default function TeknikResimViewer({ onOpenFile }) {
                         )}
                     </div>
 
-                    <div className="flex items-center gap-0.5 ml-auto">
+                    <div className="flex items-center gap-1 ml-auto">
                         {FILTERS.map(f => (
                             <button
                                 key={f.key}
                                 onClick={() => setFilter(f.key)}
-                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all shrink-0
-                                    ${filter === f.key ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'}`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all duration-150 shrink-0 border
+                                    ${filter === f.key
+                                        ? 'bg-white border-[#378ADD]/30 text-[#378ADD] font-bold shadow-sm'
+                                        : 'border-transparent text-stone-500 hover:text-stone-700 hover:bg-stone-100'}`}
                             >
                                 {f.icon && <f.icon size={11} strokeWidth={2} />}
                                 {f.label}
-                                <span className={`text-[10px] font-bold tabular-nums ${filter === f.key ? 'text-[#378ADD]' : 'text-stone-400'}`}>
+                                <span className={`text-[10px] font-bold tabular-nums font-mono px-1.5 py-0.5 rounded
+                                    ${filter === f.key
+                                        ? 'bg-[#378ADD]/10 text-[#378ADD]'
+                                        : 'bg-stone-100 text-stone-400'}`}>
                                     {counts[f.key]}
                                 </span>
                             </button>
                         ))}
-                        <div className="w-px h-4 bg-stone-200 mx-1 shrink-0" />
-                        <button onClick={() => setView('list')} className={`p-1.5 rounded-lg transition-all ${view === 'list' ? 'bg-stone-100 text-stone-700' : 'text-stone-400 hover:bg-stone-100'}`}><List size={14} /></button>
-                        <button onClick={() => setView('grid')} className={`p-1.5 rounded-lg transition-all ${view === 'grid' ? 'bg-stone-100 text-stone-700' : 'text-stone-400 hover:bg-stone-100'}`}><Grid size={14} /></button>
+                        <div className="w-px h-5 bg-stone-200 mx-1.5 shrink-0" />
+                        <button onClick={() => setView('list')} className={`p-1.5 rounded-lg transition-all ${view === 'list' ? 'bg-stone-200 text-stone-700' : 'text-stone-400 hover:bg-stone-100'}`} title="Liste görünümü"><List size={14} /></button>
+                        <button onClick={() => setView('grid')} className={`p-1.5 rounded-lg transition-all ${view === 'grid' ? 'bg-stone-200 text-stone-700' : 'text-stone-400 hover:bg-stone-100'}`} title="Kart görünümü"><Grid size={14} /></button>
                     </div>
                 </div>
             </div>
 
             {/* ── İÇERİK ───────────────────────────────────────── */}
             <div
-                className="flex-1 overflow-y-auto p-6 minimal-scroll"
+                className="flex-1 overflow-y-auto px-6 py-5 minimal-scroll"
                 onDragStart={() => { if (_dragId) setDraggingId(_dragId); }}
                 onDragEnd={() => { setDraggingId(null); _dragId = null; }}
             >
@@ -2284,6 +2326,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
                                             onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
                                             onUnlink={handleUnlink}
                                             onDetail={setDetailItem}
+                                            onAjan={setAjanModal}
                                             onDelete={handleDelete}
                                             draggingId={draggingId}
                                         />
@@ -2322,6 +2365,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
                                         onStartLink={(it, lt) => setLinkModal({ item: it, linkType: lt })}
                                         onUnlink={handleUnlink}
                                         onDetail={setDetailItem}
+                                        onAjan={setAjanModal}
                                         onDelete={handleDelete}
                                         draggingId={draggingId}
                                     />
@@ -2340,34 +2384,51 @@ export default function TeknikResimViewer({ onOpenFile }) {
 function EmptyState({ search, filter, onUpload }) {
     if (search) {
         return (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-                <Search size={36} strokeWidth={1} className="text-stone-300" />
-                <p className="text-[12px] font-semibold text-stone-400">"{search}" ile eşleşen resim bulunamadı</p>
+            <div className="flex flex-col items-center justify-center h-56 gap-3">
+                <div className="p-4 rounded-2xl bg-stone-100">
+                    <Search size={28} strokeWidth={1.5} className="text-stone-400" />
+                </div>
+                <div className="text-center">
+                    <p className="text-[13px] font-bold text-stone-600">Sonuç bulunamadı</p>
+                    <p className="text-[11px] text-stone-400 mt-0.5">"{search}" ile eşleşen çizim yok</p>
+                </div>
             </div>
         );
     }
     if (filter !== 'all') {
         return (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-                <Layers size={36} strokeWidth={1} className="text-stone-300" />
-                <p className="text-[12px] font-semibold text-stone-400">Bu filtrede kayıt yok</p>
+            <div className="flex flex-col items-center justify-center h-56 gap-3">
+                <div className="p-4 rounded-2xl bg-stone-100">
+                    <Layers size={28} strokeWidth={1.5} className="text-stone-400" />
+                </div>
+                <div className="text-center">
+                    <p className="text-[13px] font-bold text-stone-600">Bu filtrede kayıt yok</p>
+                    <p className="text-[11px] text-stone-400 mt-0.5">Farklı bir filtre seçin veya yeni dosya yükleyin</p>
+                </div>
             </div>
         );
     }
     return (
-        <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="p-5 bg-[#378ADD]/8 rounded-3xl border-2 border-dashed border-[#378ADD]/20">
-                <Ruler size={44} strokeWidth={1.2} className="text-[#378ADD]/50" />
+        <div className="flex flex-col items-center justify-center h-72 gap-5">
+            <div className="relative">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-[#378ADD]/15 to-[#378ADD]/5 flex items-center justify-center border-2 border-dashed border-[#378ADD]/25">
+                    <Ruler size={44} strokeWidth={1.2} className="text-[#378ADD]/60" />
+                </div>
+                <div className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-xl bg-[#378ADD] flex items-center justify-center shadow-lg">
+                    <Upload size={14} className="text-white" />
+                </div>
             </div>
             <div className="text-center">
-                <p className="text-[14px] font-bold text-stone-600">Henüz teknik resim yok</p>
-                <p className="text-[11px] text-stone-400 mt-1">PNG, JPG veya JPEG formatında çizimlerinizi yükleyin</p>
+                <p className="text-[15px] font-bold text-stone-700">Teknik çizim yok</p>
+                <p className="text-[12px] text-stone-400 mt-1 max-w-[260px] leading-relaxed">
+                    PNG, JPG, PDF, DWG veya DXF formatındaki mühendislik çizimlerini yükleyin
+                </p>
             </div>
             <button
                 onClick={onUpload}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#378ADD] text-white text-[12px] font-bold rounded-xl hover:bg-[#2a6ab8] transition-colors"
+                className="flex items-center gap-2 px-6 py-2.5 bg-[#378ADD] text-white text-[13px] font-bold rounded-xl hover:bg-[#2a6ab8] transition-colors shadow-sm hover:shadow-md"
             >
-                <Upload size={14} /> İlk resmi yükle
+                <Upload size={14} /> İlk çizimi yükle
             </button>
         </div>
     );

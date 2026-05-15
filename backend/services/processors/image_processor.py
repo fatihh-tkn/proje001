@@ -15,116 +15,60 @@ import os
 import re
 import uuid
 
-_PROMPT = """Bu görseli analiz et. Görsel türünü belirle ve aşağıdaki JSON formatında yanıt ver.
+_PROMPT = """Bu teknik çizimi analiz et ve aşağıdaki JSON formatında yanıt ver.
+SADECE JSON döndür, markdown kod bloğu veya açıklama yazma. Bulunamayan alanları boş string olarak bırak.
 
-GÖRSEL TÜRLERİ:
-- teknik_resim: TEK bir parçanın veya montajın imalat/tasarım çizimi. Başlık bloğu, ölçüler, toleranslar, projeksiyon görünüşleri, kesit çizimleri içerir.
-- nesting: Birden fazla parçanın bir levha/sac üzerine yerleşimini gösteren kesim planı. Kullanım oranı, NC program adı, levha boyutu, çok sayıda parça içerir.
-- sap_ekrani: SAP veya kurumsal ERP/yazılım ekranı
-- form: Doldurulan belge, anket, tablo
-- sema: Akış şeması, süreç diyagramı, devre şeması
-- fotograf: Ürün/nesne/kişi fotoğrafı
-- diger: Diğer
-
-Teknik resim için YANIT FORMATI (SADECE JSON, başka hiçbir şey yazma):
 {
   "image_type": "teknik_resim",
-  "baslik_bloku": {
-    "cizim_numarasi": "Çizim/parça numarası (Zeichnungsnummer, Drawing No, Drw No)",
-    "kimlik_numarasi": "ERP/SAP malzeme numarası (Identnummer, Ident-Nr, Part No, Malzeme No)",
-    "revizyon": "Revizyon kodu (örn: A, B, Rev.2, Index)",
-    "olcek": "Ölçek (örn: 1:1, 1:2, 1:10, Maßstab)",
-    "tarih": "Çizim tarihi (Datum)",
-    "cizen": "Çizen kişi/departman (Gez., Drawn by)",
-    "onaylayan": "Onaylayan kişi (Gepr., Approved by)",
-    "kontrol_eden": "Kontrol eden kişi",
-    "firma": "Firma/şirket adı",
-    "proje": "Proje adı veya numarası",
-    "baslik": "Parça/montaj adı/başlığı (Benennung, Title, Description)",
-    "blatt_format": "Sayfa formatı (A4, A3, A0 vb.)",
-    "malzeme": "Malzeme cinsi (Werkstoff, Material — örn: ST37, S235JR, AISI 304)",
-    "yuzey_islem": "Yüzey işlemi (Oberflächenbehandlung, Surface treatment)",
-    "sertlik": "Sertlik değeri (varsa)",
-    "agirlik": "Parça ağırlığı (Fertiggewicht, Weight — varsa)",
-    "birim": "Kullanılan birim (mm, cm, inch)",
-    "sayfa": "Sayfa numarası / toplam sayfa (Blatt X von Y)"
+  "parca_tanim": {
+    "parca_adi": "",
+    "parca_kodu": "",
+    "cizim_numarasi": "",
+    "kimlik_numarasi": "",
+    "sayfa_bilgisi": ""
   },
-  "olcular": [
-    {
-      "etiket": "Ölçünün adı/etiketi (örn: Uzunluk, Genişlik, Yükseklik, Çap, Yarıçap, Et kalınlığı, Delik çapı, Açı, Adım, Diş adımı)",
-      "deger": "Sayısal değer (örn: 852, 25.4, 120.5)",
-      "birim": "Birim (mm, cm, inch, derece)",
-      "tolerans": "Bu ölçüye ait tolerans (örn: ±0.1, +0.2/-0.1, H7, k6)",
-      "aciklama": "Ek not veya bağlam (varsa)"
-    }
-  ],
-  "parca_listesi": [
-    {
-      "poz": "Pozisyon numarası",
-      "adet": "Adet",
-      "cizim_no": "Alt parça çizim numarası",
-      "malzeme": "Malzeme",
-      "yarim_mamul": "Yarı mamul boyutu (varsa, örn: Ø20x100)",
-      "aciklama": "Parça açıklaması / standart adı"
-    }
-  ],
-  "toleranslar": [
-    {
-      "tip": "Tolerans tipi (örn: Genel tolerans, Form toleransı, Konum toleransı, Yüzey pürüzlülüğü)",
-      "deger": "Tolerans değeri veya standardı (örn: ISO 2768-m, DIN 7168-m, Ra 3.2)",
-      "aciklama": "Uygulanan yüzey veya özellik"
-    }
-  ],
-  "islem_sirasi": [
-    {
-      "sira": "İşlem sıra numarası",
-      "islem": "İşlem adı (Lazer kesim, Bükme, Kaynak, Delme, Tornalama, Frezeleme, Boyama vb.)",
-      "aciklama": "Varsa ek detay"
-    }
-  ],
-  "yuzey_islemleri": [],
-  "notlar": [],
-  "kesitler": [],
-  "projeksiyon_acisi": "1. açı veya 3. açı projeksiyon",
-  "genel_metin": "Çizimdeki tüm görünen metin, not, sembol ve bilgilerin kapsamlı özeti"
+  "geometrik": {
+    "acilim_uzunlugu": "",
+    "boyutlar": "",
+    "bukme_yaricapi": "",
+    "kenar_mesafeleri": "",
+    "kesit": "",
+    "olcek": ""
+  },
+  "malzeme_uretim": {
+    "malzeme": "",
+    "agirlik": "",
+    "yuzey_standardi": "",
+    "kesim_standardi": "",
+    "sayfa_formati": ""
+  },
+  "toleranslar": {
+    "talasli_tolerans": "",
+    "talassiz_tolerans": "",
+    "kaynakli_tolerans": "",
+    "dokum_tolerans": ""
+  },
+  "izlenebilirlik": {
+    "cizim_tarihi": "",
+    "cizen": "",
+    "onaylayan": "",
+    "kalite_kontrol": "",
+    "cad_bilgisi": ""
+  }
 }
 
-ÖLÇÜ ÇIKARMA KURALLARI:
-- Çizimdeki HER ölçüyü ayrı bir eleman olarak listele
-- Ölçüye bağlı etiket yoksa geometrik konumuna göre tahmin et (en uzun kenar → Uzunluk, vb.)
-- Çap işaretli (Ø) ölçüler → etiket "Çap", yarıçap (R) → "Yarıçap"
-- Açı ölçüleri → etiket "Açı", birim "derece"
-- Diş ve adım ölçülerini (M, pitch) ayrıca belirt
-
-Nesting için YANIT FORMATI:
-{
-  "image_type": "nesting",
-  "program_adi": "NC / nesting program adı (varsa)",
-  "malzeme_numarasi": "Parça/sipariş/malzeme numarası",
-  "levha_boyutu": "Levha/sac boyutu (örn: 3000x1500x3mm)",
-  "malzeme": "Malzeme türü (örn: ST37, S355J2+AR, AISI 304)",
-  "kalinlik": "Kalınlık (örn: 3mm)",
-  "kullanim_orani": "Kullanım yüzdesi (örn: 87.3%)",
-  "fire_orani": "Fire/atık yüzdesi (örn: 12.7%)",
-  "toplam_parca_adedi": "Toplam parça adedi",
-  "islemler": ["lazer kesim", "plazma kesim", "bükme", "delme", "kaynak"],
-  "parca_listesi": [
-    {"parca_adi": "", "adet": "", "malzeme": "", "kalinlik": ""}
-  ],
-  "notlar": [],
-  "genel_metin": "Nesting planındaki tüm görünen metin ve bilgilerin özeti"
-}
-
-Diğer türler için YANIT FORMATI:
-{
-  "image_type": "sap_ekrani | form | sema | fotograf | diger",
-  "baslik": "",
-  "icerik": "Tüm görünen metinler, tablo verileri dahil",
-  "genel_metin": "Özet"
-}
-
-Boş alanları boş string veya boş liste olarak bırak.
-SADECE JSON döndür, markdown kod bloğu veya açıklama yazma."""
+ALAN AÇIKLAMALARI:
+- parca_tanim.kimlik_numarasi → SAP/ident numarası (genellikle 7-10 haneli sayı)
+- parca_tanim.parca_kodu → malzeme/part kodu (kimlik numarasından farklıysa)
+- geometrik.acilim_uzunlugu → sac açılım/gelişme uzunluğu (mm)
+- geometrik.bukme_yaricapi → bükme iç yarıçapı (mm)
+- geometrik.kenar_mesafeleri → delik/kenar boşlukları
+- malzeme_uretim.yuzey_standardi → yüzey işlem standardı (ör: DIN 1543)
+- malzeme_uretim.kesim_standardi → kesim/kalite standardı
+- toleranslar.talasli_tolerans → talaşlı işlem toleransı (ör: ISO 2768-m)
+- toleranslar.talassiz_tolerans → talaşsız işlem toleransı
+- toleranslar.kaynakli_tolerans → kaynak toleransı (ör: ISO 13920-B)
+- toleranslar.dokum_tolerans → döküm toleransı"""
 
 
 def parse_image(
@@ -136,25 +80,18 @@ def parse_image(
 
     vision_data, vision_error = _read_with_vision(file_path)
 
-    if vision_data:
-        text = _build_rag_text(file_basename, ext, vision_data)
-        img_type = vision_data.get("image_type", "diger")
-        chunk_type = (
-            "teknik_resim" if img_type == "teknik_resim"
-            else "nesting"  if img_type == "nesting"
-            else "image_vision"
-        )
-    else:
-        size_kb = round(os.path.getsize(file_path) / 1024, 1)
-        text = (
-            f"[{file_basename} | Görsel]\n"
-            f"DOSYA TÜRÜ: {ext.upper()}\n"
-            f"BOYUT: {size_kb} KB\n"
-            "[Not: Vision API anahtarı olmadığından içerik okunamadı. "
-            "Dosya kaydedildi, görsel önizleme mevcut.]"
-        )
-        chunk_type = "image_metadata_only"
-        vision_data = None
+    if not vision_data:
+        # Vision AI başarısız — dosya adından minimal veri çıkar
+        vision_data = {"image_type": "teknik_resim"}
+        m = re.search(r'\b(\d{7,10})\b', file_basename)
+        if m:
+            vision_data["parca_tanim"] = {"kimlik_numarasi": m.group(1)}
+
+    if vision_data.get("image_type") not in ("teknik_resim", "nesting", "step_model"):
+        vision_data["image_type"] = "teknik_resim"
+
+    text = _build_rag_text(file_basename, ext, vision_data)
+    chunk_type = "teknik_resim"
 
     chunk = {
         "id": str(uuid.uuid4()),
@@ -166,199 +103,65 @@ def parse_image(
             "type":        chunk_type,
             "image_path":  file_path,
             "total_pages": 1,
+            "vision_data": vision_data,
         }
     }
 
-    if vision_data:
-        chunk["metadata"]["vision_data"] = vision_data
     if vision_error:
         chunk["metadata"]["vision_error"] = vision_error
 
     return [chunk]
 
 
+_SKIP_KEYS = {"image_type", "genel_metin", "icerik"}
+
+
+def _humanize(key: str) -> str:
+    """snake_case → okunabilir başlık: 'parca_tanim' → 'Parça Tanım'"""
+    return key.replace("_", " ").title()
+
+
 def _build_rag_text(basename: str, ext: str, data: dict) -> str:
-    """Yapılandırılmış JSON'dan RAG arama için zengin metin üretir."""
-    img_type = data.get("image_type", "diger")
-    lines = [f"[{basename} | {img_type.upper()}]", f"DOSYA TÜRÜ: {ext.upper()} görseli", ""]
+    """Yapılandırılmış JSON'dan RAG arama için zengin metin üretir. Dinamik — hangi alan gelirse çalışır."""
+    lines = [f"[{basename} | TEKNİK RESİM]", f"DOSYA TÜRÜ: {ext.upper()} görseli", ""]
 
-    if img_type == "nesting":
-        for label, key in [
-            ("Program",           "program_adi"),
-            ("Malzeme No",        "malzeme_numarasi"),
-            ("Levha Boyutu",      "levha_boyutu"),
-            ("Malzeme",           "malzeme"),
-            ("Kalınlık",          "kalinlik"),
-            ("Kullanım Oranı",    "kullanim_orani"),
-            ("Fire Oranı",        "fire_orani"),
-            ("Toplam Parça",      "toplam_parca_adedi"),
-        ]:
-            val = data.get(key, "")
-            if val:
-                lines.append(f"{label}: {val}")
-        lines.append("")
+    for section_key, section_val in data.items():
+        if section_key in _SKIP_KEYS:
+            continue
 
-        parcalar = data.get("parca_listesi", [])
-        if parcalar:
-            lines.append("── PARÇA LİSTESİ ──")
-            for p in parcalar:
-                parts = [
-                    p.get("parca_adi", ""),
-                    f"Adet:{p['adet']}"       if p.get("adet")    else "",
-                    f"Malzeme:{p['malzeme']}" if p.get("malzeme") else "",
-                ]
-                line = " | ".join(x for x in parts if x)
-                if line:
-                    lines.append(line)
-            lines.append("")
-
-        islemler = data.get("islemler", [])
-        if islemler:
-            lines.append("── YAPILACAK İŞLEMLER ──")
-            lines.append(", ".join(str(i) for i in islemler))
-            lines.append("")
-
-        notlar = data.get("notlar", [])
-        if notlar:
-            lines.append("── NOTLAR ──")
-            for n in notlar:
-                lines.append(f"• {n}")
-            lines.append("")
-
-    elif img_type == "teknik_resim":
-        bb = data.get("baslik_bloku", {})
-        if any(v for v in bb.values() if v):
-            lines.append("── BAŞLIK BLOĞU ──")
-            for label, key in [
-                ("Çizim No",       "cizim_numarasi"),
-                ("Kimlik No",      "kimlik_numarasi"),
-                ("Başlık",         "baslik"),
-                ("Revizyon",       "revizyon"),
-                ("Ölçek",          "olcek"),
-                ("Tarih",          "tarih"),
-                ("Çizen",          "cizen"),
-                ("Onaylayan",      "onaylayan"),
-                ("Kontrol Eden",   "kontrol_eden"),
-                ("Firma",          "firma"),
-                ("Proje",          "proje"),
-                ("Malzeme",        "malzeme"),
-                ("Yüzey İşlemi",   "yuzey_islem"),
-                ("Sertlik",        "sertlik"),
-                ("Ağırlık",        "agirlik"),
-                ("Birim",          "birim"),
-                ("Format",         "blatt_format"),
-                ("Sayfa",          "sayfa"),
-            ]:
-                val = bb.get(key, "")
-                if val:
-                    lines.append(f"{label}: {val}")
-            lines.append("")
-
-        parcalar = data.get("parca_listesi", [])
-        if parcalar:
-            lines.append("── PARÇA LİSTESİ ──")
-            for p in parcalar:
-                parts = [
-                    f"Poz:{p['poz']}"              if p.get("poz")         else "",
-                    f"Adet:{p['adet']}"             if p.get("adet")        else "",
-                    f"Malzeme:{p['malzeme']}"       if p.get("malzeme")     else "",
-                    f"Yarı mamul:{p['yarim_mamul']}" if p.get("yarim_mamul") else "",
-                    p.get("aciklama", ""),
-                ]
-                line = " | ".join(x for x in parts if x)
-                if line:
-                    lines.append(line)
-            lines.append("")
-
-        # Ölçüler: obje dizisi (yeni format) veya düz dizi (eski/custom)
-        olcular = data.get("olcular", [])
-        if olcular:
-            lines.append("── ÖLÇÜLER ──")
-            for o in olcular:
-                if isinstance(o, dict):
-                    etiket = o.get("etiket", "")
-                    deger  = o.get("deger", "")
-                    birim  = o.get("birim", "mm")
-                    tol    = o.get("tolerans", "")
-                    line   = f"{etiket}: {deger} {birim}".strip()
-                    if tol:
-                        line += f" [{tol}]"
-                    if line.strip(": "):
-                        lines.append(line)
-                else:
-                    lines.append(str(o))
-            lines.append("")
-
-        # Toleranslar: obje dizisi veya düz dizi
-        toleranslar = data.get("toleranslar", [])
-        if toleranslar:
-            lines.append("── TOLERANSLAR ──")
-            for t in toleranslar:
-                if isinstance(t, dict):
-                    tip    = t.get("tip", "")
-                    deger  = t.get("deger", "")
-                    acikl  = t.get("aciklama", "")
-                    parts  = [x for x in [tip, deger, acikl] if x]
-                    lines.append(" | ".join(parts))
-                else:
-                    lines.append(str(t))
-            lines.append("")
-
-        # İşlem sırası: obje dizisi veya düz dizi
-        islem_sirasi = data.get("islem_sirasi", [])
-        if islem_sirasi:
-            lines.append("── İŞLEM SIRASI ──")
-            for s in islem_sirasi:
-                if isinstance(s, dict):
-                    sira   = s.get("sira", "")
-                    islem  = s.get("islem", "")
-                    acikl  = s.get("aciklama", "")
-                    line   = f"{sira} - {islem}" if sira else islem
-                    if acikl:
-                        line += f" ({acikl})"
-                    if line.strip("- "):
-                        lines.append(line)
-                else:
-                    lines.append(str(s))
-            lines.append("")
-
-        for label, key in [
-            ("YÜZEY İŞLEMLERİ", "yuzey_islemleri"),
-            ("KESİTLER",        "kesitler"),
-        ]:
-            items = data.get(key, [])
-            if items:
-                lines.append(f"── {label} ──")
-                lines.append(", ".join(str(i) for i in items))
+        # Array (islemler, parca_listesi, …)
+        if isinstance(section_val, list):
+            items_out = []
+            for item in section_val:
+                if isinstance(item, dict):
+                    islem = item.get("islem") or item.get("ad") or item.get("name") or ""
+                    aciklama = item.get("aciklama") or item.get("description") or ""
+                    sira = item.get("sira") or item.get("order") or ""
+                    if islem:
+                        prefix = f"{sira}. " if sira else ""
+                        items_out.append(f"{prefix}{islem}" + (f" ({aciklama})" if aciklama else ""))
+                elif item:
+                    items_out.append(str(item))
+            if items_out:
+                lines.append(f"── {_humanize(section_key).upper()} ──")
+                lines.extend(items_out)
                 lines.append("")
+            continue
 
-        notlar = data.get("notlar", [])
-        if notlar:
-            lines.append("── NOTLAR ──")
-            for n in notlar:
-                lines.append(f"• {n}")
+        # Nested object (parca_tanim, geometrik, …)
+        if isinstance(section_val, dict):
+            pairs = [(k, v) for k, v in section_val.items() if v]
+            if not pairs:
+                continue
+            lines.append(f"── {_humanize(section_key).upper()} ──")
+            for fk, fv in pairs:
+                lines.append(f"{_humanize(fk)}: {fv}")
             lines.append("")
+            continue
 
-        proj = data.get("projeksiyon_acisi", "")
-        if proj:
-            lines.append(f"Projeksiyon: {proj}")
-            lines.append("")
-
-    else:
-        baslik = data.get("baslik", "")
-        if baslik:
-            lines.append(f"BAŞLIK: {baslik}")
-            lines.append("")
-        icerik = data.get("icerik", "")
-        if icerik:
-            lines.append("İÇERİK:")
-            lines.append(icerik)
-            lines.append("")
-
-    genel_metin = data.get("genel_metin", "")
-    if genel_metin:
-        lines.append("── GENEL METİN ──")
-        lines.append(genel_metin)
+        # Flat string / number
+        if section_val:
+            lines.append(f"{_humanize(section_key)}: {section_val}")
 
     return "\n".join(lines)
 

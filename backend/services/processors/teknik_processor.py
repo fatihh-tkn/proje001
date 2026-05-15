@@ -6,7 +6,6 @@ Teknik resim kategorisi için unified processor.
 Format → vision zinciri:
   PNG/JPG/...  → doğrudan image_processor.parse_image
   PDF          → ilk sayfa PNG render → image_processor.parse_image
-  DXF/DWG      → (gelecek) ezdxf → render → vision
   diğer        → standart dispatch'e düşer
 """
 
@@ -17,36 +16,12 @@ import shutil
 
 
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"}
-DWG_EXTS   = {"dwg", "dxf"}
-STP_EXTS   = {"stp", "step", "awg"}  # AWG = AutoNest → STEP/ISO-10303 formatı
-
-
-def _is_step_file(file_path: str) -> bool:
-    """Dosyanın ilk byte'larını okuyarak gerçekten STEP (ISO-10303) olup olmadığını kontrol eder."""
-    try:
-        with open(file_path, "rb") as f:
-            header = f.read(16)
-        return header.startswith(b"ISO-10303-")
-    except Exception:
-        return False
 
 
 def parse_teknik(file_path: str, original_name: str | None = None) -> list[dict]:
-    """Teknik resim kategorisindeki herhangi bir formattaki dosyayı vision ile işler."""
+    """Teknik resim kategorisindeki dosyayı vision ile işler. Sadece görsel ve PDF desteklenir."""
     basename = original_name or os.path.basename(file_path)
     ext = basename.rsplit(".", 1)[-1].lower() if "." in basename else ""
-
-    if ext in STP_EXTS:
-        from services.processors.stp_processor import parse_stp
-        return parse_stp(file_path, original_name=original_name)
-
-    if ext in DWG_EXTS:
-        # Bazı dosyalar .dwg uzantılı ama aslında STEP (ISO-10303) içeriyor
-        if _is_step_file(file_path):
-            from services.processors.stp_processor import parse_stp
-            return parse_stp(file_path, original_name=original_name)
-        from services.processors.dwg_processor import parse_dwg
-        return parse_dwg(file_path, original_name=original_name)
 
     if ext in IMAGE_EXTS:
         from services.processors.image_processor import parse_image
@@ -71,10 +46,17 @@ def parse_teknik(file_path: str, original_name: str | None = None) -> list[dict]
         chunks, _ = analyze_pdf_with_vision(file_path, use_vision=False, original_name=original_name)
         return chunks
 
-    # Diğer formatlar standart dispatch'e
-    from services.processors import dispatch as _dispatch
-    chunks, _ = _dispatch(file_path, ext, original_name=original_name)
-    return chunks
+    # Desteklenmeyen format
+    import uuid
+    return [{
+        "id": str(uuid.uuid4()),
+        "text": f"[{basename}]\nDesteklenmeyen format: {ext}. Teknik resim olarak PNG, JPEG veya PDF yükleyin.",
+        "metadata": {
+            "page": 1, "chunk_index": 1,
+            "source": basename, "type": "unsupported",
+            "total_pages": 1,
+        },
+    }]
 
 
 def _pdf_first_page_to_png(pdf_path: str, out_dir: str) -> str | None:

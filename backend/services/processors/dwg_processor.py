@@ -147,32 +147,49 @@ def _extract_dxf_texts(dxf_path: str) -> list[str]:
         return []
 
 
-# ── DWG özel promptu ─────────────────────────────────────────────
+# ── DXF → PNG render (ezdxf matplotlib backend) ──────────────────
 
-def _get_dwg_prompt() -> str:
+def _dxf_to_png(dxf_path: str, out_path: str) -> bool:
+    """
+    ezdxf matplotlib backend ile DXF'i PNG görseline dönüştürür.
+    Başarılıysa True, herhangi bir hata / eksik kütüphane varsa False döner.
+    """
     try:
-        from database.sql.session import get_session
-        from database.sql.models import SistemAyari
-        from sqlalchemy import select
-        with get_session() as db:
-            row = db.scalar(select(SistemAyari).where(SistemAyari.anahtar == "doc_processing_dwg_prompt"))
-        custom = (row.deger if row else "").strip() if row else ""
-        if custom:
-            return custom
-    except Exception:
-        pass
-    from services.processors.image_processor import _get_active_prompt
-    return _get_active_prompt()
+        import ezdxf
+        from ezdxf.addons.drawing import RenderContext, Frontend  # type: ignore
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend  # type: ignore
+        import matplotlib  # type: ignore
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # type: ignore
+
+        try:
+            doc = ezdxf.readfile(dxf_path)
+        except Exception:
+            import ezdxf.recover as _rec
+            doc, _ = _rec.readfile(dxf_path)
+
+        msp = doc.modelspace()
+        fig = plt.figure(figsize=(20, 15), dpi=1)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ctx = RenderContext(doc)
+        out_backend = MatplotlibBackend(ax)
+        Frontend(ctx, out_backend).draw_layout(msp, finalize=True)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        return os.path.exists(out_path) and os.path.getsize(out_path) > 1024
+    except Exception as e:
+        print(f"[dwg_processor] DXF→PNG render hatası: {e}")
+        return False
 
 
 # ── SAP no fallback ───────────────────────────────────────────────
 
 def _fill_sap_from_filename(vision_data: dict, basename: str) -> None:
     """
-    baslik_bloku.kimlik_numarasi boşsa dosya adındaki sayıyı SAP no olarak doldurur.
+    parca_tanim.kimlik_numarasi boşsa dosya adındaki sayıyı SAP no olarak doldurur.
     Hem düz (92530740) hem noktalı Almanca format (92.530.740) desteklenir.
     """
-    bb = vision_data.setdefault("baslik_bloku", {})
+    bb = vision_data.setdefault("parca_tanim", {})
     if bb.get("kimlik_numarasi"):
         return
     # Önce uzun SAP (7-10 hane, düz)
@@ -304,15 +321,18 @@ def _extract_dwg_meta(texts: list[str]) -> dict:
 
 
 def _merge_dwg_meta(vision_data: dict, dwg_meta: dict) -> None:
-    """AI sonucuna ön-işleme verilerini ekler (boş alanları doldurur)."""
+    """AI sonucuna regex ön-bilgilerini yeni şemaya göre ekler (boş alanları doldurur)."""
     if not dwg_meta:
         return
-    bb = vision_data.setdefault("baslik_bloku", {})
-    for key in ("kimlik_numarasi", "malzeme", "kalinlik"):
-        if not bb.get(key) and dwg_meta.get(key):
-            bb[key] = dwg_meta[key]
-    if not vision_data.get("islem_sirasi") and dwg_meta.get("islem_sirasi"):
-        vision_data["islem_sirasi"] = dwg_meta["islem_sirasi"]
+    pt = vision_data.setdefault("parca_tanim", {})
+    if not pt.get("kimlik_numarasi") and dwg_meta.get("kimlik_numarasi"):
+        pt["kimlik_numarasi"] = dwg_meta["kimlik_numarasi"]
+    mu = vision_data.setdefault("malzeme_uretim", {})
+    if not mu.get("malzeme") and dwg_meta.get("malzeme"):
+        mu["malzeme"] = dwg_meta["malzeme"]
+    geo = vision_data.setdefault("geometrik", {})
+    if not geo.get("boyutlar") and dwg_meta.get("kalinlik"):
+        geo["boyutlar"] = f"Kalınlık: {dwg_meta['kalinlik']} mm"
 
 
 # ── JSON parse ────────────────────────────────────────────────────
@@ -333,7 +353,80 @@ def _parse_json(raw: str) -> dict | None:
 
 # ── AI analiz ────────────────────────────────────────────────────
 
-def _analyze_texts(texts: list[str]) -> tuple[dict | None, str]:
+def _build_dwg_text_prompt(texts: list[str], dwg_meta: dict) -> str:
+    """DXF metin entity'leri için odaklı AI promptu oluşturur."""
+    joined = "\n".join(texts[:1000])
+
+    meta_hint = ""
+    if dwg_meta:
+        parts = []
+        if dwg_meta.get("kimlik_numarasi"):
+            parts.append(f"  Kimlik/SAP No: {dwg_meta['kimlik_numarasi']}")
+        if dwg_meta.get("malzeme"):
+            parts.append(f"  Malzeme: {dwg_meta['malzeme']}")
+        if dwg_meta.get("kalinlik"):
+            parts.append(f"  Kalınlık: {dwg_meta['kalinlik']} mm")
+        if parts:
+            meta_hint = "Regex ile önceden tespit edilen değerler (doğrula ve kullan):\n" + "\n".join(parts) + "\n\n"
+
+    return f"""Aşağıda bir DWG/DXF teknik çiziminden ezdxf ile çıkarılan ham metin entity'leri var.
+Bu metinleri analiz ederek teknik çizimin tüm bilgilerini JSON formatında çıkar.
+
+{meta_hint}KURALLAR:
+- SADECE JSON döndür — markdown, kod bloğu, açıklama YAZMA
+- Bulamadığın alanı ekleme — boş bırakmak yerine o alanı tamamen çıkar
+- "TAG: Değer" formatındaki entity'leri doğrudan eşleştir
+- Çizimde hangi alanlar varsa hepsini çıkar, sadece örneklerle sınırlı değilsin
+
+ALAN EŞLEMELERİ (başlık bloğu / title block alanları):
+- parca_tanim.kimlik_numarasi → SAP/ident/malzeme no (7-10 haneli rakam; noktalı format 92.530.740 → 92530740)
+- parca_tanim.parca_adi → bileşen adı (Benennung, Bezeichnung, Parça Adı, Name gibi tag'lerin değeri)
+- parca_tanim.cizim_numarasi → çizim/Zeichnung no
+- parca_tanim.revizyon → revizyon (Rev, Revision)
+- malzeme_uretim.malzeme → malzeme (Material, Malzeme, Werkstoff)
+- malzeme_uretim.agirlik → ağırlık (Gewicht, Ağırlık, Weight)
+- malzeme_uretim.yuzey_standardi → yüzey işlemi (Oberfläche, Surface Finish)
+- geometrik.boyutlar → boyutlar mm cinsinden
+- geometrik.olcek → ölçek (Maßstab, Scale, Ölçek)
+- toleranslar.talasli_tolerans → talaşlı tolerans (ISO 2768-m, ISO 286 vb.)
+- toleranslar.talassiz_tolerans → talaşsız tolerans
+- izlenebilirlik.cizim_tarihi → tarih (Datum, Date, Tarih)
+- izlenebilirlik.cizen → çizen (Gezeichnet, Drawn, Çizen)
+- izlenebilirlik.onaylayan → onaylayan (Geprüft, Checked, Freigegeben, Onaylayan)
+
+ÖRNEK FORMAT:
+{{
+  "image_type": "teknik_resim",
+  "parca_tanim": {{
+    "kimlik_numarasi": "92530740",
+    "parca_adi": "Bağlantı Sacı",
+    "cizim_numarasi": "MEC-2024-001",
+    "revizyon": "A"
+  }},
+  "malzeme_uretim": {{
+    "malzeme": "S355J2+AR",
+    "agirlik": "2.5 kg"
+  }},
+  "geometrik": {{
+    "boyutlar": "150 x 80 x 6 mm",
+    "olcek": "1:2"
+  }},
+  "toleranslar": {{
+    "talasli_tolerans": "ISO 2768-m",
+    "talassiz_tolerans": "ISO 2768-K"
+  }},
+  "izlenebilirlik": {{
+    "cizim_tarihi": "15.05.2024",
+    "cizen": "A. Yılmaz",
+    "onaylayan": "B. Demir"
+  }}
+}}
+
+DXF METİN VERİLERİ:
+{joined}"""
+
+
+def _analyze_texts(texts: list[str], dwg_meta: dict | None = None) -> tuple[dict | None, str]:
     """Çıkarılan metinleri AI'ya gönderir, JSON döndürür."""
     try:
         from services.processors.vision_utils import get_doc_processing_config
@@ -343,14 +436,7 @@ def _analyze_texts(texts: list[str]) -> tuple[dict | None, str]:
         if not api_key:
             return None, "API anahtarı yapılandırılmamış"
 
-        custom = _get_dwg_prompt()
-        joined = "\n".join(texts[:500])
-
-        if custom and "görsel" not in custom.lower() and len(custom) > 100:
-            full_prompt = f"{custom}\n\nÇİZİM METİNLERİ:\n{joined}"
-        else:
-            from services.processors.stp_processor import _build_text_prompt
-            full_prompt = _build_text_prompt(joined)
+        full_prompt = _build_dwg_text_prompt(texts, dwg_meta or {})
 
         raw = ""
         _step(f"DWG metinleri AI'ya gönderiliyor ({model_name})…")
@@ -401,6 +487,31 @@ def _analyze_texts(texts: list[str]) -> tuple[dict | None, str]:
         return None, err
 
 
+# ── Chunk builder (ortak) ────────────────────────────────────────
+
+def _build_chunk(
+    basename: str,
+    vision_data: dict,
+    dwg_meta: dict | None = None,
+    render_path: str | None = None,
+) -> list[dict]:
+    if dwg_meta:
+        _merge_dwg_meta(vision_data, dwg_meta)
+    _fill_sap_from_filename(vision_data, basename)
+    from services.processors.image_processor import _build_rag_text
+    ext        = basename.rsplit(".", 1)[-1].lower() if "." in basename else "dwg"
+    img_type   = vision_data.get("image_type", "teknik_resim")
+    chunk_type = "nesting" if img_type == "nesting" else "teknik_resim"
+    meta = {
+        "page": 1, "chunk_index": 1,
+        "source": basename, "type": chunk_type,
+        "total_pages": 1, "vision_data": vision_data,
+    }
+    if render_path and os.path.exists(render_path):
+        meta["render_path"] = render_path
+    return [{"id": str(uuid.uuid4()), "text": _build_rag_text(basename, ext, vision_data), "metadata": meta}]
+
+
 # ── Ana giriş noktası ─────────────────────────────────────────────
 
 def parse_dwg(file_path: str, original_name: str | None = None) -> list[dict]:
@@ -408,66 +519,87 @@ def parse_dwg(file_path: str, original_name: str | None = None) -> list[dict]:
 
     basename = original_name or os.path.basename(file_path)
     dxf_path = None
+    png_path = None
 
     try:
         # 1. DWG → DXF
-        _step("DWG → DXF dönüştürülüyor (ODA)…")
+        _step("DWG → DXF dönüştürülüyor…")
         dxf_path, oda_err = _dwg_to_dxf(file_path, timeout=30)
 
         if not dxf_path:
             return _error_chunk(basename, oda_err)
 
-        # 2. DXF → text entity'leri
+        # 2. DXF → metin (her iki yol için de meta çıkarımında kullanılır)
         _step("DXF metin içeriği okunuyor…")
-        texts = _extract_dxf_texts(dxf_path)
+        texts    = _extract_dxf_texts(dxf_path)
+        dwg_meta = _extract_dwg_meta(texts) if texts else {}
+        print(f"[dwg_processor] {basename}: {len(texts)} metin entity çıkarıldı")
+        if texts:
+            print(f"[dwg_processor] İlk 20 entity: {texts[:20]}")
 
+        # 3. DXF → PNG → vision AI (görsel analiz; yetersizse metin analizine düşer)
+        _SCHEMA_KEYS = ("parca_tanim", "geometrik", "malzeme_uretim", "toleranslar", "izlenebilirlik")
+        png_path = os.path.join(tempfile.gettempdir(), f"dwg_{uuid.uuid4().hex}.png")
+        _step("DXF görsele dönüştürülüyor…")
+        # DWG ile aynı klasörde kalıcı render PNG: uuid_dosyaadi_render.png
+        render_png = os.path.splitext(file_path)[0] + "_render.png"
+        png_vision_data = None  # vision AI'dan gelen veri (yedek olarak sakla)
+        if _dxf_to_png(dxf_path, png_path):
+            try:
+                shutil.copy2(png_path, render_png)
+            except Exception:
+                render_png = None
+            _step("DXF görseli yapay zekaya gönderiliyor…")
+            try:
+                from services.processors.image_processor import parse_image
+                vision_chunks = parse_image(png_path, original_name=basename)
+                if vision_chunks:
+                    vd = vision_chunks[0]["metadata"].get("vision_data")
+                    if vd and isinstance(vd, dict):
+                        # image_type "diger" ise teknik_resim'e normalize et
+                        if vd.get("image_type") != "teknik_resim":
+                            vd = {"image_type": "teknik_resim", **{
+                                k: v for k, v in vd.items()
+                                if k not in ("image_type", "genel_metin", "icerik")
+                            }}
+                        filled = sum(
+                            1 for k in _SCHEMA_KEYS
+                            if isinstance(vd.get(k), dict) and any(v for v in vd.get(k, {}).values() if v)
+                        )
+                        if filled >= 2:
+                            return _build_chunk(basename, vd, dwg_meta, render_png)
+                        png_vision_data = vd
+                    _step("Görsel analiz yetersiz, DXF metin analizine geçiliyor…")
+            except Exception as e:
+                print(f"[dwg_processor] Vision AI hatasi: {e}")
+
+        # 4. Fallback: metin → AI text analysis
         if not texts:
-            return _error_chunk(basename, "DXF dosyasında okunabilir metin bulunamadı")
+            if png_vision_data:
+                _step("Metin yok, görsel analiz sonucu kullanılıyor…")
+                return _build_chunk(basename, png_vision_data, dwg_meta, render_png)
+            _step("DXF boş, dosya adından minimal veri oluşturuluyor…")
+            return _build_chunk(basename, {"image_type": "teknik_resim"}, dwg_meta, render_png)
 
-        # 2b. Ön-işleme: regex ile SAP / malzeme / kalınlık / operasyon çıkar
-        dwg_meta = _extract_dwg_meta(texts)
-
-        # AI'ya bağlam olarak ön-bilgi de ekle
-        if dwg_meta:
-            sap = dwg_meta.get("kimlik_numarasi", "?")
-            mat = dwg_meta.get("malzeme", "?")
-            kal = dwg_meta.get("kalinlik", "?")
-            _step(f"SAP={sap} | {kal}mm | {mat} — AI'ya gönderiliyor…")
-            context_header = (
-                f"[ÖN-BİLGİ: SAP/Parça No={sap}, Malzeme={mat}, Kalınlık={kal}mm]\n\n"
-            )
-            ai_texts = [context_header] + texts
-        else:
-            ai_texts = texts
-
-        # 3. Metinleri AI'ya gönder
-        vision_data, ai_err = _analyze_texts(ai_texts)
-
+        _step("DWG metinleri AI'ya gönderiliyor…")
+        vision_data, ai_err = _analyze_texts(texts, dwg_meta)
         if vision_data:
-            _merge_dwg_meta(vision_data, dwg_meta)   # boşları doldur
-            _fill_sap_from_filename(vision_data, basename)
-            from services.processors.image_processor import _build_rag_text
-            ext      = basename.rsplit(".", 1)[-1].lower() if "." in basename else "dwg"
-            img_type = vision_data.get("image_type", "teknik_resim")
-            chunk_type = "nesting" if img_type == "nesting" else "teknik_resim"
-            return [{
-                "id": str(uuid.uuid4()),
-                "text": _build_rag_text(basename, ext, vision_data),
-                "metadata": {
-                    "page": 1, "chunk_index": 1,
-                    "source": basename, "type": chunk_type,
-                    "total_pages": 1, "vision_data": vision_data,
-                },
-            }]
+            return _build_chunk(basename, vision_data, dwg_meta, render_png)
 
+        # Metin AI başarısız oldu — görsel analiz sonucu veya minimal chunk dön
+        if png_vision_data:
+            return _build_chunk(basename, png_vision_data, dwg_meta, render_png)
+        if render_png and os.path.exists(render_png):
+            return _build_chunk(basename, {"image_type": "teknik_resim"}, dwg_meta, render_png)
         return _error_chunk(basename, ai_err)
 
     finally:
-        if dxf_path and os.path.exists(dxf_path):
-            try:
-                os.remove(dxf_path)
-            except Exception:
-                pass
+        for tmp in (dxf_path, png_path):
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except Exception:
+                    pass
 
 
 def _error_chunk(basename: str, err: str) -> list[dict]:
