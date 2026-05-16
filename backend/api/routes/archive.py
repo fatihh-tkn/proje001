@@ -244,20 +244,65 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
+        # --- N+1 Optimizasyonu Başlangıç ---
+        # 1. Kullanıcı isimlerini topluca al
+        yukleyen_ids = {b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik}
+        isim_haritasi = {}
+        if yukleyen_ids:
+            kullanici_rows = db.execute(
+                select(Kullanici.kimlik, Kullanici.tam_ad).where(Kullanici.kimlik.in_(yukleyen_ids))
+            ).all()
+            isim_haritasi = {r[0]: r[1] for r in kullanici_rows}
+
+        # 2. Vektör parçası sayılarını topluca al
+        belge_kimlikler = [b.kimlik for b in belgeler]
+        chunk_counts = {}
+        if belge_kimlikler:
+            from sqlalchemy import func
+            count_rows = db.execute(
+                select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+                .where(VektorParcasi.belge_kimlik.in_(belge_kimlikler))
+                .group_by(VektorParcasi.belge_kimlik)
+            ).all()
+            chunk_counts = {r[0]: r[1] for r in count_rows}
+
+        # 3. Her belge için ilk 5 parçayı önceden yükle (Window Function ile)
+        previews = {}
+        if belge_kimlikler:
+            rn = func.row_number().over(
+                partition_by=VektorParcasi.belge_kimlik,
+                order_by=VektorParcasi.kimlik
+            ).label('rn')
+
+            subq = select(
+                VektorParcasi.kimlik,
+                VektorParcasi.chromadb_kimlik,
+                VektorParcasi.belge_kimlik,
+                rn
+            ).where(
+                VektorParcasi.belge_kimlik.in_(belge_kimlikler)
+            ).subquery()
+
+            preview_rows = db.execute(
+                select(subq.c.kimlik, subq.c.chromadb_kimlik, subq.c.belge_kimlik)
+                .where(subq.c.rn <= 5)
+            ).all()
+
+            for row in preview_rows:
+                b_id = row.belge_kimlik
+                if b_id not in previews:
+                    previews[b_id] = []
+                previews[b_id].append({"id": row.kimlik, "chroma_id": row.chromadb_kimlik})
+        # --- N+1 Optimizasyonu Bitiş ---
+
         sonuclar = []
         for b in belgeler:
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
-            yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
+            yukleyen_adi = isim_haritasi.get(b.yukleyen_kimlik, "Bilinmiyor")
+            total_chunks = chunk_counts.get(b.kimlik, 0)
+            doc_previews = previews.get(b.kimlik, [])
 
             sonuclar.append({
                 "id": b.kimlik,
@@ -270,11 +315,8 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
                 "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
+                "total_chunks": total_chunks,
+                "chunks_preview": doc_previews,
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
                 "havuz_turu": b.havuz_turu,
