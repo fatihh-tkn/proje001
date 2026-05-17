@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Loader2, Power, Eye, FileText } from 'lucide-react';
+import { Bot, Loader2, Power, Eye, FileText, FolderSearch, FileOutput } from 'lucide-react';
 import { mutate } from '../../../api/client';
 
 // Components
@@ -8,6 +8,8 @@ import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
+const FileCollectorPanel = React.lazy(() => import('../tools/FileCollectorPanel'));
+const DwgConverterPanel  = React.lazy(() => import('../tools/DwgConverterPanel'));
 
 import { DEFAULT_AGENTS, isAgentVisibleInGrid, getAgentIcon } from './orchestrator/constants';
 
@@ -109,11 +111,13 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
 
     const SPECIAL_ITEM_IDS = new Set(['vision-processing']);
+    const TOOL_ITEM_IDS    = new Set(['tool-file-collector', 'tool-dwg-to-pdf']);
 
     // Eğer ilk yükleme sonrası seçili ajan listede yoksa (ör. legacy gizlendi),
     // ilk görünür ajana düş. Özel ayar item'ları seçiliyse müdahale etme.
     useEffect(() => {
-        if (!isLoadingAgents && agents.length && !selectedItem && !SPECIAL_ITEM_IDS.has(selectedItemId)) {
+        if (!isLoadingAgents && agents.length && !selectedItem
+            && !SPECIAL_ITEM_IDS.has(selectedItemId) && !TOOL_ITEM_IDS.has(selectedItemId)) {
             const firstVisible = agents.find(a =>
                 a.id !== 'sys_agent_chatbot_001'
                 && a.id !== 'sys_agent_msg_001'
@@ -130,6 +134,11 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     const SPECIAL_ITEMS = useMemo(() => [
         { id: 'vision-processing',  label: 'AI Görsel İşleme',     icon: Eye      },
+    ], []);
+
+    const TOOL_ITEMS = useMemo(() => [
+        { id: 'tool-file-collector', label: 'Dosya Toplayıcı',     icon: FolderSearch },
+        { id: 'tool-dwg-to-pdf',     label: 'DWG → PDF',           icon: FileOutput   },
     ], []);
 
     // Sol panel — inline rename
@@ -311,13 +320,51 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                                 </div>
                                             );
                                         })}
+
+                                        {/* ── Tools Bölümü ──────────────────── */}
+                                        <div className="h-px bg-stone-200 mx-3 my-1 shrink-0" />
+                                        <div className="px-3 py-1">
+                                            <span className="text-[9px] font-black uppercase tracking-[0.18em] text-stone-400">Araçlar</span>
+                                        </div>
+                                        {TOOL_ITEMS.map(item => {
+                                            const isSelected = selectedItemId === item.id;
+                                            const Icon = item.icon;
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    onClick={() => setSelectedItemId(item.id)}
+                                                    className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
+                                                        ${isSelected ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'}`}
+                                                >
+                                                    {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                    <Icon size={14} strokeWidth={isSelected ? 2.5 : 2}
+                                                        className={isSelected ? 'text-[#378ADD]' : 'text-stone-400'}
+                                                    />
+                                                    <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>
+                                                        {item.label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                     <div className="h-px bg-stone-200 mx-0 shrink-0" />
                                     <CannedResponsesPanel />
                                 </div>
 
                                 {/* ── SAĞ: Konfigürasyon Paneli ────────────────── */}
-                                {selectedItemId === 'vision-processing' ? (
+                                {selectedItemId === 'tool-file-collector' ? (
+                                    <div className="flex-1 overflow-hidden">
+                                        <React.Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-stone-300" /></div>}>
+                                            <FileCollectorPanel />
+                                        </React.Suspense>
+                                    </div>
+                                ) : selectedItemId === 'tool-dwg-to-pdf' ? (
+                                    <div className="flex-1 overflow-hidden">
+                                        <React.Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-stone-300" /></div>}>
+                                            <DwgConverterPanel />
+                                        </React.Suspense>
+                                    </div>
+                                ) : selectedItemId === 'vision-processing' ? (
                                     <div className="flex-1 flex flex-col items-center justify-center text-center bg-stone-50 select-none">
                                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white border border-stone-200 mb-5 shadow-sm">
                                             <Eye size={26} className="text-stone-300" />

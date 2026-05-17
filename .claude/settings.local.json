@@ -7,7 +7,10 @@
       "Read(//c/Users/fatih.tekin/Desktop/süre hesaplama/src/**)",
       "Read(//c/Users/fatih.tekin/Desktop/süre hesaplama/**)",
       "Bash(sed -i \"s/bg-\\\\[#A01B1B\\\\]\\\\/\\\\[0\\\\.04\\\\]/bg-[#378ADD]\\\\/[0.05]/g\" MatrixView.jsx GanttView.jsx)",
-      "Bash(sed -i \"s/border-\\\\[#A01B1B\\\\] ring-1 ring-\\\\[#A01B1B\\\\]\\\\/20/border-[#378ADD] ring-1 ring-[#378ADD]\\\\/20/g\" CardsView.jsx)"
+      "Bash(sed -i \"s/border-\\\\[#A01B1B\\\\] ring-1 ring-\\\\[#A01B1B\\\\]\\\\/20/border-[#378ADD] ring-1 ring-[#378ADD]\\\\/20/g\" CardsView.jsx)",
+      "Read(//c/Program Files/Autodesk/**)",
+      "Read(//c/Program Files/Autodesk//**)",
+      "Bash(venv/Scripts/pip.exe install *)"
     ]
   },
   "enableAllProjectMcpServers": true,

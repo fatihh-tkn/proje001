@@ -36,6 +36,11 @@ export default defineConfig({
     include: [
       'three',
       'react-force-graph-3d',
+      'framer-motion',
+      'react',
+      'react-dom',
+      'zustand',
+      'lucide-react',
     ],
   },
   build: {
@@ -59,9 +64,7 @@ export default defineConfig({
       name: 'open-chrome-app',
       configureServer(server) {
         server.httpServer?.once('listening', () => {
-          setTimeout(() => {
-            exec('start chrome --app=http://localhost:5173');
-          }, 1000);
+          exec('start chrome --app=http://localhost:5173');
         });
       }
     },

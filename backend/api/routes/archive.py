@@ -1366,6 +1366,11 @@ class WatcherStatsRequest(BaseModel):
 def watcher_browse(mode: str = "dir"):
     """Yerel OS dosya/klasör seçici açar, seçilen yolu döner."""
     try:
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            pass
         import tkinter as tk
         from tkinter import filedialog
         root = tk.Tk()

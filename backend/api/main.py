@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from api.routes import chat, db, files, bridge, monitor, sql_explorer, archive, n8n, orchestrator, meetings, auth, embedding, egitim, settings, talepler, errors, zli_raporlar, global_chat
+from tools import API_ROUTERS as _TOOL_ROUTERS
 
 api_router = APIRouter()
 
@@ -28,3 +29,6 @@ api_router.include_router(talepler.router, prefix="/talepler", tags=["talepler"]
 api_router.include_router(errors.router, prefix="/errors", tags=["errors"])
 api_router.include_router(zli_raporlar.router, prefix="/zli-raporlar", tags=["zli_raporlar"])
 api_router.include_router(global_chat.router, prefix="/global-chat", tags=["global-chat"])
+
+for _prefix, _router, _tags in _TOOL_ROUTERS:
+    api_router.include_router(_router, prefix=_prefix, tags=_tags)

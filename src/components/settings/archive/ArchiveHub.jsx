@@ -29,10 +29,10 @@ export default function ArchiveHub() {
     const [activeTab, setActiveTab] = useState('documents');
 
     return (
-        <div className="flex flex-col h-full w-full bg-white font-sans overflow-hidden">
+        <div className="flex flex-col h-full w-full bg-stone-50 font-sans overflow-hidden">
 
             {/* ── Sekme Çubuğu ── */}
-            <div className="flex-none flex items-stretch border-b border-stone-200 bg-white px-2">
+            <div className="flex-none flex items-stretch border-b border-stone-200 bg-stone-50 px-2">
                 {TABS.map(({ id, label, icon: Icon }) => {
                     const active = activeTab === id;
                     return (

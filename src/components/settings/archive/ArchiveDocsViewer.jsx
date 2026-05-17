@@ -1134,10 +1134,10 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
             )}
 
             {/* ── SOL ANA PANEL ── */}
-            <div className={`flex flex-col flex-1 h-full bg-white transition-all duration-300 ${selectedDoc ? 'mr-[340px]' : ''}`}>
+            <div className={`flex flex-col flex-1 h-full bg-stone-50 transition-all duration-300 ${selectedDoc ? 'mr-[340px]' : ''}`}>
 
                 {/* ── HEADER ── */}
-                <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-stone-200 bg-white gap-3">
+                <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-stone-200 bg-stone-50 gap-3">
                     {/* Breadcrumb */}
                     <div className="flex items-center gap-1.5 text-[12px] overflow-hidden">
                         {currentFolderId && (
@@ -1210,11 +1210,11 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                         </div>
                         <div className="w-px h-5 bg-stone-200" />
                         <button onClick={() => setIsCreatingFolder(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 shadow-sm hover:bg-stone-50 text-stone-600 text-[11px] font-black rounded-lg transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 text-[11px] font-black rounded-lg transition-colors">
                             <Plus size={13} /> Klasör
                         </button>
                         <button onClick={handleUploadClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#378ADD] hover:bg-[#2A68AB] text-white text-[11px] font-black rounded-lg transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D44B4B] hover:bg-[#b93c3c] text-white text-[11px] font-black rounded-lg transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv,.bpmn" />
@@ -1222,7 +1222,7 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                 </div>
 
                 {/* ── İSTATİSTİK ŞERİDİ ── */}
-                <div className="flex-none px-5 py-1.5 flex items-center gap-5 bg-stone-50 border-b border-stone-100 text-[11px] text-stone-500">
+                <div className="flex-none px-5 py-2 flex items-center gap-5 bg-stone-50 border-b border-stone-200 text-[11px] text-stone-500">
                     <span className="flex items-center gap-1.5"><FileText size={12} className="text-stone-400" /> <b className="text-[#378ADD] font-black font-mono tabular-nums">{allDocs.length}</b> Dosya</span>
                     <span className="flex items-center gap-1.5">
                         <svg width={12} height={12} viewBox="0 0 64 64" fill="none">
@@ -1278,7 +1278,10 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                             {/* Klasörler */}
                             {folders.length > 0 && (
                                 <div className="mb-6">
-                                    <h3 className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] mb-3 px-1">Klasörler</h3>
+                                    <div className="flex items-center gap-3 mb-3 px-1">
+                                        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">Klasörler</span>
+                                        <div className="flex-1 h-px bg-stone-200" />
+                                    </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {isCreatingFolder && (
                                             <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
@@ -1318,7 +1321,7 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                                                         ${isSelected ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/20'
                                                             : isDragOver ? 'ring-1 ring-[var(--th-tab-active-bg)]/40 bg-[var(--th-tab-active-bg)]/5'
                                                                 : folder.havuz_turu === 'kullanici' ? 'hover:bg-[var(--th-tab-active-bg)]/5 border border-transparent'
-                                                                    : 'hover:bg-stone-200/50 border border-transparent'}`}
+                                                                    : 'hover:bg-white border border-transparent hover:border-stone-200 hover:shadow-sm'}`}
                                                     title={folder.havuz_turu === 'kullanici' ? `${folder.uploader || folder.filename}'in klasörü` : folder.filename}
                                                 >
                                                     <div onClick={(e) => toggleSelect(folder.id, e)}
@@ -1360,7 +1363,10 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                             {/* Dosyalar */}
                             {documents.length > 0 && (
                                 <div>
-                                    <h3 className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em] mb-3 px-1">Dosyalar</h3>
+                                    <div className="flex items-center gap-3 mb-3 px-1">
+                                        <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">Dosyalar</span>
+                                        <div className="flex-1 h-px bg-stone-200" />
+                                    </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {documents.map(doc => {
                                             const { Icon, color, bg, border } = getFileVisual(doc.file_type);
@@ -1378,7 +1384,7 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                                                     className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
                                                         ${selectedDoc?.id === doc.id ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/30'
                                                             : isSelected ? 'bg-[#378ADD]/5 ring-1 ring-[#378ADD]/20'
-                                                                : 'hover:bg-stone-200/50 border border-transparent'}`}
+                                                                : 'hover:bg-white border border-transparent hover:border-stone-200 hover:shadow-sm'}`}
                                                 >
                                                     <div onClick={(e) => toggleSelect(doc.id, e)}
                                                         className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
