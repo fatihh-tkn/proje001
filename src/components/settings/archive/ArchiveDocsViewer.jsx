@@ -1,75 +1,25 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import {
     PackageOpen, Folder, File, ChevronRight, Upload, Search,
     FileText, FileImage, FileSpreadsheet, FileCode, Film, Music,
-    Plus, Database, Trash2, FolderInput, Cpu, X,
+    Plus, Database, Trash2, FolderInput, X,
     CheckSquare, Square, ArrowUpDown, SlidersHorizontal, Edit2,
-    Check, Tag, MessageSquare, ExternalLink, Download, CornerLeftUp,
-    Mic, Loader2, AlertCircle, GripVertical, Users2
+    Check, Tag, MessageSquare, ExternalLink, Download,
+    CornerLeftUp, Mic, Loader2, AlertCircle, Users2
 } from 'lucide-react';
 import { useErrorStore } from '../../../store/errorStore';
 import { mutate, mutation } from '../../../api/client';
-
-/* ── Klasör İkonu ──────────────────────────────────────────────────── */
-function FolderIcon({ isUserFolder, uploaderName, size = 64 }) {
-    const initials = (uploaderName || '?')
-        .split(' ').filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
-
-    if (isUserFolder) {
-        return (
-            <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-                {/* Klasör gövdesi — SVG */}
-                <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-                    {/* arka gölge */}
-                    <rect x="6" y="22" width="52" height="36" rx="5" fill="var(--th-tab-active-bg)" opacity="0.12" />
-                    {/* alt kutu */}
-                    <rect x="4" y="24" width="56" height="34" rx="5"
-                        fill="var(--th-tab-active-bg)" opacity="0.18" />
-                    <rect x="4" y="24" width="56" height="34" rx="5"
-                        stroke="var(--th-tab-active-bg)" strokeWidth="1.5" strokeOpacity="0.5" />
-                    {/* üst tab */}
-                    <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z"
-                        fill="var(--th-tab-active-bg)" opacity="0.35" />
-                    {/* iç çizgiler (dosya simgesi) */}
-                    <line x1="16" y1="36" x2="34" y2="36" stroke="var(--th-tab-active-bg)" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
-                    <line x1="16" y1="42" x2="28" y2="42" stroke="var(--th-tab-active-bg)" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
-                </svg>
-                {/* Yükleyen avatarı */}
-                <div style={{
-                    position: 'absolute', bottom: 2, right: 0,
-                    width: 20, height: 20, borderRadius: '50%',
-                    background: 'var(--th-tab-active-bg)',
-                    border: '2px solid white',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 7, fontWeight: 700, color: 'white',
-                    letterSpacing: '0.03em',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                }}>
-                    {initials}
-                </div>
-            </div>
-        );
-    }
-
-    // Normal klasör — nötr, temiz
-    return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ flexShrink: 0 }}>
-            <rect x="6" y="22" width="52" height="36" rx="5" fill="#94a3b8" opacity="0.10" />
-            <rect x="4" y="24" width="56" height="34" rx="5" fill="#cbd5e1" opacity="0.6" />
-            <rect x="4" y="24" width="56" height="34" rx="5" stroke="#94a3b8" strokeWidth="1.5" strokeOpacity="0.5" />
-            <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z"
-                fill="#94a3b8" opacity="0.5" />
-            <line x1="16" y1="36" x2="34" y2="36" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
-            <line x1="16" y1="42" x2="28" y2="42" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
-        </svg>
-    );
-}
 import { useWorkspaceStore } from '../../../store/workspaceStore';
-import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
+import { useArchiveChangedListener } from '../../../utils/archiveEvents';
 import { FileCard } from '../../ui/file-card-collections';
 
-// ── YARDIMCI: Dosya türüne göre ikon ve renk
+// Parçalanmış alt modüller
+import ContextMenu from './archiveDocs/ContextMenu';
+import { useArchiveActions } from './archiveDocs/useArchiveActions';
+import { FolderNode, FileNode } from './archiveDocs/TreeNode';
+
+/* ── YARDIMCI: Dosya türüne göre ikon ve renk ─────────────────────────────── */
 const getFileVisual = (fileType) => {
     const t = (fileType || '').toLowerCase();
     if (t === 'pdf') return { Icon: FileText, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' };
@@ -84,11 +34,8 @@ const getFileVisual = (fileType) => {
     return { Icon: File, color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100' };
 };
 
-// Sadece arşiv modunda olan formatlar
 const ARCHIVE_ONLY_TYPES = ['xls', 'xlsx', 'csv'];
 const isArchiveOnly = (fileType) => ARCHIVE_ONLY_TYPES.includes((fileType || '').toLowerCase());
-
-
 const isImage = (t) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((t || '').toLowerCase());
 const isPdf = (t) => (t || '').toLowerCase() === 'pdf';
 const isAudio = (t) => ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma'].includes((t || '').toLowerCase());
@@ -99,64 +46,6 @@ const formatBytes = (bytes) => {
     const k = 1024, dm = 1, sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-};
-
-// ── SAĞ TIK CONTEXT MENU
-const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove, onAccess, isAdmin }) => {
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [onClose]);
-
-    useLayoutEffect(() => {
-        if (!ref.current) return;
-        const rect = ref.current.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        if (x + rect.width > vw) ref.current.style.left = Math.max(8, vw - rect.width - 8) + 'px';
-        if (y + rect.height > vh) ref.current.style.top = Math.max(8, vh - rect.height - 8) + 'px';
-    }, [x, y]);
-
-    return ReactDOM.createPortal(
-        <div
-            ref={ref}
-            className="fixed z-[9999] bg-white border border-stone-200 rounded-lg shadow-xl py-1 w-48"
-            style={{ top: y, left: x }}
-        >
-            <button onClick={() => { onRename(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                <Edit2 size={13} className="text-stone-400" /> Yeniden Adlandır
-            </button>
-            <button onClick={() => { onMove(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                <FolderInput size={13} className="text-stone-400" /> Klasöre Taşı
-            </button>
-            {item.file_type !== 'folder' && (
-                <button onClick={onClose}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                    <Cpu size={13} className="text-teal-500" /> Vektörleştir
-                </button>
-            )}
-            {isAdmin && (
-                <>
-                    <div className="border-t border-stone-100 my-1" />
-                    <button onClick={() => { onAccess(item); onClose(); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-indigo-600 hover:bg-indigo-50 transition-colors">
-                        <Users2 size={13} /> Erişim Yönetimi
-                    </button>
-                </>
-            )}
-            <div className="border-t border-stone-100 my-1" />
-            <button onClick={() => { onDelete([item.id]); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors">
-                <Trash2 size={13} /> Sil
-            </button>
-        </div>,
-        document.body
-    );
 };
 
 // Kullanıcı avatarı için sabit renk paleti (isim hash'ine göre)
@@ -170,7 +59,7 @@ const USER_COLORS = [
 ];
 const getUserColor = (id) => USER_COLORS[(id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % USER_COLORS.length];
 
-// ── ERİŞİM YÖNETİMİ MODAL
+/* ── ERİŞİM YÖNETİMİ MODAL ─────────────────────────────────────────────────── */
 const AccessModal = ({ item, onClose, onSaved }) => {
     const [data, setData] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -183,7 +72,6 @@ const AccessModal = ({ item, onClose, onSaved }) => {
             .then(d => {
                 setData(d);
                 const izinliler = d.izin_verilen_kullanicilar || [];
-                // Sistem dosyası ve henüz erişim listesi belirlenmemişse → herkese açık (tümü seçili)
                 const baslangicSecili = (d.havuz_turu === 'sistem' && izinliler.length === 0)
                     ? new Set((d.tum_kullanicilar || []).map(u => u.id))
                     : new Set(izinliler);
@@ -218,9 +106,7 @@ const AccessModal = ({ item, onClose, onSaved }) => {
 
     return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9500] flex items-center justify-center" onClick={onClose}>
-            {/* Backdrop */}
             <div className="absolute inset-0 bg-stone-900/30 backdrop-blur-[2px]" />
-
             <div
                 className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] w-[420px] overflow-hidden border border-stone-200/80"
                 onClick={e => e.stopPropagation()}
@@ -241,8 +127,6 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                             <X size={14} />
                         </button>
                     </div>
-
-                    {/* Aktif erişim özeti */}
                     <div className="mt-4 flex items-center gap-2">
                         <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">Erişim Açık</span>
                         <div className="flex items-center gap-1">
@@ -269,10 +153,7 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                         </div>
                     </div>
                 </div>
-
-                {/* Ayırıcı */}
                 <div className="h-px bg-stone-100 mx-5" />
-
                 {/* Arama */}
                 <div className="px-5 py-3">
                     <div className="flex items-center gap-2 px-3 py-2 bg-stone-50 rounded-lg border border-stone-200 focus-within:border-stone-300 focus-within:bg-white transition-colors">
@@ -287,7 +168,6 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                         />
                     </div>
                 </div>
-
                 {/* Kullanıcı listesi */}
                 <div className="px-3 pb-3 max-h-56 overflow-y-auto flex flex-col gap-0.5">
                     {!data ? (
@@ -304,30 +184,15 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                         const checked = selected.has(u.id);
                         const clr = getUserColor(u.id);
                         const initials = (u.tam_ad || '?').split(' ').filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
-
                         return (
-                            <button
-                                key={u.id}
-                                onClick={() => !isOwner && toggle(u.id)}
-                                disabled={isOwner}
+                            <button key={u.id} onClick={() => !isOwner && toggle(u.id)} disabled={isOwner}
                                 className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-left w-full transition-all duration-150
-                                    ${isOwner
-                                        ? 'cursor-default opacity-70'
-                                        : checked
-                                            ? 'bg-stone-50 ring-1 ring-stone-200'
-                                            : 'hover:bg-stone-50'
-                                    }`}
+                                    ${isOwner ? 'cursor-default opacity-70' : checked ? 'bg-stone-50 ring-1 ring-stone-200' : 'hover:bg-stone-50'}`}
                             >
-                                {/* Avatar */}
                                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ring-2 ring-white"
-                                    style={isOwner
-                                        ? { background: '#EF9F2720', color: '#C17D10' }
-                                        : { background: clr.bg, color: clr.text }
-                                    }>
+                                    style={isOwner ? { background: '#EF9F2720', color: '#C17D10' } : { background: clr.bg, color: clr.text }}>
                                     {initials}
                                 </div>
-
-                                {/* İsim & e-posta */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5">
                                         <span className="text-[12px] font-medium text-stone-800 truncate">{u.tam_ad}</span>
@@ -340,13 +205,9 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                                     </div>
                                     <div className="text-[10px] text-stone-400 truncate">{u.eposta}</div>
                                 </div>
-
-                                {/* Toggle */}
                                 {!isOwner && (
-                                    <div className={`shrink-0 w-8 h-4 rounded-full relative transition-colors duration-200
-                                        ${checked ? 'bg-[#378ADD]' : 'bg-stone-200 group-hover:bg-stone-300'}`}>
-                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-200
-                                            ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+                                    <div className={`shrink-0 w-8 h-4 rounded-full relative transition-colors duration-200 ${checked ? 'bg-[#378ADD]' : 'bg-stone-200 group-hover:bg-stone-300'}`}>
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-200 ${checked ? 'left-[18px]' : 'left-0.5'}`} />
                                     </div>
                                 )}
                                 {isOwner && (
@@ -358,30 +219,20 @@ const AccessModal = ({ item, onClose, onSaved }) => {
                         );
                     })}
                 </div>
-
                 {/* Footer */}
                 <div className="px-5 py-3.5 border-t border-stone-100 bg-stone-50/60 flex items-center justify-between">
                     <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">
                         {activeCount} / {data?.tum_kullanicilar.length || 0} kullanıcı aktif
                     </span>
                     <div className="flex items-center gap-2">
-                        <button onClick={onClose}
-                            className="px-3 py-1.5 text-[11px] font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors">
-                            İptal
-                        </button>
+                        <button onClick={onClose} className="px-3 py-1.5 text-[11px] font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors">İptal</button>
                         <button onClick={save} disabled={saving}
                             className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold text-white rounded-lg transition-all disabled:opacity-50"
                             style={{ background: '#378ADD' }}>
                             {saving ? (
-                                <>
-                                    <div className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                                    Kaydediliyor
-                                </>
+                                <><div className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />Kaydediliyor</>
                             ) : (
-                                <>
-                                    <Check size={11} strokeWidth={3} />
-                                    Kaydet
-                                </>
+                                <><Check size={11} strokeWidth={3} />Kaydet</>
                             )}
                         </button>
                     </div>
@@ -392,7 +243,7 @@ const AccessModal = ({ item, onClose, onSaved }) => {
     );
 };
 
-// ── TAŞI MODAL
+/* ── TAŞI MODAL ─────────────────────────────────────────────────────────────── */
 const MoveModal = ({ item, folders, onClose, onMove }) => {
     const [targetId, setTargetId] = useState(null);
     return (
@@ -403,17 +254,13 @@ const MoveModal = ({ item, folders, onClose, onMove }) => {
                     <button onClick={onClose} className="text-stone-400 hover:text-stone-600"><X size={16} /></button>
                 </div>
                 <div className="p-4 max-h-64 overflow-y-auto flex flex-col gap-1">
-                    <button
-                        onClick={() => setTargetId(null)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === null ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}
-                    >
+                    <button onClick={() => setTargetId(null)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === null ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}>
                         <Folder size={14} /> Kök Dizin
                     </button>
                     {folders.filter(f => f.id !== item.id).map(f => (
-                        <button key={f.id}
-                            onClick={() => setTargetId(f.id)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === f.id ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}
-                        >
+                        <button key={f.id} onClick={() => setTargetId(f.id)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${targetId === f.id ? 'bg-[#378ADD]/10 text-[#378ADD]' : 'hover:bg-stone-50 text-stone-700'}`}>
                             <Folder size={14} className="text-amber-500" /> {f.filename}
                         </button>
                     ))}
@@ -427,7 +274,7 @@ const MoveModal = ({ item, folders, onClose, onMove }) => {
     );
 };
 
-// ── DETAY / ÖNİZLEME PANELİ
+/* ── DETAY / ÖNİZLEME PANELİ ───────────────────────────────────────────────── */
 const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     const [tags, setTags] = useState(doc?.etiketler || []);
     const [tagInput, setTagInput] = useState('');
@@ -436,7 +283,6 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     const [saving, setSaving] = useState(false);
     const [txFullText, setTxFullText] = useState('');
     const [txLoading, setTxLoading] = useState(false);
-    const addToast = useErrorStore((s) => s.addToast);
 
     useEffect(() => {
         setTags(doc?.etiketler || []);
@@ -475,9 +321,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                 { kind: 'create', subject: 'Etiket', detail: tag.trim() }
             );
             onTagUpdate?.(doc.id, newTags);
-        } catch {
-            setTags(tags);
-        }
+        } catch { setTags(tags); }
     };
 
     const removeTag = async (tag) => {
@@ -489,9 +333,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                 { kind: 'delete', subject: 'Etiket', detail: tag }
             );
             onTagUpdate?.(doc.id, newTags);
-        } catch {
-            setTags(tags);
-        }
+        } catch { setTags(tags); }
     };
 
     const saveDesc = async () => {
@@ -507,7 +349,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
         setDescEditing(false);
     };
 
-    const { Icon, color, bg } = getFileVisual(doc.file_type);
+    const { bg } = getFileVisual(doc.file_type);
     const previewUrl = `/api/archive/file/${doc.id}`;
 
     return (
@@ -515,16 +357,13 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
             className="absolute top-0 right-0 w-[340px] h-full bg-white border-l border-stone-200 shadow-xl flex flex-col z-50 overflow-hidden"
             style={{ transition: 'right 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
-            {/* Header */}
             <div className="flex-none px-4 py-3 flex items-center justify-between border-b border-stone-200 bg-white">
                 <h3 className="text-[13px] font-black text-stone-800 truncate">{doc.filename}</h3>
                 <button onClick={onClose} className="p-1 hover:bg-stone-200 rounded-full text-stone-500 shrink-0 ml-2">
                     <X size={15} />
                 </button>
             </div>
-
             <div className="flex-1 overflow-y-auto">
-                {/* Önizleme Alanı */}
                 <div className="border-b border-stone-100">
                     {isImage(doc.file_type) ? (
                         <img src={previewUrl} alt={doc.filename} className="w-full max-h-48 object-contain bg-stone-50 p-4" />
@@ -533,18 +372,13 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                     ) : (
                         <div className={`flex flex-col items-center justify-center h-32 ${bg}`}>
                             <div className="scale-[1.15] mb-2 opacity-90"><FileCard formatFile={doc.file_type || ''} /></div>
-                            <a
-                                href={previewUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-1 flex items-center gap-1 text-[11px] text-[#378ADD] hover:underline"
-                            >
+                            <a href={previewUrl} target="_blank" rel="noreferrer"
+                                className="mt-1 flex items-center gap-1 text-[11px] text-[#378ADD] hover:underline">
                                 <ExternalLink size={11} /> Dosyayı Aç
                             </a>
                         </div>
                     )}
                 </div>
-
                 <div className="p-4 flex flex-col gap-4">
                     {/* Metadata */}
                     <div className="flex flex-col gap-2 text-[12px]">
@@ -553,9 +387,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                             ['Boyut', formatBytes(doc.file_size)],
                             ['Yükleyen', doc.uploader],
                             ['Tarih', new Date(doc.created_at).toLocaleString('tr')],
-                            ['Durum', isArchiveOnly(doc.file_type)
-                                ? '📁 Yalnızca Arşiv'
-                                : doc.is_vectorized ? '✅ Vektörleşmiş' : '📁 Arşivde'],
+                            ['Durum', isArchiveOnly(doc.file_type) ? '📁 Yalnızca Arşiv' : doc.is_vectorized ? '✅ Vektörleşmiş' : '📁 Arşivde'],
                             ['Chunk', doc.total_chunks > 0 ? `${doc.total_chunks} parça` : '-'],
                         ].map(([k, v]) => (
                             <div key={k} className="flex justify-between border-b border-stone-50 pb-1.5">
@@ -563,8 +395,6 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 <span className="text-stone-700 font-medium text-right">{v}</span>
                             </div>
                         ))}
-
-                        {/* Excel/CSV uyarı notu */}
                         {isArchiveOnly(doc.file_type) && (
                             <div className="mt-1 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
                                 <span className="text-amber-500 text-[16px] shrink-0">⚠️</span>
@@ -574,9 +404,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 </p>
                             </div>
                         )}
-
                     </div>
-
                     {/* Etiketler */}
                     <div>
                         <div className="flex items-center gap-1 mb-2">
@@ -587,30 +415,20 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                             {tags.map(tag => (
                                 <span key={tag} className="inline-flex items-center gap-1 bg-stone-100 text-stone-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
                                     {tag}
-                                    <button onClick={() => removeTag(tag)} className="text-stone-400 hover:text-red-500 transition-colors">
-                                        <X size={10} />
-                                    </button>
+                                    <button onClick={() => removeTag(tag)} className="text-stone-400 hover:text-red-500 transition-colors"><X size={10} /></button>
                                 </span>
                             ))}
                         </div>
                         <div className="flex gap-1.5">
-                            <input
-                                type="text"
-                                value={tagInput}
-                                onChange={e => setTagInput(e.target.value)}
+                            <input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') addTag(tagInput); }}
                                 placeholder="Etiket ekle..."
-                                className="flex-1 text-[11px] border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 bg-white"
-                            />
-                            <button
-                                onClick={() => addTag(tagInput)}
-                                className="px-2 py-1.5 bg-[#378ADD] text-white rounded-lg text-[11px] hover:bg-[#2A68AB]"
-                            >
+                                className="flex-1 text-[11px] border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 bg-white" />
+                            <button onClick={() => addTag(tagInput)} className="px-2 py-1.5 bg-[#378ADD] text-white rounded-lg text-[11px] hover:bg-[#2A68AB]">
                                 <Plus size={13} />
                             </button>
                         </div>
                     </div>
-
                     {/* Açıklama */}
                     <div>
                         <div className="flex items-center gap-1 mb-2">
@@ -619,14 +437,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                         </div>
                         {descEditing ? (
                             <div className="flex flex-col gap-1.5">
-                                <textarea
-                                    autoFocus
-                                    value={desc}
-                                    onChange={e => setDesc(e.target.value)}
-                                    rows={3}
+                                <textarea autoFocus value={desc} onChange={e => setDesc(e.target.value)} rows={3}
                                     className="w-full text-[12px] border border-stone-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20"
-                                    placeholder="Bu dosya hakkında not ekleyin..."
-                                />
+                                    placeholder="Bu dosya hakkında not ekleyin..." />
                                 <div className="flex gap-1.5">
                                     <button onClick={saveDesc} disabled={saving}
                                         className="flex items-center gap-1 px-2.5 py-1 bg-[#378ADD] text-white rounded-lg text-[11px] font-black hover:bg-[#2A68AB]">
@@ -639,16 +452,13 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                                 </div>
                             </div>
                         ) : (
-                            <div
-                                onClick={() => setDescEditing(true)}
-                                className="min-h-[48px] text-[12px] text-stone-600 bg-stone-50 rounded-md px-2.5 py-2 cursor-text border border-transparent hover:border-stone-200 transition-colors"
-                            >
+                            <div onClick={() => setDescEditing(true)}
+                                className="min-h-[48px] text-[12px] text-stone-600 bg-stone-50 rounded-md px-2.5 py-2 cursor-text border border-transparent hover:border-stone-200 transition-colors">
                                 {desc || <span className="text-stone-300 italic">Açıklama eklemek için tıklayın...</span>}
                             </div>
                         )}
                     </div>
-
-                    {/* Transkripsiyon Bölümü — ses/video dosyaları için */}
+                    {/* Transkripsiyon Bölümü */}
                     {(isAudio(doc.file_type) || isVideo(doc.file_type)) && (() => {
                         const meta = doc.meta || {};
                         const txStatus = meta.transcription_status;
@@ -669,75 +479,52 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
 
                         return (
                             <div className="flex flex-col gap-2">
-                                {/* Başlık + İndir Butonu */}
                                 <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-1">
                                         <Mic size={12} className="text-stone-400" />
                                         <span className="text-[9px] font-black text-stone-400 uppercase tracking-[0.18em]">Metin Dökümü</span>
                                     </div>
                                     {txStatus === 'done' && (txFullText || meta.transcription_raw_text) && (
-                                        <button
-                                            onClick={handleDownload}
-                                            title="Transkripti TXT olarak indir"
-                                            className="flex items-center gap-1 px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-md text-[10px] font-medium transition-colors"
-                                        >
+                                        <button onClick={handleDownload} title="Transkripti TXT olarak indir"
+                                            className="flex items-center gap-1 px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-md text-[10px] font-medium transition-colors">
                                             <Download size={11} /> TXT İndir
                                         </button>
                                     )}
                                 </div>
-
-                                {/* Tam metin kutusu */}
                                 {txStatus === 'done' && txFullText && !txLoading && (
                                     <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg max-h-48 overflow-y-auto">
-                                        <p className="text-[11px] text-stone-700 whitespace-pre-wrap leading-relaxed font-mono">
-                                            {txFullText}
-                                        </p>
+                                        <p className="text-[11px] text-stone-700 whitespace-pre-wrap leading-relaxed font-mono">{txFullText}</p>
                                     </div>
                                 )}
-
-                                {/* Durum kartı */}
-                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
+                                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border shadow-sm ${
+                                    txStatus === 'done' ? 'bg-teal-50 border-teal-200' :
                                     txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-50 border-amber-200' :
-                                        txStatus === 'failed' ? 'bg-red-50 border-red-200' :
-                                            'bg-stone-50 border-stone-200'
-                                    }`}>
-                                    <div className={`shrink-0 p-1.5 rounded-lg ${txStatus === 'done' ? 'bg-teal-100' :
+                                    txStatus === 'failed' ? 'bg-red-50 border-red-200' : 'bg-stone-50 border-stone-200'
+                                }`}>
+                                    <div className={`shrink-0 p-1.5 rounded-lg ${
+                                        txStatus === 'done' ? 'bg-teal-100' :
                                         txStatus === 'processing' || txStatus === 'pending' ? 'bg-amber-100' :
-                                            txStatus === 'failed' ? 'bg-red-100' : 'bg-stone-100'
-                                        }`}>
-                                        {txLoading
-                                            ? <Loader2 size={15} className="animate-spin text-amber-500" />
-                                            : txStatus === 'done'
-                                                ? <Mic size={15} className="text-teal-600" />
-                                                : txStatus === 'processing' || txStatus === 'pending'
-                                                    ? <Loader2 size={15} className="animate-spin text-amber-500" />
-                                                    : txStatus === 'failed'
-                                                        ? <AlertCircle size={15} className="text-red-500" />
-                                                        : <Mic size={15} className="text-stone-400" />
-                                        }
+                                        txStatus === 'failed' ? 'bg-red-100' : 'bg-stone-100'
+                                    }`}>
+                                        {txLoading ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                            : txStatus === 'done' ? <Mic size={15} className="text-teal-600" />
+                                            : txStatus === 'processing' || txStatus === 'pending' ? <Loader2 size={15} className="animate-spin text-amber-500" />
+                                            : txStatus === 'failed' ? <AlertCircle size={15} className="text-red-500" />
+                                            : <Mic size={15} className="text-stone-400" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[11px] font-semibold text-stone-800 truncate">
                                             {txStatus === 'done' ? 'Transkript hazır' :
-                                                txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
-                                                    txStatus === 'failed' ? 'Transkripsiyon başarısız' :
-                                                        'Transkript yok'}
+                                             txStatus === 'processing' || txStatus === 'pending' ? 'Transkripsiyon devam ediyor' :
+                                             txStatus === 'failed' ? 'Transkripsiyon başarısız' : 'Transkript yok'}
                                         </p>
                                         <p className="text-[10px] mt-0.5 truncate">
-                                            {txLoading
-                                                ? <span className="text-teal-500">Transkript yükleniyor…</span>
-                                                : txStatus === 'done' && txFullText
-                                                    ? <span className="text-teal-600 font-medium">
-                                                        {txLang?.toUpperCase()}{txChunkCount ? ` · ${txChunkCount} parça` : ''} · {txFullText.length.toLocaleString('tr')} karakter
-                                                    </span>
-                                                    : txStatus === 'done' && !txFullText
-                                                        ? <span className="text-stone-400">Transkript metni bulunamadı</span>
-                                                        : txStatus === 'failed'
-                                                            ? <span className="text-red-500">İşlem sırasında hata oluştu</span>
-                                                            : txStatus === 'processing' || txStatus === 'pending'
-                                                                ? <span className="text-amber-600">İşleniyor…</span>
-                                                                : <span className="text-stone-400">Henüz transkript oluşturulmadı</span>
-                                            }
+                                            {txLoading ? <span className="text-teal-500">Transkript yükleniyor…</span>
+                                                : txStatus === 'done' && txFullText ? <span className="text-teal-600 font-medium">{txLang?.toUpperCase()}{txChunkCount ? ` · ${txChunkCount} parça` : ''} · {txFullText.length.toLocaleString('tr')} karakter</span>
+                                                : txStatus === 'done' && !txFullText ? <span className="text-stone-400">Transkript metni bulunamadı</span>
+                                                : txStatus === 'failed' ? <span className="text-red-500">İşlem sırasında hata oluştu</span>
+                                                : txStatus === 'processing' || txStatus === 'pending' ? <span className="text-amber-600">İşleniyor…</span>
+                                                : <span className="text-stone-400">Henüz transkript oluşturulmadı</span>}
                                         </p>
                                     </div>
                                 </div>
@@ -746,14 +533,9 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
                     })()}
                 </div>
             </div>
-
-            {/* Footer / İndir Butonu */}
             <div className="flex-none p-4 border-t border-stone-100 bg-white">
-                <a
-                    href={previewUrl}
-                    download={doc.filename}
-                    className="flex flex-1 items-center justify-center gap-2 w-full py-2 bg-stone-800 hover:bg-stone-700 text-white rounded-lg text-[12px] font-medium transition-colors"
-                >
+                <a href={previewUrl} download={doc.filename}
+                    className="flex flex-1 items-center justify-center gap-2 w-full py-2 bg-stone-800 hover:bg-stone-700 text-white rounded-lg text-[12px] font-medium transition-colors">
                     <Download size={14} /> Dosyayı İndir
                 </a>
             </div>
@@ -761,7 +543,7 @@ const DetailPanel = ({ doc, onClose, onTagUpdate, onDescUpdate }) => {
     );
 };
 
-// ── ANA BİLEŞEN
+/* ── ANA BİLEŞEN ────────────────────────────────────────────────────────────── */
 export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
     const currentUser = useWorkspaceStore(state => state.currentUser);
     const [items, setItems] = useState([]);
@@ -770,24 +552,11 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedDoc, setSelectedDoc] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
-
-    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-    const [newFolderName, setNewFolderName] = useState('');
-
     const [filterType, setFilterType] = useState(defaultFilter);
     const [sortBy, setSortBy] = useState('newest');
-
     const [ctxMenu, setCtxMenu] = useState(null);
-    const [renameItem, setRenameItem] = useState(null);
-    const [renameValue, setRenameValue] = useState('');
-    const [moveItem, setMoveItem] = useState(null);
-    const [accessItem, setAccessItem] = useState(null);
-    const isAdmin = currentUser?.super || false;
-
-    // Drag state
     const [dragOverFolder, setDragOverFolder] = useState(null);
-
-    const fileInputRef = useRef(null);
+    const isAdmin = currentUser?.super || false;
 
     const fetchArchive = useCallback(async () => {
         setLoading(true);
@@ -807,6 +576,32 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
 
     useEffect(() => { fetchArchive(); }, [fetchArchive]);
     useArchiveChangedListener(fetchArchive);
+
+    const {
+        isCreatingFolder, setIsCreatingFolder,
+        newFolderName, setNewFolderName,
+        handleCreateFolder,
+        fileInputRef,
+        handleUploadClick,
+        handleFileChange,
+        handleBatchDelete,
+        renameItem, setRenameItem,
+        renameValue, setRenameValue,
+        handleRename,
+        handleMove,
+        handleBatchMove,
+        moveItem, setMoveItem,
+        accessItem, setAccessItem,
+    } = useArchiveActions({
+        fetchArchive,
+        currentFolderId,
+        currentUser,
+        selectedIds,
+        setSelectedIds,
+        selectedDoc,
+        setSelectedDoc,
+        setLoading,
+    });
 
     const getFolderPath = (folderId) => {
         const path = [];
@@ -851,215 +646,64 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
     const folders = currentItems.filter(i => i.file_type === 'folder');
     const documents = currentItems.filter(i => i.file_type !== 'folder');
 
-    // İstatistikler için medya harici dokümanları hesapla
     const allDocs = items.filter(i => {
         if (i.file_type === 'folder') return false;
         const isMedia = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'mp4', 'avi', 'mov', 'webm'].includes((i.file_type || '').toLowerCase());
         return !isMedia;
     });
-
     const allFolders = items.filter(i => i.file_type === 'folder');
     const totalSize = allDocs.reduce((s, d) => s + (d.file_size || 0), 0);
     const vectorCount = allDocs.filter(d => d.is_vectorized).length;
-
-    const handleCreateFolder = async () => {
-        if (!newFolderName.trim()) return;
-        try {
-            await mutate.create('/api/archive/create-folder',
-                { name: newFolderName, parent_id: currentFolderId },
-                { subject: 'Klasör', detail: newFolderName }
-            );
-            fetchArchive();
-            setIsCreatingFolder(false);
-            setNewFolderName('');
-        } catch { /* toast atıldı */ }
-    };
-
-    const handleUploadClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
-    };
-    const handleFileChange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const ext = file.name.split('.').pop()?.toLowerCase() || '';
-        const kategori = ext === 'bpmn' ? 'surecler' : 'belgeler';
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('kategori', kategori);
-        if (currentFolderId) formData.append('folder_id', currentFolderId);
-        if (currentUser?.id) formData.append('user_id', currentUser.id);
-        setLoading(true);
-        try {
-            await mutate.upload('/api/archive/direct-upload', formData, {
-                subject: 'Belge', detail: file.name, rawBody: true, showLoading: true,
-            });
-        } catch { /* toast atıldı */ }
-        fetchArchive();
-    };
 
     const toggleSelect = (id, e) => {
         e.stopPropagation();
         setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
     };
 
-    const handleBatchDelete = async (ids) => {
-        if (!window.confirm(`${ids.length} öğe silinecek. Emin misiniz?`)) return;
-        let data;
-        try {
-            data = await mutate.remove('/api/archive/delete',
-                { ids },
-                {
-                    subject: ids.length > 1 ? `${ids.length} öğe` : 'Öğe',
-                    silentSuccess: true, // partial uyarı varsa onu özel toast'la ver
-                }
-            );
-        } catch {
-            return; // mutate zaten error toast attı
-        }
-        if (data?.status === 'partial') {
-            useErrorStore.getState().addToast({
-                type: 'info',
-                message: `Kısmi silme: ${data.uyarilar?.join(' · ') || 'Bazı öğeler silinemedi.'}`,
-                copyable: true,
-            });
-        } else {
-            useErrorStore.getState().addToast({
-                type: 'success',
-                message: ids.length > 1 ? `${ids.length} öğe silindi.` : 'Öğe silindi.',
-            });
-        }
-        setSelectedIds(new Set());
-        if (selectedDoc && ids.includes(selectedDoc.id)) setSelectedDoc(null);
-        fetchArchive();
-        dispatchArchiveChanged();
-    };
-
-    const handleRename = async () => {
-        if (!renameValue.trim()) return;
-        try {
-            await mutate.rename('/api/archive/rename',
-                { kimlik: renameItem.id, yeni_ad: renameValue },
-                { subject: 'Öğe', detail: renameValue }
-            );
-            setRenameItem(null);
-            fetchArchive();
-        } catch { /* toast atıldı */ }
-    };
-
-    const handleMove = async (docId, targetFolderId) => {
-        try {
-            await mutate.move('/api/archive/move',
-                { belge_kimlik: docId, hedef_klasor_kimlik: targetFolderId },
-                { subject: 'Öğe' }
-            );
-            fetchArchive();
-        } catch { /* toast atıldı */ }
-    };
-
-    const handleBatchMove = async (docIds, targetFolderId) => {
-        setLoading(true);
-        let okCount = 0;
-        for (const id of docIds) {
-            try {
-                await mutate.move('/api/archive/move',
-                    { belge_kimlik: id, hedef_klasor_kimlik: targetFolderId },
-                    { silent: true } // toplu işlem — tek özet toast aşağıda
-                );
-                okCount++;
-            } catch { /* devam */ }
-        }
-        if (okCount > 0) {
-            useErrorStore.getState().addToast({
-                type: 'success',
-                message: `${okCount} öğe taşındı.`,
-            });
-        }
-        if (okCount < docIds.length) {
-            useErrorStore.getState().addToast({
-                type: 'error',
-                message: `${docIds.length - okCount} öğe taşınamadı.`,
-            });
-        }
-        fetchArchive();
-        setSelectedIds(new Set());
-    };
-
     // Drag-and-drop handlers
     const handleDragStart = (e, item) => {
         let dragIds = [item.id];
-        // Seçim modundaysak ve sürüklenen öğe seçili gruptaysa, tüm grubu sürükle
-        if (selectedIds.has(item.id) && selectedIds.size > 1) {
-            dragIds = Array.from(selectedIds);
-        }
+        if (selectedIds.has(item.id) && selectedIds.size > 1) dragIds = Array.from(selectedIds);
 
-        e.dataTransfer.setData('application/x-archive-item', JSON.stringify({
-            type: 'archive_items',
-            ids: dragIds
-        }));
-        e.dataTransfer.setData('itemId', item.id); // Geriye dönük uyumluluk (Fallback)
+        e.dataTransfer.setData('application/x-archive-item', JSON.stringify({ type: 'archive_items', ids: dragIds }));
+        e.dataTransfer.setData('itemId', item.id);
 
-        // Dışarıya Sürükleme (Native OS Drag-out) Desteği — Chrome/Edge
-        // Sadece tekil fiziksel dosya kopyalamasına izin ver (klasörler hariç)
         if (item.file_type && item.file_type !== 'folder') {
             const origin = window.location.origin;
-            // /download/ endpoint'i Content-Disposition: attachment döndürür
-            // Bu sayede OS dosyayı masaüstüne / mail ekine / WA'ya kopyalayabilir
             const downloadUrl = `${origin}/api/archive/download/${item.id}`;
             e.dataTransfer.setData('DownloadURL', `application/octet-stream:${item.filename}:${downloadUrl}`);
         }
-
-        // copyLink: hem içeri taşıma (copy) hem dışarı sürükleme (link) sinyali verir
         e.dataTransfer.effectAllowed = 'copyLink';
 
-        // Ghost (Hayalet) görsel — çok dosyada stack, tek dosyada basit kart
         const ghost = document.createElement('div');
-        ghost.style.position = 'absolute';
-        ghost.style.top = '-1000px';
-        ghost.style.left = '-1000px';
-        ghost.style.pointerEvents = 'none';
+        ghost.style.cssText = 'position:absolute;top:-1000px;left:-1000px;pointer-events:none;';
 
         if (dragIds.length > 1) {
-            // Stack animasyonu
-            let stackHtml = `<div style="position:relative; width:130px; height:130px;">`;
+            let stackHtml = `<div style="position:relative;width:130px;height:130px;">`;
             const displayCount = Math.min(dragIds.length, 4);
             for (let i = 0; i < displayCount; i++) {
                 const rotation = i * 6 - 5;
                 const offset = i * 4;
                 const zIndex = 10 - i;
-                stackHtml += `
-                    <div style="position:absolute; top:${offset}px; left:${offset}px; width:90px; height:100px; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); z-index:${zIndex}; transform:rotate(${rotation}deg); display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                        ${i === 0
-                        ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>`
-                        : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
-                    </div>`;
+                stackHtml += `<div style="position:absolute;top:${offset}px;left:${offset}px;width:90px;height:100px;background:white;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);z-index:${zIndex};transform:rotate(${rotation}deg);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    ${i === 0 ? `<div style="font-size:10px;font-weight:bold;color:#334155;text-align:center;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${item.filename}</div>` : `<div style="width:30px;height:3px;background:#e2e8f0;border-radius:2px;margin-bottom:4px;"></div><div style="width:20px;height:3px;background:#e2e8f0;border-radius:2px;"></div>`}
+                </div>`;
             }
-            stackHtml += `
-                <div style="position:absolute;bottom:0;right:0;background:#378ADD;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(55,138,221,0.4);border:2px solid white;">
-                    ${dragIds.length} Dosya
-                </div>
-            </div>`;
+            stackHtml += `<div style="position:absolute;bottom:0;right:0;background:#378ADD;color:white;font-size:11px;font-weight:bold;border-radius:999px;padding:3px 10px;z-index:20;box-shadow:0 2px 5px rgba(55,138,221,0.4);border:2px solid white;">${dragIds.length} Dosya</div></div>`;
             ghost.innerHTML = stackHtml;
             document.body.appendChild(ghost);
             e.dataTransfer.setDragImage(ghost, 65, 65);
         } else if (item.file_type && item.file_type !== 'folder') {
-            // Tek dosya — dışarı sürükleme göstergeli kart
-            ghost.innerHTML = `
-                <div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;box-shadow:0 8px 20px rgba(0,0,0,0.15);min-width:160px;max-width:220px;">
-                    <div style="font-size:22px;flex-shrink:0;">📄</div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-size:11px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.filename}</div>
-                        <div style="font-size:10px;color:#10b981;font-weight:500;margin-top:2px;">↗ Dışarıya bırak</div>
-                    </div>
-                </div>`;
+            ghost.innerHTML = `<div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;box-shadow:0 8px 20px rgba(0,0,0,0.15);min-width:160px;max-width:220px;">
+                <div style="font-size:22px;flex-shrink:0;">📄</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.filename}</div>
+                    <div style="font-size:10px;color:#10b981;font-weight:500;margin-top:2px;">↗ Dışarıya bırak</div>
+                </div></div>`;
             document.body.appendChild(ghost);
             e.dataTransfer.setDragImage(ghost, 20, 20);
         }
-
-        setTimeout(() => {
-            if (document.body.contains(ghost)) document.body.removeChild(ghost);
-        }, 0);
+        setTimeout(() => { if (document.body.contains(ghost)) document.body.removeChild(ghost); }, 0);
     };
 
     const handleDragOver = (e, folderId) => {
@@ -1070,33 +714,29 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
     const handleDrop = async (e, targetFolderId) => {
         e.preventDefault();
         setDragOverFolder(null);
-
         const payloadStr = e.dataTransfer.getData('application/x-archive-item');
         if (payloadStr) {
             try {
                 const payload = JSON.parse(payloadStr);
                 if (payload.type === 'archive_items' && payload.ids) {
                     const idsToMove = payload.ids.filter(id => id !== targetFolderId);
-                    if (idsToMove.length > 0) {
-                        await handleBatchMove(idsToMove, targetFolderId);
-                    }
+                    if (idsToMove.length > 0) await handleBatchMove(idsToMove, targetFolderId);
                     return;
                 }
-            } catch (err) {
-                console.error("Payload hatası", err);
-            }
+            } catch (err) { console.error('Payload hatası', err); }
         }
-
-        // Tekli dosya yedeği (Fallback)
         const draggedId = e.dataTransfer.getData('itemId');
-        if (draggedId && draggedId !== targetFolderId) {
-            await handleMove(draggedId, targetFolderId);
-        }
+        if (draggedId && draggedId !== targetFolderId) await handleMove(draggedId, targetFolderId);
     };
 
     const updateDocInList = (id, patch) => {
         setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
         if (selectedDoc?.id === id) setSelectedDoc(prev => ({ ...prev, ...patch }));
+    };
+
+    const sharedNodeProps = {
+        renameItem, renameValue, setRenameValue, handleRename, setRenameItem,
+        selectedIds, toggleSelect, setCtxMenu, handleDragStart,
     };
 
     return (
@@ -1116,21 +756,12 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
 
             {/* Access Modal */}
             {accessItem && (
-                <AccessModal
-                    item={accessItem}
-                    onClose={() => setAccessItem(null)}
-                    onSaved={fetchArchive}
-                />
+                <AccessModal item={accessItem} onClose={() => setAccessItem(null)} onSaved={fetchArchive} />
             )}
 
             {/* Move Modal */}
             {moveItem && (
-                <MoveModal
-                    item={moveItem}
-                    folders={allFolders}
-                    onClose={() => setMoveItem(null)}
-                    onMove={handleMove}
-                />
+                <MoveModal item={moveItem} folders={allFolders} onClose={() => setMoveItem(null)} onMove={handleMove} />
             )}
 
             {/* ── SOL ANA PANEL ── */}
@@ -1138,7 +769,6 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
 
                 {/* ── HEADER ── */}
                 <div className="flex-none px-5 py-2.5 flex items-center justify-between border-b border-stone-200 bg-stone-50 gap-3">
-                    {/* Breadcrumb */}
                     <div className="flex items-center gap-1.5 text-[12px] overflow-hidden">
                         {currentFolderId && (
                             <button onClick={() => {
@@ -1171,14 +801,11 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                             <span className="font-semibold text-stone-700 text-[11px]">Arama Sonuçları</span>
                         </>}
                     </div>
-
-                    {/* Araçlar */}
                     <div className="flex items-center gap-2 shrink-0">
                         <div className="relative">
                             <Search size={13} className="absolute left-2.5 top-1/2 -transtone-y-1/2 text-stone-400" />
                             <input type="text" placeholder="Ara..." value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                autoComplete="off"
+                                onChange={(e) => setSearchQuery(e.target.value)} autoComplete="off"
                                 className="pl-7 pr-7 py-1.5 text-[11px] border border-stone-200 rounded-lg w-36 focus:outline-none focus:border-[#378ADD] focus:ring-1 focus:ring-[#378ADD]/20 bg-white" />
                             {searchQuery && (
                                 <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -transtone-y-1/2 text-stone-300 hover:text-stone-500"><X size={12} /></button>
@@ -1217,7 +844,8 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D44B4B] hover:bg-[#b93c3c] text-white text-[11px] font-black rounded-lg transition-colors">
                             <Upload size={13} /> Yükle
                         </button>
-                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv,.bpmn" />
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden"
+                            accept=".pdf,.docx,.doc,.txt,.md,.pptx,.ppt,.xlsx,.xls,.csv,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.wma,.mp4,.avi,.mov,.mkv,.webm,.m4v,.wmv,.bpmn" />
                     </div>
                 </div>
 
@@ -1239,13 +867,9 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                             <span className="font-semibold text-stone-700">{selectedIds.size} seçildi</span>
                             <button onClick={() => {
                                 const allIds = currentItems.map(item => item.id);
-                                if (selectedIds.size === allIds.length && allIds.length > 0) {
-                                    setSelectedIds(new Set());
-                                } else {
-                                    setSelectedIds(new Set(allIds));
-                                }
-                            }}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#378ADD]/10 text-[#378ADD] hover:bg-[#378ADD]/20 font-medium transition-colors">
+                                if (selectedIds.size === allIds.length && allIds.length > 0) setSelectedIds(new Set());
+                                else setSelectedIds(new Set(allIds));
+                            }} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#378ADD]/10 text-[#378ADD] hover:bg-[#378ADD]/20 font-medium transition-colors">
                                 <CheckSquare size={11} /> Tümünü Seç
                             </button>
                             <button onClick={() => handleBatchDelete([...selectedIds])}
@@ -1261,8 +885,8 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                 </div>
 
                 {/* ── CONTENT ── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50" onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
-
+                <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50"
+                    onClick={() => { if (isCreatingFolder && newFolderName.trim()) handleCreateFolder(); else setIsCreatingFolder(false); }}>
                     {loading ? (
                         <div className="flex items-center justify-center h-40">
                             <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-[#378ADD]" />
@@ -1276,7 +900,7 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                     ) : (
                         <div className="flex flex-col">
                             {/* Klasörler */}
-                            {folders.length > 0 && (
+                            {(folders.length > 0 || isCreatingFolder) && (
                                 <div className="mb-6">
                                     <div className="flex items-center gap-3 mb-3 px-1">
                                         <span className="text-[9px] font-black tracking-[0.18em] text-stone-400 uppercase whitespace-nowrap">Klasörler</span>
@@ -1285,7 +909,13 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                         {isCreatingFolder && (
                                             <div className="group relative flex flex-col items-center text-center p-2 rounded-xl cursor-default" onClick={e => e.stopPropagation()}>
-                                                <div className="mb-2"><FolderIcon isUserFolder={false} /></div>
+                                                <div className="mb-2">
+                                                    <svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={{ flexShrink: 0 }}>
+                                                        <rect x="4" y="24" width="56" height="34" rx="5" fill="#cbd5e1" opacity="0.6" />
+                                                        <rect x="4" y="24" width="56" height="34" rx="5" stroke="#94a3b8" strokeWidth="1.5" strokeOpacity="0.5" />
+                                                        <path d="M4 24 L4 20 Q4 16 8 16 L22 16 Q26 16 28 20 L30 24 Z" fill="#94a3b8" opacity="0.5" />
+                                                    </svg>
+                                                </div>
                                                 <input
                                                     autoFocus
                                                     value={newFolderName}
@@ -1297,65 +927,20 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                                                 />
                                             </div>
                                         )}
-                                        {folders.map(folder => {
-                                            const isSelected = selectedIds.has(folder.id);
-                                            const isDragOver = dragOverFolder === folder.id;
-                                            return (
-                                                <div key={folder.id}
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, folder)}
-                                                    onDragOver={(e) => handleDragOver(e, folder.id)}
-                                                    onDragLeave={() => setDragOverFolder(null)}
-                                                    onDrop={(e) => handleDrop(e, folder.id)}
-                                                    onDoubleClick={() => {
-                                                        if (selectedIds.size === 0 && renameItem?.id !== folder.id) {
-                                                            setCurrentFolderId(folder.id); setSearchQuery('');
-                                                        }
-                                                    }}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (selectedIds.size > 0) toggleSelect(folder.id, e);
-                                                    }}
-                                                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: folder }); }}
-                                                    className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
-                                                        ${isSelected ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/20'
-                                                            : isDragOver ? 'ring-1 ring-[var(--th-tab-active-bg)]/40 bg-[var(--th-tab-active-bg)]/5'
-                                                                : folder.havuz_turu === 'kullanici' ? 'hover:bg-[var(--th-tab-active-bg)]/5 border border-transparent'
-                                                                    : 'hover:bg-white border border-transparent hover:border-stone-200 hover:shadow-sm'}`}
-                                                    title={folder.havuz_turu === 'kullanici' ? `${folder.uploader || folder.filename}'in klasörü` : folder.filename}
-                                                >
-                                                    <div onClick={(e) => toggleSelect(folder.id, e)}
-                                                        className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {isSelected ? <CheckSquare size={14} className="text-[#378ADD]" /> : <Square size={14} className="text-stone-300" />}
-                                                    </div>
-                                                    <div className="mb-2">
-                                                        <FolderIcon
-                                                            isUserFolder={folder.havuz_turu === 'kullanici'}
-                                                            uploaderName={folder.uploader || folder.filename}
-                                                        />
-                                                    </div>
-                                                    {renameItem?.id === folder.id ? (
-                                                        <input
-                                                            autoFocus
-                                                            value={renameValue}
-                                                            onChange={e => setRenameValue(e.target.value)}
-                                                            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameItem(null); }}
-                                                            onBlur={handleRename}
-                                                            onClick={e => e.stopPropagation()}
-                                                            onDoubleClick={e => e.stopPropagation()}
-                                                            className="w-full text-[11px] font-semibold text-stone-800 bg-stone-50 border border-[#378ADD]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#378ADD] mt-0.5"
-                                                        />
-                                                    ) : (
-                                                        <h4
-                                                            onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(folder); setRenameValue(folder.filename); }}
-                                                            className="text-[11px] font-semibold text-stone-800 line-clamp-2 select-text mt-0.5 max-w-full leading-tight" title={folder.filename}>
-                                                            {folder.filename}
-                                                        </h4>
-                                                    )}
-                                                    <p className="text-[10px] text-stone-400 mt-1 truncate">{new Date(folder.created_at).toLocaleDateString('tr')}</p>
-                                                </div>
-                                            );
-                                        })}
+                                        {folders.map(folder => (
+                                            <FolderNode
+                                                key={folder.id}
+                                                folder={folder}
+                                                isSelected={selectedIds.has(folder.id)}
+                                                isDragOver={dragOverFolder === folder.id}
+                                                setCurrentFolderId={setCurrentFolderId}
+                                                setSearchQuery={setSearchQuery}
+                                                handleDragOver={handleDragOver}
+                                                handleDrop={handleDrop}
+                                                setDragOverFolder={setDragOverFolder}
+                                                {...sharedNodeProps}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
                             )}
@@ -1368,106 +953,16 @@ export default function ArchiveDocsViewer({ defaultFilter = 'all' }) {
                                         <div className="flex-1 h-px bg-stone-200" />
                                     </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                        {documents.map(doc => {
-                                            const { Icon, color, bg, border } = getFileVisual(doc.file_type);
-                                            const isSelected = selectedIds.has(doc.id);
-                                            return (
-                                                <div key={doc.id}
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, doc)}
-                                                    onDragOver={(e) => e.preventDefault()}
-                                                    onClick={(e) => {
-                                                        if (selectedIds.size > 0) toggleSelect(doc.id, e);
-                                                        else setSelectedDoc(doc);
-                                                    }}
-                                                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: doc }); }}
-                                                    className={`group relative flex flex-col items-center text-center p-2 rounded-xl cursor-pointer transition-all select-none
-                                                        ${selectedDoc?.id === doc.id ? 'bg-[#378ADD]/10 ring-1 ring-[#378ADD]/30'
-                                                            : isSelected ? 'bg-[#378ADD]/5 ring-1 ring-[#378ADD]/20'
-                                                                : 'hover:bg-white border border-transparent hover:border-stone-200 hover:shadow-sm'}`}
-                                                >
-                                                    <div onClick={(e) => toggleSelect(doc.id, e)}
-                                                        className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {isSelected ? <CheckSquare size={14} className="text-[#378ADD]" /> : <Square size={14} className="text-stone-300" />}
-                                                    </div>
-                                                    {/* Dışarı sürükleme tutamacı — hover'da görünür */}
-                                                    <div
-                                                        title="Sürükleyerek masaüstüne, maile veya WhatsApp'a kopyala"
-                                                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-stone-400 cursor-grab active:cursor-grabbing"
-                                                    >
-                                                        <GripVertical size={11} />
-                                                        <span className="text-[9px] leading-none">sürükle</span>
-                                                    </div>
-                                                    {/* Vectorized badge — Excel dosyalarında gösterme */}
-                                                    {doc.is_vectorized && !isArchiveOnly(doc.file_type) && (
-                                                        <span className="absolute top-2 right-2 bg-teal-50 text-teal-700 border border-teal-100 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none">VEK</span>
-                                                    )}
-                                                    {isArchiveOnly(doc.file_type) && (
-                                                        <span className="absolute top-2 right-2 bg-amber-50 text-amber-700 border border-amber-200 text-[8px] font-bold px-1.5 py-0.5 rounded leading-none" title="Yapay zeka ile işlenmedi">
-                                                            ARŞİV
-                                                        </span>
-                                                    )}
-
-                                                    {(doc.etiketler?.length > 0) && (
-                                                        <span className="absolute top-8 right-2 flex items-center gap-0.5 text-stone-400">
-                                                            <Tag size={9} /><span className="text-[9px]">{doc.etiketler.length}</span>
-                                                        </span>
-                                                    )}
-
-                                                    <div className="shrink-0 mb-3 drop-shadow-md">
-                                                        <FileCard formatFile={doc.file_type || ''} />
-                                                    </div>
-
-                                                    {renameItem?.id === doc.id ? (
-                                                        <input
-                                                            autoFocus
-                                                            value={renameValue}
-                                                            onChange={e => setRenameValue(e.target.value)}
-                                                            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameItem(null); }}
-                                                            onBlur={handleRename}
-                                                            onClick={e => e.stopPropagation()}
-                                                            onDoubleClick={e => e.stopPropagation()}
-                                                            className="w-full text-[11px] font-semibold text-stone-800 bg-stone-50 border border-[#378ADD]/30 rounded px-1.5 py-0.5 outline-none focus:border-[#378ADD] mt-2 mb-1"
-                                                        />
-                                                    ) : (
-                                                        <h4
-                                                            onDoubleClick={(e) => { e.stopPropagation(); setRenameItem(doc); setRenameValue(doc.filename); }}
-                                                            className="text-[11px] font-semibold text-stone-800 line-clamp-2 select-text mt-auto leading-tight" title={doc.filename}>
-                                                            {doc.filename}
-                                                        </h4>
-                                                    )}
-                                                    <div className="flex flex-col items-center mt-1">
-                                                        <span className="text-[10px] text-stone-400">{new Date(doc.created_at).toLocaleDateString('tr')}</span>
-                                                        <span className="text-[10px] text-stone-400 font-medium">{formatBytes(doc.file_size)}</span>
-                                                    </div>
-                                                    {doc.meta?.transcription_preview && (
-                                                        <div className="mt-1.5 w-full flex items-start justify-between gap-1 border-t border-stone-100 pt-1.5">
-                                                            <p className="flex-1 text-[10px] text-stone-500 leading-snug line-clamp-2 text-left">
-                                                                {doc.meta.transcription_preview}
-                                                            </p>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    const content = doc.meta.transcription_full_text || doc.meta.transcription_raw_text || doc.meta.transcription_preview || '';
-                                                                    if (!content) return;
-                                                                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                                                                    const url = URL.createObjectURL(blob);
-                                                                    const a = document.createElement('a');
-                                                                    a.href = url;
-                                                                    a.download = `${doc.filename.replace(/\.[^.]+$/, '')}_transkript.txt`;
-                                                                    a.click();
-                                                                    URL.revokeObjectURL(url);
-                                                                }}
-                                                                title="Transkripti TXT olarak indir"
-                                                                className="shrink-0 p-1 rounded hover:bg-teal-100 text-teal-600 transition-colors"
-                                                            >
-                                                                <Download size={11} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                        {documents.map(doc => (
+                                            <FileNode
+                                                key={doc.id}
+                                                doc={doc}
+                                                isSelected={selectedIds.has(doc.id)}
+                                                selectedDoc={selectedDoc}
+                                                setSelectedDoc={setSelectedDoc}
+                                                {...sharedNodeProps}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
                             )}

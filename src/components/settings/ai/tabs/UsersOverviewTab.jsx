@@ -11,44 +11,9 @@ import {
 import { API_BASE, fetchWithTimeout, formatDate, fmt, fmtCost, fmtMs, formatMB, getQuotaColor, getModelColor, formatRelativeTime, truncatedText } from '../utils';
 import EgitimAcmaSlideOver from '../../auth/EgitimAcmaSlideOver';
 import { RestrictionsModal } from '../../auth/InlineUserDashboard';
-
-const POLL_MS = 10_000;
-const AUTH_BASE = '/api/auth';
-
-/* ─── Avatar ─────────────────────────────────────────────────── */
-function Avatar({ name, size = 36 }) {
-    const initials = name
-        ? name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-        : '?';
-    const colors = [
-        ['#1e40af', '#dbeafe'], ['#065f46', '#d1fae5'], ['#7c2d12', '#fee2e2'],
-        ['#4c1d95', '#ede9fe'], ['#0c4a6e', '#e0f2fe'], ['#713f12', '#fef3c7'],
-        ['#881337', '#ffe4e6'], ['#134e4a', '#ccfbf1'],
-    ];
-    const [fg, bg] = colors[(name?.charCodeAt(0) || 0) % colors.length];
-    return (
-        <div
-            style={{ width: size, height: size, backgroundColor: bg, color: fg, borderRadius: size * 0.3, fontSize: size * 0.38 }}
-            className="flex items-center justify-center font-black shrink-0 select-none"
-        >
-            {initials}
-        </div>
-    );
-}
-
-/* ─── Durum rozeti ────────────────────────────────────────────── */
-function StatusBadge({ status }) {
-    const isActive = status === 'Aktif';
-    return isActive ? (
-        <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#EAF3DE] text-[#3B6D11]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3B6D11] animate-pulse inline-block" />Aktif
-        </span>
-    ) : (
-        <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-stone-100 text-stone-400">
-            <WifiOff size={9} />Pasif
-        </span>
-    );
-}
+import { UserAvatar as Avatar } from '../components/UserAvatar';
+import { UserStatusBadge as StatusBadge } from '../components/UserStatusBadge';
+import { useUsersPolling } from './usersOverview/useUsersPolling';
 
 /* ─── Depolama Donut ──────────────────────────────────────────── */
 function StorageDonut({ usedMb, quotaMb }) {
@@ -1079,9 +1044,7 @@ function UserListItem({ user, isSelected, onClick, onContextMenu, sessionCount }
 
 /* ─── Ana Bileşen ─────────────────────────────────────────────── */
 export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, logFilterUser = null, onSelectLogUser } = {}) => {
-    const [users, setUsers] = useState([]);
-    const [pcs, setPcs] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { users, setUsers, pcs, loading, fetchAll } = useUsersPolling();
     const [search, setSearch] = useState('');
     const [selectedUserId, setSelectedUserId] = useState(null);
     const [activeFilter, setActiveFilter] = useState(null);
@@ -1097,28 +1060,6 @@ export const UsersOverviewTab = React.memo(({ logsOpen = false, onToggleLogs, lo
             return !!(u.super || u.isSuper);
         } catch { return false; }
     }, []);
-
-    const fetchAll = useCallback(async () => {
-        try {
-            const [uRes, pRes] = await Promise.all([
-                fetchWithTimeout(`${AUTH_BASE}/users`),
-                fetchWithTimeout(`${API_BASE}/pcs`),
-            ]);
-            const [uData, pData] = await Promise.all([uRes.json(), pRes.json()]);
-            setUsers(uData || []);
-            setPcs(pData.pcs || []);
-        } catch (e) {
-            console.error('Fetch error:', e);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchAll();
-        const t = setInterval(fetchAll, POLL_MS);
-        return () => clearInterval(t);
-    }, []); // eslint-disable-line
 
     // When onSelectLogUser is called externally, sync selectedUserId
     useEffect(() => {

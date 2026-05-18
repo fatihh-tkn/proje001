@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-    Mail, Lock, Eye, EyeOff, Check, ArrowRight, X,
-    UserPlus, AlertTriangle, Search, Clock, Shield,
-} from 'lucide-react';
-import sapLogo from '../../assets/sap yılgenci logo.png';
-
-const itemVariants = {
-    hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.22, 1, 0.36, 1] } },
-};
+import { Check, X, UserPlus, AlertTriangle, Shield, Eye, EyeOff } from 'lucide-react';
+import sapKnockoutLogo from '../../assets/sap-yilgenci-logo-knockout.png';
+import logoKapali from '../../assets/logo-kapali.png';
 
 /* ══════════════════════════════════════════════════════════════════
    Hızlı Oturum Yönetimi (localStorage)
@@ -51,15 +43,15 @@ function isSessionLimitReached(email) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Tutarlı Avatar Rengi (her isim için aynı renk)
+   Avatar
    ══════════════════════════════════════════════════════════════════ */
 const AVATAR_PALETTE = [
-    { bg: '#DC2626', fg: '#FFFFFF' }, // kurumsal kırmızı
-    { bg: '#0E7490', fg: '#FFFFFF' }, // teal
-    { bg: '#475569', fg: '#FFFFFF' }, // slate
-    { bg: '#7C2D12', fg: '#FFFFFF' }, // kahve
-    { bg: '#0F766E', fg: '#FFFFFF' }, // yeşil
-    { bg: '#6D28D9', fg: '#FFFFFF' }, // mor
+    { bg: '#A01B1B', fg: '#FFFFFF' },
+    { bg: '#0E7490', fg: '#FFFFFF' },
+    { bg: '#475569', fg: '#FFFFFF' },
+    { bg: '#7C2D12', fg: '#FFFFFF' },
+    { bg: '#0F766E', fg: '#FFFFFF' },
+    { bg: '#6D28D9', fg: '#FFFFFF' },
 ];
 
 function avatarOf(name) {
@@ -73,58 +65,109 @@ function avatarOf(name) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Avatar Pill — yatay seçici listesi için
+   AccountPill
    ══════════════════════════════════════════════════════════════════ */
 function AccountPill({ session, isActive, onSelect, onRemove }) {
     const av = avatarOf(session.name);
     const firstName = (session.name || '').split(' ')[0] || session.email;
     return (
-        <div className="relative group shrink-0">
+        <div style={{ position: 'relative', flexShrink: 0 }}
+            onMouseEnter={e => e.currentTarget.querySelector('.pill-remove').style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.querySelector('.pill-remove').style.opacity = '0'}
+        >
             <button
                 type="button"
                 onClick={() => onSelect(session)}
-                className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border-2 transition-all duration-200 ${
-                    isActive
-                        ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-sm'
-                        : 'bg-white border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-50'
-                }`}
-                title={`${session.name} · ${session.email}`}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    paddingLeft: 4, paddingRight: 12, paddingTop: 4, paddingBottom: 4,
+                    borderRadius: 999,
+                    border: `2px solid ${isActive ? '#A01B1B' : '#e2e8f0'}`,
+                    background: isActive ? '#A01B1B' : '#fff',
+                    color: isActive ? '#fff' : '#374151',
+                    cursor: 'pointer',
+                    transition: 'all .15s ease',
+                    fontFamily: 'inherit',
+                }}
             >
-                <span
-                    style={{
-                        backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : av.bg,
-                        color: isActive ? '#fff' : av.fg,
-                    }}
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black tracking-tight"
-                >
+                <span style={{
+                    width: 22, height: 22, borderRadius: '50%',
+                    background: isActive ? 'rgba(255,255,255,0.2)' : av.bg,
+                    color: isActive ? '#fff' : av.fg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, fontWeight: 900, letterSpacing: '-0.02em',
+                }}>
                     {av.initials}
                 </span>
-                <span className="text-[12px] font-bold whitespace-nowrap max-w-[80px] truncate">
+                <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {firstName}
                 </span>
-                {isActive && <Check size={13} strokeWidth={3} className="ml-0.5" />}
+                {isActive && <Check size={12} strokeWidth={3} />}
             </button>
             <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(session.id); }}
-                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border border-stone-300 text-stone-400 hover:bg-red-50 hover:text-red-500 hover:border-red-300 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-[8px] font-bold shadow-sm"
+                className="pill-remove"
+                onClick={e => { e.stopPropagation(); onRemove(session.id); }}
+                style={{
+                    position: 'absolute', top: -3, right: -3,
+                    width: 16, height: 16, borderRadius: '50%',
+                    background: '#fff', border: '1px solid #e2e8f0',
+                    color: '#94a3b8', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: 0, transition: 'opacity .15s ease',
+                    padding: 0,
+                }}
                 title="Bu hesabı kaldır"
             >
-                <X size={10} strokeWidth={3} />
+                <X size={9} strokeWidth={3} />
             </button>
         </div>
     );
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   Yardımcı stiller
+   ══════════════════════════════════════════════════════════════════ */
+function inputStyle(focused) {
+    return {
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '13px 14px',
+        background: '#fff',
+        border: `1px solid ${focused ? '#A01B1B' : '#e2e8f0'}`,
+        outline: 'none',
+        fontSize: 13,
+        color: '#0f172a',
+        borderRadius: 3,
+        boxShadow: focused ? '0 0 0 3px rgba(160,27,27,0.10)' : 'none',
+        fontFamily: 'inherit',
+        transition: 'all .15s ease',
+    };
+}
+
+const labelStyle = {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: '#475569',
+    display: 'block',
+    marginBottom: 7,
+};
+
+const FEATURE_PILLS = [
+    { label: 'Vektör veri tabanı', meta: 'pgvector · hibrit arama' },
+    { label: 'Aktif modeller', meta: 'GPT-4 · Claude · Gemini' },
+    { label: 'Çalışan akışlar', meta: 'n8n · otomasyon' },
+];
+
+/* ══════════════════════════════════════════════════════════════════
    Ana Login Bileşeni
    ══════════════════════════════════════════════════════════════════ */
 const Login = ({ onLogin }) => {
-    // Mod: 'login' (mevcut hesap) | 'register' (yeni hesap)
     const [mode, setMode] = useState('login');
-
     const [quickSessions, setQuickSessions] = useState([]);
-    const [selectedSession, setSelectedSession] = useState(null); // { id, name, email, ... }
+    const [selectedSession, setSelectedSession] = useState(null);
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -132,14 +175,14 @@ const Login = ({ onLogin }) => {
     const [passwordConfirm, setPasswordConfirm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [rememberDevice, setRememberDevice] = useState(true);
+    const [focus, setFocus] = useState(null);
 
     const [error, setError] = useState('');
     const [errorType, setErrorType] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [confirmShake, setConfirmShake] = useState(false);
     const [isStarting, setIsStarting] = useState(false);
+    const [confirmShake, setConfirmShake] = useState(false);
 
-    /* ── Kayıtlı oturumları yükle, varsa ilkini otomatik seç ── */
     useEffect(() => {
         const sessions = getQuickSessions();
         setQuickSessions(sessions);
@@ -149,13 +192,10 @@ const Login = ({ onLogin }) => {
         }
     }, []);
 
-    const refreshSessions = () => setQuickSessions(getQuickSessions());
-
     const handleRemoveSession = (id) => {
         removeQuickSession(id);
         const remaining = getQuickSessions();
         setQuickSessions(remaining);
-        // Aktif seçim kaldırıldıysa sıradakine geç
         if (selectedSession?.id === id) {
             const next = remaining[0] || null;
             setSelectedSession(next);
@@ -172,7 +212,6 @@ const Login = ({ onLogin }) => {
         setMode('login');
     };
 
-    // "+ Başka hesap" → kayıtlı oturum yokmuş gibi davran (manuel email gir)
     const handleNewAccount = () => {
         setSelectedSession(null);
         setEmail('');
@@ -181,7 +220,7 @@ const Login = ({ onLogin }) => {
         setMode('login');
     };
 
-    /* ── Şifre gücü (sadece kayıt için) ── */
+    /* Şifre gücü */
     const REQUIREMENTS = [
         { regex: /.{8,}/, text: 'En az 8 karakter' },
         { regex: /[A-Z]/, text: 'En az 1 büyük harf' },
@@ -191,10 +230,7 @@ const Login = ({ onLogin }) => {
         REQUIREMENTS.map(r => ({ met: r.regex.test(password), text: r.text })),
         [password]);
     const strengthScore = strength.filter(r => r.met).length;
-    const strengthBarColor =
-        strengthScore === 0 ? 'bg-stone-200' :
-            strengthScore === 1 ? 'bg-red-400' :
-                strengthScore === 2 ? 'bg-amber-400' : 'bg-emerald-500';
+    const strengthColor = strengthScore === 0 ? '#e2e8f0' : strengthScore === 1 ? '#f87171' : strengthScore === 2 ? '#fbbf24' : '#10b981';
     const passwordsMatch = password.length > 0 && password === passwordConfirm;
 
     const handleConfirmChange = (e) => {
@@ -212,7 +248,7 @@ const Login = ({ onLogin }) => {
         }
     }, [confirmShake]);
 
-    /* ── Submit ── */
+    /* Submit */
     const handleSubmit = async (e) => {
         e.preventDefault();
         const isRegister = mode === 'register';
@@ -226,7 +262,6 @@ const Login = ({ onLogin }) => {
             if (password !== passwordConfirm) { setError('Şifreler birbiriyle uyuşmuyor.'); setErrorType('generic'); return; }
         }
 
-        // Cihazda yeni hesap kaydedilecekse limit kontrolü
         if (rememberDevice && isSessionLimitReached(loginEmail)) {
             setError(`Bu cihazda en fazla ${MAX_SESSIONS} kayıtlı hesap tutulabilir. Listeden birini kaldırarak devam edin.`);
             setErrorType('limit');
@@ -260,15 +295,12 @@ const Login = ({ onLogin }) => {
                 return;
             }
 
-            // Başarılı: cihazda hatırla seçeneği işaretliyse oturuma kaydet
             try {
-                if (rememberDevice) {
-                    saveQuickSession({ ...data, eposta: data.eposta || loginEmail });
-                }
+                if (rememberDevice) saveQuickSession({ ...data, eposta: data.eposta || loginEmail });
                 localStorage.setItem('current_user', JSON.stringify({
                     id: data.id, super: data.super, name: data.tam_ad, email: data.eposta || loginEmail,
                 }));
-            } catch (_) { /* localStorage kısıtlıysa sessizce geç */ }
+            } catch (_) { }
             onLogin(data);
         } catch {
             setError('Sunucu ile bağlantı kurulamadı.');
@@ -280,338 +312,477 @@ const Login = ({ onLogin }) => {
 
     const isAutoFilled = !!selectedSession && email === selectedSession.email;
     const sessionLimitReached = quickSessions.length >= MAX_SESSIONS;
+    const isRegister = mode === 'register';
 
-    /* ════════════════════════════════════════════════════════════════
-       Render
-       ════════════════════════════════════════════════════════════════ */
+    /* Hata bandı rengi */
+    const errorColors = {
+        suspended: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', bar: '#fbbf24', icon: '#b45309' },
+        not_found:  { bg: '#eff6ff', border: '#bfdbfe', text: '#1e40af', bar: '#60a5fa', icon: '#2563eb' },
+        starting:   { bg: '#f8fafc', border: '#e2e8f0', text: '#374151', bar: '#94a3b8', icon: '#6b7280' },
+        limit:      { bg: '#fff7ed', border: '#fed7aa', text: '#9a3412', bar: '#fb923c', icon: '#c2410c' },
+    };
+    const ec = errorColors[errorType] || { bg: '#fef2f2', border: '#fecaca', text: '#991b1b', bar: '#f87171', icon: '#dc2626' };
+
     return (
-        <div
-            className="flex h-screen w-full items-center justify-center overflow-hidden font-sans"
-            style={{
-                backgroundColor: '#EFEFEF',
-                backgroundImage: 'radial-gradient(circle, #d1d5db 1px, transparent 1px)',
-                backgroundSize: '22px 22px',
-            }}
-        >
-            <motion.div
-                className="relative w-full max-w-[420px] px-6"
-                initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            >
-                {isStarting && (
-                    <style>{`@keyframes traceCCW { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(-360deg); } }`}</style>
-                )}
+        <div style={{
+            display: 'flex', width: '100%', height: '100vh',
+            fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+            color: '#0f172a', overflow: 'hidden',
+        }}>
+            {isStarting && (
+                <style>{`@keyframes traceCCW { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }`}</style>
+            )}
 
-                <div className={`relative ${isStarting ? 'p-[2px] rounded-[16px] overflow-hidden' : ''}`}>
-                    {isStarting && (
-                        <div
-                            className="absolute top-1/2 left-1/2 w-[200%] h-[200%]"
-                            style={{ background: 'conic-gradient(from 0deg, transparent 75%, #DC2626 100%)', animation: 'traceCCW 1.8s linear infinite', zIndex: 0 }}
-                        />
-                    )}
+            {/* ── LEFT · BRAND PANEL ── */}
+            <div style={{
+                width: 580, minWidth: 480,
+                background: 'linear-gradient(180deg, #1a1a1c 0%, #161618 100%)',
+                borderRight: '1px solid #2a2a2d',
+                color: '#fff',
+                padding: '48px 52px',
+                position: 'relative',
+                display: 'flex', flexDirection: 'column',
+                overflow: 'hidden',
+            }}>
+                {/* kırmızı glow */}
+                <div style={{
+                    position: 'absolute', top: -200, left: -160,
+                    width: 520, height: 520,
+                    background: 'radial-gradient(circle, rgba(160,27,27,0.32) 0%, rgba(160,27,27,0) 60%)',
+                    pointerEvents: 'none',
+                }} />
+                {/* faint grid */}
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+                    backgroundSize: '44px 44px',
+                    maskImage: 'radial-gradient(ellipse at 40% 50%, black 0%, transparent 75%)',
+                    WebkitMaskImage: 'radial-gradient(ellipse at 40% 50%, black 0%, transparent 75%)',
+                    pointerEvents: 'none',
+                }} />
+                {/* watermark */}
+                <img src={logoKapali} alt="" style={{
+                    position: 'absolute', right: -80, bottom: -60,
+                    height: 440, opacity: 0.06,
+                    pointerEvents: 'none', filter: 'grayscale(1)',
+                }} />
 
-                    <div className={`relative z-10 px-8 py-8 ${isStarting ? 'bg-white rounded-[14px]' : 'bg-white rounded-2xl border border-stone-200/60 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.13),0_4px_16px_-4px_rgba(0,0,0,0.06)]'}`}>
+                {/* orta içerik */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 40 }}>
+                        <img src={sapKnockoutLogo} alt="SAP · Yılgenci" style={{
+                            height: 60, display: 'block',
+                            filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.45))',
+                        }} />
+                    </div>
 
-                        {/* ── Kırmızı üst çizgi aksanı ── */}
-                        <div className="absolute top-0 left-8 right-8 h-[2px] bg-gradient-to-r from-transparent via-[#DC2626] to-transparent rounded-full opacity-60" />
+                    <div style={{
+                        fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase',
+                        color: '#A01B1B', fontWeight: 700, marginBottom: 18,
+                        display: 'flex', alignItems: 'center', gap: 10,
+                    }}>
+                        <span style={{ width: 24, height: 1, background: '#A01B1B', display: 'inline-block' }} />
+                        Kurumsal Bilgi Platformu
+                    </div>
 
-                        {/* ── Header: Logo ── */}
-                        <motion.div
-                            className="flex items-center justify-center mb-7 pb-6 border-b border-stone-100"
-                            initial={{ opacity: 0, y: -8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                        >
-                            <img src={sapLogo} alt="SAP Yılgenci" className="w-full h-auto object-contain max-h-48" draggable={false} />
-                        </motion.div>
+                    <h2 style={{ fontSize: 36, lineHeight: 1.15, fontWeight: 600, letterSpacing: '-0.025em', margin: 0, color: '#f8fafc' }}>
+                        Belge, model<br />ve otomasyon —<br />
+                        <span style={{ color: '#A01B1B' }}>tek panelden.</span>
+                    </h2>
 
-                        {/* ── Hata Mesajı ── */}
-                        <AnimatePresence mode="wait">
-                            {error && (
-                                <motion.div
-                                    key={error}
-                                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                    className={`relative mb-4 rounded-md text-sm font-semibold border overflow-hidden
-                                        ${errorType === 'suspended' ? 'bg-amber-50 border-amber-300'
-                                            : errorType === 'not_found' ? 'bg-blue-50 border-blue-200'
-                                                : errorType === 'starting' ? 'bg-stone-50 border-stone-200'
-                                                    : errorType === 'limit' ? 'bg-orange-50 border-orange-200'
-                                                        : 'bg-red-50 border-red-200'}`}
-                                >
-                                    <div className={`h-1 w-full ${errorType === 'suspended' ? 'bg-amber-400'
-                                        : errorType === 'not_found' ? 'bg-blue-400'
-                                            : errorType === 'starting' ? 'bg-stone-400'
-                                                : errorType === 'limit' ? 'bg-orange-400'
-                                                    : 'bg-red-400'}`} />
-                                    <div className="flex items-start gap-2.5 p-3">
-                                        <AlertTriangle size={16} className={`shrink-0 mt-0.5 ${errorType === 'suspended' ? 'text-amber-600'
-                                            : errorType === 'not_found' ? 'text-blue-600'
-                                                : errorType === 'starting' ? 'text-stone-500'
-                                                    : errorType === 'limit' ? 'text-orange-600'
-                                                        : 'text-red-600'}`} />
-                                        <span className={`leading-snug text-[12px] ${errorType === 'suspended' ? 'text-amber-800'
-                                            : errorType === 'not_found' ? 'text-blue-700'
-                                                : errorType === 'starting' ? 'text-stone-600'
-                                                    : errorType === 'limit' ? 'text-orange-700'
-                                                        : 'text-red-700'}`}>
-                                            {error}
-                                        </span>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                    <p style={{ marginTop: 20, maxWidth: 340, fontSize: 13, lineHeight: 1.65, color: '#94a3b8' }}>
+                        Yapay zeka destekli iş akışlarına, vektör arşivine ve n8n
+                        otomasyonlarına erişmek için kurumsal hesabınızla oturum açın.
+                    </p>
 
-                        <motion.form
-                            onSubmit={handleSubmit}
-                            className="flex flex-col gap-5"
-                            autoComplete="off"
-                            initial="hidden"
-                            animate="visible"
-                            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.07, delayChildren: 0.18 } } }}
-                        >
-
-                            {/* ── KAYITLI HESAPLAR (sadece login modu) ── */}
-                            {mode === 'login' && quickSessions.length > 0 && (
-                                <motion.div variants={itemVariants} className="flex flex-col gap-2.5">
-                                    <p className="text-[10px] font-black tracking-[0.2em] text-stone-500 uppercase">
-                                        Kayıtlı Hesaplar
-                                    </p>
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-1.5 -mx-1 px-1 mac-horizontal-scrollbar">
-                                        {quickSessions.map(sess => (
-                                            <AccountPill
-                                                key={sess.id}
-                                                session={sess}
-                                                isActive={selectedSession?.id === sess.id}
-                                                onSelect={handleSelectSession}
-                                                onRemove={handleRemoveSession}
-                                            />
-                                        ))}
-                                        {!sessionLimitReached && (
-                                            <button
-                                                type="button"
-                                                onClick={handleNewAccount}
-                                                className={`shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1 rounded-full border-2 border-dashed transition-all duration-200 ${
-                                                    !selectedSession
-                                                        ? 'border-stone-400 bg-stone-50 text-stone-700'
-                                                        : 'border-stone-300 bg-white text-stone-500 hover:border-stone-400 hover:text-stone-700'
-                                                }`}
-                                                title="Mevcut hesaplardan hiçbiri değil"
-                                            >
-                                                <UserPlus size={13} strokeWidth={2.5} />
-                                                <span className="text-[12px] font-bold whitespace-nowrap">+ Başka hesap</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* ── Ad Soyad (sadece kayıt) ── */}
-                            {mode === 'register' && (
-                                <motion.div variants={itemVariants} className="space-y-1.5">
-                                    <label htmlFor="reg-name" className="text-[12px] font-bold text-stone-700">Ad Soyad</label>
-                                    <div className="relative">
-                                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                                        <input
-                                            id="reg-name" type="text" value={name} onChange={e => setName(e.target.value)}
-                                            placeholder="Ad Soyad"
-                                            className="w-full h-12 pl-10 pr-3 bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-400 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
-                                            autoComplete="off"
-                                            required
-                                        />
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* ── E-posta ── */}
-                            <motion.div variants={itemVariants} className="space-y-1.5">
-                                <label htmlFor="login-email" className="text-[12px] font-bold text-stone-700">E-posta</label>
-                                <div className="relative">
-                                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10" />
-                                    <input
-                                        id="login-email"
-                                        type="email"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                        placeholder={selectedSession ? selectedSession.email : 'eposta@sirket.com'}
-                                        className={`w-full h-12 pl-10 ${isAutoFilled && mode === 'login' ? 'pr-28' : 'pr-3'} bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-400 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all`}
-                                        autoComplete="off"
-                                        spellCheck={false}
-                                        required
-                                    />
-                                    {isAutoFilled && mode === 'login' && (
-                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black tracking-wider uppercase">
-                                            <Check size={11} strokeWidth={3} />
-                                            OTOMATİK
-                                        </span>
-                                    )}
-                                </div>
-                            </motion.div>
-
-                            {/* ── Şifre ── */}
-                            <motion.div variants={itemVariants} className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <label htmlFor="login-password" className="text-[12px] font-bold text-stone-700">Şifre</label>
-                                    {mode === 'login' && (
-                                        <a
-                                            href="#"
-                                            onClick={(e) => e.preventDefault()}
-                                            className="text-[11px] font-bold text-[#DC2626] hover:text-[#B91C1C] hover:underline transition-colors"
-                                        >
-                                            Unuttum
-                                        </a>
-                                    )}
-                                </div>
-                                <div className="relative">
-                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10" />
-                                    <input
-                                        id="login-password"
-                                        type={showPassword ? 'text' : 'password'}
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        placeholder="••••••••"
-                                        className="w-full h-12 pl-10 pr-11 bg-stone-50 border border-stone-200 rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-300 focus:bg-white focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
-                                        autoComplete="new-password"
-                                        name="login-password-secret"
-                                        data-1p-ignore="true"
-                                        data-lpignore="true"
-                                        data-form-type="other"
-                                        required
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(v => !v)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 transition-colors p-1"
-                                        tabIndex={-1}
-                                        title={showPassword ? 'Gizle' : 'Göster'}
-                                    >
-                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
-                                </div>
-                            </motion.div>
-
-                            {/* ── Şifre gücü (kayıt) ── */}
-                            {mode === 'register' && password.length > 0 && (
-                                <motion.div variants={itemVariants} className="-mt-2">
-                                    <div className="h-1 w-full overflow-hidden rounded-full bg-stone-100 mb-2">
-                                        <div className={`h-full transition-all duration-500 ease-out ${strengthBarColor}`}
-                                            style={{ width: `${(strengthScore / 3) * 100}%` }} />
-                                    </div>
-                                    <ul className="flex flex-col gap-1">
-                                        {strength.map((req, i) => (
-                                            <li key={i} className="flex items-center gap-2">
-                                                {req.met
-                                                    ? <Check size={12} className="text-emerald-500 shrink-0" strokeWidth={3} />
-                                                    : <X size={12} className="text-stone-300 shrink-0" strokeWidth={3} />}
-                                                <span className={`text-[11px] font-medium ${req.met ? 'text-emerald-600' : 'text-stone-400'}`}>{req.text}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </motion.div>
-                            )}
-
-                            {/* ── Şifre Tekrar (kayıt) ── */}
-                            {mode === 'register' && (
-                                <motion.div variants={itemVariants} className="space-y-1.5">
-                                    <label htmlFor="reg-pwd2" className="text-[12px] font-bold text-stone-700">Şifre Tekrar</label>
-                                    <div className="relative">
-                                        <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                                        <motion.input
-                                            id="reg-pwd2"
-                                            type={showPassword ? 'text' : 'password'}
-                                            value={passwordConfirm} onChange={handleConfirmChange}
-                                            placeholder="••••••••"
-                                            className="w-full h-12 pl-10 pr-3 bg-stone-50 border rounded-md text-[13px] font-semibold text-stone-800 placeholder:text-stone-300 focus:bg-white focus:ring-2 focus:ring-[#DC2626]/15 outline-none transition-all"
-                                            autoComplete="new-password"
-                                            data-1p-ignore="true"
-                                            data-lpignore="true"
-                                            animate={{
-                                                x: confirmShake ? [-8, 8, -6, 6, -4, 4, 0] : 0,
-                                                borderColor: passwordsMatch ? 'rgb(16 185 129)' : 'rgb(231 229 228)',
-                                            }}
-                                            transition={{ duration: 0.4 }}
-                                            required
-                                        />
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* ── Bu cihazda beni hatırla (sadece login) ── */}
-                            {mode === 'login' && (
-                                <motion.label variants={itemVariants} className="flex items-center gap-2.5 cursor-pointer select-none -my-1">
-                                    <span className="relative flex items-center justify-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={rememberDevice}
-                                            onChange={e => setRememberDevice(e.target.checked)}
-                                            className="peer appearance-none w-4 h-4 rounded border-2 border-stone-300 checked:border-[#DC2626] checked:bg-[#DC2626] transition-colors cursor-pointer"
-                                        />
-                                        <Check
-                                            size={11}
-                                            strokeWidth={4}
-                                            className="absolute text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"
-                                        />
-                                    </span>
-                                    <span className="text-[12px] font-semibold text-stone-700">
-                                        Bu cihazda beni hatırla
-                                    </span>
-                                </motion.label>
-                            )}
-
-                            {/* ── Giriş Yap / Hesabı Aç butonu ── */}
-                            <motion.button
-                                variants={itemVariants}
-                                type="submit"
-                                disabled={isLoading}
-                                whileHover={!isLoading ? { y: -2, boxShadow: '0 8px 22px -4px rgba(220,38,38,0.55)' } : {}}
-                                whileTap={!isLoading ? { scale: 0.98 } : {}}
-                                className={`w-full h-12 rounded-md bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold text-[13px] tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_14px_-4px_rgba(220,38,38,0.45)] transition-colors duration-200 ${
-                                    isLoading ? 'opacity-70 cursor-wait' : ''
-                                }`}
-                            >
-                                {isLoading ? (
-                                    <span className="tracking-widest">BEKLEYİN...</span>
-                                ) : (
-                                    <>
-                                        <span>{mode === 'register' ? 'Hesabı Aç' : 'Giriş Yap'}</span>
-                                        <ArrowRight size={16} strokeWidth={2.5} />
-                                    </>
-                                )}
-                            </motion.button>
-
-                            {/* ── Alt bağlantı: Kayıt ol / Giriş'e dön ── */}
-                            <motion.div variants={itemVariants} className="text-center pt-1">
-                                {mode === 'login' ? (
-                                    <p className="text-[12px] font-semibold text-stone-500">
-                                        Hesabın yok mu?{' '}
-                                        <button
-                                            type="button"
-                                            onClick={() => { setMode('register'); setError(''); setSelectedSession(null); setEmail(''); setPassword(''); }}
-                                            className="text-[#DC2626] hover:text-[#B91C1C] hover:underline font-bold transition-colors"
-                                        >
-                                            Kayıt ol
-                                        </button>
-                                    </p>
-                                ) : (
-                                    <p className="text-[12px] font-semibold text-stone-500">
-                                        Hesabın var mı?{' '}
-                                        <button
-                                            type="button"
-                                            onClick={() => { setMode('login'); setError(''); }}
-                                            className="text-[#DC2626] hover:text-[#B91C1C] hover:underline font-bold transition-colors"
-                                        >
-                                            Giriş yap
-                                        </button>
-                                    </p>
-                                )}
-                            </motion.div>
-                        </motion.form>
-
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 30, maxWidth: 360 }}>
+                        {FEATURE_PILLS.map((row, i) => (
+                            <div key={i} style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '10px 14px',
+                                background: 'rgba(255,255,255,0.025)',
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                borderRadius: 2,
+                            }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{
+                                        width: 6, height: 6, borderRadius: 999,
+                                        background: '#10b981',
+                                        boxShadow: '0 0 0 3px rgba(16,185,129,0.12)',
+                                    }} />
+                                    <span style={{ fontSize: 12, color: '#e2e8f0' }}>{row.label}</span>
+                                </span>
+                                <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                                    {row.meta}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 </div>
-            </motion.div>
+
+                {/* footer */}
+                <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
+                    <span>© 2026 Yılgenci A.Ş.</span>
+                    <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>v2.4.1</span>
+                </div>
+            </div>
+
+            {/* ── RIGHT · FORM PANEL ── */}
+            <div style={{
+                flex: 1,
+                background: '#f8f9fa',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '60px 48px',
+                position: 'relative',
+                overflow: 'auto',
+            }}>
+                {/* IT Destek linki */}
+                <div style={{ position: 'absolute', top: 28, right: 28, fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    Hesap talep formu için
+                    <a href="#it-destek" style={{ color: '#A01B1B', fontWeight: 600, textDecoration: 'none', borderBottom: '1px solid currentColor', paddingBottom: 1 }}>
+                        IT Destek
+                    </a>
+                </div>
+
+                {/* isStarting border animasyonu */}
+                <div style={{
+                    position: 'relative',
+                    ...(isStarting ? { padding: 2, borderRadius: 6, overflow: 'hidden' } : {}),
+                }}>
+                    {isStarting && (
+                        <div style={{
+                            position: 'absolute', top: '50%', left: '50%',
+                            width: '200%', height: '200%',
+                            background: 'conic-gradient(from 0deg, transparent 75%, #A01B1B 100%)',
+                            animation: 'traceCCW 1.8s linear infinite',
+                            zIndex: 0,
+                            transformOrigin: 'center center',
+                        }} />
+                    )}
+
+                    <form
+                        onSubmit={handleSubmit}
+                        style={{
+                            width: 400,
+                            position: 'relative', zIndex: 1,
+                            ...(isStarting ? { background: '#f8f9fa', borderRadius: 4, padding: 2 } : {}),
+                        }}
+                        autoComplete="off"
+                    >
+                        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: '#0f172a', margin: 0 }}>
+                            {isRegister ? 'Hesap Oluştur' : 'Oturum açın'}
+                        </h1>
+                        <p style={{ fontSize: 13, color: '#64748b', marginTop: 8, marginBottom: 28, lineHeight: 1.55 }}>
+                            {isRegister
+                                ? 'Yeni bir kurumsal hesap oluşturun.'
+                                : 'Devam etmek için Yılgenci kurumsal kimliğinizi kullanın.'
+                            }
+                        </p>
+
+                        {/* ── Kayıtlı hesaplar (sadece login) ── */}
+                        {!isRegister && quickSessions.length > 0 && (
+                            <div style={{ marginBottom: 20 }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 10, margin: '0 0 10px' }}>
+                                    Kayıtlı Hesaplar
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                                    {quickSessions.map(sess => (
+                                        <AccountPill
+                                            key={sess.id}
+                                            session={sess}
+                                            isActive={selectedSession?.id === sess.id}
+                                            onSelect={handleSelectSession}
+                                            onRemove={handleRemoveSession}
+                                        />
+                                    ))}
+                                    {!sessionLimitReached && (
+                                        <button
+                                            type="button"
+                                            onClick={handleNewAccount}
+                                            style={{
+                                                flexShrink: 0,
+                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                paddingLeft: 10, paddingRight: 12, paddingTop: 5, paddingBottom: 5,
+                                                borderRadius: 999,
+                                                border: `2px dashed ${!selectedSession ? '#94a3b8' : '#e2e8f0'}`,
+                                                background: !selectedSession ? '#f1f5f9' : '#fff',
+                                                color: '#64748b', cursor: 'pointer',
+                                                fontSize: 12, fontWeight: 700,
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            <UserPlus size={12} strokeWidth={2.5} />
+                                            <span>+ Başka hesap</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Ad Soyad (sadece kayıt) ── */}
+                        {isRegister && (
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={labelStyle}>Ad Soyad</label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    placeholder="Ad Soyad"
+                                    onFocus={() => setFocus('name')}
+                                    onBlur={() => setFocus(null)}
+                                    style={inputStyle(focus === 'name')}
+                                    autoComplete="off"
+                                    required
+                                />
+                            </div>
+                        )}
+
+                        {/* ── E-posta ── */}
+                        <div style={{ marginBottom: 16 }}>
+                            <label htmlFor="yl-email" style={labelStyle}>Kurumsal E-Posta</label>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    id="yl-email"
+                                    type="email"
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                    placeholder={selectedSession ? selectedSession.email : 'ad.soyad@yilgenci.com'}
+                                    onFocus={() => setFocus('email')}
+                                    onBlur={() => setFocus(null)}
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    required
+                                    style={{ ...inputStyle(focus === 'email'), paddingRight: isAutoFilled && !isRegister ? 100 : 14 }}
+                                />
+                                {isAutoFilled && !isRegister && (
+                                    <span style={{
+                                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        padding: '3px 8px', borderRadius: 3,
+                                        background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                        color: '#15803d', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                                    }}>
+                                        <Check size={10} strokeWidth={3} />
+                                        OTOMATİK
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Şifre ── */}
+                        <div style={{ marginBottom: isRegister ? 8 : 16 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                                <label htmlFor="yl-password" style={{ ...labelStyle, marginBottom: 0 }}>Şifre</label>
+                                {!isRegister && (
+                                    <button type="button" style={{
+                                        background: 'transparent', border: 0, padding: 0,
+                                        cursor: 'pointer', fontSize: 11, color: '#A01B1B',
+                                        fontWeight: 500, fontFamily: 'inherit',
+                                    }}>
+                                        Şifremi unuttum
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    id="yl-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    placeholder="••••••••••"
+                                    onFocus={() => setFocus('pw')}
+                                    onBlur={() => setFocus(null)}
+                                    autoComplete="new-password"
+                                    data-1p-ignore="true"
+                                    data-lpignore="true"
+                                    required
+                                    style={{ ...inputStyle(focus === 'pw'), paddingRight: 50 }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(v => !v)}
+                                    style={{
+                                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                                        background: 'transparent', border: 0, cursor: 'pointer',
+                                        color: '#94a3b8', padding: 4,
+                                    }}
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── Şifre gücü (kayıt) ── */}
+                        {isRegister && password.length > 0 && (
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ height: 3, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                                    <div style={{ height: '100%', background: strengthColor, width: `${(strengthScore / 3) * 100}%`, transition: 'all .4s ease', borderRadius: 999 }} />
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {strength.map((req, i) => (
+                                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: req.met ? '#059669' : '#94a3b8' }}>
+                                            {req.met ? <Check size={11} strokeWidth={3} /> : <X size={11} strokeWidth={3} />}
+                                            {req.text}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Şifre tekrar (kayıt) ── */}
+                        {isRegister && (
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={labelStyle}>Şifre Tekrar</label>
+                                <div style={{ position: 'relative' }}>
+                                    <Shield size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={passwordConfirm}
+                                        onChange={handleConfirmChange}
+                                        placeholder="••••••••••"
+                                        autoComplete="new-password"
+                                        data-1p-ignore="true"
+                                        required
+                                        style={{
+                                            ...inputStyle(false),
+                                            paddingLeft: 38,
+                                            border: `1px solid ${passwordsMatch ? '#6ee7b7' : '#e2e8f0'}`,
+                                            animation: confirmShake ? 'shake 0.4s ease' : 'none',
+                                        }}
+                                    />
+                                </div>
+                                <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)} }`}</style>
+                            </div>
+                        )}
+
+                        {/* ── Beni hatırla (sadece login) ── */}
+                        {!isRegister && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#475569', marginBottom: 20, cursor: 'pointer', userSelect: 'none' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={rememberDevice}
+                                    onChange={e => setRememberDevice(e.target.checked)}
+                                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                                />
+                                <span style={{
+                                    width: 16, height: 16, borderRadius: 2, flexShrink: 0,
+                                    border: `1.5px solid ${rememberDevice ? '#A01B1B' : '#cbd5e1'}`,
+                                    background: rememberDevice ? '#A01B1B' : '#fff',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'all .15s ease',
+                                }}>
+                                    {rememberDevice && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>}
+                                </span>
+                                Bu cihazda beni hatırla
+                            </label>
+                        )}
+
+                        {/* ── Hata mesajı ── */}
+                        {error && (
+                            <div role="alert" style={{
+                                background: ec.bg, border: `1px solid ${ec.border}`,
+                                borderRadius: 3, marginBottom: 16, overflow: 'hidden',
+                            }}>
+                                <div style={{ height: 3, background: ec.bar }} />
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px' }}>
+                                    <AlertTriangle size={14} style={{ color: ec.icon, flexShrink: 0, marginTop: 1 }} />
+                                    <span style={{ fontSize: 12, color: ec.text, lineHeight: 1.5 }}>{error}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Giriş / Kayıt butonu ── */}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            style={{
+                                width: '100%', padding: '13px',
+                                background: '#A01B1B', color: '#fff',
+                                border: 0, borderRadius: 3,
+                                fontSize: 13, fontWeight: 600,
+                                cursor: isLoading ? 'wait' : 'pointer',
+                                opacity: isLoading ? 0.7 : 1,
+                                boxShadow: '0 6px 14px -4px rgba(160,27,27,0.45), 0 0 0 1px rgba(160,27,27,0.4)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                                fontFamily: 'inherit',
+                                transition: 'opacity .15s ease',
+                            }}
+                        >
+                            {isLoading ? (
+                                <span style={{ letterSpacing: '0.15em' }}>BEKLEYİN…</span>
+                            ) : (
+                                <>
+                                    <span>{isRegister ? 'Hesabı Oluştur' : 'Oturum Aç'}</span>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                        <path d="M5 12h14M13 5l7 7-7 7" />
+                                    </svg>
+                                </>
+                            )}
+                        </button>
+
+                        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 22, textAlign: 'center', lineHeight: 1.6 }}>
+                            Bu sistem yetkili Yılgenci personeli içindir. Tüm oturumlar kayıt altına alınır.
+                        </p>
+
+                        {/* ── Mod geçiş ── */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0 14px' }}>
+                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                            <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {isRegister ? 'Hesabınız var mı?' : 'Hesabınız yok mu?'}
+                            </span>
+                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                        </div>
+
+                        <SecondaryButton onClick={() => {
+                            setMode(isRegister ? 'login' : 'register');
+                            setError('');
+                            setSelectedSession(null);
+                            setEmail(''); setPassword(''); setPasswordConfirm(''); setName('');
+                        }}>
+                            {isRegister ? (
+                                <>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                                    <span>Giriş Yap</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                                    <span>Yeni Hesap Aç</span>
+                                </>
+                            )}
+                        </SecondaryButton>
+                    </form>
+                </div>
+            </div>
         </div>
     );
 };
+
+function SecondaryButton({ onClick, children }) {
+    const [hover, setHover] = useState(false);
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            style={{
+                width: '100%', padding: '12px',
+                background: '#fff',
+                color: hover ? '#A01B1B' : '#0f172a',
+                border: `1px solid ${hover ? '#A01B1B' : '#e2e8f0'}`,
+                borderRadius: 3, fontSize: 12.5, fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                fontFamily: 'inherit',
+                boxShadow: '0 1px 0 rgba(15,23,42,0.04)',
+                transition: 'all .15s ease',
+            }}
+        >
+            {children}
+        </button>
+    );
+}
 
 export default Login;

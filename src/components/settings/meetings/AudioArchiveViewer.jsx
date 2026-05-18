@@ -1,83 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    PackageOpen, Folder, File, ChevronRight, Upload, Plus, Search,
-    FileText, FileImage, FileSpreadsheet, FileCode, Film, Music,
-    Database, Trash2, FolderInput, Cpu, X, CheckSquare, Square,
-    ArrowUpDown, SlidersHorizontal, Edit2, Check, Tag, MessageSquare,
-    ExternalLink, Download, Mic, Loader2, AlertCircle, Clock, CornerLeftUp
+    PackageOpen, Folder, ChevronRight, Upload, Plus, Search,
+    Film, Database, Trash2, X, CheckSquare, Square,
+    ArrowUpDown, SlidersHorizontal, Check, Tag, MessageSquare,
+    ExternalLink, Download, Mic, Loader2, AlertCircle, CornerLeftUp
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../../store/workspaceStore';
 import { dispatchArchiveChanged, useArchiveChangedListener } from '../../../utils/archiveEvents';
 import { useErrorStore } from '../../../store/errorStore';
 import { mutate } from '../../../api/client';
 import { FileCard } from '../../ui/file-card-collections';
-
-// ── YARDIMCI: Dosya türüne göre ikon ve renk
-const getFileVisual = (fileType) => {
-    const t = (fileType || '').toLowerCase();
-    if (t === 'pdf') return { Icon: FileText, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' };
-    if (['xls', 'xlsx', 'csv'].includes(t)) return { Icon: FileSpreadsheet, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' };
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(t)) return { Icon: FileImage, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
-    if (['doc', 'docx', 'txt', 'md'].includes(t)) return { Icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' };
-    if (['mp4', 'avi', 'mov'].includes(t)) return { Icon: Film, color: 'text-pink-500', bg: 'bg-pink-50', border: 'border-pink-100' };
-    if (['mp3', 'wav', 'ogg'].includes(t)) return { Icon: Music, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' };
-    if (['py', 'js', 'ts', 'json', 'html'].includes(t)) return { Icon: FileCode, color: 'text-cyan-500', bg: 'bg-cyan-50', border: 'border-cyan-100' };
-    return { Icon: File, color: 'text-stone-400', bg: 'bg-stone-50', border: 'border-stone-100' };
-};
-
-// Sadece arşiv modunda olan formatlar
-const ARCHIVE_ONLY_TYPES = ['xls', 'xlsx', 'csv'];
-const isArchiveOnly = (fileType) => ARCHIVE_ONLY_TYPES.includes((fileType || '').toLowerCase());
-
-const isAudio = (t) => ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes((t || '').toLowerCase());
-const isVideo = (t) => ['mp4', 'avi', 'mov', 'webm'].includes((t || '').toLowerCase());
-const isImage = (t) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((t || '').toLowerCase());
-const isPdf = (t) => (t || '').toLowerCase() === 'pdf';
-
-const formatBytes = (bytes) => {
-    if (!bytes || bytes === 0) return '0 B';
-    const k = 1024, dm = 1, sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-};
-
-// ── SAĞ TIK CONTEXT MENU
-const ContextMenu = ({ x, y, item, onClose, onDelete, onRename, onMove }) => {
-    const ref = useRef(null);
-    useEffect(() => {
-        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [onClose]);
-
-    return (
-        <div
-            ref={ref}
-            className="fixed z-[9999] bg-white border border-stone-200 rounded-lg shadow-xl py-1 w-44"
-            style={{ top: y, left: x }}
-        >
-            <button onClick={() => { onRename(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                <Edit2 size={13} className="text-stone-400" /> Yeniden Adlandır
-            </button>
-            <button onClick={() => { onMove(item); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                <FolderInput size={13} className="text-stone-400" /> Klasöre Taşı
-            </button>
-            {item.file_type !== 'folder' && (
-                <button onClick={onClose}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors">
-                    <Cpu size={13} className="text-teal-500" /> Vektörleştir
-                </button>
-            )}
-            <div className="border-t border-stone-100 my-1" />
-            <button onClick={() => { onDelete([item.id]); onClose(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors">
-                <Trash2 size={13} /> Sil
-            </button>
-        </div>
-    );
-};
+import {
+    getFileVisual, formatBytes,
+    isArchiveOnly, isAudio, isVideo, isImage, isPdf,
+} from './audioArchive/FileTypeHelper';
+import AudioContextMenu from './audioArchive/AudioContextMenu';
 
 // ── TAŞI MODAL
 const MoveModal = ({ item, folders, onClose, onMove }) => {

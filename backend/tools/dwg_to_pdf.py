@@ -21,6 +21,7 @@ Kullanıcı tarafından ayarlanabilir:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -34,182 +35,15 @@ from typing import Optional, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-# ── Sabit listeler (value + label + description + tag) ───────────────────────
-# tag: "ai"=AI/OCR için önerilir, "archive"=arşiv, "web"=web/görsel, None=nötr
-
-PRINTER_OPTIONS = [
-    {
-        "value": "AutoCAD PDF (General Documentation).pc3",
-        "label": "AutoCAD PDF — Genel Belgeleme",
-        "tag": "ai",
-        "description": "Çoğu senaryo için en dengeli seçim. Çizgi kalınlıklarını ve metinleri vektörel olarak PDF'e aktarır. AI pipeline için güvenilir başlangıç noktası.",
-    },
-    {
-        "value": "AutoCAD PDF (High Quality Print).pc3",
-        "label": "AutoCAD PDF — Yüksek Kalite",
-        "tag": "ai",
-        "description": "Milimetrik toleransların, ince çizgilerin ve karmaşık detayların sıfır hatayla aktarılması gereken durumlar için. AI'ın hiçbir detayı kaçırmaması gereken projelerde ideal seçim. Dosya boyutu büyük olur.",
-    },
-    {
-        "value": "AutoCAD PDF (Smallest File).pc3",
-        "label": "AutoCAD PDF — Küçük Dosya",
-        "tag": "archive",
-        "description": "Yalnızca arşivleme veya hızlı e-posta gönderimi içindir. Dosya boyutunu küçültmek için kaliteden ciddi ödün verir — teknik analizler ve AI okuma için uygun değildir.",
-    },
-    {
-        "value": "AutoCAD PDF (Web and Mobile).pc3",
-        "label": "AutoCAD PDF — Web ve Mobil",
-        "tag": "web",
-        "description": "Dosyaların bulutta, web tarayıcılarında veya mobil uygulamalarda hızlı yüklenmesi için optimize edilmiştir. Katman verilerini ve köprüleri korur.",
-    },
-    {
-        "value": "DWG To PDF.pc3",
-        "label": "DWG To PDF (Standart)",
-        "tag": None,
-        "description": "Eski nesil standart AutoCAD PDF dönüştürücüsü. Yeni projelerde genellikle üstteki AutoCAD PDF seçenekleri tercih edilir; temelde aynı işi yapar.",
-    },
-    {
-        "value": "PublishToWeb PNG.pc3",
-        "label": "PublishToWeb PNG",
-        "tag": "web",
-        "description": "Çizimi standart PNG formatına çevirir. Arayüzde hızlı önizleme için kullanılır. Teknik analiz için değil, görsel gösterim içindir.",
-    },
-    {
-        "value": "PublishToWeb PNG (Transparent).pc3",
-        "label": "PublishToWeb PNG — Şeffaf",
-        "tag": "web",
-        "description": "Arka planı şeffaf (transparan) PNG üretir. Arayüzde koyu/açık tema geçişi yapıyorsanız çizimlerin temaya pürüzsüz oturması için idealdir.",
-    },
-    {
-        "value": "PublishToWeb JPG.pc3",
-        "label": "PublishToWeb JPG",
-        "tag": "web",
-        "description": "JPEG kayıplı sıkıştırma uyguladığı için ince çizgilerde bulanıklık (artifact) oluşturabilir. Teknik çizimlerde PNG her zaman JPG'den üstündür.",
-    },
-    {
-        "value": "DWF6 ePlot.pc3",
-        "label": "DWF6 ePlot",
-        "tag": None,
-        "description": "Autodesk'in DWF vektörel formatına dönüştürür. PDF yerine DWF ekosistemi kullanıyorsanız tercih edilir.",
-    },
-    {
-        "value": "DWF6_eePlot_HiRes.pc3",
-        "label": "DWF6 ePlot — Yüksek Çözünürlük",
-        "tag": None,
-        "description": "DWF formatında yüksek çözünürlüklü çıktı üretir.",
-    },
-    {
-        "value": "DWFx ePlot (XPS Compatible).pc3",
-        "label": "DWFx ePlot (XPS Uyumlu)",
-        "tag": None,
-        "description": "XPS uyumlu DWFx formatında çıktı üretir. Windows'un yerleşik belge görüntüleyicisiyle açılabilir.",
-    },
-]
-
-PLOT_STYLE_OPTIONS = [
-    {
-        "value": "monochrome.ctb",
-        "label": "Siyah-Beyaz (monochrome)",
-        "tag": "ai",
-        "description": "Tüm renkleri siyaha çevirir. Beyaz zemin üzerinde maksimum kontrast. AI/OCR'nin ölçü ve metni sıfır hatayla okuması için kesin ve tek doğru seçim.",
-    },
-    {
-        "value": ".",
-        "label": "Yok (Renkler Olduğu Gibi)",
-        "tag": None,
-        "description": "Plot stili uygulanmaz; çizimdeki renkler birebir PDF'e aktarılır. Kırmızı çizgi kırmızı, sarı çizgi sarı çıkar. Teknik okumayı zorlaştırır.",
-    },
-    {
-        "value": "acad.ctb",
-        "label": "acad.ctb (Varsayılan)",
-        "tag": None,
-        "description": "AutoCAD'in varsayılan renk tabanlı plot stili. Renkleri olduğu gibi aktarır; 'Yok' seçeneğiyle işlevsel olarak aynıdır.",
-    },
-    {
-        "value": "Grayscale.ctb",
-        "label": "Gri Tonlamalı",
-        "tag": None,
-        "description": "Renkleri siyah ve grinin tonlarına çevirir. Koyu renkler siyah, açık renkler (sarı gibi) açık gri çıkar. Sunum için iyidir ancak açık gri alanlar AI tarafından okunurken silik kalabilir.",
-    },
-    {
-        "value": "dwgviewr.ctb",
-        "label": "dwgviewr.ctb",
-        "tag": None,
-        "description": "DWG TrueView'ın varsayılan plot stili. Genel amaçlı kullanım için uygundur.",
-    },
-    {
-        "value": "DWF Virtual Pens.ctb",
-        "label": "DWF Virtual Pens",
-        "tag": None,
-        "description": "DWF formatına export için tasarlanmış sanal kalem atamaları içerir.",
-    },
-    {
-        "value": "Fill Patterns.ctb",
-        "label": "Fill Patterns",
-        "tag": None,
-        "description": "Tarama ve dolgu alanlarını ön plana çıkaran plot stili. Mimari çizimlerde kullanılır.",
-    },
-    {
-        "value": "Screening 100%.ctb",
-        "label": "Screening %100",
-        "tag": None,
-        "description": "Tüm renklere %100 opaklık uygular — standart çıktıyla aynı sonuç.",
-    },
-    {
-        "value": "Screening 75%.ctb",
-        "label": "Screening %75",
-        "tag": None,
-        "description": "Renkleri %75 yoğunlukta basar. Hafif soluk bir görünüm verir.",
-    },
-    {
-        "value": "Screening 50%.ctb",
-        "label": "Screening %50",
-        "tag": None,
-        "description": "Renkleri %50 yoğunlukta basar. Arka plan veya referans katmanları soluklaştırmak için kullanılır.",
-    },
-    {
-        "value": "Screening 25%.ctb",
-        "label": "Screening %25",
-        "tag": None,
-        "description": "Renkleri %25 yoğunlukta basar. Çok soluk, neredeyse görünmez çıktı.",
-    },
-]
-
-PAPER_SIZE_OPTIONS = [
-    "ISO_A4_(210.00_x_297.00_MM)",
-    "ISO_A3_(297.00_x_420.00_MM)",
-    "ISO_A2_(420.00_x_594.00_MM)",
-    "ISO_A1_(594.00_x_841.00_MM)",
-    "ISO_A0_(841.00_x_1189.00_MM)",
-    "ANSI_A_(8.50_x_11.00_Inches)",
-    "ANSI_B_(11.00_x_17.00_Inches)",
-    "ANSI_C_(17.00_x_22.00_Inches)",
-    "ANSI_D_(22.00_x_34.00_Inches)",
-]
-
+# ── Sabit listeler — dwg_presets.json'dan yüklenir ───────────────────────────
+_PRESETS = json.loads(
+    open(os.path.join(os.path.dirname(__file__), "dwg_presets.json"), encoding="utf-8").read()
+)
+PRINTER_OPTIONS: list[dict]       = _PRESETS["printer_options"]
+PLOT_STYLE_OPTIONS: list[dict]    = _PRESETS["plot_style_options"]
+PAPER_SIZE_OPTIONS: list[str]     = _PRESETS["paper_size_options"]
 # accoreconsole.exe yaygın kurulum yolları (sırayla denenir)
-_CONSOLE_SEARCH_PATHS = [
-    # Dil ekli TrueView kurulumları (örn. "- English", "- Turkish")
-    r"C:\Program Files\Autodesk\DWG TrueView 2027 - English\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2027 - Turkish\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2027\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2026 - English\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2026 - Turkish\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2026\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2025 - English\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2025\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2024 - English\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2024\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2023 - English\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\DWG TrueView 2023\accoreconsole.exe",
-    # AutoCAD kurulumları (genelde dil eki olmaz)
-    r"C:\Program Files\Autodesk\AutoCAD 2027\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\AutoCAD 2026\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\AutoCAD 2025\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\AutoCAD 2024\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\AutoCAD 2023\accoreconsole.exe",
-    r"C:\Program Files\Autodesk\AutoCAD 2022\accoreconsole.exe",
-]
+_CONSOLE_SEARCH_PATHS: list[str]  = _PRESETS["console_search_paths"]
 
 
 # ── Pydantic şemalar ──────────────────────────────────────────────────────────
@@ -392,15 +226,8 @@ def _convert_one(
 # ── COM otomasyonu ────────────────────────────────────────────────────────────
 
 # TrueView/AutoCAD COM ProgID'leri — yeniden eskiye
-_COM_PROG_IDS = [
-    "AutoCAD.Application",
-    "AutoCAD.Application.26",
-    "AutoCAD.Application.25",
-    "AutoCAD.Application.24",
-    "AutoCAD.Application.23",
-]
-
-_PLOT_ROTATION = {"Landscape": 1, "Portrait": 0}
+_COM_PROG_IDS: list[str]       = _PRESETS["com_prog_ids"]
+_PLOT_ROTATION: dict[str, int] = _PRESETS["plot_rotation"]
 
 
 def _convert_one_com(dwg_path: str, params: DwgConvertParams) -> ConvertFileResult:
@@ -902,6 +729,16 @@ def macro_delete_step_endpoint(step_id: str):
     from tools.dwg_to_pdf_recorder import _state
     _state["steps"] = steps
     return {"deleted": step_id, "remaining": len(steps)}
+
+
+class _MacroRunFolderReq(BaseModel):
+    source_dir: str
+
+
+@ROUTER.post("/macro/run-folder", summary="Kayıtlı makroyu klasördeki her dosya için sırayla çalıştır")
+def macro_run_folder_endpoint(req: _MacroRunFolderReq):
+    from tools.dwg_to_pdf_recorder import run_macro_on_folder
+    return run_macro_on_folder(req.source_dir)
 
 
 @ROUTER.get("/options", summary="Seçilebilir seçenekler listesi")

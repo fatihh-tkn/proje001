@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, Play, Loader2, CheckCircle2, XCircle, AlertTriangle, ChevronDown, Sparkles, ScanLine, ChevronRight, MousePointerClick, Circle, Square, Trash2, GripVertical } from 'lucide-react';
+import { FolderOpen, Play, Loader2, CheckCircle2, XCircle, AlertTriangle, ChevronDown, Sparkles, ScanLine, ChevronRight, MousePointerClick, Circle, Square, Trash2, GripVertical, Pencil, Check, MousePointer2 } from 'lucide-react';
 import { useErrorStore } from '../../../store/errorStore';
 
 const TAG_STYLES = {
@@ -108,6 +108,17 @@ export default function DwgConverterPanel() {
     const [maxWorkers, setMaxWorkers] = useState(2);
     const [method, setMethod]   = useState('gui');
 
+    // Sabit → yapılandırılabilir plot ayarları
+    const [plotArea, setPlotArea]     = useState('Extents');
+    const [plotScale, setPlotScale]   = useState('Fit');
+    const [centerPlot, setCenterPlot] = useState(true);
+    const [pageSize, setPageSize]     = useState('Sınırsız (A0)');
+
+    // Makro — dinamik kaynak klasör ve çalıştırma
+    const [macroSourceDir, setMacroSourceDir] = useState('');
+    const [macroRunning, setMacroRunning]     = useState(false);
+    const [macroRunResult, setMacroRunResult] = useState(null);
+
     const [running, setRunning] = useState(false);
     const [result, setResult]   = useState(null);
 
@@ -120,6 +131,8 @@ export default function DwgConverterPanel() {
     // Makro kaydedici
     const [macroRecording, setMacroRecording] = useState(false);
     const [macroSteps, setMacroSteps]         = useState([]);
+    const [editingStepId, setEditingStepId]   = useState(null);
+    const [editingStepName, setEditingStepName] = useState('');
     const pollRef = React.useRef(null);
 
     useEffect(() => {
@@ -148,6 +161,34 @@ export default function DwgConverterPanel() {
         else addToast({ type: 'success', message: `Bulundu: ${d.path}` });
     }, [consolePath, addToast]);
 
+    const runMacro = useCallback(async () => {
+        if (!macroSourceDir) {
+            addToast({ type: 'error', message: 'Önce makro kaynak klasörü seçin.' });
+            return;
+        }
+        if (!macroSteps.length) {
+            addToast({ type: 'error', message: 'Çalıştırılacak kayıtlı makro adımı yok.' });
+            return;
+        }
+        setMacroRunning(true);
+        setMacroRunResult(null);
+        try {
+            const res = await fetch('/api/tools/dwg-to-pdf/macro/run-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_dir: macroSourceDir }),
+            });
+            const d = await res.json();
+            setMacroRunResult(d);
+            if (d.error) addToast({ type: 'error', message: d.error });
+            else addToast({ type: 'success', message: `${d.processed ?? 0} dosya işlendi.` });
+        } catch (err) {
+            addToast({ type: 'error', message: `Makro çalıştırılamadı: ${err.message}` });
+        } finally {
+            setMacroRunning(false);
+        }
+    }, [macroSourceDir, macroSteps, addToast]);
+
     const startMacro = useCallback(async () => {
         setMacroSteps([]);
         setMacroRecording(true);
@@ -155,7 +196,7 @@ export default function DwgConverterPanel() {
             const res = await fetch('/api/tools/dwg-to-pdf/macro/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dwg_path: dwgDir }),
+                body: JSON.stringify({ dwg_path: macroSourceDir || dwgDir }),
             });
             const d = await res.json();
             if (d.error) {
@@ -193,6 +234,24 @@ export default function DwgConverterPanel() {
         await fetch(`/api/tools/dwg-to-pdf/macro/step/${id}`, { method: 'DELETE' });
         setMacroSteps(prev => prev.filter(s => s.id !== id));
     }, []);
+
+    const commitRename = useCallback(async () => {
+        if (!editingStepId) return;
+        setMacroSteps(prev => prev.map(s =>
+            s.id === editingStepId ? { ...s, name: editingStepName, note: editingStepName } : s
+        ));
+        // Güncel listeyi backend'e yaz
+        setMacroSteps(prev => {
+            fetch('/api/tools/dwg-to-pdf/macro/steps', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ steps: prev }),
+            }).catch(() => {});
+            return prev;
+        });
+        setEditingStepId(null);
+        setEditingStepName('');
+    }, [editingStepId, editingStepName]);
 
     const loadMacro = useCallback(async () => {
         const r = await fetch('/api/tools/dwg-to-pdf/macro/load');
@@ -255,6 +314,10 @@ export default function DwgConverterPanel() {
                     max_workers: maxWorkers,
                     accoreconsole_path: consolePath || null,
                     method,
+                    plot_area: plotArea,
+                    scale_setting: plotScale,
+                    center_plot: centerPlot,
+                    page_size_override: pageSize,
                 }),
             });
             const data = await convertRes.json();
@@ -358,34 +421,147 @@ export default function DwgConverterPanel() {
 
                             {macroSteps.length > 0 ? (
                                 <div className="max-h-56 overflow-y-auto [&::-webkit-scrollbar]:hidden">
-                                    {macroSteps.map((step, i) => (
-                                        <div key={step.id} className="flex items-center gap-2 px-3.5 py-2 border-b border-stone-50 hover:bg-stone-50/60 group">
-                                            <span className="text-[10px] text-stone-300 w-4 shrink-0 font-mono">{i + 1}</span>
-                                            <GripVertical size={11} className="text-stone-200 shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-[11px] font-semibold text-stone-700 truncate">
-                                                    {step.name || step.class_name || `(${step.x}, ${step.y})`}
+                                    {macroSteps.map((step, i) => {
+                                        const hasName = !!(step.name || step.auto_id);
+                                        const isCoordOnly = !hasName;
+                                        const isEditing = editingStepId === step.id;
+                                        const displayName = step.name || step.auto_id || `(${step.x}, ${step.y})`;
+                                        const tooltip = [
+                                            step.name       && `Ad: ${step.name}`,
+                                            step.auto_id    && `AutomationID: ${step.auto_id}`,
+                                            step.control_type && `Tür: ${step.control_type}`,
+                                            step.class_name && `Class: ${step.class_name}`,
+                                            step.parent_name && `Diyalog: ${step.parent_name}`,
+                                            `Koordinat: (${step.x}, ${step.y})`,
+                                        ].filter(Boolean).join('\n');
+
+                                        return (
+                                            <div
+                                                key={step.id}
+                                                title={tooltip}
+                                                className={`flex items-center gap-2 px-3.5 py-2 border-b border-stone-50 group transition-colors ${isCoordOnly ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-stone-50/60'}`}
+                                            >
+                                                <span className="text-[10px] text-stone-300 w-4 shrink-0 font-mono text-right">{i + 1}</span>
+
+                                                {/* Aksiyon ikonu */}
+                                                <div className={`shrink-0 ${isCoordOnly ? 'text-amber-400' : 'text-stone-300'}`}>
+                                                    <MousePointer2 size={11} />
                                                 </div>
-                                                <div className="flex gap-2 text-[9px] text-stone-400 font-mono">
-                                                    {step.auto_id && <span className="text-[#378ADD]">{step.auto_id}</span>}
-                                                    {step.control_type && <span>{step.control_type}</span>}
-                                                    {step.parent_name && <span className="text-stone-300">← {step.parent_name}</span>}
+
+                                                <div className="flex-1 min-w-0">
+                                                    {isEditing ? (
+                                                        <input
+                                                            autoFocus
+                                                            value={editingStepName}
+                                                            onChange={e => setEditingStepName(e.target.value)}
+                                                            onBlur={commitRename}
+                                                            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setEditingStepId(null); setEditingStepName(''); } }}
+                                                            className="w-full text-[11px] font-semibold text-stone-700 bg-white border border-[#378ADD] rounded px-1.5 py-0.5 focus:outline-none"
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <div className={`text-[11px] font-semibold truncate ${isCoordOnly ? 'text-amber-600' : 'text-stone-700'}`}>
+                                                                {isCoordOnly && <span className="text-[9px] font-black uppercase tracking-wider text-amber-500 mr-1.5">⚠ koordinat</span>}
+                                                                {displayName}
+                                                            </div>
+                                                            <div className="flex gap-2 text-[9px] text-stone-400 font-mono mt-0.5">
+                                                                {step.control_type && (
+                                                                    <span className="bg-stone-100 text-stone-500 px-1 rounded">{step.control_type}</span>
+                                                                )}
+                                                                {step.parent_name && (
+                                                                    <span className="text-stone-300 truncate">← {step.parent_name}</span>
+                                                                )}
+                                                                {!step.control_type && !step.parent_name && step.class_name && (
+                                                                    <span className="text-stone-300">{step.class_name}</span>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* Eylem butonları */}
+                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                    {!isEditing && (
+                                                        <button
+                                                            onClick={() => { setEditingStepId(step.id); setEditingStepName(step.name || ''); }}
+                                                            className="p-1 hover:text-[#378ADD] text-stone-300 transition-colors"
+                                                            title="Adı düzenle"
+                                                        >
+                                                            <Pencil size={10} />
+                                                        </button>
+                                                    )}
+                                                    {isEditing && (
+                                                        <button onClick={commitRename} className="p-1 text-emerald-500 hover:text-emerald-600 transition-colors">
+                                                            <Check size={10} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => deleteStep(step.id)}
+                                                        className="p-1 hover:text-red-400 text-stone-300 transition-colors"
+                                                        title="Adımı sil"
+                                                    >
+                                                        <Trash2 size={10} />
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => deleteStep(step.id)}
-                                                className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 text-stone-300 transition-all"
-                                            >
-                                                <Trash2 size={11} />
-                                            </button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="px-3.5 py-4 text-center text-[10px] text-stone-300">
                                     {macroRecording ? 'TrueView\'de tıklayın — adımlar buraya kaydedilecek' : 'Henüz adım yok'}
                                 </div>
                             )}
+                        </div>
+
+                        {/* Makro Kaynak Klasörü + Çalıştır */}
+                        <div className="border border-stone-200 rounded-lg overflow-hidden bg-white">
+                            <div className="flex items-center gap-3 px-3.5 py-2.5 border-b border-stone-100 bg-stone-50">
+                                <span className="text-[11px] font-bold text-stone-700 flex-1">Makro Çalıştır</span>
+                                <span className="text-[9px] font-black uppercase tracking-wider text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">Klasör bazlı</span>
+                            </div>
+                            <div className="px-3.5 py-3 flex flex-col gap-3">
+                                <div>
+                                    <div className="text-[11px] font-semibold text-stone-600 mb-1.5">Kaynak Klasör</div>
+                                    <BrowseInput
+                                        value={macroSourceDir}
+                                        onChange={setMacroSourceDir}
+                                        placeholder="C:\Projeler\DWG"
+                                    />
+                                    <p className="text-[10px] text-stone-400 leading-relaxed mt-1.5">
+                                        Makro bu klasördeki her dosya için sırayla tekrarlanır. Dosya yolu her adımda dinamik olarak güncellenir.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={runMacro}
+                                    disabled={macroRunning || !macroSteps.length}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-stone-800 hover:bg-stone-900 disabled:opacity-40 text-white rounded-lg text-[11px] font-bold tracking-wide transition-colors"
+                                >
+                                    {macroRunning
+                                        ? <><Loader2 size={12} className="animate-spin" /> İşleniyor...</>
+                                        : <><Play size={12} /> Klasörü İşle</>
+                                    }
+                                </button>
+                                {macroRunResult && (
+                                    <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5">
+                                        {macroRunResult.error ? (
+                                            <div className="flex items-center gap-2 text-[11px] text-red-500 font-semibold">
+                                                <XCircle size={12} /> {macroRunResult.error}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-4 text-[11px] font-semibold text-stone-600">
+                                                <span className="text-emerald-600">✓ {macroRunResult.processed ?? 0} işlendi</span>
+                                                {(macroRunResult.failed ?? 0) > 0 && (
+                                                    <span className="text-red-500">✗ {macroRunResult.failed} hata</span>
+                                                )}
+                                                {macroRunResult.skipped > 0 && (
+                                                    <span className="text-stone-400">↷ {macroRunResult.skipped} atlandı</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Tarama sonuçları */}
@@ -565,19 +741,56 @@ export default function DwgConverterPanel() {
                         </div>
                     )}
                 </Row>
-
-                {/* Sabit ayarlar */}
-                <div className="flex flex-wrap items-center gap-2 text-[10px] text-stone-400 bg-white border border-stone-100 rounded-lg px-3 py-2.5 mt-1">
-                    <AlertTriangle size={11} className="shrink-0 text-stone-300" />
-                    <span className="text-stone-400">Sabit:</span>
-                    <span className="font-semibold text-stone-500">Plot Alanı — Extents</span>
-                    <span className="text-stone-200">·</span>
-                    <span className="font-semibold text-stone-500">Ölçek — Sığdır</span>
-                    <span className="text-stone-200">·</span>
-                    <span className="font-semibold text-stone-500">Merkeze Hizala</span>
-                    <span className="text-stone-200">·</span>
-                    <span className="font-semibold text-stone-500">Sayfa Boyutu — Sınırsız (A0)</span>
-                </div>
+                <Row label="Plot Alanı" desc="Hangi alanın kağıda sığdırılacağı">
+                    <SelectField
+                        value={plotArea}
+                        onChange={setPlotArea}
+                        options={[
+                            { value: 'Extents',  label: 'Extents — tüm çizim' },
+                            { value: 'Window',   label: 'Window — seçili alan' },
+                            { value: 'Limits',   label: 'Limits — çizim sınırları' },
+                            { value: 'Display',  label: 'Display — ekran görünümü' },
+                        ]}
+                    />
+                </Row>
+                <Row label="Ölçek" desc="Kağıda yerleşim ölçeği">
+                    <SelectField
+                        value={plotScale}
+                        onChange={setPlotScale}
+                        options={[
+                            { value: 'Fit',  label: 'Sığdır (Fit to Paper)' },
+                            { value: '1:1',  label: '1:1' },
+                            { value: '1:2',  label: '1:2' },
+                            { value: '1:5',  label: '1:5' },
+                            { value: '1:10', label: '1:10' },
+                        ]}
+                    />
+                </Row>
+                <Row label="Sayfa Boyutu" desc="Kağıt formatı">
+                    <SelectField
+                        value={pageSize}
+                        onChange={setPageSize}
+                        options={[
+                            { value: 'Sınırsız (A0)', label: 'Sınırsız (A0)' },
+                            { value: 'A0', label: 'A0 — 841 × 1189 mm' },
+                            { value: 'A1', label: 'A1 — 594 × 841 mm' },
+                            { value: 'A2', label: 'A2 — 420 × 594 mm' },
+                            { value: 'A3', label: 'A3 — 297 × 420 mm' },
+                            { value: 'A4', label: 'A4 — 210 × 297 mm' },
+                        ]}
+                    />
+                </Row>
+                <Row label="Merkeze Hizala" desc="Çizimi kağıt ortasına yerleştir">
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setCenterPlot(v => !v)}
+                            className={`relative w-[38px] h-[20px] rounded-full transition-colors focus:outline-none ${centerPlot ? 'bg-[#378ADD]' : 'bg-stone-200'}`}
+                        >
+                            <span className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-150 ${centerPlot ? 'left-[20px]' : 'left-[2px]'}`} />
+                        </button>
+                    </div>
+                </Row>
 
                 {/* Eylem */}
                 <Section title="Eylem" />

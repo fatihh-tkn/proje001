@@ -85,7 +85,7 @@ def _check_db_canned(msg: str) -> str | None:
 
 
 # Geçerli intent değerleri (LLM classifier çıktısı için — 'sohbet' deterministik fast-path)
-_VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa", "skill_query"}
+_VALID_INTENTS = {"general", "serbest", "hata_cozumu", "rapor_arama", "n8n", "dosya_qa", "skill_query", "surec_analiz"}
 
 # Komut → intent (deterministik)
 _COMMAND_INTENT_MAP = {
@@ -94,7 +94,7 @@ _COMMAND_INTENT_MAP = {
     "zli_report_query":         "rapor_arama",
     "parca_suresi_hesapla":     "general",
     "summarize":                "general",
-    "bpmn_analyze":             "general",
+    "bpmn_analyze":             "surec_analiz",
     "extract_tables":           "general",
     "gen_questions":            "general",
     "action_items":             "general",
@@ -165,6 +165,7 @@ _INTENT_PLAN = {
     "n8n":              [("n8n_trigger", False), ("rag_search", True)],
     "dosya_qa":         [("rag_search", False)],
     "skill_query":      [("skill_reader", False)],
+    "surec_analiz":     [("rag_search", True), ("surec_ajan", False)],
 }
 
 
@@ -190,11 +191,16 @@ _CLASSIFIER_SYSTEM_FALLBACK = (
     "gönder, görev oluştur).\n"
     "- dosya_qa: belirli bir dosya hakkında soru.\n"
     "- skill_query: sistemin yetenekleri, araçları veya nasıl kullanıldığı hakkında "
-    "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var', 'bana nasıl yardım edersin').\n\n"
+    "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var', 'bana nasıl yardım edersin').\n"
+    "- surec_analiz: BPMN dosyası, iş akışı veya süreç belgesi hakkında analiz isteği. "
+    "Kullanıcı 'bu süreci anlat', 'akışı göster', 'BPMN'i açıkla', 'süreç adımları neler', "
+    "'iş akışını özetle' gibi ifadeler kullanıyor. Belge yüklenmiş veya bilgi tabanında "
+    "süreç tanımı varsa bu kategoriyi seç.\n\n"
     "KARAR KURALI: Açıkça genel bilgi sorusu (Python, matematik, tarih vs.) ise → serbest. "
     "Şirkete/iş süreçlerine ilişkin olabilecek her türlü soru → general. "
     "Belirsiz → general (bilgi tabanını aramak her zaman güvenli). "
-    "Sistem yetenekleri sorusuysa → skill_query.\n\n"
+    "Sistem yetenekleri sorusuysa → skill_query. "
+    "BPMN/süreç/akış analizi sorusuysa → surec_analiz.\n\n"
     "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
     '{"intent": "<kategori>", "confidence": 0.0-1.0, "complexity": "low|medium|high", '
     '"needs_polish": <bool>, "reasoning": "<1-cümle-gerekçe>"}\n\n'

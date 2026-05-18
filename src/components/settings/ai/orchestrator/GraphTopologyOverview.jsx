@@ -4,7 +4,7 @@ import {
     User, GitBranch, Search, Wrench, Database, Webhook,
     Sparkles, Wand2, FileJson, AlertTriangle, Power,
     PencilLine, FileText, Mic, Save, Brain, Clock, History,
-    Info, ChevronDown,
+    Info, ChevronDown, Workflow,
 } from 'lucide-react';
 import ApiPayloadPreview from './ApiPayloadPreview';
 
@@ -32,10 +32,11 @@ const PopupPortal = ({ title, icon: Icon = FileJson, iconColor, popupPos, onClos
 
 /* ── Data ─────────────────────────────────────────────────────── */
 const SPECIALISTS = [
-    { id: 'rag_search',   label: 'RAG Arama',   sub: 'hybrid kb',  icon: Search,   color: '#0ea5e9', bg: 'rgba(14,165,233,0.08)',  usesAgent: 'sys_node_rag_search',   info: 'Vektör + tam metin hibrit arama. Belge & toplantı havuzlarından kullanıcı sorgusuyla en alakalı parçaları çeker.' },
-    { id: 'error_solver', label: 'Hata Çözücü', sub: 'json schema', icon: Wrench,   color: '#ef4444', bg: 'rgba(239,68,68,0.07)',   usesAgent: 'sys_node_error_solver', info: 'SAP/sistem hatalarını yapılandırılmış JSON formatında (error_solution) çözümleyen uzman.' },
-    { id: 'zli_finder',   label: "Z'li Rapor",  sub: 'sql + llm',  icon: Database,  color: '#0891b2', bg: 'rgba(8,145,178,0.08)',   usesAgent: 'sys_node_zli_finder',   info: "SQL'den aday Z'li raporları çekip LLM ile en uygunu seçen uzman." },
-    { id: 'n8n_trigger',  label: 'n8n Tetikle', sub: 'workflow',    icon: Webhook,  color: '#16a34a', bg: 'rgba(22,163,74,0.07)',   usesAgent: 'sys_node_n8n_trigger',  info: 'sys_node_n8n_trigger ajanı kullanıcı mesajını analiz edip n8n workflow tetikler.' },
+    { id: 'rag_search',   label: 'RAG Arama',    sub: 'hybrid kb',  icon: Search,   color: '#0ea5e9', bg: 'rgba(14,165,233,0.08)',  usesAgent: 'sys_node_rag_search',   info: 'Vektör + tam metin hibrit arama. Belge & toplantı havuzlarından kullanıcı sorgusuyla en alakalı parçaları çeker.' },
+    { id: 'error_solver', label: 'Hata Çözücü',  sub: 'json schema', icon: Wrench,   color: '#ef4444', bg: 'rgba(239,68,68,0.07)',   usesAgent: 'sys_node_error_solver', info: 'SAP/sistem hatalarını yapılandırılmış JSON formatında (error_solution) çözümleyen uzman.' },
+    { id: 'zli_finder',   label: "Z'li Rapor",   sub: 'sql + llm',  icon: Database,  color: '#0891b2', bg: 'rgba(8,145,178,0.08)',   usesAgent: 'sys_node_zli_finder',   info: "SQL'den aday Z'li raporları çekip LLM ile en uygunu seçen uzman." },
+    { id: 'n8n_trigger',  label: 'n8n Tetikle',  sub: 'workflow',    icon: Webhook,  color: '#16a34a', bg: 'rgba(22,163,74,0.07)',   usesAgent: 'sys_node_n8n_trigger',  info: 'sys_node_n8n_trigger ajanı kullanıcı mesajını analiz edip n8n workflow tetikler.' },
+    { id: 'surec_ajan',   label: 'Süreç Ajanı',  sub: 'bpmn + pdf', icon: Workflow,  color: '#7c3aed', bg: 'rgba(124,58,237,0.07)',  usesAgent: 'sys_node_surec_ajan',   info: 'BPMN ve PDF belgelerindeki iş süreçlerini analiz eder, adım adım akış olarak kullanıcıya sunar.' },
 ];
 
 const HIDDEN_COMPONENTS = [
@@ -47,26 +48,27 @@ const HIDDEN_COMPONENTS = [
 
 /* ── Canvas config ─────────────────────────────────────────────── */
 const CANVAS_W = 960;
-const CANVAS_H = 480;
+const CANVAS_H = 510;
 const EXPANDED_W = 380;
 const EXPANDED_H = 340;
 const DRAG_THRESHOLD = 4;
-const STORAGE_KEY = 'graph_topology_positions_v4';
+const STORAGE_KEY = 'graph_topology_positions_v5';
 
-// Left-to-right flow: User → Supervisor → [4 Specialists] → Aggregator → [MsgPolish?] → Response
+// Left-to-right flow: User → Supervisor → [5 Specialists] → Aggregator → [MsgPolish?] → Response
 const DEFAULT_POSITIONS = {
-    user:         { x: 68,  y: 240 },
+    user:         { x: 68,  y: 260 },
     prompt_bot:   { x: 192, y: 98  },
-    supervisor:   { x: 210, y: 240 },
-    rag_search:   { x: 450, y: 118 },
-    error_solver: { x: 450, y: 210 },
-    zli_finder:   { x: 450, y: 302 },
-    n8n_trigger:  { x: 450, y: 375 },
-    aggregator:   { x: 730, y: 240 },
-    msg_polish:   { x: 840, y: 365 },
-    response:     { x: 930, y: 240 },
-    rag_pool_1:   { x: 600, y: 55  },
-    rag_pool_2:   { x: 600, y: 84  },
+    supervisor:   { x: 210, y: 260 },
+    rag_search:   { x: 450, y: 88  },
+    error_solver: { x: 450, y: 175 },
+    zli_finder:   { x: 450, y: 262 },
+    n8n_trigger:  { x: 450, y: 349 },
+    surec_ajan:   { x: 450, y: 432 },
+    aggregator:   { x: 730, y: 260 },
+    msg_polish:   { x: 840, y: 390 },
+    response:     { x: 930, y: 260 },
+    rag_pool_1:   { x: 600, y: 42  },
+    rag_pool_2:   { x: 600, y: 68  },
 };
 
 const NODE_SIZE = {
@@ -77,6 +79,7 @@ const NODE_SIZE = {
     error_solver: { w: 155, h: 50  },
     zli_finder:   { w: 155, h: 50  },
     n8n_trigger:  { w: 155, h: 50  },
+    surec_ajan:   { w: 155, h: 50  },
     aggregator:   { w: 155, h: 48  },
     msg_polish:   { w: 140, h: 44  },
     response:     { w: 60,  h: 60  },

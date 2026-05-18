@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Loader2, Power, Eye, FileText, FolderSearch, FileOutput } from 'lucide-react';
+import { Bot, Loader2, Power, Eye, FileText, FolderSearch, FileOutput, ChevronDown, Wrench } from 'lucide-react';
 import { mutate } from '../../../api/client';
 
 // Components
@@ -8,8 +8,9 @@ import AgentConfigPanel from './orchestrator/AgentConfigPanel';
 import CannedResponsesPanel from './orchestrator/CannedResponsesPanel';
 import { AutomationTab } from './tabs/AutomationTab';
 import { PromptTemplatesTab } from './tabs/PromptTemplatesTab';
-const FileCollectorPanel = React.lazy(() => import('../tools/FileCollectorPanel'));
-const DwgConverterPanel  = React.lazy(() => import('../tools/DwgConverterPanel'));
+const FileCollectorPanel   = React.lazy(() => import('../tools/FileCollectorPanel'));
+const DwgConverterPanel    = React.lazy(() => import('../tools/DwgConverterPanel'));
+const MakineBilgisiPanel   = React.lazy(() => import('../tools/MakineBilgisiPanel'));
 
 import { DEFAULT_AGENTS, isAgentVisibleInGrid, getAgentIcon } from './orchestrator/constants';
 
@@ -111,7 +112,7 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
     const selectedItem = agents.find(agent => agent.id === selectedItemId);
 
     const SPECIAL_ITEM_IDS = new Set(['vision-processing']);
-    const TOOL_ITEM_IDS    = new Set(['tool-file-collector', 'tool-dwg-to-pdf']);
+    const TOOL_ITEM_IDS    = new Set(['tool-file-collector', 'tool-dwg-to-pdf', 'tool-makine-bilgisi']);
 
     // Eğer ilk yükleme sonrası seçili ajan listede yoksa (ör. legacy gizlendi),
     // ilk görünür ajana düş. Özel ayar item'ları seçiliyse müdahale etme.
@@ -132,13 +133,28 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
 
     const visibleAgents = useMemo(() => (agents || []).filter(isAgentVisibleInGrid), [agents]);
 
+    const PASSIVE_AGENT_IDS = useMemo(() => new Set(['sys_node_msg_polish', 'sys_node_compact']), []);
+    const mainAgents    = useMemo(() => visibleAgents.filter(a => !PASSIVE_AGENT_IDS.has(a.id)), [visibleAgents, PASSIVE_AGENT_IDS]);
+    const passiveAgents = useMemo(() => visibleAgents.filter(a =>  PASSIVE_AGENT_IDS.has(a.id)), [visibleAgents, PASSIVE_AGENT_IDS]);
+
+    // Araç alt menüsü genişletilmiş ajanlar
+    const [expandedNodes, setExpandedNodes] = useState(new Set(['sys_node_teknik_dokuman']));
+    const toggleExpand = useCallback((id) => {
+        setExpandedNodes(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    }, []);
+
     const SPECIAL_ITEMS = useMemo(() => [
         { id: 'vision-processing',  label: 'AI Görsel İşleme',     icon: Eye      },
     ], []);
 
     const TOOL_ITEMS = useMemo(() => [
-        { id: 'tool-file-collector', label: 'Dosya Toplayıcı',     icon: FolderSearch },
-        { id: 'tool-dwg-to-pdf',     label: 'DWG → PDF',           icon: FileOutput   },
+        { id: 'tool-file-collector',   label: 'Dosya Toplayıcı',   icon: FolderSearch },
+        { id: 'tool-dwg-to-pdf',       label: 'DWG → PDF',         icon: FileOutput   },
+        { id: 'tool-makine-bilgisi',   label: 'Makine Bilgisi',     icon: Wrench       },
     ], []);
 
     // Sol panel — inline rename
@@ -255,78 +271,114 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                 {/* ── SOL: Ajan Listesi ─────────────────────────── */}
                                 <div className="w-52 shrink-0 flex flex-col bg-white border-r border-stone-200 overflow-hidden">
                                     <div className="flex-1 overflow-y-auto py-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-stone-200">
-                                        {visibleAgents.map((agent) => {
-                                            const isSelected = selectedItemId === agent.id;
-                                            const isInactive = agent.active === false;
-                                            const isDirty    = dirtyAgentIds.has(agent.id);
-                                            const isEditing  = editingId === agent.id;
-                                            const AgentIcon  = getAgentIcon(agent);
+                                        {/* ── Grup başlığı renderleyici ── */}
+                                        {(() => {
+                                            const TEKNIK_ID = 'sys_node_teknik_dokuman';
+                                            const isExpanded = expandedNodes.has(TEKNIK_ID);
+
+                                            const renderAgentRow = (agent) => {
+                                                const isSelected = selectedItemId === agent.id;
+                                                const isInactive = agent.active === false;
+                                                const isDirty    = dirtyAgentIds.has(agent.id);
+                                                const isEditing  = editingId === agent.id;
+                                                const AgentIcon  = getAgentIcon(agent);
+                                                const hasSub     = agent.id === TEKNIK_ID;
+                                                return (
+                                                    <React.Fragment key={agent.id}>
+                                                        <div
+                                                            onClick={() => { if (!isEditing) setSelectedItemId(agent.id); }}
+                                                            onDoubleClick={() => { setEditingId(agent.id); setEditValue(agent.name); }}
+                                                            onContextMenu={(e) => { e.preventDefault(); setSelectedItemId(agent.id); setCtxMenu({ x: e.clientX, y: e.clientY, agentId: agent.id }); }}
+                                                            className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
+                                                                ${isSelected
+                                                                    ? isInactive ? 'bg-red-50 text-red-700' : 'bg-[#378ADD]/8 text-stone-800'
+                                                                    : isInactive ? 'text-red-400 hover:bg-red-50/60' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+                                                                }`}
+                                                        >
+                                                            {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                            <div className="relative shrink-0">
+                                                                <AgentIcon size={14} strokeWidth={isSelected ? 2.5 : 2}
+                                                                    className={isSelected ? (isInactive ? 'text-red-500' : 'text-[#378ADD]') : (isInactive ? 'text-red-300' : 'text-stone-400')}
+                                                                />
+                                                                <span className={`absolute -bottom-[3px] -right-[3px] w-[5px] h-[5px] rounded-full ring-[1.5px] ${isInactive ? 'bg-red-400 ring-white' : 'bg-emerald-400 ring-white'}`} />
+                                                            </div>
+                                                            {isEditing && isSelected ? (
+                                                                <input
+                                                                    ref={editInputRef}
+                                                                    value={editValue}
+                                                                    onChange={e => setEditValue(e.target.value)}
+                                                                    onBlur={commitRename}
+                                                                    onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
+                                                                    onClick={e => e.stopPropagation()}
+                                                                    className="text-[12px] font-bold bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0"
+                                                                />
+                                                            ) : (
+                                                                <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>{agent.name}</span>
+                                                            )}
+                                                            {isDirty && <span className="w-[5px] h-[5px] rounded-full bg-amber-400 animate-pulse shrink-0" />}
+                                                            {hasSub && (
+                                                                <button
+                                                                    onClick={e => { e.stopPropagation(); toggleExpand(TEKNIK_ID); }}
+                                                                    className="shrink-0 p-0.5 rounded hover:bg-stone-200/60 transition-colors"
+                                                                >
+                                                                    <ChevronDown size={11} strokeWidth={2.5}
+                                                                        className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${isSelected ? 'text-[#378ADD]' : 'text-stone-400'}`}
+                                                                    />
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* ── Teknik Döküman alt araçları ── */}
+                                                        {hasSub && isExpanded && TOOL_ITEMS.map((tool, idx) => {
+                                                            const isToolSelected = selectedItemId === tool.id;
+                                                            const ToolIcon = tool.icon;
+                                                            const isLast = idx === TOOL_ITEMS.length - 1;
+                                                            return (
+                                                                <div
+                                                                    key={tool.id}
+                                                                    onClick={() => setSelectedItemId(tool.id)}
+                                                                    className={`relative w-full flex items-center gap-2 pl-7 pr-3 py-2 cursor-pointer transition-all duration-100
+                                                                        ${isToolSelected ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-400 hover:bg-stone-50 hover:text-stone-600'}`}
+                                                                >
+                                                                    {/* Sol bağlantı çizgisi */}
+                                                                    <span className={`absolute left-[22px] top-0 w-px bg-stone-200 ${isLast ? 'h-1/2' : 'h-full'}`} />
+                                                                    <span className="absolute left-[22px] top-1/2 w-2 h-px bg-stone-200" />
+                                                                    {isToolSelected && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#378ADD] rounded-r" />}
+                                                                    <ToolIcon size={12} strokeWidth={isToolSelected ? 2.5 : 2}
+                                                                        className={isToolSelected ? 'text-[#378ADD] shrink-0' : 'text-stone-400 shrink-0'}
+                                                                    />
+                                                                    <span className={`text-[11px] truncate flex-1 ${isToolSelected ? 'font-bold' : 'font-medium'}`}>{tool.label}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </React.Fragment>
+                                                );
+                                            };
                                             return (
-                                                <div
-                                                    key={agent.id}
-                                                    onClick={() => { if (!isEditing) setSelectedItemId(agent.id); }}
-                                                    onDoubleClick={() => { setEditingId(agent.id); setEditValue(agent.name); }}
-                                                    onContextMenu={(e) => { e.preventDefault(); setSelectedItemId(agent.id); setCtxMenu({ x: e.clientX, y: e.clientY, agentId: agent.id }); }}
-                                                    className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
-                                                        ${isSelected
-                                                            ? isInactive ? 'bg-red-50 text-red-700' : 'bg-[#378ADD]/8 text-stone-800'
-                                                            : isInactive ? 'text-red-400 hover:bg-red-50/60' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
-                                                        }`}
-                                                >
-                                                    {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
-                                                    <div className="relative shrink-0">
-                                                        <AgentIcon size={14} strokeWidth={isSelected ? 2.5 : 2}
-                                                            className={isSelected ? (isInactive ? 'text-red-500' : 'text-[#378ADD]') : (isInactive ? 'text-red-300' : 'text-stone-400')}
-                                                        />
-                                                        <span className={`absolute -bottom-[3px] -right-[3px] w-[5px] h-[5px] rounded-full ring-[1.5px] ${isInactive ? 'bg-red-400 ring-white' : 'bg-emerald-400 ring-white'}`} />
+                                                <>
+                                                    {/* ── Grup: Ajanlar ── */}
+                                                    <div className="px-3 pt-1 pb-0.5">
+                                                        <span className="text-[9px] font-black uppercase tracking-[0.18em] text-stone-400">Ajanlar</span>
                                                     </div>
-                                                    {isEditing && isSelected ? (
-                                                        <input
-                                                            ref={editInputRef}
-                                                            value={editValue}
-                                                            onChange={e => setEditValue(e.target.value)}
-                                                            onBlur={commitRename}
-                                                            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null); }}
-                                                            onClick={e => e.stopPropagation()}
-                                                            className="text-[12px] font-bold bg-transparent outline-none border-b border-[#378ADD] text-stone-700 w-full min-w-0 leading-none py-0"
-                                                        />
-                                                    ) : (
-                                                        <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>{agent.name}</span>
+                                                    {mainAgents.map(renderAgentRow)}
+
+                                                    {/* ── Grup: Pasif Ajanlar ── */}
+                                                    {passiveAgents.length > 0 && (
+                                                        <>
+                                                            <div className="h-px bg-stone-200 mx-3 my-1 shrink-0" />
+                                                            <div className="px-3 py-1">
+                                                                <span className="text-[9px] font-black uppercase tracking-[0.18em] text-stone-400">Pasif Ajanlar</span>
+                                                            </div>
+                                                            {passiveAgents.map(renderAgentRow)}
+                                                        </>
                                                     )}
-                                                    {isDirty && <span className="w-[5px] h-[5px] rounded-full bg-amber-400 animate-pulse shrink-0" />}
-                                                </div>
+                                                </>
                                             );
-                                        })}
+                                        })()}
 
                                         {/* ── Ayırıcı + Özel Ayar Bölümleri ────────── */}
                                         <div className="h-px bg-stone-200 mx-3 my-1 shrink-0" />
                                         {SPECIAL_ITEMS.map(item => {
-                                            const isSelected = selectedItemId === item.id;
-                                            const Icon = item.icon;
-                                            return (
-                                                <div
-                                                    key={item.id}
-                                                    onClick={() => setSelectedItemId(item.id)}
-                                                    className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-100
-                                                        ${isSelected ? 'bg-[#378ADD]/8 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'}`}
-                                                >
-                                                    {isSelected && <span className="absolute left-0 top-2 bottom-2 w-[2px] bg-[#378ADD] rounded-r" />}
-                                                    <Icon size={14} strokeWidth={isSelected ? 2.5 : 2}
-                                                        className={isSelected ? 'text-[#378ADD]' : 'text-stone-400'}
-                                                    />
-                                                    <span className={`text-[12px] truncate flex-1 ${isSelected ? 'font-bold' : 'font-medium'}`}>
-                                                        {item.label}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-
-                                        {/* ── Tools Bölümü ──────────────────── */}
-                                        <div className="h-px bg-stone-200 mx-3 my-1 shrink-0" />
-                                        <div className="px-3 py-1">
-                                            <span className="text-[9px] font-black uppercase tracking-[0.18em] text-stone-400">Araçlar</span>
-                                        </div>
-                                        {TOOL_ITEMS.map(item => {
                                             const isSelected = selectedItemId === item.id;
                                             const Icon = item.icon;
                                             return (
@@ -362,6 +414,12 @@ const AiOrchestratorViewer = ({ defaultAgentId, defaultMainTab = 'architecture' 
                                     <div className="flex-1 overflow-hidden">
                                         <React.Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-stone-300" /></div>}>
                                             <DwgConverterPanel />
+                                        </React.Suspense>
+                                    </div>
+                                ) : selectedItemId === 'tool-makine-bilgisi' ? (
+                                    <div className="flex-1 overflow-hidden">
+                                        <React.Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-stone-300" /></div>}>
+                                            <MakineBilgisiPanel />
                                         </React.Suspense>
                                     </div>
                                 ) : selectedItemId === 'vision-processing' ? (

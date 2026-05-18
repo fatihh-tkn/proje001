@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { sendMessageStream } from '../../api/chatService';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useErrorStore } from '../../store/errorStore';
+import { useTextareaResize } from './hooks/useTextareaResize';
+import { useDragDropFiles } from './hooks/useDragDropFiles';
 
 import RecentChats from './RecentChats';
 const PartsTimeViewer = lazy(() => import('../settings/parts-time/PartsTimeViewer'));
@@ -31,7 +33,6 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
     const [currentSessionId, setCurrentSessionId] = useState(`session_${Date.now()}`);
 
     const [attachedFiles, setAttachedFiles] = useState([]); // { id, name, type, url, size, source }
-    const [isDragOver, setIsDragOver] = useState(false);
     const [activeCommand, setActiveCommand] = useState(null);
     const [activeModelName, setActiveModelName] = useState(null);
     const [compactMaxTurns, setCompactMaxTurns] = useState(0); // 0 = kapalı
@@ -326,54 +327,16 @@ const ChatBar = ({ onOpenFile, isSideOpen, setIsSideOpen }) => {
         return () => window.removeEventListener('compact-setting-changed', onSettingChange);
     }, []);
 
-    useEffect(() => {
-        if (!textareaRef.current || !isSideOpen) return;
-        const initialHeight = 51.2;
-        const maxHeight = initialHeight * 3;
-        if (isExpanded) {
-            textareaRef.current.style.height = 'auto';
-            const scrollHeight = textareaRef.current.scrollHeight;
-            textareaRef.current.style.height = scrollHeight > maxHeight ? `${maxHeight}px` : `${scrollHeight}px`;
-        } else {
-            textareaRef.current.style.height = '3.2rem';
-        }
-    }, [inputValue, isExpanded, isSideOpen]);
+    useTextareaResize(textareaRef, inputValue, isExpanded, isSideOpen);
 
     // ── Drag & Drop ────────────────────────────────────────────────────────
-    const handleDragOver = (e) => {
-        if (e.dataTransfer.types.includes('application/json')) {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragOver(true);
-            if (!isSideOpen) setIsSideOpen(true);
-        }
-    };
-
-    const handleDragLeave = (e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false);
-    };
-
-    const handleDrop = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-        const raw = e.dataTransfer.getData('application/json');
-        if (!raw) return;
-        try {
-            const fileData = JSON.parse(raw);
-            if (fileData.type && fileData.type !== 'folder') {
-                addAttachedFiles([{
-                    id: fileData.id || `drop_${Date.now()}`,
-                    name: fileData.title || fileData.name,
-                    type: fileData.type,
-                    url: fileData.url || '',
-                    size: null,
-                    source: 'archive',
-                }]);
-                setTimeout(() => { if (textareaRef.current) textareaRef.current.focus(); }, 150);
-            }
-        } catch (_) { }
-    };
+    const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDragDropFiles({
+        addAttachedFiles,
+        maxAttach: MAX_ATTACH,
+        isSideOpen,
+        setIsSideOpen,
+        textareaRef,
+    });
     // ──────────────────────────────────────────────────────────────────────
 
     const handleSendMessage = async (overrideText) => {

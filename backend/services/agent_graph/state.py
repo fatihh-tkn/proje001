@@ -130,6 +130,7 @@ class AgentState(TypedDict, total=False):
     zli_draft: str                             # zli_finder çıktısı (ham JSON)
     n8n_action: dict | None                    # {workflow, status, detail}
     skill_context: str                          # skill_reader yüklediği SKILL.md içeriği
+    surec_draft: str                            # surec_ajan çıktısı (markdown süreç analizi)
 
     # ── CRİTİC (denetleyici döngüsü) ────────────────────────────────────
     critic_approved: bool                       # True → döngüden çık

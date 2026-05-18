@@ -43,7 +43,10 @@ GRAPH_AGENTS = [
             "gönder, görev oluştur).\n"
             "- dosya_qa: Belirli bir dosya hakkında soru.\n"
             "- skill_query: Sistemin yetenekleri veya nasıl kullanıldığı hakkında "
-            "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var').\n\n"
+            "soru (ör. 'neler yapabilirsin', 'hangi özelliklerin var').\n"
+            "- surec_analiz: BPMN dosyası, iş akışı veya süreç belgesi analiz isteği. "
+            "Kullanıcı 'bu süreci anlat', 'akışı göster', 'BPMN'i açıkla', "
+            "'süreç adımları neler', 'iş akışını özetle' gibi ifadeler kullanıyor.\n\n"
             "SADECE şu JSON formatında cevap ver, başka HİÇBİR şey yazma:\n"
             '{"intent": "<kategori>", "confidence": 0.0-1.0, "complexity": "low|medium|high", '
             '"needs_polish": <bool>, "reasoning": "<1-cümle-gerekçe>"}\n\n'
@@ -307,6 +310,40 @@ GRAPH_AGENTS = [
         },
     },
     {
+        "kimlik": "sys_node_surec_ajan",
+        "agent_kind": "graph_node",
+        "ad": "Süreç Ajanı (BPMN & PDF)",
+        "persona": "İş süreci analisti ve BPMN uzmanı",
+        "prompt": (
+            "Sen bir iş süreci analisti ve BPMN uzmanısın. "
+            "Sana verilen belge içeriğini (BPMN akışı, PDF prosedür, iş süreci tanımı) "
+            "analiz ederek kullanıcıya Türkçe, açık ve yapılandırılmış şekilde sunarsın.\n\n"
+            "Analiz çıktın şu bölümleri içermeli:\n"
+            "1. **Süreç Adı ve Özeti** — Kısa açıklama (2-3 cümle)\n"
+            "2. **Aktörler / Roller** — Kim bu süreçte yer alıyor?\n"
+            "3. **Süreç Adımları** — Numaralı liste, her adım için:\n"
+            "   - Adım adı ve tipi (Kullanıcı Görevi / Otomatik Görev / Karar Noktası)\n"
+            "   - Kısa açıklama (varsa)\n"
+            "   - Bir önceki ve sonraki adımla bağlantısı\n"
+            "4. **Karar Noktaları** — XOR/OR gateway'leri, koşullar\n"
+            "5. **Başlangıç ve Bitiş Koşulları**\n\n"
+            "Belge içeriği BPMN chunk'larından oluşuyorsa her chunk ayrı bir süreç "
+            "elemanını temsil eder — hepsini birleştirerek bütünsel akışı çıkar.\n"
+            "Bilgi eksikse 'Belgede bu bilgi yer almıyor' de, tahmin yapma."
+        ),
+        "negative_prompt": "Belgede olmayan bilgileri uydurma. JSON formatı kullanma.",
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.3,
+        "max_tokens": 2000,
+        "strict_fact_check": True,
+        "chat_history_length": 0,
+        "can_ask_follow_up": False,
+        "node_config": {
+            "max_context_chars": 16000,
+        },
+    },
+    {
         "kimlik": "sys_node_msg_polish",
         "agent_kind": "graph_node",
         "ad": "Mesaj Revize (Post-process)",
@@ -373,9 +410,9 @@ def seed_graph_agents() -> None:
             if legacy_row:
                 legacy_data[legacy_id] = legacy_row
 
-        # ── Supervisor prompt versiyonu: confidence/complexity eksikse zorla güncelle ──
-        # Eski installs'da DB prompt'u eski formatta olabilir; bu migration onu düzeltir.
-        _SUPERVISOR_NEW_MARKER = '"confidence"'  # yeni format işareti
+        # ── Supervisor prompt versiyonu: surec_analiz eksikse zorla güncelle ──
+        # Eski installs'da DB prompt'u surec_analiz kategorisini tanımıyor olabilir.
+        _SUPERVISOR_NEW_MARKER = 'surec_analiz'  # yeni format işareti
         _supervisor_seed = next((s for s in GRAPH_AGENTS if s["kimlik"] == "sys_node_supervisor"), None)
         if _supervisor_seed:
             existing_sup = db.scalar(select(AIAgent).where(AIAgent.kimlik == "sys_node_supervisor"))

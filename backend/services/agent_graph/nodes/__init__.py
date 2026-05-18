@@ -6,6 +6,7 @@ from .zli_finder import zli_finder_node
 from .error_solver import error_solver_node
 from .n8n_trigger import n8n_trigger_node
 from .skill_reader import skill_reader_node
+from .surec_ajan import surec_ajan_node
 from .aggregator import aggregator_node
 from .critic import critic_node
 from .msg_polish import msg_polish_node
@@ -17,6 +18,7 @@ __all__ = [
     'error_solver_node',
     'n8n_trigger_node',
     'skill_reader_node',
+    'surec_ajan_node',
     'aggregator_node',
     'critic_node',
     'msg_polish_node',

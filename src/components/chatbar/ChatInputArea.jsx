@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Settings2, Send, X, FileText,
-    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2, Timer
+    Sparkles, ChevronDown, Upload, FolderOpen, Loader2, AlertTriangle, FileSpreadsheet, Square, Wand2, Undo2, Timer, Play
 } from 'lucide-react';
 import FilePickerModal from './FilePickerModal';
 import ContextGauge from './ContextGauge';
@@ -486,10 +486,10 @@ const ChatInputArea = ({
                                         <button
                                             onClick={() => { setIsModelMenuOpen(v => !v); setIsCommandsOpen(false); setIsFileMenuOpen(false); }}
                                             title={activeModel}
-                                            className={`flex items-center gap-1.5 text-[11px] font-semibold rounded-lg px-2.5 py-1 border transition-all focus:outline-none
+                                            className={`flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 transition-all focus:outline-none
                                                 ${isModelMenuOpen
-                                                    ? 'text-[#DC2626] border-[#DC2626]/30 bg-[#FEF2F2]/70'
-                                                    : 'text-stone-600 border-stone-200/80 bg-white/60 hover:text-[#DC2626] hover:border-[#DC2626]/30 hover:bg-[#FEF2F2]/50'
+                                                    ? 'text-[#DC2626]'
+                                                    : 'text-stone-400 hover:text-[#DC2626]'
                                                 }`}
                                         >
                                             <span className="max-w-[140px] truncate">{activeModel}</span>
@@ -544,18 +544,22 @@ const ChatInputArea = ({
                                     <button
                                         onClick={isTyping ? onStop : handleSendMessage}
                                         disabled={!isTyping && !inputValue.trim()}
-                                        className={`flex items-center justify-center w-8 h-8 rounded-md transition-all focus:outline-none active:scale-[0.93]
+                                        className={`flex items-center justify-center w-7 h-7 transition-all focus:outline-none active:scale-[0.90]
                                             ${isTyping
-                                                ? 'bg-stone-900 hover:bg-black text-white shadow-sm'
+                                                ? 'text-stone-700 hover:text-black'
                                                 : inputValue.trim()
-                                                    ? 'bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-sm'
-                                                    : 'bg-stone-100 text-stone-300'
+                                                    ? 'text-[#DC2626] hover:text-[#A01B1B]'
+                                                    : 'text-stone-300'
                                             }`}
                                         title={isTyping ? 'Yanıtı durdur' : 'Gönder'}
                                     >
                                         {isTyping
-                                            ? <Square size={11} fill="currentColor" strokeWidth={0} />
-                                            : <Send size={15} className="ml-0.5 mt-0.5" />
+                                            ? <Square size={13} fill="currentColor" strokeWidth={0} />
+                                            : (
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M3 12L21 3L12 21L10 14L3 12Z" fill="currentColor" />
+                                                </svg>
+                                            )
                                         }
                                     </button>
                                 </div>

@@ -51,6 +51,7 @@ from .nodes import (
     zli_finder_node,
     n8n_trigger_node,
     skill_reader_node,
+    surec_ajan_node,
     aggregator_node,
     critic_node,
     msg_polish_node,
@@ -65,6 +66,7 @@ _VALID_SPECIALISTS = {
     "zli_finder",
     "n8n_trigger",
     "skill_reader",
+    "surec_ajan",
 }
 
 
@@ -142,6 +144,7 @@ def build_graph(checkpointer=None):
     graph.add_node("zli_finder",   zli_finder_node)
     graph.add_node("n8n_trigger",  n8n_trigger_node)
     graph.add_node("skill_reader", skill_reader_node)
+    graph.add_node("surec_ajan",   surec_ajan_node)
     graph.add_node("aggregator",   aggregator_node)
     graph.add_node("critic",       critic_node)
     graph.add_node("msg_polish",   msg_polish_node)
@@ -161,6 +164,7 @@ def build_graph(checkpointer=None):
             "zli_finder",
             "n8n_trigger",
             "skill_reader",
+            "surec_ajan",
             "aggregator",   # fallback (plan boşsa)
         ],
     )
@@ -171,6 +175,7 @@ def build_graph(checkpointer=None):
     graph.add_edge("zli_finder",   "aggregator")
     graph.add_edge("n8n_trigger",  "aggregator")
     graph.add_edge("skill_reader", "aggregator")
+    graph.add_edge("surec_ajan",   "aggregator")
 
     # aggregator → critic (her zaman; critic döngüye veya END'e karar verir)
     graph.add_edge("aggregator", "critic")

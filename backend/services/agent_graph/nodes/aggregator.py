@@ -267,13 +267,15 @@ async def aggregator_node(state: AgentState) -> dict:
     intent = state.get("intent") or "general"
 
     # Intent'e göre hangi specialist'in yapılandırılmış draft'ını kullanacağız.
-    # Her specialist artık kendi alanına yazıyor (error_draft / zli_draft) —
+    # Her specialist artık kendi alanına yazıyor (error_draft / zli_draft / surec_draft) —
     # paylaşılan chat_draft alanı kaldırıldı, race riski yok.
     structured_draft = ""
     if intent in ("hata_cozumu", "hata_cozumu_devam"):
         structured_draft = state.get("error_draft") or ""
     elif intent == "rapor_arama":
         structured_draft = state.get("zli_draft") or ""
+    elif intent == "surec_analiz":
+        structured_draft = state.get("surec_draft") or ""
 
     # ── 0a) Supervisor chitchat için hazır cevap set ettiyse LLM çağrısı yapma.
     if intent == "sohbet" and state.get("final_reply"):

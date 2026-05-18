@@ -27,7 +27,10 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-import win32gui
+try:
+    import win32gui
+except ImportError:
+    win32gui = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +51,19 @@ _MACRO_FILE = Path(__file__).parent / "macro_steps.json"
 
 def _ctrl_info_at(x: int, y: int) -> dict:
     """Ekrandaki (x,y) noktasındaki Windows kontrolünün bilgisini döner."""
-    hwnd = win32gui.WindowFromPoint((x, y))
+    hwnd = win32gui.WindowFromPoint((x, y)) if win32gui else 0
     name       = ""
     class_name = ""
     auto_id    = ""
     ctrl_type  = ""
     parent_name = ""
 
-    try:
-        name       = (win32gui.GetWindowText(hwnd) or "").strip()[:80]
-        class_name = (win32gui.GetClassName(hwnd) or "").strip()[:40]
-    except Exception:
-        pass
+    if win32gui and hwnd:
+        try:
+            name       = (win32gui.GetWindowText(hwnd) or "").strip()[:80]
+            class_name = (win32gui.GetClassName(hwnd) or "").strip()[:40]
+        except Exception:
+            pass
 
     # pywinauto UIA ile automation_id ve control_type dene
     try:
@@ -297,3 +301,82 @@ def replay_steps(steps: list[dict], app) -> list[dict]:
         time.sleep(0.3)  # Adımlar arası kısa bekleme
 
     return results
+
+
+# ── Klasör bazlı makro çalıştırma ────────────────────────────────────────────
+
+def run_macro_on_folder(source_dir: str, steps: Optional[list[dict]] = None) -> dict:
+    """
+    source_dir içindeki her dosya için kaydedilmiş makroyu sırayla oynatır.
+    Her dosya için TrueView açılır, adımlar tekrarlanır, TrueView kapatılır.
+    steps parametresi verilmezse load_steps() ile dosyadan yüklenir.
+    """
+    source = Path(source_dir)
+    if not source.is_dir():
+        return {"error": f"Klasör bulunamadı: {source_dir}", "processed": 0, "failed": 0, "skipped": 0}
+
+    if steps is None:
+        steps = load_steps()
+    if not steps:
+        return {"error": "Oynatılacak makro adımı yok.", "processed": 0, "failed": 0, "skipped": 0}
+
+    # Tüm dosyaları topla (DWG + desteklenen formatlar)
+    SUPPORTED = {".dwg", ".dxf", ".dwt", ".dws"}
+    files = sorted(f for f in source.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED)
+
+    if not files:
+        return {"error": f"Klasörde desteklenen dosya yok ({', '.join(SUPPORTED)})", "processed": 0, "failed": 0, "skipped": 0}
+
+    try:
+        from tools.dwg_to_pdf_gui import find_trueview_exe
+        exe = find_trueview_exe()
+    except Exception:
+        exe = None
+
+    if not exe:
+        return {"error": "TrueView/AutoCAD bulunamadı — makro çalıştırılamaz.", "processed": 0, "failed": 0, "skipped": 0}
+
+    processed = 0
+    failed = 0
+    file_results = []
+
+    for dwg_file in files:
+        logger.info("[MACRO] İşleniyor: %s", dwg_file.name)
+        app = None
+        try:
+            from pywinauto import Application
+            app = Application(backend="uia").start(f'"{exe}" "{dwg_file}"', timeout=30)
+            win = app.window(title_re=r".*(TrueView|AutoCAD).*")
+            win.wait("exists visible", timeout=20)
+            win.set_focus()
+            time.sleep(1.5)  # Uygulama tam yüklensin
+
+            step_results = replay_steps(steps, app)
+            errors = sum(1 for r in step_results if r["status"] == "error")
+            if errors:
+                failed += 1
+                file_results.append({"file": dwg_file.name, "status": "partial", "errors": errors})
+            else:
+                processed += 1
+                file_results.append({"file": dwg_file.name, "status": "ok"})
+
+        except Exception as exc:
+            logger.error("[MACRO] %s işlenirken hata: %s", dwg_file.name, exc)
+            failed += 1
+            file_results.append({"file": dwg_file.name, "status": "error", "message": str(exc)})
+        finally:
+            try:
+                if app:
+                    app.kill()
+            except Exception:
+                pass
+            time.sleep(0.8)  # Sonraki dosyaya geçmeden önce bekle
+
+    logger.info("[MACRO] Tamamlandı. %d işlendi, %d hata.", processed, failed)
+    return {
+        "processed": processed,
+        "failed":    failed,
+        "skipped":   0,
+        "total":     len(files),
+        "files":     file_results,
+    }

@@ -1,0 +1,180 @@
+{
+  "printer_options": [
+    {
+      "value": "AutoCAD PDF (General Documentation).pc3",
+      "label": "AutoCAD PDF — Genel Belgeleme",
+      "tag": "ai",
+      "description": "Çoğu senaryo için en dengeli seçim. Çizgi kalınlıklarını ve metinleri vektörel olarak PDF'e aktarır. AI pipeline için güvenilir başlangıç noktası."
+    },
+    {
+      "value": "AutoCAD PDF (High Quality Print).pc3",
+      "label": "AutoCAD PDF — Yüksek Kalite",
+      "tag": "ai",
+      "description": "Milimetrik toleransların, ince çizgilerin ve karmaşık detayların sıfır hatayla aktarılması gereken durumlar için. AI'ın hiçbir detayı kaçırmaması gereken projelerde ideal seçim. Dosya boyutu büyük olur."
+    },
+    {
+      "value": "AutoCAD PDF (Smallest File).pc3",
+      "label": "AutoCAD PDF — Küçük Dosya",
+      "tag": "archive",
+      "description": "Yalnızca arşivleme veya hızlı e-posta gönderimi içindir. Dosya boyutunu küçültmek için kaliteden ciddi ödün verir — teknik analizler ve AI okuma için uygun değildir."
+    },
+    {
+      "value": "AutoCAD PDF (Web and Mobile).pc3",
+      "label": "AutoCAD PDF — Web ve Mobil",
+      "tag": "web",
+      "description": "Dosyaların bulutta, web tarayıcılarında veya mobil uygulamalarda hızlı yüklenmesi için optimize edilmiştir. Katman verilerini ve köprüleri korur."
+    },
+    {
+      "value": "DWG To PDF.pc3",
+      "label": "DWG To PDF (Standart)",
+      "tag": null,
+      "description": "Eski nesil standart AutoCAD PDF dönüştürücüsü. Yeni projelerde genellikle üstteki AutoCAD PDF seçenekleri tercih edilir; temelde aynı işi yapar."
+    },
+    {
+      "value": "PublishToWeb PNG.pc3",
+      "label": "PublishToWeb PNG",
+      "tag": "web",
+      "description": "Çizimi standart PNG formatına çevirir. Arayüzde hızlı önizleme için kullanılır. Teknik analiz için değil, görsel gösterim içindir."
+    },
+    {
+      "value": "PublishToWeb PNG (Transparent).pc3",
+      "label": "PublishToWeb PNG — Şeffaf",
+      "tag": "web",
+      "description": "Arka planı şeffaf (transparan) PNG üretir. Arayüzde koyu/açık tema geçişi yapıyorsanız çizimlerin temaya pürüzsüz oturması için idealdir."
+    },
+    {
+      "value": "PublishToWeb JPG.pc3",
+      "label": "PublishToWeb JPG",
+      "tag": "web",
+      "description": "JPEG kayıplı sıkıştırma uyguladığı için ince çizgilerde bulanıklık (artifact) oluşturabilir. Teknik çizimlerde PNG her zaman JPG'den üstündür."
+    },
+    {
+      "value": "DWF6 ePlot.pc3",
+      "label": "DWF6 ePlot",
+      "tag": null,
+      "description": "Autodesk'in DWF vektörel formatına dönüştürür. PDF yerine DWF ekosistemi kullanıyorsanız tercih edilir."
+    },
+    {
+      "value": "DWF6_eePlot_HiRes.pc3",
+      "label": "DWF6 ePlot — Yüksek Çözünürlük",
+      "tag": null,
+      "description": "DWF formatında yüksek çözünürlüklü çıktı üretir."
+    },
+    {
+      "value": "DWFx ePlot (XPS Compatible).pc3",
+      "label": "DWFx ePlot (XPS Uyumlu)",
+      "tag": null,
+      "description": "XPS uyumlu DWFx formatında çıktı üretir. Windows'un yerleşik belge görüntülleyicisiyle açılabilir."
+    }
+  ],
+  "plot_style_options": [
+    {
+      "value": "monochrome.ctb",
+      "label": "Siyah-Beyaz (monochrome)",
+      "tag": "ai",
+      "description": "Tüm renkleri siyaha çevirir. Beyaz zemin üzerinde maksimum kontrast. AI/OCR'ın ölçü ve metni sıfır hatayla okuması için kesin ve tek doğru seçim."
+    },
+    {
+      "value": ".",
+      "label": "Yok (Renkler Olduğu Gibi)",
+      "tag": null,
+      "description": "Plot stili uygulanmaz; çizimdeki renkler birebir PDF'e aktarılır. Kırmızı çizgi kırmızı, sarı çizgi sarı çıkar. Teknik okumayı zorlaştırır."
+    },
+    {
+      "value": "acad.ctb",
+      "label": "acad.ctb (Varsayılan)",
+      "tag": null,
+      "description": "AutoCAD'ın varsayılan renk tabanlı plot stili. Renkleri olduğu gibi aktarır; 'Yok' seçeneğiyle işlevsel olarak aynıdır."
+    },
+    {
+      "value": "Grayscale.ctb",
+      "label": "Gri Tonlamalı",
+      "tag": null,
+      "description": "Renkleri siyah ve grinin tonlarına çevirir. Koyu renkler siyah, açık renkler (sarı gibi) açık gri çıkar. Sunum için iyidir ancak açık gri alanlar AI tarafından okunurken silik kalabilir."
+    },
+    {
+      "value": "dwgviewr.ctb",
+      "label": "dwgviewr.ctb",
+      "tag": null,
+      "description": "DWG TrueView'ın varsayılan plot stili. Genel amaçlı kullanım için uygundur."
+    },
+    {
+      "value": "DWF Virtual Pens.ctb",
+      "label": "DWF Virtual Pens",
+      "tag": null,
+      "description": "DWF formatına export için tasarlanmış sanal kalem atamaları içerir."
+    },
+    {
+      "value": "Fill Patterns.ctb",
+      "label": "Fill Patterns",
+      "tag": null,
+      "description": "Tarama ve dolgu alanlarını ön plana çıkaran plot stili. Mimari çizimlerde kullanılır."
+    },
+    {
+      "value": "Screening 100%.ctb",
+      "label": "Screening %100",
+      "tag": null,
+      "description": "Tüm renklere %100 opaklık uygular — standart çıktıyla aynı sonuç."
+    },
+    {
+      "value": "Screening 75%.ctb",
+      "label": "Screening %75",
+      "tag": null,
+      "description": "Renkleri %75 yoğunlukta basar. Hafif soluk bir görünüm verir."
+    },
+    {
+      "value": "Screening 50%.ctb",
+      "label": "Screening %50",
+      "tag": null,
+      "description": "Renkleri %50 yoğunlukta basar. Arka plan veya referans katmanları soluklaştırmak için kullanılır."
+    },
+    {
+      "value": "Screening 25%.ctb",
+      "label": "Screening %25",
+      "tag": null,
+      "description": "Renkleri %25 yoğunlukta basar. Çok soluk, neredeyse görünmez çıktı."
+    }
+  ],
+  "paper_size_options": [
+    "ISO_A4_(210.00_x_297.00_MM)",
+    "ISO_A3_(297.00_x_420.00_MM)",
+    "ISO_A2_(420.00_x_594.00_MM)",
+    "ISO_A1_(594.00_x_841.00_MM)",
+    "ISO_A0_(841.00_x_1189.00_MM)",
+    "ANSI_A_(8.50_x_11.00_Inches)",
+    "ANSI_B_(11.00_x_17.00_Inches)",
+    "ANSI_C_(17.00_x_22.00_Inches)",
+    "ANSI_D_(22.00_x_34.00_Inches)"
+  ],
+  "console_search_paths": [
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2027 - English\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2027 - Turkish\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2027\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2026 - English\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2026 - Turkish\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2026\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2025 - English\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2025\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2024 - English\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2024\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2023 - English\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\DWG TrueView 2023\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2027\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2026\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2025\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2024\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2023\\accoreconsole.exe",
+    "C:\\Program Files\\Autodesk\\AutoCAD 2022\\accoreconsole.exe"
+  ],
+  "com_prog_ids": [
+    "AutoCAD.Application",
+    "AutoCAD.Application.26",
+    "AutoCAD.Application.25",
+    "AutoCAD.Application.24",
+    "AutoCAD.Application.23"
+  ],
+  "plot_rotation": {
+    "Landscape": 1,
+    "Portrait": 0
+  }
+}

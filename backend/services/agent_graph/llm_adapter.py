@@ -28,6 +28,7 @@ import httpx
 from core.logger import get_logger
 from core.db_bridge import get_user_models
 from services import provider_registry
+from services.llm_client import _post_with_retry  # noqa: F401 — shared retry logic
 
 logger = get_logger("agent_graph.llm")
 
@@ -68,30 +69,6 @@ def _normalize_gemini_model(model_name: str) -> str:
     if "2.0" in n:
         return "gemini-2.0-flash"
     return model_name
-
-
-# ── HTTP yardımcıları ───────────────────────────────────────────────────────
-
-async def _post_with_retry(client: httpx.AsyncClient, url: str, *, max_retries: int = 3, **kwargs) -> httpx.Response:
-    """ai_service.py'deki retry mantığı — buraya kopyalandı bağımsız çalışsın."""
-    import asyncio
-    delays = (2.0, 4.0, 8.0)
-    for attempt in range(max_retries + 1):
-        try:
-            response = await client.post(url, **kwargs)
-            response.raise_for_status()
-            return response
-        except httpx.HTTPStatusError as exc:
-            if attempt < max_retries and exc.response.status_code in (429, 500, 502, 503, 504):
-                delay = delays[min(attempt, len(delays) - 1)]
-                logger.warning(
-                    "[LLM] HTTP %d, %.0fs sonra retry (%d/%d)",
-                    exc.response.status_code, delay, attempt + 1, max_retries,
-                )
-                await asyncio.sleep(delay)
-                continue
-            raise
-    raise RuntimeError("unreachable")  # pragma: no cover
 
 
 # ── Mesaj formatı dönüşümleri ───────────────────────────────────────────────

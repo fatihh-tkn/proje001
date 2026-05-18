@@ -345,6 +345,7 @@ _DEFAULT_ROLE_AGENT_ID = {
     "n8n_trigger":      "sys_node_n8n_trigger",
     "critic":           "sys_node_critic",
     "skill_reader":     "sys_node_skill_reader",
+    "surec_ajan":       "sys_node_surec_ajan",
     "compact":          "sys_node_compact",
     "teknik_dokuman":   "sys_node_teknik_dokuman",
 }
@@ -361,6 +362,7 @@ _FALLBACK_KIND_BY_ROLE = {
     "n8n_trigger":   "graph_node",
     "critic":        "graph_node",
     "skill_reader":  "graph_node",
+    "surec_ajan":    "graph_node",
 }
 
 
