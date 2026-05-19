@@ -11,7 +11,7 @@ import shutil
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from database.sql.session import get_session
@@ -74,7 +74,8 @@ def sistem_belgeleri():
     with get_session() as db:
         repo = DocumentRepository(db)
         belgeler = repo.list_system_documents()
-        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+        k_map, c_map = _build_maps_for_belgeler(belgeler, db)
+        return {"items": [_belge_to_dict(b, db, kullanici_map=k_map, chunk_count_map=c_map) for b in belgeler]}
 
 
 @router.get("/my-documents/{user_id}")
@@ -87,7 +88,8 @@ def kullanici_belgeleri(user_id: str):
             raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
         repo = DocumentRepository(db)
         belgeler = repo.list_user_documents(user_id)
-        return {"items": [_belge_to_dict(b, db) for b in belgeler]}
+        k_map, c_map = _build_maps_for_belgeler(belgeler, db)
+        return {"items": [_belge_to_dict(b, db, kullanici_map=k_map, chunk_count_map=c_map) for b in belgeler]}
 
 
 @router.get("/quota/{user_id}")
@@ -159,17 +161,85 @@ def kota_guncelle(user_id: str, istek: KotaGuncelleRequest):
         }
 
 
-def _belge_to_dict(b: Belge, db) -> dict:
+def _chunk_list(lst: list, size: int = 900):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
+
+def _build_maps_for_belgeler(belgeler: List[Belge], db) -> tuple[dict, dict]:
+    kullanici_map = {}
+    chunk_count_map = {}
+
+    if not belgeler:
+        return kullanici_map, chunk_count_map
+
+    k_ids = list({b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik})
+    for chunk in _chunk_list(k_ids):
+        users = db.scalars(select(Kullanici).where(Kullanici.kimlik.in_(chunk))).all()
+        for u in users:
+            kullanici_map[u.kimlik] = u.tam_ad
+
+    b_ids = list({b.kimlik for b in belgeler})
+    for chunk in _chunk_list(b_ids):
+        counts = db.execute(
+            select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+            .where(VektorParcasi.belge_kimlik.in_(chunk))
+            .group_by(VektorParcasi.belge_kimlik)
+        ).all()
+        for b_id, count in counts:
+            chunk_count_map[b_id] = count
+
+    return kullanici_map, chunk_count_map
+
+def _build_preview_map_for_belgeler(belgeler: List[Belge], db) -> dict:
+    preview_map = {b.kimlik: [] for b in belgeler}
+    if not belgeler:
+        return preview_map
+
+    b_ids = list({b.kimlik for b in belgeler})
+    for chunk in _chunk_list(b_ids):
+        subq = select(
+            VektorParcasi.belge_kimlik,
+            VektorParcasi.kimlik,
+            VektorParcasi.chromadb_kimlik,
+            func.row_number().over(
+                partition_by=VektorParcasi.belge_kimlik,
+                order_by=VektorParcasi.kimlik
+            ).label("rn")
+        ).where(VektorParcasi.belge_kimlik.in_(chunk)).subquery()
+
+        previews = db.execute(
+            select(subq.c.belge_kimlik, subq.c.kimlik, subq.c.chromadb_kimlik)
+            .where(subq.c.rn <= 5)
+        ).all()
+
+        for b_id, p_id, p_chroma_id in previews:
+            preview_map[b_id].append({"id": p_id, "chroma_id": p_chroma_id})
+
+    return preview_map
+
+
+def _belge_to_dict(b: Belge, db, kullanici_map: dict = None, chunk_count_map: dict = None) -> dict:
     """Belge modelini API yanıtı dict'ine çevirir (ortak yardımcı)."""
     meta = b.meta or {}
     yukleyen_adi = "Bilinmiyor"
-    if b.yukleyen_kimlik:
-        k = db.get(Kullanici, b.yukleyen_kimlik)
-        if k:
-            yukleyen_adi = k.tam_ad
-    parcalar = db.scalars(
-        select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-    ).all()
+
+    if kullanici_map is not None:
+        if b.yukleyen_kimlik and b.yukleyen_kimlik in kullanici_map:
+            yukleyen_adi = kullanici_map[b.yukleyen_kimlik]
+    else:
+        if b.yukleyen_kimlik:
+            k = db.get(Kullanici, b.yukleyen_kimlik)
+            if k:
+                yukleyen_adi = k.tam_ad
+
+    if chunk_count_map is not None:
+        total_chunks = chunk_count_map.get(b.kimlik, 0)
+    else:
+        parcalar = db.scalars(
+            select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
+        ).all()
+        total_chunks = len(parcalar)
+
     return {
         "id": b.kimlik,
         "filename": b.dosya_adi,
@@ -182,7 +252,7 @@ def _belge_to_dict(b: Belge, db) -> dict:
         "uploader": yukleyen_adi,
         "havuz_turu": b.havuz_turu,
         "folder_id": meta.get("klasor_kimlik"),
-        "total_chunks": len(parcalar),
+        "total_chunks": total_chunks,
         "storage_path": b.depolama_yolu,
         "erisim_politikasi": b.erisim_politikasi,
         "etiketler": meta.get("etiketler", []),
@@ -244,20 +314,17 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
+        k_map, c_map = _build_maps_for_belgeler(belgeler, db)
+        p_map = _build_preview_map_for_belgeler(belgeler, db)
+
         sonuclar = []
         for b in belgeler:
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
             yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
+            if b.yukleyen_kimlik and b.yukleyen_kimlik in k_map:
+                yukleyen_adi = k_map[b.yukleyen_kimlik]
 
             sonuclar.append({
                 "id": b.kimlik,
@@ -270,11 +337,8 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
                 "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
+                "total_chunks": c_map.get(b.kimlik, 0),
+                "chunks_preview": p_map.get(b.kimlik, []),
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
                 "havuz_turu": b.havuz_turu,
