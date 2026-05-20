@@ -161,15 +161,19 @@ def kota_guncelle(user_id: str, istek: KotaGuncelleRequest):
 
 def _belge_to_dict(b: Belge, db) -> dict:
     """Belge modelini API yanıtı dict'ine çevirir (ortak yardımcı)."""
+    from sqlalchemy import func
     meta = b.meta or {}
     yukleyen_adi = "Bilinmiyor"
     if b.yukleyen_kimlik:
         k = db.get(Kullanici, b.yukleyen_kimlik)
         if k:
             yukleyen_adi = k.tam_ad
-    parcalar = db.scalars(
-        select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-    ).all()
+
+    # ⚡ Bolt: Prevent memory bloat by fetching only the count
+    total_chunks = db.scalar(
+        select(func.count(VektorParcasi.kimlik)).where(VektorParcasi.belge_kimlik == b.kimlik)
+    ) or 0
+
     return {
         "id": b.kimlik,
         "filename": b.dosya_adi,
@@ -182,7 +186,7 @@ def _belge_to_dict(b: Belge, db) -> dict:
         "uploader": yukleyen_adi,
         "havuz_turu": b.havuz_turu,
         "folder_id": meta.get("klasor_kimlik"),
-        "total_chunks": len(parcalar),
+        "total_chunks": total_chunks,
         "storage_path": b.depolama_yolu,
         "erisim_politikasi": b.erisim_politikasi,
         "etiketler": meta.get("etiketler", []),
@@ -212,6 +216,7 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
     Admin → hepsi. Normal kullanıcı → sistem belgeleri + kendi yükledikleri
     + erişim izni verilmiş belgeler.
     """
+    from sqlalchemy import select, func
     effective_user_id = user_id or x_user_id
 
     with get_session() as db:
@@ -244,20 +249,66 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 
             belgeler = [b for b in belgeler if goruyabilir_mi(b)]
 
+        # ⚡ Bolt: N+1 Optimization - Pre-fetch user names
+        user_ids = list({b.yukleyen_kimlik for b in belgeler if b.yukleyen_kimlik})
+        user_map = {}
+        if user_ids:
+            def chunk_list(lst, n=900):
+                for i in range(0, len(lst), n):
+                    yield lst[i:i + n]
+            for user_ids_chunk in chunk_list(user_ids):
+                users = db.scalars(select(Kullanici).where(Kullanici.kimlik.in_(user_ids_chunk))).all()
+                for k in users:
+                    user_map[k.kimlik] = k.tam_ad
+
+        # ⚡ Bolt: N+1 Optimization - Calculate chunk counts via GROUP BY
+        doc_ids = [b.kimlik for b in belgeler]
+        count_map = {}
+        preview_map = {}
+        if doc_ids:
+            def chunk_list(lst, n=900):
+                for i in range(0, len(lst), n):
+                    yield lst[i:i + n]
+
+            for doc_ids_chunk in chunk_list(doc_ids):
+                # Count chunks
+                counts = db.execute(
+                    select(VektorParcasi.belge_kimlik, func.count(VektorParcasi.kimlik))
+                    .where(VektorParcasi.belge_kimlik.in_(doc_ids_chunk))
+                    .group_by(VektorParcasi.belge_kimlik)
+                ).all()
+                for doc_id, count in counts:
+                    count_map[doc_id] = count
+
+                # Fetch top 5 previews per doc using row_number partition
+                subq = select(
+                    VektorParcasi.kimlik,
+                    VektorParcasi.chromadb_kimlik,
+                    VektorParcasi.belge_kimlik,
+                    func.row_number().over(
+                        partition_by=VektorParcasi.belge_kimlik,
+                        order_by=VektorParcasi.kimlik
+                    ).label('rn')
+                ).where(VektorParcasi.belge_kimlik.in_(doc_ids_chunk)).subquery()
+
+                previews = db.execute(
+                    select(subq.c.kimlik, subq.c.chromadb_kimlik, subq.c.belge_kimlik)
+                    .where(subq.c.rn <= 5)
+                ).all()
+                for kimlik, chroma_id, belge_kimlik in previews:
+                    preview_map.setdefault(belge_kimlik, []).append({
+                        "id": kimlik,
+                        "chroma_id": chroma_id
+                    })
+
         sonuclar = []
         for b in belgeler:
             meta = b.meta or {}
             belge_klasor_kimlik = meta.get("klasor_kimlik")
 
             yukleyen_adi = "Bilinmiyor"
-            if b.yukleyen_kimlik:
-                kullanici = db.get(Kullanici, b.yukleyen_kimlik)
-                if kullanici:
-                    yukleyen_adi = kullanici.tam_ad
-
-            parcalar = db.scalars(
-                select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-            ).all()
+            if b.yukleyen_kimlik and b.yukleyen_kimlik in user_map:
+                yukleyen_adi = user_map[b.yukleyen_kimlik]
 
             sonuclar.append({
                 "id": b.kimlik,
@@ -270,11 +321,8 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
                 "durum": b.durum,
                 "uploader": yukleyen_adi,
                 "folder_id": belge_klasor_kimlik,
-                "total_chunks": len(parcalar),
-                "chunks_preview": [
-                    {"id": p.kimlik, "chroma_id": p.chromadb_kimlik}
-                    for p in parcalar[:5]
-                ],
+                "total_chunks": count_map.get(b.kimlik, 0),
+                "chunks_preview": preview_map.get(b.kimlik, []),
                 "storage_path": b.depolama_yolu,
                 "erisim_politikasi": b.erisim_politikasi,
                 "havuz_turu": b.havuz_turu,
@@ -301,14 +349,18 @@ def arsiv_listele(user_id: str | None = None, x_user_id: str | None = Header(Non
 @router.get("/detail/{doc_id}")
 def arsiv_detay(doc_id: str):
     """Tek bir belgenin tüm meta verilerini (transkript dahil) döner."""
+    from sqlalchemy import func
     with get_session() as db:
         b = db.get(Belge, doc_id)
         if not b:
             raise HTTPException(status_code=404, detail="Belge bulunamadı.")
         meta = b.meta or {}
-        parcalar = db.scalars(
-            select(VektorParcasi).where(VektorParcasi.belge_kimlik == b.kimlik)
-        ).all()
+
+        # ⚡ Bolt: Prevent memory bloat by fetching only the count
+        total_chunks = db.scalar(
+            select(func.count(VektorParcasi.kimlik)).where(VektorParcasi.belge_kimlik == b.kimlik)
+        ) or 0
+
         return {
             "id": b.kimlik,
             "filename": b.dosya_adi,
@@ -318,7 +370,7 @@ def arsiv_detay(doc_id: str):
             "is_vectorized": b.vektorlestirildi_mi,
             "durum": b.durum,
             "storage_path": b.depolama_yolu,
-            "total_chunks": len(parcalar),
+            "total_chunks": total_chunks,
             "etiketler": meta.get("etiketler", []),
             "aciklama": meta.get("aciklama", ""),
             "meta": {
