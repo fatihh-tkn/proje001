@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
     Ruler, Search, X, Loader2, Grid, List, Upload, RefreshCw,
@@ -814,7 +814,7 @@ export default function TeknikResimViewer({ onOpenFile }) {
         return () => clearTimeout(t);
     }, [items, load]);
 
-    const filtered = items.filter(i => {
+    const filtered = useMemo(() => items.filter(i => {
         // Arama yoksa mevcut klasör filtresi uygula
         if (!search.trim()) {
             const inFolder = currentFolderId === null ? !i.folder_id : i.folder_id === currentFolderId;
@@ -830,15 +830,15 @@ export default function TeknikResimViewer({ onOpenFile }) {
         if (filter === 'analyzed') return !!va;
         if (filter === 'pending')  return !va && status !== 'processing';
         return true;
-    });
+    }), [items, search, filter, currentFolderId]);
 
-    const counts = {
+    const counts = useMemo(() => ({
         all:      items.length,
         cad:      items.filter(i => i.meta?.cad_turu === 'cad').length,
         nesting:  items.filter(i => i.meta?.cad_turu === 'nesting').length,
         analyzed: items.filter(i => !!i.meta?.vision_analysis).length,
         pending:  items.filter(i => !i.meta?.vision_analysis && i.meta?.transcription_status !== 'processing').length,
-    };
+    }), [items]);
 
     const handleOpen = (item) => {
         if (!onOpenFile) return;
@@ -922,12 +922,12 @@ export default function TeknikResimViewer({ onOpenFile }) {
     };
 
     // Mevcut klasördeki klasörler
-    const currentFolders = allFolders.filter(f =>
+    const currentFolders = useMemo(() => allFolders.filter(f =>
         currentFolderId === null ? !f.folder_id : f.folder_id === currentFolderId
-    );
+    ), [allFolders, currentFolderId]);
 
     // Breadcrumb: root'tan currentFolderId'e kadar zincir
-    const breadcrumb = (() => {
+    const breadcrumb = useMemo(() => {
         if (!currentFolderId) return [];
         const crumbs = [];
         let cur = currentFolderId;
@@ -938,12 +938,12 @@ export default function TeknikResimViewer({ onOpenFile }) {
             cur = f.folder_id || null;
         }
         return crumbs;
-    })();
+    }, [currentFolderId, allFolders]);
 
     // Mevcut klasörün derinliği (yeni klasör için etiket)
     const currentDepth = breadcrumb.length;
 
-    const processingCount = items.filter(i => i.meta?.transcription_status === 'processing').length;
+    const processingCount = useMemo(() => items.filter(i => i.meta?.transcription_status === 'processing').length, [items]);
 
     return (
         <>
